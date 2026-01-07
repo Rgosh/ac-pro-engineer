@@ -1,6 +1,6 @@
 use crate::ac_structs::{AcPhysics, AcGraphics};
 use crate::setup_manager::CarSetup;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, Language};
 use crate::session_info::SessionInfo;
 use serde::Serialize;
 
@@ -179,38 +179,58 @@ impl Engineer {
         recommendations
     }
     
+    fn is_ru(&self) -> bool {
+        self.config.language == Language::Russian
+    }
+    
     fn analyze_tyre_pressure(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let optimal_pressure = 27.0;
         let tolerance = 1.0;
+        let ru = self.is_ru();
         
         for i in 0..4 {
             let pressure = phys.wheels_pressure[i];
             let name = match i {
-                0 => "Front Left",
-                1 => "Front Right",
-                2 => "Rear Left",
-                3 => "Rear Right",
+                0 => if ru { "П. Лев." } else { "Front Left" },
+                1 => if ru { "П. Прав." } else { "Front Right" },
+                2 => if ru { "З. Лев." } else { "Rear Left" },
+                3 => if ru { "З. Прав." } else { "Rear Right" },
                 _ => continue,
             };
             
             let diff = (pressure - optimal_pressure).abs();
             if diff > tolerance {
                 let severity = if diff > 2.0 { Severity::Warning } else { Severity::Info };
-                let action = if pressure < optimal_pressure {
-                    format!("Increase pressure by {:.1} PSI", optimal_pressure - pressure)
+                
+                let (msg, action) = if ru {
+                    (
+                        format!("Давление {} шины вне нормы: {:.1} PSI", name, pressure),
+                        if pressure < optimal_pressure {
+                            format!("Поднять давление на {:.1} PSI", optimal_pressure - pressure)
+                        } else {
+                            format!("Снизить давление на {:.1} PSI", pressure - optimal_pressure)
+                        }
+                    )
                 } else {
-                    format!("Decrease pressure by {:.1} PSI", pressure - optimal_pressure)
+                    (
+                        format!("{} tyre pressure outside optimal range: {:.1} PSI", name, pressure),
+                        if pressure < optimal_pressure {
+                            format!("Increase pressure by {:.1} PSI", optimal_pressure - pressure)
+                        } else {
+                            format!("Decrease pressure by {:.1} PSI", pressure - optimal_pressure)
+                        }
+                    )
                 };
                 
                 recs.push(Recommendation {
-                    component: "Tyres".to_string(),
-                    category: "Pressure".to_string(),
+                    component: if ru { "Шины".to_string() } else { "Tyres".to_string() },
+                    category: if ru { "Давление".to_string() } else { "Pressure".to_string() },
                     severity,
-                    message: format!("{} tyre pressure outside optimal range: {:.1} PSI", name, pressure),
+                    message: msg,
                     action,
                     parameters: vec![
                         Parameter {
-                            name: "Current Pressure".to_string(),
+                            name: if ru { "Тек. Давление".to_string() } else { "Current Pressure".to_string() },
                             current: pressure,
                             target: optimal_pressure,
                             unit: "PSI".to_string(),
@@ -226,28 +246,29 @@ impl Engineer {
         let optimal_temp = 85.0;
         let min_temp = 70.0;
         let max_temp = 105.0;
+        let ru = self.is_ru();
         
         for i in 0..4 {
             let avg_temp = phys.get_avg_tyre_temp(i);
             let gradient = phys.get_tyre_gradient(i);
             let name = match i {
-                0 => "Front Left",
-                1 => "Front Right",
-                2 => "Rear Left",
-                3 => "Rear Right",
+                0 => if ru { "П. Лев." } else { "Front Left" },
+                1 => if ru { "П. Прав." } else { "Front Right" },
+                2 => if ru { "З. Лев." } else { "Rear Left" },
+                3 => if ru { "З. Прав." } else { "Rear Right" },
                 _ => continue,
             };
             
             if avg_temp < min_temp {
                 recs.push(Recommendation {
-                    component: "Tyres".to_string(),
-                    category: "Temperature".to_string(),
+                    component: if ru { "Шины".to_string() } else { "Tyres".to_string() },
+                    category: if ru { "Температура".to_string() } else { "Temperature".to_string() },
                     severity: Severity::Warning,
-                    message: format!("{} tyre too cold: {:.1}°C", name, avg_temp),
-                    action: "Increase camber or add pressure".to_string(),
+                    message: if ru { format!("{} шина холодная: {:.1}°C", name, avg_temp) } else { format!("{} tyre too cold: {:.1}°C", name, avg_temp) },
+                    action: if ru { "Увеличить развал или давление".to_string() } else { "Increase camber or add pressure".to_string() },
                     parameters: vec![
                         Parameter {
-                            name: "Temperature".to_string(),
+                            name: if ru { "Температура".to_string() } else { "Temperature".to_string() },
                             current: avg_temp,
                             target: optimal_temp,
                             unit: "°C".to_string(),
@@ -257,14 +278,14 @@ impl Engineer {
                 });
             } else if avg_temp > max_temp {
                 recs.push(Recommendation {
-                    component: "Tyres".to_string(),
-                    category: "Temperature".to_string(),
+                    component: if ru { "Шины".to_string() } else { "Tyres".to_string() },
+                    category: if ru { "Температура".to_string() } else { "Temperature".to_string() },
                     severity: Severity::Critical,
-                    message: format!("{} tyre overheating: {:.1}°C", name, avg_temp),
-                    action: "Reduce camber or lower pressure".to_string(),
+                    message: if ru { format!("{} шина перегрета: {:.1}°C", name, avg_temp) } else { format!("{} tyre overheating: {:.1}°C", name, avg_temp) },
+                    action: if ru { "Уменьшить развал или давление".to_string() } else { "Reduce camber or lower pressure".to_string() },
                     parameters: vec![
                         Parameter {
-                            name: "Temperature".to_string(),
+                            name: if ru { "Температура".to_string() } else { "Temperature".to_string() },
                             current: avg_temp,
                             target: optimal_temp,
                             unit: "°C".to_string(),
@@ -275,13 +296,17 @@ impl Engineer {
             }
             
             if gradient.abs() > 15.0 {
-                let issue = if gradient > 0.0 { "outside overheating" } else { "inside overheating" };
+                let issue = if gradient > 0.0 { 
+                    if ru { "перегрев снаружи" } else { "outside overheating" }
+                } else { 
+                    if ru { "перегрев внутри" } else { "inside overheating" }
+                };
                 recs.push(Recommendation {
-                    component: "Tyres".to_string(),
-                    category: "Wear Pattern".to_string(),
+                    component: if ru { "Шины".to_string() } else { "Tyres".to_string() },
+                    category: if ru { "Износ".to_string() } else { "Wear Pattern".to_string() },
                     severity: Severity::Warning,
-                    message: format!("{} tyre has {} (gradient: {:.1}°C)", name, issue, gradient),
-                    action: "Adjust camber or toe settings".to_string(),
+                    message: if ru { format!("{} шина: {} (град: {:.1}°C)", name, issue, gradient) } else { format!("{} tyre has {} (gradient: {:.1}°C)", name, issue, gradient) },
+                    action: if ru { "Настроить развал или схождение".to_string() } else { "Adjust camber or toe settings".to_string() },
                     parameters: vec![],
                     confidence: 0.7,
                 });
@@ -292,19 +317,20 @@ impl Engineer {
     fn analyze_brakes(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let max_brake_temp = 800.0;
         let optimal_brake_temp = 500.0;
+        let ru = self.is_ru();
         
         for i in 0..4 {
             let temp = phys.brake_temp[i];
             if temp > max_brake_temp {
                 recs.push(Recommendation {
-                    component: "Brakes".to_string(),
-                    category: "Temperature".to_string(),
+                    component: if ru { "Тормоза".to_string() } else { "Brakes".to_string() },
+                    category: if ru { "Температура".to_string() } else { "Temperature".to_string() },
                     severity: Severity::Critical,
-                    message: format!("Brake {} overheating: {:.0}°C", i+1, temp),
-                    action: "Move brake bias back or open cooling ducts".to_string(),
+                    message: if ru { format!("Перегрев тормоза {}: {:.0}°C", i+1, temp) } else { format!("Brake {} overheating: {:.0}°C", i+1, temp) },
+                    action: if ru { "Сместить баланс назад или открыть воздуховоды".to_string() } else { "Move brake bias back or open cooling ducts".to_string() },
                     parameters: vec![
                         Parameter {
-                            name: "Brake Temperature".to_string(),
+                            name: if ru { "Темп. Тормозов".to_string() } else { "Brake Temperature".to_string() },
                             current: temp,
                             target: optimal_brake_temp,
                             unit: "°C".to_string(),
@@ -319,14 +345,14 @@ impl Engineer {
         let current_bias = phys.brake_bias;
         if (current_bias - optimal_bias).abs() > 0.02 {
             recs.push(Recommendation {
-                component: "Brakes".to_string(),
-                category: "Bias".to_string(),
+                component: if ru { "Тормоза".to_string() } else { "Brakes".to_string() },
+                category: if ru { "Баланс".to_string() } else { "Bias".to_string() },
                 severity: Severity::Warning,
-                message: format!("Brake bias suboptimal: {:.1}%", current_bias * 100.0),
-                action: format!("Adjust bias to {:.1}%", optimal_bias * 100.0),
+                message: if ru { format!("Неоптимальный баланс: {:.1}%", current_bias * 100.0) } else { format!("Brake bias suboptimal: {:.1}%", current_bias * 100.0) },
+                action: if ru { format!("Настроить баланс на {:.1}%", optimal_bias * 100.0) } else { format!("Adjust bias to {:.1}%", optimal_bias * 100.0) },
                 parameters: vec![
                     Parameter {
-                        name: "Brake Bias".to_string(),
+                        name: if ru { "Баланс".to_string() } else { "Brake Bias".to_string() },
                         current: current_bias,
                         target: optimal_bias,
                         unit: "%".to_string(),
@@ -338,16 +364,17 @@ impl Engineer {
     }
     
     fn analyze_driving_style_rec(&self, recs: &mut Vec<Recommendation>) {
+        let ru = self.is_ru();
         if self.driving_style.aggression > 80.0 {
             recs.push(Recommendation {
-                component: "Driving Style".to_string(),
-                category: "Aggression".to_string(),
+                component: if ru { "Стиль вождения".to_string() } else { "Driving Style".to_string() },
+                category: if ru { "Агрессия".to_string() } else { "Aggression".to_string() },
                 severity: Severity::Warning,
-                message: "Aggressive driving detected".to_string(),
-                action: "Smooth inputs to preserve tyres".to_string(),
+                message: if ru { "Обнаружено агрессивное вождение".to_string() } else { "Aggressive driving detected".to_string() },
+                action: if ru { "Плавнее работать с управлением".to_string() } else { "Smooth inputs to preserve tyres".to_string() },
                 parameters: vec![
                     Parameter {
-                        name: "Aggression Level".to_string(),
+                        name: if ru { "Уровень агрессии".to_string() } else { "Aggression Level".to_string() },
                         current: self.driving_style.aggression,
                         target: 60.0,
                         unit: "%".to_string(),
@@ -359,11 +386,11 @@ impl Engineer {
         
         if self.stats.lockup_frames > 20 {
             recs.push(Recommendation {
-                component: "Driving Style".to_string(),
-                category: "Braking".to_string(),
+                component: if ru { "Стиль вождения".to_string() } else { "Driving Style".to_string() },
+                category: if ru { "Торможение".to_string() } else { "Braking".to_string() },
                 severity: Severity::Warning,
-                message: "Frequent brake lockups detected".to_string(),
-                action: "Increase ABS setting or brake earlier".to_string(),
+                message: if ru { "Частые блокировки колес".to_string() } else { "Frequent brake lockups detected".to_string() },
+                action: if ru { "Увеличить ABS или тормозить раньше".to_string() } else { "Increase ABS setting or brake earlier".to_string() },
                 parameters: vec![],
                 confidence: 0.9,
             });
@@ -371,19 +398,20 @@ impl Engineer {
     }
     
     fn analyze_strategy(&self, phys: &AcPhysics, _gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
+        let ru = self.is_ru();
         if self.stats.fuel_laps_remaining < 3.0 && self.stats.fuel_laps_remaining > 0.0 {
             recs.push(Recommendation {
-                component: "Strategy".to_string(),
-                category: "Fuel".to_string(),
+                component: if ru { "Стратегия".to_string() } else { "Strategy".to_string() },
+                category: if ru { "Топливо".to_string() } else { "Fuel".to_string() },
                 severity: Severity::Critical,
-                message: format!("Low fuel: {:.1} laps remaining", self.stats.fuel_laps_remaining),
-                action: "PIT THIS LAP".to_string(),
+                message: if ru { format!("Мало топлива: {:.1} кругов", self.stats.fuel_laps_remaining) } else { format!("Low fuel: {:.1} laps remaining", self.stats.fuel_laps_remaining) },
+                action: if ru { "ПИТ-СТОП НА ЭТОМ КРУГЕ".to_string() } else { "PIT THIS LAP".to_string() },
                 parameters: vec![
                     Parameter {
-                        name: "Fuel Laps Remaining".to_string(),
+                        name: if ru { "Остаток топлива (круги)".to_string() } else { "Fuel Laps Remaining".to_string() },
                         current: self.stats.fuel_laps_remaining,
                         target: 5.0,
-                        unit: "laps".to_string(),
+                        unit: if ru { "кр.".to_string() } else { "laps".to_string() },
                     }
                 ],
                 confidence: 1.0,
@@ -393,11 +421,11 @@ impl Engineer {
         let avg_wear: f32 = phys.tyre_wear.iter().sum::<f32>() / 4.0;
         if avg_wear > 80.0 {
             recs.push(Recommendation {
-                component: "Strategy".to_string(),
-                category: "Tyres".to_string(),
+                component: if ru { "Стратегия".to_string() } else { "Strategy".to_string() },
+                category: if ru { "Шины".to_string() } else { "Tyres".to_string() },
                 severity: Severity::Warning,
-                message: format!("High tyre wear: {:.0}%", avg_wear),
-                action: "Consider pit stop for fresh tyres".to_string(),
+                message: if ru { format!("Высокий износ шин: {:.0}%", avg_wear) } else { format!("High tyre wear: {:.0}%", avg_wear) },
+                action: if ru { "Пит-стоп для смены шин".to_string() } else { "Consider pit stop for fresh tyres".to_string() },
                 parameters: vec![],
                 confidence: 0.8,
             });

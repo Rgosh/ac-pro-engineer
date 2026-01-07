@@ -107,7 +107,7 @@ impl AppState {
     }
     
     fn tick(&mut self) {
-        self.ui_state.update_blink(); // Update UI state here
+        self.ui_state.update_blink();
         self.is_game_running = is_process_running("acs.exe");
         self.last_update = Instant::now();
         
@@ -119,20 +119,26 @@ impl AppState {
         self.connect_memory();
         
         if self.is_connected {
-            // Retrieve copies of the data to release the borrow on self
             let (phys, gfx) = if let (Some(phys_mem), Some(gfx_mem)) = (&self.physics_mem, &self.graphics_mem) {
                 (*phys_mem.get(), *gfx_mem.get())
             } else {
                 return;
             };
 
-            // Now we can mutate self because the borrow from phys_mem/gfx_mem is over
             self.update_buffers(&phys, &gfx);
             self.update_session_info(&gfx);
             
             self.engineer.update(&phys, &gfx, &self.session_info);
             
-            let active_setup = self.setup_manager.get_active_setup();
+            // Загружаем текущий контекст авто/трассы в менеджер сетапов
+            if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
+                self.setup_manager.set_context(&self.session_info.car_name, &self.session_info.track_name);
+            }
+
+            // Получаем активный сетап (который мы "угадали" по параметрам)
+            // Примечание: новая логика UI позволяет пользователю выбирать сетап вручную для просмотра
+            let active_setup = self.setup_manager.get_setups().first().cloned(); // Временно берем первый для анализа или доработать логику выбора
+            
             self.recommendations = self.engineer.analyze_live(&phys, &gfx, active_setup.as_ref());
             
             if phys.packet_id % 120 == 0 {
@@ -144,14 +150,8 @@ impl AppState {
                 );
             }
             
-            if phys.packet_id % 60 == 0 {
-                self.setup_manager.detect_current(
-                    phys.fuel,
-                    phys.brake_bias,
-                    &phys.wheels_pressure,
-                    &phys.tyre_temp_m
-                );
-            }
+            // Периодическое сканирование (можно реже)
+            // self.setup_manager занимается этим в отдельном потоке
         }
     }
     
@@ -234,8 +234,16 @@ fn main() -> Result<(), anyhow::Error> {
         if event::poll(Duration::from_millis(16))? {
             match event::read()? {
                 Event::Key(key) if key.kind == event::KeyEventKind::Press => {
+                    // Если мы в настройках и редактируем поле, Esc только выходит из редактирования
+                    if app.active_tab == AppTab::Settings && app.ui_state.settings.is_editing && key.code == KeyCode::Esc {
+                        app.ui_state.settings.handle_input(key.code, &mut app.config);
+                        continue;
+                    }
+
                     match (key.code, key.modifiers) {
-                        (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => break,
+                        (KeyCode::Char('q'), _) => break,
+                        // Если мы не редактируем настройки, Esc выходит из программы
+                        (KeyCode::Esc, _) => break, 
                         (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
                         
                         (KeyCode::Char('1'), _) | (KeyCode::F(1), _) => app.active_tab = AppTab::Dashboard,
@@ -247,34 +255,67 @@ fn main() -> Result<(), anyhow::Error> {
                         (KeyCode::Char('7'), _) | (KeyCode::F(7), _) => app.active_tab = AppTab::Settings,
                         
                         (KeyCode::Tab, KeyModifiers::NONE) => {
-                            app.active_tab = match app.active_tab {
-                                AppTab::Dashboard => AppTab::Telemetry,
-                                AppTab::Telemetry => AppTab::Engineer,
-                                AppTab::Engineer => AppTab::Setup,
-                                AppTab::Setup => AppTab::Analysis,
-                                AppTab::Analysis => AppTab::Strategy,
-                                AppTab::Strategy => AppTab::Settings,
-                                AppTab::Settings => AppTab::Dashboard,
-                            };
-                        }
-                        (KeyCode::Tab, KeyModifiers::SHIFT) => {
-                            app.active_tab = match app.active_tab {
-                                AppTab::Dashboard => AppTab::Settings,
-                                AppTab::Telemetry => AppTab::Dashboard,
-                                AppTab::Engineer => AppTab::Telemetry,
-                                AppTab::Setup => AppTab::Engineer,
-                                AppTab::Analysis => AppTab::Setup,
-                                AppTab::Strategy => AppTab::Analysis,
-                                AppTab::Settings => AppTab::Strategy,
-                            };
-                        }
+                            // Логика переключения табов, если мы не редактируем настройки
+                            if app.active_tab == AppTab::Settings && app.ui_state.settings.is_editing {
+                                app.ui_state.settings.handle_input(key.code, &mut app.config);
+                            } else {
+                                app.active_tab = match app.active_tab {
+                                    AppTab::Dashboard => AppTab::Telemetry,
+                                    AppTab::Telemetry => AppTab::Engineer,
+                                    AppTab::Engineer => AppTab::Setup,
+                                    AppTab::Setup => AppTab::Analysis,
+                                    AppTab::Analysis => AppTab::Strategy,
+                                    AppTab::Strategy => AppTab::Settings,
+                                    AppTab::Settings => AppTab::Dashboard,
+                                };
+                            }
+                        },
                         
-                        _ => {}
+                        // Обработка навигации в списке сетапов (Вниз)
+                        (KeyCode::Down, _) => {
+                            if app.active_tab == AppTab::Setup {
+                                let setups_len = app.setup_manager.get_setups().len();
+                                if setups_len > 0 {
+                                    let i = match app.ui_state.setup_list_state.selected() {
+                                        Some(i) => {
+                                            if i >= setups_len.saturating_sub(1) { 0 } else { i + 1 }
+                                        },
+                                        None => 0,
+                                    };
+                                    app.ui_state.setup_list_state.select(Some(i));
+                                }
+                            } else if app.active_tab == AppTab::Settings {
+                                app.ui_state.settings.handle_input(key.code, &mut app.config);
+                            }
+                        },
+
+                        // Обработка навигации в списке сетапов (Вверх)
+                        (KeyCode::Up, _) => {
+                            if app.active_tab == AppTab::Setup {
+                                let setups_len = app.setup_manager.get_setups().len();
+                                if setups_len > 0 {
+                                    let i = match app.ui_state.setup_list_state.selected() {
+                                        Some(i) => {
+                                            if i == 0 { setups_len.saturating_sub(1) } else { i - 1 }
+                                        },
+                                        None => 0,
+                                    };
+                                    app.ui_state.setup_list_state.select(Some(i));
+                                }
+                            } else if app.active_tab == AppTab::Settings {
+                                app.ui_state.settings.handle_input(key.code, &mut app.config);
+                            }
+                        },
+                        
+                        // Обработка ввода для настроек (остальные клавиши)
+                        _ => {
+                            if app.active_tab == AppTab::Settings {
+                                app.ui_state.settings.handle_input(key.code, &mut app.config);
+                            }
+                        }
                     }
                 }
-                Event::Resize(_, _) => {
-                    // Auto-resize handled in UI
-                }
+                Event::Resize(_, _) => {}
                 _ => {}
             }
         }

@@ -3,8 +3,31 @@ use std::fs;
 use std::path::PathBuf;
 use ratatui::style::Color as RatColor;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Language {
+    English,
+    Russian,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum PressureUnit {
+    Psi,
+    Bar,
+    Kpa,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TempUnit {
+    Celsius,
+    Fahrenheit,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    pub language: Language, // Новое поле
+    pub pressure_unit: PressureUnit, // Новое поле
+    pub temp_unit: TempUnit, // Новое поле
+    
     pub theme: Theme,
     pub update_rate: u64,
     pub history_size: usize,
@@ -51,6 +74,10 @@ pub struct AlertsConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            language: Language::English,
+            pressure_unit: PressureUnit::Psi,
+            temp_unit: TempUnit::Celsius,
+            
             theme: Theme::default(),
             update_rate: 16,
             history_size: 300,
@@ -105,11 +132,9 @@ impl AppConfig {
     
     pub fn save(&self) -> Result<(), anyhow::Error> {
         let config_dir = PathBuf::from(".");
-        
         let config_path = config_dir.join("config.json");
         let content = serde_json::to_string_pretty(self)?;
         fs::write(config_path, content)?;
-        
         Ok(())
     }
 }
