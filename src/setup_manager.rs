@@ -165,6 +165,34 @@ impl SetupManager {
     pub fn get_setups(&self) -> Vec<CarSetup> {
         self.setups.lock().unwrap().clone()
     }
+
+    /// Находит индекс сетапа, который лучше всего подходит для текущей трассы
+    pub fn get_best_match_index(&self) -> Option<usize> {
+        let setups = self.setups.lock().unwrap();
+        let track_name = self.current_track.lock().unwrap();
+        
+        if setups.is_empty() { return None; }
+        
+        // 1. Ищем точное совпадение папки с именем трассы
+        if let Some(idx) = setups.iter().position(|s| s.source == *track_name) {
+            return Some(idx);
+        }
+        
+        // 2. Если нет, ищем файлы, в названии которых есть имя трассы
+        if !track_name.is_empty() && *track_name != "-" {
+            if let Some(idx) = setups.iter().position(|s| s.name.to_lowercase().contains(&track_name.to_lowercase())) {
+                return Some(idx);
+            }
+        }
+        
+        // 3. Если совсем ничего нет, возвращаем первый (обычно Generic)
+        Some(0)
+    }
+
+    pub fn get_setup_by_index(&self, index: usize) -> Option<CarSetup> {
+        let setups = self.setups.lock().unwrap();
+        setups.get(index).cloned()
+    }
     
     pub fn detect_current(&self, fuel: f32, bias: f32, pressures: &[f32; 4], _temps: &[f32; 4]) {
         let setups = self.setups.lock().unwrap();

@@ -1,19 +1,20 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::{AppState, AppTab};
+use crate::{AppState, AppTab, AppStage};
 use crate::ui::localization::tr;
 
 pub mod localization;
 pub mod widgets;
 pub mod tabs;
+pub mod launcher;
 
 pub struct UIState {
-    pub theme: crate::config::Theme,
+    pub theme: crate::config::Theme, // Структура Theme теперь доступна
     pub layout_mode: LayoutMode,
     pub show_help: bool,
     pub blink_state: bool,
     pub last_blink: std::time::Instant,
     pub settings: tabs::settings::SettingsState,
-    pub setup_list_state: ListState, // Добавлено: состояние списка сетапов
+    pub setup_list_state: ListState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,12 +25,13 @@ pub enum LayoutMode {
 }
 
 impl UIState {
-    pub fn new(theme: &crate::config::Theme) -> Self {
+    // Убрали аргумент theme из конструктора
+    pub fn new() -> Self {
         let mut list_state = ListState::default();
-        list_state.select(Some(0)); // Выбираем первый элемент по умолчанию
+        list_state.select(Some(0));
 
         Self {
-            theme: theme.clone(),
+            theme: crate::config::Theme::default(), // Используем дефолтную тему
             layout_mode: LayoutMode::Auto,
             show_help: false,
             blink_state: false,
@@ -59,6 +61,17 @@ impl UIRenderer {
     }
     
     pub fn render(&self, f: &mut Frame, app: &AppState) {
+        match app.stage {
+            AppStage::Launcher => {
+                launcher::render(f, f.size(), app);
+            },
+            AppStage::Running => {
+                self.render_main_app(f, app);
+            }
+        }
+    }
+    
+    fn render_main_app(&self, f: &mut Frame, app: &AppState) {
         let size = f.size();
         let is_vertical = size.height as f32 > size.width as f32 * 1.5;
         let layout_mode = if app.ui_state.layout_mode == LayoutMode::Auto {
@@ -90,7 +103,7 @@ impl UIRenderer {
             AppTab::Dashboard => tabs::dashboard::render_horizontal(f, main_layout[1], app),
             AppTab::Telemetry => tabs::telemetry::render(f, main_layout[1], app),
             AppTab::Engineer => tabs::engineer::render_horizontal(f, main_layout[1], app),
-            AppTab::Setup => tabs::setup::render(f, main_layout[1], app), // Обратите внимание: функция принимает mut app если нужно обновлять стейт
+            AppTab::Setup => tabs::setup::render(f, main_layout[1], app),
             AppTab::Analysis => tabs::analysis::render(f, main_layout[1], app),
             AppTab::Strategy => tabs::strategy::render(f, main_layout[1], app),
             AppTab::Settings => tabs::settings::render(f, main_layout[1], app),

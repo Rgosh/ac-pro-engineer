@@ -9,7 +9,6 @@ pub enum SettingsCategory {
     General,
     Units,
     Alerts,
-    Theme,
 }
 
 pub struct SettingsState {
@@ -31,8 +30,7 @@ impl SettingsState {
         self.category = match self.category {
             SettingsCategory::General => SettingsCategory::Units,
             SettingsCategory::Units => SettingsCategory::Alerts,
-            SettingsCategory::Alerts => SettingsCategory::Theme,
-            SettingsCategory::Theme => SettingsCategory::General,
+            SettingsCategory::Alerts => SettingsCategory::General,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -40,10 +38,9 @@ impl SettingsState {
 
     pub fn prev_category(&mut self) {
         self.category = match self.category {
-            SettingsCategory::General => SettingsCategory::Theme,
+            SettingsCategory::General => SettingsCategory::Alerts,
             SettingsCategory::Units => SettingsCategory::General,
             SettingsCategory::Alerts => SettingsCategory::Units,
-            SettingsCategory::Theme => SettingsCategory::Alerts,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -81,19 +78,15 @@ impl SettingsState {
             SettingsCategory::General => 4,
             SettingsCategory::Units => 2,
             SettingsCategory::Alerts => 7,  
-            SettingsCategory::Theme => 7 * 3, 
         }
     }
 
     fn modify_value(&self, config: &mut AppConfig, delta: f32) {
         match self.category {
             SettingsCategory::General => match self.selected_index {
-                0 => { // Language Switch
-                    if delta > 0.0 {
-                        config.language = Language::Russian;
-                    } else {
-                        config.language = Language::English;
-                    }
+                0 => { // Language
+                    if delta > 0.0 { config.language = Language::Russian; } 
+                    else { config.language = Language::English; }
                 },
                 1 => config.update_rate = (config.update_rate as i64 + delta as i64).clamp(1, 1000) as u64,
                 2 => config.history_size = (config.history_size as i64 + (delta * 10.0) as i64).clamp(10, 2000) as usize,
@@ -101,7 +94,7 @@ impl SettingsState {
                 _ => {}
             },
             SettingsCategory::Units => match self.selected_index {
-                0 => { // Pressure Unit
+                0 => { // Pressure
                     if delta > 0.0 {
                         config.pressure_unit = match config.pressure_unit {
                             PressureUnit::Psi => PressureUnit::Bar,
@@ -116,7 +109,7 @@ impl SettingsState {
                         };
                     }
                 },
-                1 => { // Temp Unit
+                1 => { // Temp
                      if delta.abs() > 0.0 {
                         config.temp_unit = match config.temp_unit {
                             TempUnit::Celsius => TempUnit::Fahrenheit,
@@ -136,32 +129,8 @@ impl SettingsState {
                 6 => config.alerts.wear_warning = (config.alerts.wear_warning + delta).clamp(0.0, 100.0),
                 _ => {}
             },
-            SettingsCategory::Theme => {
-                let color_idx = self.selected_index / 3;
-                let channel_idx = self.selected_index % 3;
-                let change = delta as i32 * 5; 
-
-                let tuple = match color_idx {
-                    0 => &mut config.theme.background,
-                    1 => &mut config.theme.text,
-                    2 => &mut config.theme.highlight,
-                    3 => &mut config.theme.accent,
-                    4 => &mut config.theme.border,
-                    5 => &mut config.theme.warning,
-                    6 => &mut config.theme.critical,
-                    _ => return,
-                };
-
-                match channel_idx {
-                    0 => tuple.r = (tuple.r as i32 + change).clamp(0, 255) as u8,
-                    1 => tuple.g = (tuple.g as i32 + change).clamp(0, 255) as u8,
-                    2 => tuple.b = (tuple.b as i32 + change).clamp(0, 255) as u8,
-                    _ => {}
-                }
-            }
         }
         
-        // FIX: Сохраняем конфигурацию сразу, если включено автосохранение
         if config.auto_save {
             let _ = config.save();
         }
@@ -204,7 +173,6 @@ fn render_categories_sidebar(f: &mut Frame, area: Rect, app: &AppState) {
         (SettingsCategory::General, tr("cat_general", lang)),
         (SettingsCategory::Units, tr("cat_units", lang)),
         (SettingsCategory::Alerts, tr("cat_alerts", lang)),
-        (SettingsCategory::Theme, tr("cat_theme", lang)),
     ];
     
     let items: Vec<ListItem> = categories.iter().map(|(cat, name)| {
@@ -244,7 +212,6 @@ fn render_settings_list(f: &mut Frame, area: Rect, app: &AppState) {
         SettingsCategory::General => render_general_settings(f, content_area, app),
         SettingsCategory::Units => render_units_settings(f, content_area, app),
         SettingsCategory::Alerts => render_alerts_settings(f, content_area, app),
-        SettingsCategory::Theme => render_theme_settings(f, content_area, app),
     }
 }
 
@@ -323,7 +290,7 @@ fn render_units_settings(f: &mut Frame, area: Rect, app: &AppState) {
     let lang = &config.language;
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(2); 3])
+        .constraints(vec![Constraint::Length(2); 2]) // FIX: Исправлено кол-во на 2
         .split(area);
         
     let p_unit = match config.pressure_unit {
@@ -370,57 +337,6 @@ fn render_alerts_settings(f: &mut Frame, area: Rect, app: &AppState) {
     for (i, (label, val)) in items.into_iter().enumerate() {
         if i < layout.len() {
             render_item_row(f, layout[i], i, app.ui_state.settings.selected_index, app.ui_state.settings.is_editing, label, val, &app.ui_state.theme, &app.ui_state);
-        }
-    }
-}
-
-fn render_theme_settings(f: &mut Frame, area: Rect, app: &AppState) {
-    let theme = &app.config.theme;
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(1); 25]) 
-        .split(area);
-    
-    let colors = vec![
-        ("Background", &theme.background),
-        ("Text", &theme.text),
-        ("Highlight", &theme.highlight),
-        ("Accent", &theme.accent),
-        ("Border", &theme.border),
-        ("Warning", &theme.warning),
-        ("Critical", &theme.critical),
-    ];
-    
-    let mut row = 0;
-    for (name, color) in colors {
-        if row < layout.len() {
-             let preview_block = Block::default().bg(Color::Rgb(color.r, color.g, color.b));
-             let line_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Length(20), Constraint::Length(6)])
-                .split(layout[row]);
-                
-             f.render_widget(Paragraph::new(Span::styled(format!("{} :", name), Style::default().add_modifier(Modifier::BOLD))), line_layout[0]);
-             f.render_widget(preview_block, line_layout[1]);
-        }
-        row += 1;
-        
-        let components = [("Red", color.r), ("Green", color.g), ("Blue", color.b)];
-        for (comp_name, val) in components {
-            if row < layout.len() {
-                render_item_row(
-                    f, 
-                    layout[row], 
-                    row - 1, 
-                    app.ui_state.settings.selected_index, 
-                    app.ui_state.settings.is_editing, 
-                    format!("  {}", comp_name), 
-                    format!("{}", val), 
-                    &app.ui_state.theme, 
-                    &app.ui_state
-                );
-            }
-            row += 1;
         }
     }
 }
