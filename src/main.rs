@@ -7,6 +7,9 @@ mod ui;
 mod analyzer;
 mod config;
 mod session_info;
+mod content_manager;
+mod records;
+mod updater; 
 
 use std::{io, time::{Duration, Instant}};
 use crossterm::{
@@ -24,22 +27,18 @@ use crate::analyzer::{TelemetryAnalyzer, AnalysisResult};
 use crate::config::{AppConfig, Language};
 use crate::ui::{UIState, UIRenderer};
 use crate::session_info::SessionInfo;
+use crate::content_manager::ContentManager;
+use crate::records::RecordManager;
+use crate::updater::{Updater, UpdateStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppTab {
-    Dashboard,
-    Telemetry,
-    Engineer,
-    Setup,
-    Analysis,
-    Strategy,
-    Settings,
+    Dashboard, Telemetry, Engineer, Setup, Analysis, Strategy, Settings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppStage {
-    Launcher,
-    Running,
+    Launcher, Running,
 }
 
 pub struct AppState {
@@ -48,13 +47,16 @@ pub struct AppState {
     pub static_mem: Option<SharedMemory<AcStatic>>,
     
     pub setup_manager: SetupManager,
+    pub content_manager: ContentManager,
+    pub record_manager: RecordManager,
+    pub updater: Updater, 
+    
     pub engineer: Engineer,
     pub analyzer: TelemetryAnalyzer,
     pub ui_state: UIState,
     
     pub stage: AppStage,
     pub launcher_selection: usize,
-    
     pub is_game_running: bool,
     pub is_connected: bool,
     pub active_tab: AppTab,
@@ -68,97 +70,99 @@ pub struct AppState {
 
     pub recommendations: Vec<Recommendation>,
     pub analysis_results: Vec<AnalysisResult>,
-    
     pub last_update: Instant,
     pub config: AppConfig,
+    pub show_update_success: bool, 
 }
 
 impl AppState {
     fn new() -> Self {
-        // Загружаем конфиг с диска. Если язык был сохранен, он загрузится здесь.
-        let config = AppConfig::load().unwrap_or_default();
+        let mut config = AppConfig::load().unwrap_or_default();
+        let mut show_success = false;
+
+        // ЛОГИКА ПРОВЕРКИ УСПЕШНОГО ОБНОВЛЕНИЯ
+        // Сравниваем версию из конфига (прошлый запуск) с текущей версией EXE
+        if config.last_run_version != crate::updater::CURRENT_VERSION {
+            if config.last_run_version != "0.0.0" {
+                show_success = true;
+            }
+            config.last_run_version = crate::updater::CURRENT_VERSION.to_string();
+            config.save().ok();
+        }
         
         Self {
-            physics_mem: None,
-            graphics_mem: None,
-            static_mem: None,
+            physics_mem: None, graphics_mem: None, static_mem: None,
             setup_manager: SetupManager::new(),
+            content_manager: ContentManager::new(),
+            record_manager: RecordManager::new(),
+            updater: Updater::new(),
+            
             engineer: Engineer::new(&config),
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
-            
             stage: AppStage::Launcher,
             launcher_selection: 0,
-            
-            is_game_running: false,
-            is_connected: false,
+            is_game_running: false, is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
-            
             physics_history: Vec::with_capacity(300),
             graphics_history: Vec::with_capacity(300),
             current_lap_physics: Vec::with_capacity(10000),
             current_lap_graphics: Vec::with_capacity(10000),
             current_lap_number: -1,
-
             recommendations: Vec::new(),
             analysis_results: Vec::new(),
-            
             last_update: Instant::now(),
             config,
+            show_update_success: show_success,
         }
     }
     
     fn tick(&mut self) {
         self.ui_state.update_blink();
-        
-        if self.stage != AppStage::Running {
-            return;
-        }
+        if self.stage != AppStage::Running { return; }
 
         let process_active = is_process_running("acs.exe");
         self.is_game_running = process_active;
         
-        if !process_active && self.is_connected {
-            self.disconnect();
-        } else if process_active && !self.is_connected {
-            self.connect_memory();
-        }
+        if !process_active && self.is_connected { self.disconnect(); }
+        else if process_active && !self.is_connected { self.connect_memory(); }
 
-        if !self.is_connected {
-            return;
-        }
+        if !self.is_connected { return; }
         
         let (phys, gfx) = if let (Some(phys_mem), Some(gfx_mem)) = (&self.physics_mem, &self.graphics_mem) {
             (*phys_mem.get(), *gfx_mem.get())
-        } else {
-            return;
-        };
+        } else { return; };
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
         self.engineer.update(&phys, &gfx, &self.session_info);
         
         let completed_laps = gfx.completed_laps;
-        if self.current_lap_number == -1 {
-            self.current_lap_number = completed_laps;
-        }
+        if self.current_lap_number == -1 { self.current_lap_number = completed_laps; }
         
-        if completed_laps < self.current_lap_number {
-            self.current_lap_physics.clear();
-            self.current_lap_graphics.clear();
-            self.current_lap_number = completed_laps;
-        }
-
         if completed_laps > self.current_lap_number {
-            let last_lap_time = gfx.i_last_time; 
+            let last_lap_time = gfx.i_last_time;
             if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
-                self.analyzer.process_lap(
-                    self.current_lap_number, 
-                    last_lap_time,
-                    &self.current_lap_physics,
-                    &self.current_lap_graphics
-                );
+                self.analyzer.process_lap(self.current_lap_number, last_lap_time, &self.current_lap_physics, &self.current_lap_graphics);
+                
+                if let Some(car_specs) = self.content_manager.get_car_specs(&self.session_info.car_name) {
+                    let track_len = self.static_mem.as_ref().map(|m| m.get().track_spline_length).unwrap_or(0.0);
+                    let mut rec = self.record_manager.get_or_calculate_record(
+                        &self.session_info.car_name,
+                        &self.session_info.track_name,
+                        &self.session_info.track_config,
+                        Some(car_specs),
+                        track_len
+                    );
+                    
+                    if last_lap_time < rec.time_ms {
+                        rec.time_ms = last_lap_time;
+                        rec.source = "User Best".to_string();
+                        self.record_manager.update_if_faster(rec.clone());
+                    }
+                    self.analyzer.set_world_record(rec);
+                }
             }
             self.current_lap_physics.clear();
             self.current_lap_graphics.clear();
@@ -178,9 +182,7 @@ impl AppState {
     }
     
     fn disconnect(&mut self) {
-        self.physics_mem = None;
-        self.graphics_mem = None;
-        self.static_mem = None;
+        self.physics_mem = None; self.graphics_mem = None; self.static_mem = None;
         self.is_connected = false;
         self.session_info = SessionInfo::default();
         self.recommendations.clear();
@@ -188,14 +190,10 @@ impl AppState {
     
     fn connect_memory(&mut self) {
         if self.physics_mem.is_none() {
-            if let Some(mem) = SharedMemory::<AcPhysics>::connect("Local\\acpmf_physics") {
-                self.physics_mem = Some(mem);
-            }
+            if let Some(mem) = SharedMemory::<AcPhysics>::connect("Local\\acpmf_physics") { self.physics_mem = Some(mem); }
         }
         if self.physics_mem.is_some() && self.graphics_mem.is_none() {
-            if let Some(mem) = SharedMemory::<AcGraphics>::connect("Local\\acpmf_graphics") {
-                self.graphics_mem = Some(mem);
-            }
+            if let Some(mem) = SharedMemory::<AcGraphics>::connect("Local\\acpmf_graphics") { self.graphics_mem = Some(mem); }
         }
         if self.physics_mem.is_some() && self.static_mem.is_none() {
             if let Some(mem) = SharedMemory::<AcStatic>::connect("Local\\acpmf_static") {
@@ -206,7 +204,17 @@ impl AppState {
                 self.session_info.player_name = read_ac_string(&st.player_nick);
                 self.session_info.max_rpm = st.max_rpm;
                 self.session_info.max_fuel = st.max_fuel;
-                self.setup_manager.set_context(&self.session_info.car_name, &self.session_info.track_name);
+                
+                let specs = self.content_manager.get_car_specs(&self.session_info.car_name).cloned();
+                let rec = self.record_manager.get_or_calculate_record(
+                    &self.session_info.car_name,
+                    &self.session_info.track_name,
+                    &self.session_info.track_config,
+                    specs.as_ref(),
+                    st.track_spline_length
+                );
+                self.analyzer.set_world_record(rec);
+                
                 self.static_mem = Some(mem);
                 self.is_connected = true;
             }
@@ -214,12 +222,8 @@ impl AppState {
     }
     
     fn update_live_buffers(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
-        if self.physics_history.len() >= 300 {
-            self.physics_history.remove(0);
-        }
-        if self.graphics_history.len() >= 300 {
-            self.graphics_history.remove(0);
-        }
+        if self.physics_history.len() >= 300 { self.physics_history.remove(0); }
+        if self.graphics_history.len() >= 300 { self.graphics_history.remove(0); }
         self.physics_history.push(*phys);
         self.graphics_history.push(*gfx);
     }
@@ -252,41 +256,56 @@ fn main() -> Result<(), anyhow::Error> {
         if event::poll(Duration::from_millis(16))? {
             match event::read()? {
                 Event::Key(key) if key.kind == event::KeyEventKind::Press => {
-                    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-                        break;
+                    // Обработка попапа "Успешное обновление"
+                    if app.show_update_success {
+                        if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
+                            app.show_update_success = false;
+                        }
+                        continue; 
                     }
-
+                    
+                    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL { break; }
+                    
                     if app.stage == AppStage::Launcher {
                         match key.code {
                             KeyCode::Up => if app.launcher_selection > 0 { app.launcher_selection -= 1; },
                             KeyCode::Down => if app.launcher_selection < 6 { app.launcher_selection += 1; },
-                            
-                            // Смена языка в лаунчере + МГНОВЕННОЕ СОХРАНЕНИЕ
                             KeyCode::Left | KeyCode::Right => {
                                 if app.launcher_selection == 2 {
                                     app.config.language = match app.config.language {
                                         Language::English => Language::Russian,
                                         Language::Russian => Language::English,
                                     };
-                                    // ВАЖНО: Сохраняем конфиг сразу, чтобы запомнить выбор
                                     app.config.save().ok(); 
                                 }
                             },
-                            
                             KeyCode::Enter => {
                                 match app.launcher_selection {
                                     0 => app.stage = AppStage::Running, 
-                                    1 => { 
-                                        app.stage = AppStage::Running; 
-                                        app.active_tab = AppTab::Settings; 
-                                    },
+                                    1 => { app.stage = AppStage::Running; app.active_tab = AppTab::Settings; },
                                     2 => { 
                                         app.config.language = match app.config.language {
                                             Language::English => Language::Russian,
                                             Language::Russian => Language::English,
                                         };
-                                        app.config.save().ok(); // Сохраняем и по Enter
+                                        app.config.save().ok();
                                     }, 
+                                    // ОБНОВЛЕНИЕ
+                                    5 => {
+                                        let current_status = app.updater.status.lock().unwrap().clone();
+                                        match current_status {
+                                            UpdateStatus::Idle | UpdateStatus::Error(_) | UpdateStatus::NoUpdate => {
+                                                app.updater.check_for_updates();
+                                            },
+                                            UpdateStatus::UpdateAvailable(info) => {
+                                                app.updater.download_update(info);
+                                            },
+                                            UpdateStatus::Downloaded(new_file) => {
+                                                app.updater.restart_and_apply(&new_file);
+                                            },
+                                            _ => {} 
+                                        }
+                                    },
                                     6 => break,
                                     _ => {}
                                 }
@@ -296,15 +315,11 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                         continue; 
                     }
-
-                    if app.active_tab == AppTab::Settings {
+                    
+                     if app.active_tab == AppTab::Settings {
                         let was_editing = app.ui_state.settings.is_editing;
                         app.ui_state.settings.handle_input(key.code, &mut app.config);
-                        
-                        if was_editing || app.ui_state.settings.is_editing {
-                            continue;
-                        }
-                        
+                        if was_editing || app.ui_state.settings.is_editing { continue; }
                         match key.code {
                             KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Enter | KeyCode::Tab => continue,
                             _ => {}
@@ -312,15 +327,8 @@ fn main() -> Result<(), anyhow::Error> {
                     }
 
                     match (key.code, key.modifiers) {
-                        (KeyCode::Char('q'), _) => {
-                            app.stage = AppStage::Launcher;
-                            app.disconnect();
-                        },
-                        (KeyCode::Esc, _) => {
-                             app.stage = AppStage::Launcher;
-                             app.disconnect();
-                        },
-                        
+                        (KeyCode::Char('q'), _) => { app.stage = AppStage::Launcher; app.disconnect(); },
+                        (KeyCode::Esc, _) => { app.stage = AppStage::Launcher; app.disconnect(); },
                         (KeyCode::Char('1'), _) | (KeyCode::F(1), _) => app.active_tab = AppTab::Dashboard,
                         (KeyCode::Char('2'), _) | (KeyCode::F(2), _) => app.active_tab = AppTab::Telemetry,
                         (KeyCode::Char('3'), _) | (KeyCode::F(3), _) => app.active_tab = AppTab::Engineer,
@@ -340,44 +348,43 @@ fn main() -> Result<(), anyhow::Error> {
                                 AppTab::Settings => AppTab::Dashboard,
                             };
                         },
-                        (KeyCode::Down, _) => {
+                         (KeyCode::Down, _) => {
                             if app.active_tab == AppTab::Analysis {
-                                let laps_len = app.analyzer.laps.len();
-                                if laps_len > 0 {
-                                    let current = app.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let next = if current >= laps_len - 1 { 0 } else { current + 1 };
+                                let len = app.analyzer.laps.len();
+                                if len > 0 {
+                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur >= len - 1 { 0 } else { cur + 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
                             } else if app.active_tab == AppTab::Setup {
                                 let len = app.setup_manager.get_setups().len();
                                 if len > 0 {
-                                    let i = app.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let n = if i >= len - 1 { 0 } else { i + 1 };
-                                    app.ui_state.setup_list_state.select(Some(n));
+                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur >= len - 1 { 0 } else { cur + 1 };
+                                    app.ui_state.setup_list_state.select(Some(next));
                                 }
                             }
                         },
                         (KeyCode::Up, _) => {
                              if app.active_tab == AppTab::Analysis {
-                                let laps_len = app.analyzer.laps.len();
-                                if laps_len > 0 {
-                                    let current = app.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let next = if current == 0 { laps_len - 1 } else { current - 1 };
+                                let len = app.analyzer.laps.len();
+                                if len > 0 {
+                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur == 0 { len - 1 } else { cur - 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
                             } else if app.active_tab == AppTab::Setup {
                                 let len = app.setup_manager.get_setups().len();
                                 if len > 0 {
-                                    let i = app.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let n = if i == 0 { len - 1 } else { i - 1 };
-                                    app.ui_state.setup_list_state.select(Some(n));
+                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur == 0 { len - 1 } else { cur - 1 };
+                                    app.ui_state.setup_list_state.select(Some(next));
                                 }
                             }
                         },
                         _ => {}
                     }
                 }
-                Event::Resize(_, _) => {}
                 _ => {}
             }
         }
@@ -385,7 +392,6 @@ fn main() -> Result<(), anyhow::Error> {
     
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-    terminal.show_cursor()?;
-    app.config.save().ok();
+    app.record_manager.save();
     Ok(())
 }

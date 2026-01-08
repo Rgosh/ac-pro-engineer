@@ -2,38 +2,80 @@ use ratatui::{prelude::*, widgets::*};
 use crate::AppState;
 use crate::config::Language;
 use crate::ui::localization::tr; 
+use crate::updater::UpdateStatus;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn render(f: &mut Frame, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     
+    // Фон
     let block = Block::default()
         .style(Style::default().bg(app.ui_state.get_color(&theme.background)));
     f.render_widget(block, area);
 
+    // Макет: Заголовок, Основная часть, Футер
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(8),
-            Constraint::Min(0),
-            Constraint::Length(3),
+            Constraint::Length(8), // Логотип
+            Constraint::Min(0),    // Меню и инфо
+            Constraint::Length(3), // Статус бар
         ])
         .split(area);
 
     render_header(f, layout[0], app);
     render_main_content(f, layout[1], app);
     render_status_bar(f, layout[2], app);
+
+    // Всплывающее окно об успешном обновлении
+    if app.show_update_success {
+        render_success_popup(f, area, app);
+    }
+}
+
+fn render_success_popup(f: &mut Frame, area: Rect, app: &AppState) {
+    let is_ru = app.config.language == Language::Russian;
+    let popup_area = center_rect(area, 40, 10);
+    
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+        .title(if is_ru { " ОБНОВЛЕНИЕ " } else { " UPDATE " })
+        .title_alignment(Alignment::Center);
+
+    let text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            if is_ru { "УСПЕШНО ОБНОВЛЕНО!" } else { "SUCCESSFULLY UPDATED!" },
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        )),
+        Line::from(format!("v{}", crate::updater::CURRENT_VERSION)),
+        Line::from(""),
+        Line::from(Span::styled(
+            if is_ru { "Нажмите ENTER чтобы продолжить" } else { "Press ENTER to continue" },
+            Style::default().fg(Color::DarkGray)
+        )),
+    ];
+    
+    let p = Paragraph::new(text).block(block).alignment(Alignment::Center);
+    f.render_widget(Clear, popup_area); // Очищаем область под попапом
+    f.render_widget(p, popup_area);
 }
 
 fn render_header(f: &mut Frame, area: Rect, _app: &AppState) {
+    // Динамическая версия из Cargo.toml
+    let ver_str = format!("   TELEMETRY & ENGINEER TOOL v{}    ", crate::updater::CURRENT_VERSION);
+
     let logo_text = vec![
-        "   ___   _____  __     ___  ___  ___ ",
-        "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\",
-        " / __ |/ _/ /    /   / ___/ , _/ // /",
-        "/_/ |_/_/  /_/|_/   /_/  /_/|_|\\___/ ",
-        "   TELEMETRY & ENGINEER TOOL v3.1    ",
+        "   ___   _____  __     ___  ___  ___ ".to_string(),
+        "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\".to_string(),
+        " / __ |/ _/ /    /   / ___/ , _/ // /".to_string(),
+        "/_/ |_/_/  /_/|_/   /_/  /_/|_|\\___/ ".to_string(),
+        ver_str, 
     ];
 
+    // Эффект пульсации цвета для логотипа
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let pulse = (time / 150) % 20; 
     let color = if pulse < 10 { Color::Cyan } else { Color::LightCyan };
@@ -54,8 +96,8 @@ fn render_main_content(f: &mut Frame, area: Rect, app: &AppState) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(35),
-            Constraint::Percentage(65),
+            Constraint::Percentage(35), // Меню слева
+            Constraint::Percentage(65), // Инфо справа
         ])
         .split(area);
 
@@ -70,27 +112,29 @@ fn render_menu(f: &mut Frame, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     
-    let lang_label = match app.config.language {
-        Language::English => "LANGUAGE: < ENGLISH >",
-        Language::Russian => "ЯЗЫК: < РУССКИЙ >",
+    // Статус обновления для иконки меню
+    let update_status = app.updater.status.lock().unwrap();
+    let update_label = match *update_status {
+        UpdateStatus::Downloading(pct) => format!("♻   {:.0}%", pct),
+        UpdateStatus::UpdateAvailable(_) => format!("!   {}", tr("launch_upd", lang)),
+        _ => format!("♻   {}", tr("launch_upd", lang)),
     };
 
     let menu_items = [
         format!("🚀  {}", tr("launch_start", lang)), 
         format!("⚙️   {}", tr("launch_sett", lang)), 
-        lang_label.to_string(), 
+        match app.config.language { Language::English => "LANGUAGE: < ENGLISH >", Language::Russian => "ЯЗЫК: < РУССКИЙ >" }.to_string(), 
         format!("📚  {}", tr("launch_docs", lang)), 
         format!("👤  {}", tr("launch_cred", lang)), 
-        format!("♻   {}", tr("launch_upd", lang)), 
+        update_label, 
         format!("❌  {}", tr("launch_exit", lang)),
     ];
     
     let sel = app.launcher_selection;
-    
     let items: Vec<ListItem> = menu_items.iter().enumerate().map(|(i, text)| {
         let is_selected = i == sel;
         
-        let style = if is_selected {
+        let mut style = if is_selected {
             Style::default()
                 .fg(Color::Black)
                 .bg(app.ui_state.get_color(&theme.highlight))
@@ -98,6 +142,13 @@ fn render_menu(f: &mut Frame, area: Rect, app: &AppState) {
         } else {
             Style::default().fg(Color::Gray)
         };
+        
+        // Подсветка желтым, если есть обновление (даже если не выбрано)
+        if i == 5 {
+             if let UpdateStatus::UpdateAvailable(_) = *update_status {
+                 if !is_selected { style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD); }
+             }
+        }
         
         let prefix = if is_selected { " " } else { " " };
         ListItem::new(format!("{}{}", prefix, text)).style(style)
@@ -117,15 +168,18 @@ fn render_menu(f: &mut Frame, area: Rect, app: &AppState) {
 fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
     
+    // Заголовок панели информации меняется в зависимости от выбора
     let title = match app.launcher_selection {
         0 => tr("launch_info_title", lang),
-        1 => tr("launch_info_title", lang),
+        1 => tr("launch_conf_title", lang),
         2 => tr("launch_lang_title", lang),
         3 => tr("launch_doc_title", lang),
         4 => tr("launch_cred_title", lang),
         5 => tr("launch_upd_title", lang),
-        _ => tr("launch_shut_title", lang),
+        6 => tr("launch_shut_title", lang),
+        _ => tr("launch_info_title", lang),
     };
 
     let block = Block::default()
@@ -136,6 +190,9 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let update_status = app.updater.status.lock().unwrap();
+
+    // ВОТ ЗДЕСЬ ВОССТАНОВЛЕН ВЕСЬ КОНТЕНТ:
     let content = match app.launcher_selection {
         0 => vec![ // Start
             Line::from(Span::styled(tr("launch_ready", lang), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
@@ -174,32 +231,61 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
             Line::from(Span::styled(tr("launch_cred_title", lang), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from("AC Pro Engineer Tool"),
-            Line::from(tr("launch_ver", lang)),
+            Line::from(format!("Version: {}", crate::updater::CURRENT_VERSION)),
             Line::from(""),
             Line::from(Span::styled(tr("launch_created", lang), Style::default().fg(Color::Gray))),
-            Line::from(Span::styled("  ***:)", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))), // НИК АВТОРА
+            Line::from(Span::styled("  ***:)", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(tr("launch_thanks", lang)),
             Line::from("  Kunos Simulazioni (Assetto Corsa)"),
-            Line::from("  Rust Community"),
+            Line::from("  Rust Community (Ratatui, Serde)"),
             Line::from(""),
-            Line::from("© 2024 All Rights Reserved."),
+            Line::from("© 2026 All Rights Reserved."),
         ],
-        5 => vec![ // Update
-            Line::from(Span::styled(tr("launch_upd_title", lang), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
-            Line::from(""),
-            Line::from(vec![
-                Span::raw("Status: "),
-                {
-                    let time_secs = app.last_update.elapsed().as_secs();
-                    if time_secs % 4 < 2 {
-                        Span::styled(tr("launch_upd_check", lang), Style::default().fg(Color::Yellow))
-                    } else {
-                        Span::styled(tr("launch_upd_ok", lang), Style::default().fg(Color::Green))
-                    }
-                }
-            ]),
-        ],
+        5 => { // Update
+            let mut lines = vec![
+                Line::from(Span::styled(tr("launch_upd_title", lang), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
+                Line::from(""),
+                Line::from(format!("Current Version: v{}", crate::updater::CURRENT_VERSION)), 
+                Line::from(""),
+            ];
+            
+            match *update_status {
+                UpdateStatus::Idle => {
+                    lines.push(Line::from(if is_ru { "Нажмите ENTER для проверки обновлений." } else { "Press ENTER to check for updates." }));
+                },
+                UpdateStatus::Checking => {
+                    lines.push(Line::from(Span::styled(if is_ru { "Соединение с сервером..." } else { "Connecting to server..." }, Style::default().fg(Color::Yellow))));
+                },
+                UpdateStatus::NoUpdate => {
+                    lines.push(Line::from(Span::styled(tr("launch_upd_ok", lang), Style::default().fg(Color::Green))));
+                },
+                UpdateStatus::UpdateAvailable(ref info) => {
+                    lines.push(Line::from(Span::styled(if is_ru { format!("ДОСТУПНА ВЕРСИЯ: {}", info.version) } else { format!("NEW VERSION AVAILABLE: {}", info.version) }, Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD))));
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(Span::styled(if is_ru { "Что нового:" } else { "Changelog:" }, Style::default().fg(Color::Gray))));
+                    lines.push(Line::from(Span::styled(&info.notes, Style::default().fg(Color::White))));
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(Span::styled(if is_ru { "Нажмите ENTER для скачивания!" } else { "Press ENTER to Download!" }, Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK))));
+                },
+                UpdateStatus::Downloading(pct) => {
+                    lines.push(Line::from(Span::styled(if is_ru { "Скачивание обновления..." } else { "Downloading update..." }, Style::default().fg(Color::Cyan))));
+                    let filled = (pct / 5.0) as usize;
+                    let bar = "█".repeat(filled) + &"░".repeat(20 - filled);
+                    lines.push(Line::from(Span::styled(format!("{} {:.1}%", bar, pct), Style::default().fg(Color::Cyan))));
+                },
+                UpdateStatus::Downloaded(_) => {
+                    lines.push(Line::from(Span::styled(if is_ru { "ГОТОВО К УСТАНОВКЕ!" } else { "READY TO INSTALL!" }, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))));
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(if is_ru { "Нажмите ENTER для перезапуска..." } else { "Press ENTER to restart..." }));
+                },
+                UpdateStatus::Error(ref err) => {
+                    lines.push(Line::from(Span::styled(if is_ru { "ОШИБКА:" } else { "ERROR:" }, Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+                    lines.push(Line::from(Span::styled(err, Style::default().fg(Color::Red))));
+                },
+            }
+            lines
+        },
         6 => vec![ // Exit
             Line::from(Span::styled(tr("launch_shut_title", lang), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))),
             Line::from(""),
