@@ -30,6 +30,9 @@ pub struct AppConfig {
     pub history_size: usize,
     pub auto_save: bool,
     
+    // --- System ---
+    pub last_run_version: String, // <-- НОВОЕ ПОЛЕ: Хранит версию последнего запуска
+    
     // --- Units ---
     pub pressure_unit: PressureUnit,
     pub temp_unit: TempUnit,
@@ -57,7 +60,7 @@ pub struct AlertsConfig {
     pub wear_warning: f32,
 }
 
-// Тема теперь жестко задана в коде, но структуры нужны для UI
+// Тема
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub background: ColorTuple,
@@ -104,6 +107,8 @@ impl Default for AppConfig {
             update_rate: 16,
             history_size: 300,
             auto_save: true,
+            
+            last_run_version: "0.0.0".to_string(), // По умолчанию старая версия
             
             pressure_unit: PressureUnit::Psi,
             temp_unit: TempUnit::Celsius,

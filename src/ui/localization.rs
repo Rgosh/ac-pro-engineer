@@ -29,7 +29,7 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_feat" => "Features:",
             "launch_feat_desc" => " • Telemetry: Live graphs\n • Engineer: Real-time advice\n • Analysis: Lap comparison",
             "launch_cred_title" => "CREDITS & AUTHOR",
-            "launch_ver" => "Version 3.1.0 (Stable)",
+            "launch_ver" => "Version 3.3.0 (Pro)",
             "launch_created" => "Created by:",
             "launch_thanks" => "Special thanks to:",
             "launch_upd_title" => "SYSTEM UPDATE",
@@ -65,6 +65,8 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "alert_b_max" => "Max Brake Temp",
             "alert_fuel" => "Fuel Warning",
             "alert_wear" => "Wear Warning",
+            "alert_p_min" => "Min Pressure",
+            "alert_p_max" => "Max Pressure",
             
             // --- Other ---
             "footer_connected" => "CONNECTED",
@@ -78,7 +80,7 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tab_strat" => "STRATEGY",
             "tab_set" => "SETTINGS",
             
-            // --- Analysis ---
+            // --- Analysis (UPDATED) ---
             "anal_waiting" => "No laps yet.",
             "anal_laps_list" => "Laps History",
             "anal_speed_comp" => "Speed Trace",
@@ -97,6 +99,23 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "lbl_under" => "Understeer",
             "lbl_over" => "Oversteer",
             "lbl_lock" => "Lockups",
+            
+            // New Analysis Keys
+            "anal_comp_title" => "Comparison & Advice",
+            "anal_self_perfect" => "Lap was near perfection!",
+            "anal_reason_brake" => "Loss on Braking",
+            "anal_reason_corner" => "Loss in Corner",
+            "anal_reason_straight" => "Loss on Straight",
+            "anal_advice_brake" => "Brake later or trail brake more effectively.",
+            "anal_advice_corner" => "Carry more minimum speed, trust the grip.",
+            "anal_advice_gas" => "Get on throttle earlier on exit.",
+            "anal_stats_ext" => "Extended Physics Stats",
+            "anal_full_thr" => "Full Throttle",
+            "anal_g_lat" => "Peak Lat G",
+            "anal_g_brake" => "Peak Brk G",
+            "anal_inputs" => "Inputs Delta",
+            "anal_p_dev" => "Press. Dev",
+            "anal_susp" => "Susp. Travel",
 
             // --- Strategy ---
             "strat_fuel_title" => "Fuel Calc",
@@ -239,7 +258,7 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_feat" => "Возможности:",
             "launch_feat_desc" => " • Телеметрия: Графики\n • Инженер: Советы\n • Анализ: Сравнение",
             "launch_cred_title" => "АВТОРЫ И БЛАГОДАРНОСТИ",
-            "launch_ver" => "Версия 3.1.0 (Stable)",
+            "launch_ver" => "Версия 3.3.0 (Pro)",
             "launch_created" => "Создатель:",
             "launch_thanks" => "Благодарности:",
             "launch_upd_title" => "ОБНОВЛЕНИЕ СИСТЕМЫ",
@@ -275,6 +294,8 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "alert_b_max" => "Макс. Темп. Торм",
             "alert_fuel" => "Мало Топлива",
             "alert_wear" => "Износ Шин",
+            "alert_p_min" => "Мин. Давл.",
+            "alert_p_max" => "Макс. Давл.",
             
             // --- Общее ---
             "footer_connected" => "ПОДКЛЮЧЕНО",
@@ -289,7 +310,7 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tab_strat" => "СТРАТЕГИЯ",
             "tab_set" => "НАСТРОЙКИ",
             
-            // --- Анализ ---
+            // --- Анализ (UPDATED) ---
             "anal_waiting" => "Нет кругов",
             "anal_laps_list" => "История",
             "anal_speed_comp" => "График Скорости",
@@ -308,6 +329,23 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "lbl_under" => "Снос",
             "lbl_over" => "Занос",
             "lbl_lock" => "Блок",
+            
+            // New Analysis Keys
+            "anal_comp_title" => "Сравнение и Советы",
+            "anal_self_perfect" => "Круг близок к идеалу!",
+            "anal_reason_brake" => "Потеря на Торможении",
+            "anal_reason_corner" => "Потеря в Повороте",
+            "anal_reason_straight" => "Потеря на Прямой",
+            "anal_advice_brake" => "Тормозите позже или используйте Trail Braking.",
+            "anal_advice_corner" => "Держите выше скорость в апексе.",
+            "anal_advice_gas" => "Раньше открывайте газ на выходе.",
+            "anal_stats_ext" => "Расширенная Физика",
+            "anal_full_thr" => "Полный Газ",
+            "anal_g_lat" => "Пик Бок. G",
+            "anal_g_brake" => "Пик Торм. G",
+            "anal_inputs" => "Дельта Ввода",
+            "anal_p_dev" => "Откл. Давл.",
+            "anal_susp" => "Ход Подв.",
 
             // --- Стратегия ---
             "strat_fuel_title" => "Калькулятор",
