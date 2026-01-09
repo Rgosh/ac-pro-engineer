@@ -107,16 +107,15 @@ If you want to build the project yourself or contribute, follow these steps.
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/ac_pro_engineer.git](https://github.com/YOUR_USERNAME/ac_pro_engineer.git)
+   git clone https://github.com/Rgosh/ac_pro_engineer.git
    cd ac_pro_engineer
 Build in Release mode: This compiles an optimized binary. The first build might take a few minutes.
 
-Bash
 
 cargo build --release
 Run: The binary will be located in target/release/. You can run it directly or move it elsewhere:
 
-PowerShell
+
 
 ./target/release/ac_pro_engineer.exe
 ⚠️ False Positive Warning
@@ -129,4 +128,4 @@ Add ac_pro_engineer.exe to your antivirus exclusions.
 Ensure you run it with the same permissions as the game.
 ---
 
-*If you enjoy this tool, consider supporting the development and server costs!*
+**If you find this tool useful, please give it a Star ⭐️ on GitHub!**
