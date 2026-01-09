@@ -84,7 +84,7 @@ impl SettingsState {
     fn modify_value(&self, config: &mut AppConfig, delta: f32) {
         match self.category {
             SettingsCategory::General => match self.selected_index {
-                0 => { // Language
+                0 => { 
                     if delta > 0.0 { config.language = Language::Russian; } 
                     else { config.language = Language::English; }
                 },
@@ -94,7 +94,7 @@ impl SettingsState {
                 _ => {}
             },
             SettingsCategory::Units => match self.selected_index {
-                0 => { // Pressure
+                0 => { 
                     if delta > 0.0 {
                         config.pressure_unit = match config.pressure_unit {
                             PressureUnit::Psi => PressureUnit::Bar,
@@ -109,7 +109,7 @@ impl SettingsState {
                         };
                     }
                 },
-                1 => { // Temp
+                1 => { 
                      if delta.abs() > 0.0 {
                         config.temp_unit = match config.temp_unit {
                             TempUnit::Celsius => TempUnit::Fahrenheit,
@@ -169,11 +169,9 @@ fn render_categories_sidebar(f: &mut Frame, area: Rect, app: &AppState) {
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
         
-    let categories = vec![
-        (SettingsCategory::General, tr("cat_general", lang)),
+    let categories = [(SettingsCategory::General, tr("cat_general", lang)),
         (SettingsCategory::Units, tr("cat_units", lang)),
-        (SettingsCategory::Alerts, tr("cat_alerts", lang)),
-    ];
+        (SettingsCategory::Alerts, tr("cat_alerts", lang))];
     
     let items: Vec<ListItem> = categories.iter().map(|(cat, name)| {
         let is_selected = app.ui_state.settings.category == *cat;
@@ -290,7 +288,7 @@ fn render_units_settings(f: &mut Frame, area: Rect, app: &AppState) {
     let lang = &config.language;
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(2); 2]) // FIX: Исправлено кол-во на 2
+        .constraints(vec![Constraint::Length(2); 2]) 
         .split(area);
         
     let p_unit = match config.pressure_unit {

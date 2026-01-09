@@ -35,6 +35,8 @@ pub fn is_process_running(target_name: &str) -> bool {
     }
 }
 
+
+#[allow(unsafe_code)]
 pub fn get_process_id(process_name: &str) -> Option<u32> {
     unsafe {
         let snapshot: HANDLE = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {

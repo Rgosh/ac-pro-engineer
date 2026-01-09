@@ -8,18 +8,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub fn render(f: &mut Frame, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     
-    // Фон
+    
     let block = Block::default()
         .style(Style::default().bg(app.ui_state.get_color(&theme.background)));
     f.render_widget(block, area);
 
-    // Макет: Заголовок, Основная часть, Футер
+    
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(8), // Логотип
-            Constraint::Min(0),    // Меню и инфо
-            Constraint::Length(3), // Статус бар
+            Constraint::Length(8), 
+            Constraint::Min(0),   
+            Constraint::Length(3), 
         ])
         .split(area);
 
@@ -27,7 +27,7 @@ pub fn render(f: &mut Frame, area: Rect, app: &AppState) {
     render_main_content(f, layout[1], app);
     render_status_bar(f, layout[2], app);
 
-    // Всплывающее окно об успешном обновлении
+   
     if app.show_update_success {
         render_success_popup(f, area, app);
     }
@@ -59,23 +59,21 @@ fn render_success_popup(f: &mut Frame, area: Rect, app: &AppState) {
     ];
     
     let p = Paragraph::new(text).block(block).alignment(Alignment::Center);
-    f.render_widget(Clear, popup_area); // Очищаем область под попапом
+    f.render_widget(Clear, popup_area);
     f.render_widget(p, popup_area);
 }
 
 fn render_header(f: &mut Frame, area: Rect, _app: &AppState) {
-    // Динамическая версия из Cargo.toml
+  
     let ver_str = format!("   TELEMETRY & ENGINEER TOOL v{}    ", crate::updater::CURRENT_VERSION);
 
-    let logo_text = vec![
-        "   ___   _____  __     ___  ___  ___ ".to_string(),
+    let logo_text = ["   ___   _____  __     ___  ___  ___ ".to_string(),
         "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\".to_string(),
         " / __ |/ _/ /    /   / ___/ , _/ // /".to_string(),
         "/_/ |_/_/  /_/|_/   /_/  /_/|_|\\___/ ".to_string(),
-        ver_str, 
-    ];
+        ver_str];
 
-    // Эффект пульсации цвета для логотипа
+    
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let pulse = (time / 150) % 20; 
     let color = if pulse < 10 { Color::Cyan } else { Color::LightCyan };
@@ -96,8 +94,8 @@ fn render_main_content(f: &mut Frame, area: Rect, app: &AppState) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(35), // Меню слева
-            Constraint::Percentage(65), // Инфо справа
+            Constraint::Percentage(35), 
+            Constraint::Percentage(65), 
         ])
         .split(area);
 
@@ -112,7 +110,7 @@ fn render_menu(f: &mut Frame, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     
-    // Статус обновления для иконки меню
+    
     let update_status = app.updater.status.lock().unwrap();
     let update_label = match *update_status {
         UpdateStatus::Downloading(pct) => format!("♻   {:.0}%", pct),
@@ -143,7 +141,7 @@ fn render_menu(f: &mut Frame, area: Rect, app: &AppState) {
             Style::default().fg(Color::Gray)
         };
         
-        // Подсветка желтым, если есть обновление (даже если не выбрано)
+       
         if i == 5 {
              if let UpdateStatus::UpdateAvailable(_) = *update_status {
                  if !is_selected { style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD); }
@@ -170,7 +168,7 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
     
-    // Заголовок панели информации меняется в зависимости от выбора
+    
     let title = match app.launcher_selection {
         0 => tr("launch_info_title", lang),
         1 => tr("launch_conf_title", lang),
@@ -192,9 +190,9 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
 
     let update_status = app.updater.status.lock().unwrap();
 
-    // ВОТ ЗДЕСЬ ВОССТАНОВЛЕН ВЕСЬ КОНТЕНТ:
+    
     let content = match app.launcher_selection {
-        0 => vec![ // Start
+        0 => vec![ 
             Line::from(Span::styled(tr("launch_ready", lang), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(tr("launch_conn_desc", lang)),
@@ -208,17 +206,17 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
                 }
             ]),
         ],
-        1 => vec![ // Settings
+        1 => vec![ 
             Line::from(Span::styled(tr("launch_conf_title", lang), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(tr("launch_conf_desc", lang)),
         ],
-        2 => vec![ // Language
+        2 => vec![ 
             Line::from(Span::styled(tr("launch_lang_title", lang), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(tr("launch_lang_desc", lang)),
         ],
-        3 => vec![ // Docs
+        3 => vec![ 
             Line::from(Span::styled(tr("launch_doc_title", lang), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(Span::styled(tr("launch_nav", lang), Style::default().add_modifier(Modifier::UNDERLINED))),
@@ -227,7 +225,7 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
             Line::from(Span::styled(tr("launch_feat", lang), Style::default().add_modifier(Modifier::UNDERLINED))),
             Line::from(tr("launch_feat_desc", lang)),
         ],
-        4 => vec![ // Credits
+        4 => vec![ 
             Line::from(Span::styled(tr("launch_cred_title", lang), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from("AC Pro Engineer Tool"),
@@ -242,7 +240,7 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
             Line::from(""),
             Line::from("© 2026 All Rights Reserved."),
         ],
-        5 => { // Update
+        5 => { 
             let mut lines = vec![
                 Line::from(Span::styled(tr("launch_upd_title", lang), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))),
                 Line::from(""),
@@ -286,7 +284,7 @@ fn render_info_panel(f: &mut Frame, area: Rect, app: &AppState) {
             }
             lines
         },
-        6 => vec![ // Exit
+        6 => vec![ 
             Line::from(Span::styled(tr("launch_shut_title", lang), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from(tr("launch_safe", lang)),

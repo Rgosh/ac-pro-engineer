@@ -24,26 +24,26 @@ pub enum TempUnit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    // --- General ---
+  
     pub language: Language,
     pub update_rate: u64,
     pub history_size: usize,
     pub auto_save: bool,
     
-    // --- System ---
-    pub last_run_version: String, // <-- НОВОЕ ПОЛЕ: Хранит версию последнего запуска
+
+    pub last_run_version: String, 
     
-    // --- Units ---
+
     pub pressure_unit: PressureUnit,
     pub temp_unit: TempUnit,
     
-    // --- Race Engineer ---
+    
     pub shift_point_offset: u32,
     pub fuel_safety_margin: f32,
     pub target_tyre_pressure: f32,
     pub enable_logging: bool,
     
-    // --- Alerts ---
+    
     pub alerts: AlertsConfig,
     
     pub data_path: PathBuf,
@@ -60,7 +60,7 @@ pub struct AlertsConfig {
     pub wear_warning: f32,
 }
 
-// Тема
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub background: ColorTuple,
@@ -85,7 +85,7 @@ impl ColorTuple {
     }
 }
 
-// "Pro Dark" Theme
+
 impl Default for Theme {
     fn default() -> Self {
         Self {
@@ -108,7 +108,7 @@ impl Default for AppConfig {
             history_size: 300,
             auto_save: true,
             
-            last_run_version: "0.0.0".to_string(), // По умолчанию старая версия
+            last_run_version: "0.0.0".to_string(), 
             
             pressure_unit: PressureUnit::Psi,
             temp_unit: TempUnit::Celsius,

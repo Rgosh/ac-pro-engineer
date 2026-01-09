@@ -2,7 +2,7 @@ import socket
 import threading
 import sys
 
-# ПОРТ 6000 - чтобы не мешать Nginx (5555) и Магазину (3000)
+
 HOST = '0.0.0.0'
 PORT = 6000       
 

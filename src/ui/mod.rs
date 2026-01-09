@@ -6,12 +6,14 @@ pub mod localization;
 pub mod widgets;
 pub mod tabs;
 pub mod launcher;
+pub mod overlay; 
 
 pub struct UIState {
-    pub theme: crate::config::Theme, // Структура Theme теперь доступна
+    pub theme: crate::config::Theme,
     pub layout_mode: LayoutMode,
     pub show_help: bool,
     pub blink_state: bool,
+    pub overlay_mode: bool, 
     pub last_blink: std::time::Instant,
     pub settings: tabs::settings::SettingsState,
     pub setup_list_state: ListState,
@@ -19,22 +21,20 @@ pub struct UIState {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LayoutMode {
-    Horizontal,
-    Vertical,
-    Auto,
+    Horizontal, Vertical, Auto,
 }
 
 impl UIState {
-    // Убрали аргумент theme из конструктора
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
         Self {
-            theme: crate::config::Theme::default(), // Используем дефолтную тему
+            theme: crate::config::Theme::default(),
             layout_mode: LayoutMode::Auto,
             show_help: false,
             blink_state: false,
+            overlay_mode: false, 
             last_blink: std::time::Instant::now(),
             settings: tabs::settings::SettingsState::new(),
             setup_list_state: list_state,
@@ -56,17 +56,18 @@ impl UIState {
 pub struct UIRenderer;
 
 impl UIRenderer {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self }
     
     pub fn render(&self, f: &mut Frame, app: &AppState) {
         match app.stage {
-            AppStage::Launcher => {
-                launcher::render(f, f.size(), app);
-            },
+            AppStage::Launcher => launcher::render(f, f.size(), app),
             AppStage::Running => {
-                self.render_main_app(f, app);
+                
+                if app.ui_state.overlay_mode {
+                    overlay::render(f, f.size(), app);
+                } else {
+                    self.render_main_app(f, app);
+                }
             }
         }
     }
@@ -179,9 +180,9 @@ impl UIRenderer {
         let lang = &app.config.language;
         let status = if app.is_connected {
             let blink = if app.ui_state.blink_state { "●" } else { "○" };
-            format!("{} {} | {}", blink, tr("footer_connected", lang), tr("footer_keys", lang))
+            format!("{} {} | {} | F10: Compact Mode", blink, tr("footer_connected", lang), tr("footer_keys", lang))
         } else {
-             format!("{} | Settings: Enter/Arrows", tr("footer_disconnected", lang))
+             format!("{} | F10: Compact Mode", tr("footer_disconnected", lang))
         };
         
         let status_color = if app.is_connected { Color::Green } else { Color::Red };

@@ -2,7 +2,6 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
-// use directories_next::UserDirs; // <-- УДАЛЕНО
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CarSpecs {
@@ -27,7 +26,7 @@ pub struct ContentManager {
 
 impl ContentManager {
     pub fn new() -> Self {
-        // Попытка найти папку игры. Можно расширить список путей.
+  
         let ac_root = Self::detect_ac_root().unwrap_or(PathBuf::from(r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa"));
         
         let mut manager = Self {
@@ -35,7 +34,7 @@ impl ContentManager {
             ac_root,
         };
         
-        // Запускаем сканирование (в идеале асинхронно, но тут для простоты сразу)
+      
         manager.scan_cars();
         manager
     }
@@ -61,7 +60,7 @@ impl ContentManager {
         let cars_dir = self.ac_root.join("content").join("cars");
         if !cars_dir.exists() { return; }
 
-        // Сканируем только глубину 1 (папки машин)
+      
         for entry in WalkDir::new(&cars_dir).min_depth(1).max_depth(1).into_iter().filter_map(|e| e.ok()) {
             if entry.file_type().is_dir() {
                 let car_id = entry.file_name().to_string_lossy().to_string();
@@ -115,7 +114,7 @@ impl ContentManager {
 
 fn extract_number(s: &str) -> Option<f32> {
     let num_str: String = s.chars()
-        .filter(|c| c.is_digit(10) || *c == '.')
+        .filter(|c| c.is_ascii_digit() || *c == '.')
         .collect();
     num_str.parse().ok()
 }

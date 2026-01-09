@@ -1,6 +1,6 @@
 [package]
 name = "ac_pro_engineer"
-version = "0.0.1"
+version = "0.1.1"
 edition = "2021"
 authors = ["AC Pro Engineer Team"]
 description = "Professional telemetry and setup analyzer for Assetto Corsa"
@@ -8,7 +8,7 @@ description = "Professional telemetry and setup analyzer for Assetto Corsa"
 [dependencies]
 windows = { version = "0.52", features = [
     "Win32_System_Memory",
-    "Win32_Foundation", 
+    "Win32_Foundation",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
 ] }
@@ -22,4 +22,30 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
 lazy_static = "1.4"
-reqwest = { version = "0.11", features = ["blocking", "json"] } # Для запросов (на будущее)
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+discord-rich-presence = "0.2"
+open = "5.0"
+
+[lints.rust]
+unused = { level = "warn", priority = -1 }
+#unsafe_code = "deny"
+rust-2018-idioms = "warn"
+rust-2021-compatibility = "warn"
+rust-2024-compatibility = "warn"
+nonstandard-style = "warn"
+keyword-idents = "warn"
+future-incompatible = "warn"
+deprecated-safe = "warn"
+let-underscore = "warn"
+unknown-or-malformed-diagnostic-attributes = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+#pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
