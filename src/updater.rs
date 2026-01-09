@@ -7,9 +7,8 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-const GITHUB_OWNER: &str = "ВАШ_ЮЗЕРНЕЙМ";
-const GITHUB_REPO: &str = "НАЗВАНИЕ_РЕПОЗИТОРИЯ";
-
+const GITHUB_OWNER: &str = "Rgosh";
+const GITHUB_REPO: &str = "ac-pro-engineer";
 const BINARY_NAME: &str = "ac_pro_engineer.exe";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -60,7 +59,6 @@ impl Updater {
 
     pub fn check_for_updates(&self) {
         let status = self.status.clone();
-
         {
             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
             *lock = UpdateStatus::Checking;
@@ -88,12 +86,10 @@ impl Updater {
                     match resp.json::<GitHubRelease>() {
                         Ok(release) => {
                             let remote_ver_str = release.tag_name.trim_start_matches('v');
-
                             let asset = release.assets.iter().find(|a| a.name == BINARY_NAME);
 
                             if let Some(asset) = asset {
                                 let mut state = status.lock().unwrap_or_else(|e| e.into_inner());
-
                                 if remote_ver_str != CURRENT_VERSION {
                                     *state = UpdateStatus::UpdateAvailable(RemoteVersion {
                                         version: remote_ver_str.to_string(),
@@ -105,8 +101,7 @@ impl Updater {
                                 }
                             } else {
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                                *lock =
-                                    UpdateStatus::Error("Asset not found in release".to_string());
+                                *lock = UpdateStatus::Error("Asset not found".to_string());
                             }
                         }
                         Err(e) => {
@@ -213,21 +208,12 @@ impl Updater {
         let script = format!(
             "@echo off\r\n\
              chcp 65001 >nul\r\n\
-             \r\n\
              :wait_close\r\n\
              timeout /t 1 /nobreak > NUL\r\n\
-             \r\n\
-             :: Try to delete the old file. If error (file busy) - repeat\r\n\
              del \"{0}\" >nul 2>&1\r\n\
              if exist \"{0}\" goto wait_close\r\n\
-             \r\n\
-             :: Move the new file to replace the old one\r\n\
              move /y \"{1}\" \"{0}\" >nul\r\n\
-             \r\n\
-             :: Start the updated program\r\n\
              start \"\" \"{0}\"\r\n\
-             \r\n\
-             :: Delete this batch file and exit\r\n\
              (goto) 2>nul & del \"%~f0\"\r\n\
              exit",
             exe_path, new_exe_str
