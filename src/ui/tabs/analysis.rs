@@ -269,7 +269,7 @@ fn render_radar_chart(
         .paint(move |ctx| {
             let radius = 1.0;
             let count = 5;
-            for i in 0..count {
+            for (i, label) in labels.iter().enumerate().take(count) {
                 let angle = (i as f64) * 2.0 * std::f64::consts::PI / (count as f64)
                     - std::f64::consts::PI / 2.0;
                 let x = radius * angle.cos();
@@ -284,7 +284,7 @@ fn render_radar_chart(
                 ctx.print(
                     x * 1.2 - 0.2,
                     y * 1.2,
-                    Span::styled(labels[i].clone(), Style::default().fg(Color::Gray)),
+                    Span::styled(label.clone(), Style::default().fg(Color::Gray)),
                 );
             }
             for i in 0..count {

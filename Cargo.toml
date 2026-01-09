@@ -28,7 +28,7 @@ open = "5.0"
 
 [lints.rust]
 unused = { level = "warn", priority = -1 }
-#unsafe_code = "deny"
+unsafe_code = "deny"
 rust-2018-idioms = "warn"
 rust-2021-compatibility = "warn"
 rust-2024-compatibility = "warn"

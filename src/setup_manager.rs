@@ -160,6 +160,16 @@ pub struct SetupManager {
     pub last_status: Arc<Mutex<String>>,
 }
 
+trait SafeLock<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T> SafeLock<T> for Mutex<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 impl SetupManager {
     pub fn new() -> Self {
         let manager = Self {
@@ -193,31 +203,39 @@ impl SetupManager {
             let mut last_track = String::new();
 
             if let Some(m) = fetch_manifest() {
-                *manifest_clone.lock().unwrap() = m;
+                *manifest_clone.safe_lock() = m;
             }
 
             loop {
-                if manifest_clone.lock().unwrap().is_empty() {
+                let is_empty = manifest_clone.safe_lock().is_empty();
+
+                if is_empty {
                     if let Some(m) = fetch_manifest() {
-                        *manifest_clone.lock().unwrap() = m;
+                        *manifest_clone.safe_lock() = m;
                     }
                 }
 
-                let car = { car_clone.lock().unwrap().clone() };
-                let track = { track_clone.lock().unwrap().clone() };
+                let car = car_clone.safe_lock().clone();
+                let track = track_clone.safe_lock().clone();
 
                 if !car.is_empty() {
                     if car != last_car || track != last_track {
-                        *fetch_flag.lock().unwrap() = false;
+                        *fetch_flag.safe_lock() = false;
                         last_car = car.clone();
                         last_track = track.clone();
-                        let mut lock = setups_clone.lock().unwrap();
-                        lock.clear();
+                        setups_clone.safe_lock().clear();
                     }
 
                     let mut all_setups = scan_folders(&car, &track);
-                    let mut fetched = fetch_flag.lock().unwrap();
-                    if !*fetched {
+
+                    let mut needs_fetch = false;
+                    {
+                        if !*fetch_flag.safe_lock() {
+                            needs_fetch = true;
+                        }
+                    }
+
+                    if needs_fetch {
                         if let Some(mut server_setups) = fetch_server_setups(&car) {
                             for s in &mut server_setups {
                                 if s.car_id.is_empty() {
@@ -226,17 +244,19 @@ impl SetupManager {
                             }
                             all_setups.append(&mut server_setups);
                         }
-                        *fetched = true;
+                        *fetch_flag.safe_lock() = true;
                     } else {
-                        let existing = setups_clone.lock().unwrap();
+                        let existing = setups_clone.safe_lock();
                         let remotes: Vec<CarSetup> = existing
                             .iter()
                             .filter(|s| s.is_remote && s.car_id == car)
                             .cloned()
                             .collect();
+                        drop(existing);
                         all_setups.extend(remotes);
                     }
-                    *setups_clone.lock().unwrap() = all_setups;
+
+                    *setups_clone.safe_lock() = all_setups;
                 }
                 thread::sleep(Duration::from_secs(5));
             }
@@ -246,7 +266,7 @@ impl SetupManager {
     }
 
     pub fn scroll_details(&self, delta: i32) {
-        let mut scroll = self.details_scroll.lock().unwrap();
+        let mut scroll = self.details_scroll.safe_lock();
         if delta < 0 {
             if *scroll > 0 {
                 *scroll -= 1;
@@ -276,38 +296,42 @@ impl SetupManager {
     }
 
     pub fn get_manifest(&self) -> Vec<ManifestItem> {
-        self.manifest.lock().unwrap().clone()
+        self.manifest.safe_lock().clone()
     }
 
     pub fn get_browser_setups(&self) -> Vec<CarSetup> {
-        self.browser_setups.lock().unwrap().clone()
+        self.browser_setups.safe_lock().clone()
     }
 
     pub fn load_browser_car(&self) {
-        let idx = *self.browser_car_idx.lock().unwrap();
-        let manifest = self.manifest.lock().unwrap();
+        let idx = *self.browser_car_idx.safe_lock();
+        let manifest = self.manifest.safe_lock();
         if idx < manifest.len() {
             let car_id = &manifest[idx].id;
-            if let Some(mut setups) = fetch_server_setups(car_id) {
+
+            let car_id_clone = car_id.clone();
+            drop(manifest);
+
+            if let Some(mut setups) = fetch_server_setups(&car_id_clone) {
                 for s in &mut setups {
-                    s.car_id = car_id.clone();
+                    s.car_id = car_id_clone.clone();
                 }
-                *self.browser_setups.lock().unwrap() = setups;
-                *self.browser_setup_idx.lock().unwrap() = 0;
-                *self.details_scroll.lock().unwrap() = 0;
+                *self.browser_setups.safe_lock() = setups;
+                *self.browser_setup_idx.safe_lock() = 0;
+                *self.details_scroll.safe_lock() = 0;
             }
         }
     }
 
     pub fn get_browser_selected_setup(&self) -> Option<CarSetup> {
-        let idx = *self.browser_setup_idx.lock().unwrap();
-        let setups = self.browser_setups.lock().unwrap();
+        let idx = *self.browser_setup_idx.safe_lock();
+        let setups = self.browser_setups.safe_lock();
         setups.get(idx).cloned()
     }
 
     pub fn get_browser_target_car(&self) -> String {
-        let idx = *self.browser_car_idx.lock().unwrap();
-        let manifest = self.manifest.lock().unwrap();
+        let idx = *self.browser_car_idx.safe_lock();
+        let manifest = self.manifest.safe_lock();
         if idx < manifest.len() {
             manifest[idx].id.clone()
         } else {
@@ -316,23 +340,23 @@ impl SetupManager {
     }
 
     pub fn set_context(&self, car: &str, track: &str) {
-        let mut c = self.current_car.lock().unwrap();
-        let mut t = self.current_track.lock().unwrap();
+        let mut c = self.current_car.safe_lock();
+        let mut t = self.current_track.safe_lock();
         if *c != car || *t != track {
             *c = car.to_string();
             *t = track.to_string();
-            *self.server_fetch_done.lock().unwrap() = false;
-            *self.details_scroll.lock().unwrap() = 0;
+            *self.server_fetch_done.safe_lock() = false;
+            *self.details_scroll.safe_lock() = 0;
         }
     }
 
     pub fn get_setups(&self) -> Vec<CarSetup> {
-        self.setups.lock().unwrap().clone()
+        self.setups.safe_lock().clone()
     }
 
     pub fn get_best_match_index(&self) -> Option<usize> {
-        let setups = self.setups.lock().unwrap();
-        let track_name = self.current_track.lock().unwrap();
+        let setups = self.setups.safe_lock();
+        let track_name = self.current_track.safe_lock();
         if setups.is_empty() {
             return None;
         }
@@ -346,7 +370,7 @@ impl SetupManager {
     }
 
     pub fn get_setup_by_index(&self, index: usize) -> Option<CarSetup> {
-        let setups = self.setups.lock().unwrap();
+        let setups = self.setups.safe_lock();
         setups.get(index).cloned()
     }
 
@@ -354,20 +378,31 @@ impl SetupManager {
         if !setup.is_remote {
             return false;
         }
+
+        let mut status_lock = self.last_status.safe_lock();
+
         if !setup.car_id.is_empty() && setup.car_id != target_car {
-            *self.last_status.lock().unwrap() =
-                format!("Err: Car mismatch! ({} != {})", setup.car_id, target_car);
+            *status_lock = format!("Err: Car mismatch! ({} != {})", setup.car_id, target_car);
             return false;
         }
 
         if let Some(user_dirs) = UserDirs::new() {
-            let docs = user_dirs.document_dir().unwrap();
+            let docs = match user_dirs.document_dir() {
+                Some(d) => d,
+                None => {
+                    *status_lock = "Err: No document directory found".to_string();
+                    return false;
+                }
+            };
+
             let target_dir = docs
                 .join("Assetto Corsa")
                 .join("setups")
                 .join(target_car)
                 .join("downloaded");
+
             if fs::create_dir_all(&target_dir).is_err() {
+                *status_lock = "Err: Could not create directory".to_string();
                 return false;
             }
 
@@ -380,24 +415,27 @@ impl SetupManager {
 
             match fs::write(&file_path, content) {
                 Ok(_) => {
-                    *self.last_status.lock().unwrap() = format!("✅ SAVED to {}!", target_car);
-                    *self.server_fetch_done.lock().unwrap() = false;
+                    *status_lock = format!("✅ SAVED to {}!", target_car);
+                    drop(status_lock);
+                    *self.server_fetch_done.safe_lock() = false;
                     return true;
                 }
                 Err(e) => {
-                    *self.last_status.lock().unwrap() = format!("Err: {}", e);
+                    *status_lock = format!("Err: {}", e);
                 }
             }
+        } else {
+            *status_lock = "Err: Could not determine user dirs".to_string();
         }
         false
     }
 
     pub fn get_status_message(&self) -> String {
-        self.last_status.lock().unwrap().clone()
+        self.last_status.safe_lock().clone()
     }
 
     pub fn detect_current(&self, fuel: f32, bias: f32, pressures: &[f32; 4], _temps: &[f32; 4]) {
-        let setups = self.setups.lock().unwrap();
+        let setups = self.setups.safe_lock();
         let mut best_score = 0;
         let mut best_idx = None;
         for (i, setup) in setups.iter().enumerate() {
@@ -410,13 +448,13 @@ impl SetupManager {
                 best_idx = Some(i);
             }
         }
-        let mut active_idx = self.active_setup_index.lock().unwrap();
+        let mut active_idx = self.active_setup_index.safe_lock();
         *active_idx = best_idx;
     }
 
     pub fn get_active_setup(&self) -> Option<CarSetup> {
-        let idx = *self.active_setup_index.lock().unwrap();
-        let setups = self.setups.lock().unwrap();
+        let idx = *self.active_setup_index.safe_lock();
+        let setups = self.setups.safe_lock();
         if let Some(i) = idx {
             if i < setups.len() {
                 return Some(setups[i].clone());
@@ -529,8 +567,14 @@ fn scan_single_folder(
                         }
                     }
                 }
+
+                let name = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Unknown".to_string());
+
                 list.push(CarSetup {
-                    name: path.file_stem().unwrap().to_string_lossy().to_string(),
+                    name,
                     path: path.to_path_buf(),
                     source: source.to_string(),
                     author: "Local".to_string(),
