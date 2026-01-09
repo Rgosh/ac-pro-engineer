@@ -1,5 +1,6 @@
 /target
 /data
+/ac-setups
 /debug
 config.json
 **/*.rs.bk
