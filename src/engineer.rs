@@ -219,9 +219,7 @@ impl Engineer {
                     message: if ru { format!("{} Давление вне нормы: {:.1}", name, pressure) } else { format!("{} Pressure bad: {:.1}", name, pressure) },
                     action: if pressure < optimal_pressure {
                         if ru { "Накачать".to_string() } else { "Inflate".to_string() }
-                    } else {
-                        if ru { "Спустить".to_string() } else { "Deflate".to_string() }
-                    },
+                    } else if ru { "Спустить".to_string() } else { "Deflate".to_string() },
                     parameters: vec![
                         Parameter { name: "Target".to_string(), current: pressure, target: optimal_pressure, unit: "PSI".to_string() }
                     ],
@@ -325,7 +323,7 @@ impl Engineer {
         }
     }
     
-    // FIX: phys -> _phys
+    
     fn analyze_strategy(&self, _phys: &AcPhysics, _gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         if self.stats.fuel_laps_remaining < 2.5 && self.stats.fuel_laps_remaining > 0.0 {

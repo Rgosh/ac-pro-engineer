@@ -1,18 +1,17 @@
-use ratatui::{prelude::*, widgets::*};
-use crate::AppState;
 use crate::ui::localization::tr;
+use crate::AppState;
+use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+use ratatui::{prelude::*, widgets::*};
 
-pub fn render(f: &mut Frame, area: Rect, app: &AppState) {
+pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
-    
-    // Если кругов нет - показываем заглушку
+
     if app.analyzer.laps.is_empty() {
         let block = Block::default()
             .title(tr("tab_anal", lang))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        
         let text = Paragraph::new(tr("anal_waiting", lang))
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center)
@@ -21,340 +20,399 @@ pub fn render(f: &mut Frame, area: Rect, app: &AppState) {
         return;
     }
 
-    // Основной макет: Список кругов (20%) | Детали (80%)
     let main_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(20), 
-            Constraint::Percentage(80), 
-        ])
+        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
         .split(area);
-        
+
     render_laps_list(f, main_layout[0], app);
-    
+
     let selected_idx = app.ui_state.setup_list_state.selected().unwrap_or(0);
-    
     if selected_idx < app.analyzer.laps.len() {
         let selected_lap = &app.analyzer.laps[selected_idx];
         let best_lap = app.analyzer.best_lap_index.map(|i| &app.analyzer.laps[i]);
-        
-        // Макет правой части:
-        // 1. Заголовок с WR/Delta (10%)
-        // 2. График скорости (30%)
-        // 3. Сектора и Статистика (30%)
-        // 4. Отчет тренера (30%)
+
         let right_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(4),      // Header
-                Constraint::Percentage(35), // Chart
-                Constraint::Percentage(30), // Sectors table
-                Constraint::Min(10),        // Coach Report
+                Constraint::Length(6),
+                Constraint::Min(10),
+                Constraint::Length(12),
             ])
             .split(main_layout[1]);
-            
+
         render_header_stats(f, right_layout[0], app, selected_lap);
         render_speed_chart(f, right_layout[1], app, selected_lap, best_lap);
-        
-        // Разделяем среднюю часть на Сектора и Доп. Инфо
-        let mid_layout = Layout::default()
+
+        let bottom_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(30),
+                Constraint::Percentage(40),
+            ])
             .split(right_layout[2]);
-            
-        render_sector_comparison(f, mid_layout[0], app, selected_lap, best_lap);
-        render_extended_stats(f, mid_layout[1], app, selected_lap);
-        
-        render_coach_report(f, right_layout[3], app, selected_lap);
+
+        render_radar_chart(f, bottom_layout[0], app, selected_lap);
+        render_extended_stats(f, bottom_layout[1], app, selected_lap);
+        render_coach_report(f, bottom_layout[2], app, selected_lap);
     }
 }
 
-// 1. Список кругов
-fn render_laps_list(f: &mut Frame, area: Rect, app: &AppState) {
+fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
-    
     let block = Block::default()
         .title(tr("anal_laps_list", lang))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        
-    let items: Vec<ListItem> = app.analyzer.laps.iter().enumerate().map(|(i, lap)| {
-        let is_best = Some(i) == app.analyzer.best_lap_index;
-        let time_str = format_ms(lap.lap_time_ms);
-        let prefix = if is_best { "★" } else { " " };
-        
-        let mut style = Style::default().fg(app.ui_state.get_color(&theme.text));
-        if is_best {
-            style = style.fg(Color::Green).add_modifier(Modifier::BOLD);
-        } else if !lap.valid {
-            style = style.fg(Color::Red);
-        }
-        
-        ListItem::new(format!("{} L{}: {}", prefix, lap.lap_number + 1, time_str))
+    let items: Vec<ListItem<'_>> = app
+        .analyzer
+        .laps
+        .iter()
+        .enumerate()
+        .map(|(i, lap)| {
+            let is_best = Some(i) == app.analyzer.best_lap_index;
+            let prefix = if is_best { "★" } else { " " };
+            let mut style = Style::default().fg(app.ui_state.get_color(&theme.text));
+            if is_best {
+                style = style.fg(Color::Green).add_modifier(Modifier::BOLD);
+            }
+            ListItem::new(format!(
+                "{} L{}: {}",
+                prefix,
+                lap.lap_number + 1,
+                format_ms(lap.lap_time_ms)
+            ))
             .style(style)
-    }).collect();
-    
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(Style::default().bg(app.ui_state.get_color(&theme.highlight)).fg(Color::Black));
-    
+        })
+        .collect();
+    let list = List::new(items).block(block).highlight_style(
+        Style::default()
+            .bg(app.ui_state.get_color(&theme.highlight))
+            .fg(Color::Black),
+    );
     let mut state = app.ui_state.setup_list_state.clone();
     f.render_stateful_widget(list, area, &mut state);
 }
 
-// 2. Заголовок с рекордом
-fn render_header_stats(f: &mut Frame, area: Rect, app: &AppState, lap: &crate::analyzer::LapData) {
+fn render_header_stats(
+    f: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    lap: &crate::analyzer::LapData,
+) {
     let theme = &app.ui_state.theme;
+    let lang = &app.config.language;
     let block = Block::default()
+        .title(tr("anal_session_info", lang))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-    
     let inner = block.inner(area);
     f.render_widget(block, area);
-    
-    let wr_time = app.analyzer.world_record.as_ref().map(|r| r.time_ms).unwrap_or(0);
-    let wr_text = if wr_time > 0 { format_ms(wr_time) } else { "--:--.---".into() };
-    let wr_source = app.analyzer.world_record.as_ref().map(|r| r.source.clone()).unwrap_or("N/A".into());
-    
-    // Дельта относительно рекорда (если он есть) или 0
-    let delta = if wr_time > 0 { (lap.lap_time_ms - wr_time) as f32 / 1000.0 } else { 0.0 };
-    let delta_color = if delta <= 0.0 { Color::Green } else { Color::Red };
-    
-    let layout = Layout::default()
+
+    let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(inner);
 
-    let left_text = Line::from(vec![
-        Span::styled("Target Record: ", Style::default().fg(Color::Cyan)),
-        Span::styled(format!("{} ({})", wr_text, wr_source), Style::default().add_modifier(Modifier::BOLD)),
-    ]);
-    
-    let right_text = Line::from(vec![
-        Span::styled("Your Time: ", Style::default().fg(Color::White)),
-        Span::styled(format_ms(lap.lap_time_ms), Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw("  Delta: "),
-        Span::styled(format!("{:.3}s", delta), Style::default().fg(delta_color).add_modifier(Modifier::BOLD)),
-    ]);
+    let wr_time = app
+        .analyzer
+        .world_record
+        .as_ref()
+        .map(|r| r.time_ms)
+        .unwrap_or(0);
+    let wr_delta = if wr_time > 0 {
+        (lap.lap_time_ms - wr_time) as f32 / 1000.0
+    } else {
+        0.0
+    };
+    let wr_color = if wr_delta <= 0.0 {
+        Color::Green
+    } else {
+        Color::Red
+    };
 
-    f.render_widget(Paragraph::new(left_text).alignment(Alignment::Left), layout[0]);
-    f.render_widget(Paragraph::new(right_text).alignment(Alignment::Right), layout[1]);
+    let times_rows = vec![
+        Row::new(vec![
+            Cell::from(tr("anal_time", lang)),
+            Cell::from(format_ms(lap.lap_time_ms)).style(
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Row::new(vec![
+            Cell::from(tr("anal_wr", lang)),
+            Cell::from(if wr_time > 0 {
+                format_ms(wr_time)
+            } else {
+                "---".into()
+            })
+            .style(Style::default().fg(Color::Yellow)),
+        ]),
+        Row::new(vec![
+            Cell::from(tr("anal_delta", lang)),
+            Cell::from(format!("{:+.3}s", wr_delta)).style(Style::default().fg(wr_color)),
+        ]),
+    ];
+    f.render_widget(
+        Table::new(
+            times_rows,
+            [Constraint::Percentage(40), Constraint::Percentage(60)],
+        ),
+        chunks[0],
+    );
+
+    let info_rows = vec![
+        Row::new(vec![
+            Cell::from(tr("info_car", lang)).style(Style::default().fg(Color::Gray)),
+            Cell::from(app.session_info.car_name.clone()).style(Style::default().fg(Color::Cyan)),
+            Cell::from(tr("info_track", lang)).style(Style::default().fg(Color::Gray)),
+            Cell::from(app.session_info.track_name.clone()).style(Style::default().fg(Color::Cyan)),
+        ]),
+        Row::new(vec![
+            Cell::from(tr("info_cond", lang)).style(Style::default().fg(Color::Gray)),
+            Cell::from(format!(
+                "Air: {:.0}°C  Road: {:.0}°C",
+                lap.air_temp, lap.road_temp
+            ))
+            .style(Style::default().fg(Color::White)),
+            Cell::from(tr("info_grip", lang)).style(Style::default().fg(Color::Gray)),
+            Cell::from(format!("{:.1}%", lap.track_grip)).style(Style::default().fg(Color::Green)),
+        ]),
+    ];
+    f.render_widget(
+        Table::new(
+            info_rows,
+            [
+                Constraint::Percentage(15),
+                Constraint::Percentage(35),
+                Constraint::Percentage(15),
+                Constraint::Percentage(35),
+            ],
+        ),
+        chunks[1],
+    );
 }
 
-// 3. График скорости
-fn render_speed_chart(f: &mut Frame, area: Rect, app: &AppState, selected: &crate::analyzer::LapData, best: Option<&crate::analyzer::LapData>) {
+fn render_speed_chart(
+    f: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    selected: &crate::analyzer::LapData,
+    best: Option<&crate::analyzer::LapData>,
+) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
-    
-    let selected_data: Vec<(f64, f64)> = selected.telemetry_trace.iter()
+    let selected_data: Vec<(f64, f64)> = selected
+        .telemetry_trace
+        .iter()
         .map(|p| (p.distance as f64, p.speed as f64))
         .collect();
-    
-    let best_data_opt: Option<Vec<(f64, f64)>> = if let Some(best_l) = best {
-        if selected.lap_number != best_l.lap_number {
-            Some(best_l.telemetry_trace.iter()
-                .map(|p| (p.distance as f64, p.speed as f64))
-                .collect())
-        } else { None }
-    } else { None };
 
-    let mut datasets = vec![
-        Dataset::default()
-            .name(format!("Lap {}", selected.lap_number + 1))
-            .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(Color::Yellow))
-            .graph_type(GraphType::Line)
-            .data(&selected_data),
-    ];
-    
-    if let Some(best_data) = &best_data_opt {
-         datasets.push(Dataset::default()
-            .name("Session Best")
-            .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(Color::DarkGray)) 
-            .graph_type(GraphType::Line)
-            .data(best_data));
+    let datasets = vec![Dataset::default()
+        .name("Lap")
+        .marker(symbols::Marker::Braille)
+        .style(Style::default().fg(Color::Cyan))
+        .graph_type(GraphType::Line)
+        .data(&selected_data)];
+
+    if let Some(best_l) = best {
+        if selected.lap_number != best_l.lap_number {}
     }
-    
     let chart = Chart::new(datasets)
-        .block(Block::default()
-            .title(tr("anal_speed_comp", lang))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))))
+        .block(
+            Block::default()
+                .title(tr("anal_speed_comp", lang))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
+        )
         .x_axis(Axis::default().bounds([0.0, 1.0]).labels(vec![]))
-        .y_axis(Axis::default().bounds([0.0, 350.0]).labels(vec![Span::raw("0"), Span::raw("350")]));
-            
+        .y_axis(Axis::default().bounds([0.0, 320.0]));
     f.render_widget(chart, area);
 }
 
-// 4. Сравнение секторов (Таблица)
-fn render_sector_comparison(f: &mut Frame, area: Rect, app: &AppState, selected: &crate::analyzer::LapData, best: Option<&crate::analyzer::LapData>) {
-    let theme = &app.ui_state.theme;
+fn render_radar_chart(
+    f: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    lap: &crate::analyzer::LapData,
+) {
     let lang = &app.config.language;
-    let is_ru = *lang == crate::config::Language::Russian;
+    let theme = &app.ui_state.theme;
+    let stats = &lap.radar_stats;
+    let values = [
+        stats.smoothness,
+        stats.aggression,
+        stats.consistency,
+        stats.car_control,
+        stats.tyre_mgmt,
+    ];
+    let labels = [
+        tr("skill_smooth", lang),
+        tr("skill_aggr", lang),
+        tr("skill_consist", lang),
+        tr("skill_car_ctrl", lang),
+        tr("skill_tyres", lang),
+    ];
 
-    let block = Block::default()
-        .title(if is_ru { "АНАЛИЗ СЕКТОРОВ И WR PACE" } else { "SECTOR ANALYSIS & WR PACE" })
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-    
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    // Идеальные сектора (Session Theoretical Best)
-    let ideal_sectors = app.analyzer.best_sectors;
-    let ideal_lap_sum: i32 = ideal_sectors.iter().filter(|&&x| x < i32::MAX && x > 0).sum();
-    let ideal_valid = ideal_lap_sum > 0 && ideal_lap_sum < i32::MAX;
-
-    let header = Row::new(vec![
-        Cell::from(if is_ru { "Сектор" } else { "Sector" }),
-        Cell::from(if is_ru { "Текущий" } else { "Current" }),
-        Cell::from(if is_ru { "Лучший (Сессия)" } else { "Session Best" }),
-        Cell::from(if is_ru { "Идеал (Target)" } else { "Ideal (Target)" }).style(Style::default().fg(Color::Magenta)),
-        Cell::from(if is_ru { "Потеря" } else { "Loss" }),
-    ]).style(Style::default().add_modifier(Modifier::BOLD).fg(app.ui_state.get_color(&theme.accent)));
-
-    let mut rows = Vec::new();
-
-    for i in 0..3 {
-        let current_s = selected.sectors[i];
-        let best_s = best.map(|l| l.sectors[i]).unwrap_or(0);
-        let ideal_s = ideal_sectors[i];
-        
-        let loss = if ideal_valid && ideal_s < i32::MAX && current_s > 0 {
-             (current_s - ideal_s) as f32 / 1000.0
-        } else { 0.0 };
-        
-        // Цвет потери: Зеленый < 0.1s, Желтый < 0.5s, Красный > 0.5s
-        let loss_color = if loss <= 0.05 { Color::Green } else if loss < 0.5 { Color::Yellow } else { Color::Red };
-
-        rows.push(Row::new(vec![
-            Cell::from(format!("S{}", i + 1)),
-            Cell::from(if current_s > 0 { format_ms(current_s) } else { "-".into() }),
-            Cell::from(if best_s > 0 { format_ms(best_s) } else { "-".into() }),
-            Cell::from(if ideal_s < i32::MAX { format_ms(ideal_s) } else { "-".into() }).style(Style::default().fg(Color::Magenta)),
-            Cell::from(if current_s > 0 { format!("+{:.3}s", loss) } else { "-".into() }).style(Style::default().fg(loss_color)),
-        ]));
-    }
-    
-    // Итоговая строка
-    let total_loss = if ideal_valid && selected.lap_time_ms > 0 { (selected.lap_time_ms - ideal_lap_sum) as f32 / 1000.0 } else { 0.0 };
-    
-    rows.push(Row::new(vec![
-        Cell::from("LAP").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from(format_ms(selected.lap_time_ms)).style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from(if let Some(b) = best { format_ms(b.lap_time_ms) } else { "-".into() }),
-        Cell::from(if ideal_valid { format_ms(ideal_lap_sum) } else { "-".into() }).style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-        Cell::from(format!("+{:.3}s", total_loss)).style(Style::default().fg(if total_loss < 0.5 { Color::Green } else { Color::Red }).add_modifier(Modifier::BOLD)),
-    ]));
-
-    let table = Table::new(rows, [
-        Constraint::Percentage(15),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
-        Constraint::Percentage(25),
-    ]).header(header);
-
-    f.render_widget(table, inner);
+    let canvas = Canvas::default()
+        .block(
+            Block::default()
+                .title(tr("anal_radar_title", lang))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
+        )
+        .x_bounds([-1.5, 1.5])
+        .y_bounds([-1.5, 1.5])
+        .paint(move |ctx| {
+            let radius = 1.0;
+            let count = 5;
+            for i in 0..count {
+                let angle = (i as f64) * 2.0 * std::f64::consts::PI / (count as f64)
+                    - std::f64::consts::PI / 2.0;
+                let x = radius * angle.cos();
+                let y = radius * angle.sin();
+                ctx.draw(&CanvasLine {
+                    x1: 0.0,
+                    y1: 0.0,
+                    x2: x,
+                    y2: y,
+                    color: Color::DarkGray,
+                });
+                ctx.print(
+                    x * 1.2 - 0.2,
+                    y * 1.2,
+                    Span::styled(labels[i].clone(), Style::default().fg(Color::Gray)),
+                );
+            }
+            for i in 0..count {
+                let val1 = values[i] as f64;
+                let val2 = values[(i + 1) % count] as f64;
+                let angle1 = (i as f64) * 2.0 * std::f64::consts::PI / (count as f64)
+                    - std::f64::consts::PI / 2.0;
+                let angle2 = ((i + 1) as f64) * 2.0 * std::f64::consts::PI / (count as f64)
+                    - std::f64::consts::PI / 2.0;
+                ctx.draw(&CanvasLine {
+                    x1: radius * val1 * angle1.cos(),
+                    y1: radius * val1 * angle1.sin(),
+                    x2: radius * val2 * angle2.cos(),
+                    y2: radius * val2 * angle2.sin(),
+                    color: Color::Cyan,
+                });
+            }
+        });
+    f.render_widget(canvas, area);
 }
 
-// 5. Расширенная статистика
-fn render_extended_stats(f: &mut Frame, area: Rect, app: &AppState, selected: &crate::analyzer::LapData) {
+fn render_extended_stats(
+    f: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    selected: &crate::analyzer::LapData,
+) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
-    
     let block = Block::default()
         .title(tr("anal_stats_ext", lang))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        
     let inner = block.inner(area);
     f.render_widget(block, area);
-
-    // Формируем список параметров для отображения
     let params = vec![
-        (tr("anal_max_spd", lang), format!("{:.0} km/h", selected.max_speed), Color::White),
-        (tr("anal_avg_spd", lang), format!("{:.0} km/h", selected.avg_speed), Color::White),
-        (tr("anal_full_thr", lang), format!("{:.1}%", selected.full_throttle_percent), Color::Green),
-        (tr("anal_g_lat", lang), format!("{:.2}G", selected.peak_lat_g), Color::Magenta),
-        (tr("anal_g_brake", lang), format!("{:.2}G", selected.peak_brake_g), Color::Red),
-        (tr("anal_p_dev", lang), format!("{:.2} psi", selected.pressure_deviation), if selected.pressure_deviation > 1.0 { Color::Red } else { Color::Green }),
-        (tr("anal_susp", lang), format!("{:.1}%", selected.suspension_travel_hist.iter().sum::<f32>()/4.0 * 1000.0), Color::Cyan), // Условная метрика
-        ("Grip Usage".into(), format!("{:.1}%", selected.grip_usage_percent), if selected.grip_usage_percent > 80.0 { Color::Green } else { Color::Yellow }),
+        (
+            tr("anal_max_spd", lang),
+            format!("{:.0}", selected.max_speed),
+            Color::White,
+        ),
+        (
+            tr("anal_g_lat", lang),
+            format!("{:.2}G", selected.peak_lat_g),
+            Color::Magenta,
+        ),
+        (
+            tr("anal_p_dev", lang),
+            format!("{:.2} psi", selected.pressure_deviation),
+            if selected.pressure_deviation > 1.0 {
+                Color::Red
+            } else {
+                Color::Green
+            },
+        ),
+        (
+            tr("anal_avg_spd", lang),
+            format!("{:.0}", selected.avg_speed),
+            Color::Gray,
+        ),
     ];
-
-    let items: Vec<ListItem> = params.into_iter().map(|(label, val, color)| {
-        ListItem::new(Line::from(vec![
-            Span::styled(format!("{}: ", label), Style::default().fg(Color::Gray)),
-            Span::styled(val, Style::default().fg(color).add_modifier(Modifier::BOLD)),
-        ]))
-    }).collect();
-
-    let list = List::new(items);
-    f.render_widget(list, inner);
+    let items: Vec<ListItem<'_>> = params
+        .into_iter()
+        .map(|(l, v, c)| {
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{}: ", l), Style::default().fg(Color::Gray)),
+                Span::styled(v, Style::default().fg(c)),
+            ]))
+        })
+        .collect();
+    f.render_widget(List::new(items), inner);
 }
 
-// 6. Отчет Тренера (Coach Report)
-fn render_coach_report(f: &mut Frame, area: Rect, app: &AppState, selected: &crate::analyzer::LapData) {
+fn render_coach_report(
+    f: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    selected: &crate::analyzer::LapData,
+) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let is_ru = *lang == crate::config::Language::Russian;
-
     let block = Block::default()
-        .title(tr("anal_comp_title", lang)) // "Comparison & Advice"
+        .title(tr("anal_comp_title", lang))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-    
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Запускаем анализ
-    let analysis = app.analyzer.analyze_standalone(selected);
-    
+    let analysis = app.analyzer.analyze_standalone(selected, lang);
+
     if analysis.is_perfect {
-        let msg = Paragraph::new(tr("anal_self_perfect", lang))
-            .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
-            .alignment(Alignment::Center);
-        f.render_widget(msg, inner);
+        f.render_widget(
+            Paragraph::new(tr("anal_self_perfect", lang))
+                .style(Style::default().fg(Color::Green))
+                .alignment(Alignment::Center),
+            inner,
+        );
     } else {
-        // Рендерим список советов
-        let items: Vec<ListItem> = analysis.advices.iter().map(|advice| {
-            // Определяем цвет и иконку в зависимости от Severity
-            let (color, icon) = match advice.severity {
-                3 => (Color::Red, "✖"),    // Критично
-                2 => (Color::Yellow, "⚠"), // Важно
-                _ => (Color::Blue, "ℹ"),   // Инфо
-            };
-            
-            // Форматируем: "[Иконка] Зона: Проблема" (1 строка) -> "   Fix: Решение" (2 строка)
-            let content = vec![
-                Line::from(vec![
-                    Span::styled(format!("{} [{}]: ", icon, advice.zone), Style::default().fg(color).add_modifier(Modifier::BOLD)),
-                    Span::styled(&advice.problem, Style::default().fg(Color::White)),
-                ]),
-                Line::from(vec![
-                    Span::raw("   ↳ "),
-                    Span::styled(if is_ru { "Совет: " } else { "Fix: " }, Style::default().fg(Color::Gray)),
-                    Span::styled(&advice.solution, Style::default().fg(Color::Green)),
-                ]),
-                Line::from(""), // Пустая строка для отступа
-            ];
-            ListItem::new(content)
-        }).collect();
-        
-        let list = List::new(items)
-            .block(Block::default()); // Без границ внутри, используем внешние
-            
-        f.render_widget(list, inner);
+        let items: Vec<ListItem<'_>> = analysis
+            .advices
+            .iter()
+            .map(|a| {
+                let color = match a.severity {
+                    3 => Color::Red,
+                    2 => Color::Yellow,
+                    _ => Color::Blue,
+                };
+                ListItem::new(vec![
+                    Line::from(vec![
+                        Span::styled(
+                            format!("⚠ [{}]: ", a.zone),
+                            Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(&a.problem),
+                    ]),
+                    Line::from(vec![
+                        Span::raw(if is_ru { "   Совет: " } else { "   Fix: " }),
+                        Span::styled(&a.solution, Style::default().fg(Color::Green)),
+                    ]),
+                    Line::from(""),
+                ])
+            })
+            .collect();
+        f.render_widget(List::new(items), inner);
     }
 }
 
-// Вспомогательная функция форматирования времени
 fn format_ms(ms: i32) -> String {
-    let minutes = ms / 60000;
-    let seconds = (ms % 60000) / 1000;
-    let millis = ms % 1000;
-    format!("{}:{:02}.{:03}", minutes, seconds, millis)
+    format!("{}:{:02}.{:03}", ms / 60000, (ms % 60000) / 1000, ms % 1000)
 }

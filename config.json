@@ -1,43 +1,15 @@
 {
-  "theme": {
-    "background": {
-      "r": 10,
-      "g": 10,
-      "b": 20
-    },
-    "text": {
-      "r": 200,
-      "g": 200,
-      "b": 220
-    },
-    "highlight": {
-      "r": 100,
-      "g": 200,
-      "b": 255
-    },
-    "accent": {
-      "r": 255,
-      "g": 150,
-      "b": 50
-    },
-    "border": {
-      "r": 60,
-      "g": 60,
-      "b": 80
-    },
-    "warning": {
-      "r": 255,
-      "g": 200,
-      "b": 50
-    },
-    "critical": {
-      "r": 255,
-      "g": 50,
-      "b": 50
-    }
-  },
+  "language": "English",
   "update_rate": 16,
   "history_size": 300,
+  "auto_save": true,
+  "last_run_version": "0.1.1",
+  "pressure_unit": "Psi",
+  "temp_unit": "Celsius",
+  "shift_point_offset": 200,
+  "fuel_safety_margin": 1.0,
+  "target_tyre_pressure": 27.5,
+  "enable_logging": false,
   "alerts": {
     "tyre_pressure_min": 26.0,
     "tyre_pressure_max": 28.5,
@@ -45,8 +17,7 @@
     "tyre_temp_max": 105.0,
     "brake_temp_max": 800.0,
     "fuel_warning_laps": 3.0,
-    "wear_warning": 80.0
+    "wear_warning": 96.0
   },
-  "auto_save": true,
-  "data_path": "./data/ac_pro_engineer"
+  "data_path": "./data"
 }
