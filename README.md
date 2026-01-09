@@ -87,13 +87,46 @@ Since this is a terminal app, navigation uses keyboard shortcuts:
 ---
 
 ## 📦 Installation
-1. Download the latest `ac_pro_engineer.exe` from the Releases page.
+
+### 📥 Option 1: Quick Start (Recommended)
+1. Download the latest `ac_pro_engineer.exe` from the **[Releases](../../releases)** page.
 2. Run the application.
 3. Start Assetto Corsa and drive!
 
-### ⚠️ False Positive Warning
-Since this is a new tool written in Rust that reads game memory, Windows Defender might flag it as a false positive. **This is safe to use.** Please add it to exclusions if necessary.
+---
 
+### 🛠️ Option 2: Build from Source
+If you want to build the project yourself or contribute, follow these steps.
+
+**Requirements:**
+* **Rust** & **Cargo** (Install via [rustup.rs](https://rustup.rs/)).
+* **Git**.
+* **Windows 10/11** (Required for WinAPI memory reading).
+
+**Steps:**
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/YOUR_USERNAME/ac_pro_engineer.git](https://github.com/YOUR_USERNAME/ac_pro_engineer.git)
+   cd ac_pro_engineer
+Build in Release mode: This compiles an optimized binary. The first build might take a few minutes.
+
+Bash
+
+cargo build --release
+Run: The binary will be located in target/release/. You can run it directly or move it elsewhere:
+
+PowerShell
+
+./target/release/ac_pro_engineer.exe
+⚠️ False Positive Warning
+Since this tool is written in Rust, reads game memory (Assetto Corsa), and is not digitally signed yet, Windows Defender might flag it as a false positive.
+
+This is safe. The code is open source, and you can audit it yourself. If the app doesn't start:
+
+Add ac_pro_engineer.exe to your antivirus exclusions.
+
+Ensure you run it with the same permissions as the game.
 ---
 
 *If you enjoy this tool, consider supporting the development and server costs!*
