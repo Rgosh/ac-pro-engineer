@@ -1,6 +1,6 @@
-use ratatui::{prelude::*, widgets::*};
-use crate::AppState;
 use crate::ui::localization::tr;
+use crate::AppState;
+use ratatui::{prelude::*, widgets::*};
 
 pub fn get_tyre_color(temp: f32) -> Color {
     match temp {
@@ -67,16 +67,22 @@ pub fn get_fuel_color(laps_remaining: f32) -> Color {
     }
 }
 
-pub fn render_tyre_widget(f: &mut Frame, area: Rect, index: usize, app: &AppState, label: &str) {
+pub fn render_tyre_widget(
+    f: &mut Frame<'_>,
+    area: Rect,
+    index: usize,
+    app: &AppState,
+    label: &str,
+) {
     if let Some(phys) = &app.physics_mem {
         let data = phys.get();
-        
+
         let theme = &app.ui_state.theme;
         let block = Block::default()
             .title(label)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        
+
         let inner = block.inner(area);
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -87,13 +93,13 @@ pub fn render_tyre_widget(f: &mut Frame, area: Rect, index: usize, app: &AppStat
                 Constraint::Length(1),
             ])
             .split(inner);
-        
+
         let pressure = data.wheels_pressure[index];
         let pressure_text = format!("{:.1} psi", pressure);
         let pressure_widget = Paragraph::new(pressure_text)
             .style(Style::default().fg(get_pressure_color(pressure)))
             .alignment(Alignment::Center);
-        
+
         let temp_i = data.tyre_temp_i[index];
         let temp_m = data.tyre_temp_m[index];
         let temp_o = data.tyre_temp_o[index];
@@ -102,19 +108,19 @@ pub fn render_tyre_widget(f: &mut Frame, area: Rect, index: usize, app: &AppStat
         let temp_widget = Paragraph::new(temp_text)
             .style(Style::default().fg(get_tyre_color(avg_temp)))
             .alignment(Alignment::Center);
-        
+
         let wear = data.tyre_wear[index];
         let wear_text = format!("{:.1}%", wear);
         let wear_widget = Paragraph::new(wear_text)
             .style(Style::default().fg(get_wear_color(wear)))
             .alignment(Alignment::Center);
-        
+
         let brake_temp = data.brake_temp[index];
         let brake_text = format!("B{:.0}°C", brake_temp);
         let brake_widget = Paragraph::new(brake_text)
             .style(Style::default().fg(get_brake_color(brake_temp)))
             .alignment(Alignment::Center);
-        
+
         f.render_widget(pressure_widget, layout[0]);
         f.render_widget(temp_widget, layout[1]);
         f.render_widget(wear_widget, layout[2]);
@@ -127,7 +133,7 @@ pub fn render_progress_bar(value: f32, max: f32) -> Span<'static> {
     let percent = (value / max * 100.0).min(100.0);
     let filled = (percent / 10.0).floor() as usize;
     let bar = "█".repeat(filled) + &"░".repeat(10 - filled);
-    
+
     let color = if percent < 30.0 {
         Color::Red
     } else if percent < 70.0 {
@@ -135,11 +141,14 @@ pub fn render_progress_bar(value: f32, max: f32) -> Span<'static> {
     } else {
         Color::Green
     };
-    
-    Span::styled(format!(" {:3.0}% {}", percent, bar), Style::default().fg(color))
+
+    Span::styled(
+        format!(" {:3.0}% {}", percent, bar),
+        Style::default().fg(color),
+    )
 }
 
-pub fn render_telemetry_bar_vertical(f: &mut Frame, area: Rect, app: &AppState) {
+pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -150,32 +159,38 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame, area: Rect, app: &AppState) 
             Constraint::Min(0),
         ])
         .split(area);
-    
+
     if let Some(phys) = &app.physics_mem {
         let data = phys.get();
-        
+
         let speed_block = Block::default()
             .title(tr("lbl_speed", lang))
             .borders(Borders::ALL);
         let speed = Paragraph::new(format!("{}\nkm/h", data.speed_kmh as i32))
-            .style(Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(speed_block);
         f.render_widget(speed, layout[0]);
-        
+
         let rpm_block = Block::default()
             .title(tr("lbl_rpm", lang))
             .borders(Borders::ALL);
         let rpm = Paragraph::new(format!("{}\nRPM", data.rpms))
-            .style(Style::default()
-                .fg(get_rpm_color(data.rpms as f32 / app.session_info.max_rpm as f32))
-                .add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(get_rpm_color(
+                        data.rpms as f32 / app.session_info.max_rpm as f32,
+                    ))
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(rpm_block);
         f.render_widget(rpm, layout[1]);
-        
+
         let gear = match data.gear {
             0 => "R".to_string(),
             1 => "N".to_string(),
@@ -185,22 +200,26 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame, area: Rect, app: &AppState) 
             .title(tr("lbl_gear", lang))
             .borders(Borders::ALL);
         let gear_widget = Paragraph::new(gear)
-            .style(Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(gear_block);
         f.render_widget(gear_widget, layout[2]);
-        
+
         let delta = app.engineer.stats.current_delta;
         let delta_sign = if delta >= 0.0 { "+" } else { "" };
         let delta_block = Block::default()
             .title(tr("lbl_delta", lang))
             .borders(Borders::ALL);
         let delta_widget = Paragraph::new(format!("{}{:.3}", delta_sign, delta))
-            .style(Style::default()
-                .fg(get_delta_color(delta))
-                .add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(get_delta_color(delta))
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(delta_block);
         f.render_widget(delta_widget, layout[3]);

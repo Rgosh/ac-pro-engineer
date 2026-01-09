@@ -1,1 +1,11 @@
 /target
+/data
+/debug
+config.json
+**/*.rs.bk
+*.pdb
+*.exe
+.idea
+.vscode
+/server_setups
+/github_export

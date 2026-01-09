@@ -2,6 +2,7 @@ use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::Language;
 use crate::records::TrackRecord;
 use serde::Serialize;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LapData {
@@ -135,6 +136,7 @@ impl TelemetryAnalyzer {
             Some(gfx) => gfx,
             None => return,
         };
+
         let raw_s1 = last_gfx.split[0] as i32;
         let raw_s2 = last_gfx.split[1] as i32;
 
@@ -148,9 +150,9 @@ impl TelemetryAnalyzer {
 
         let sectors = [s1, s2, s3];
 
-        for i in 0..3 {
-            if sectors[i] > 1000 && sectors[i] < self.best_sectors[i] {
-                self.best_sectors[i] = sectors[i];
+        for (i, sector) in sectors.iter().enumerate() {
+            if *sector > 1000 && *sector < self.best_sectors[i] {
+                self.best_sectors[i] = *sector;
             }
         }
 
@@ -160,8 +162,11 @@ impl TelemetryAnalyzer {
         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
 
         let max_speed = physics_log.iter().map(|p| p.speed_kmh).fold(0.0, f32::max);
-        let avg_speed =
-            physics_log.iter().map(|p| p.speed_kmh).sum::<f32>() / physics_log.len() as f32;
+        let avg_speed = if !physics_log.is_empty() {
+            physics_log.iter().map(|p| p.speed_kmh).sum::<f32>() / physics_log.len() as f32
+        } else {
+            0.0
+        };
 
         let start_fuel = physics_log.first().map(|p| p.fuel).unwrap_or(0.0);
         let end_fuel = physics_log.last().map(|p| p.fuel).unwrap_or(0.0);
@@ -187,8 +192,8 @@ impl TelemetryAnalyzer {
         let mut steer_jerk = 0.0;
         let mut prev_steer = 0.0;
 
-        let mut peak_lat_g = 0.0;
-        let mut peak_brake_g = 0.0;
+        let mut peak_lat_g: f32 = 0.0;
+        let mut peak_brake_g: f32 = 0.0;
 
         let mut max_brake_temp = [0.0; 4];
         let mut sum_tyre_temp = [0.0; 4];
@@ -273,8 +278,17 @@ impl TelemetryAnalyzer {
             }
         }
 
-        let throttle_smoothness = (100.0 - (total_jerk / log_len) * 50.0).clamp(0.0, 100.0);
-        let steering_smoothness = (100.0 - (steer_jerk / log_len) * 200.0).clamp(0.0, 100.0);
+        let throttle_smoothness = if log_len > 0.0 {
+            (100.0 - (total_jerk / log_len) * 50.0).clamp(0.0, 100.0)
+        } else {
+            100.0
+        };
+
+        let steering_smoothness = if log_len > 0.0 {
+            (100.0 - (steer_jerk / log_len) * 200.0).clamp(0.0, 100.0)
+        } else {
+            100.0
+        };
 
         let trail_score = if trail_braking_samples > 0.0 {
             (trail_braking_score_acc / trail_braking_samples * 100.0).clamp(0.0, 100.0)
@@ -288,34 +302,52 @@ impl TelemetryAnalyzer {
             0.0
         };
 
-        let coasting_pct = (coasting_frames as f32 / log_len) * 100.0;
-        let overlap_pct = (overlap_frames as f32 / log_len) * 100.0;
-        let full_throttle_pct = (full_throttle_frames as f32 / log_len) * 100.0;
+        let coasting_pct = if log_len > 0.0 {
+            (coasting_frames as f32 / log_len) * 100.0
+        } else {
+            0.0
+        };
+        let overlap_pct = if log_len > 0.0 {
+            (overlap_frames as f32 / log_len) * 100.0
+        } else {
+            0.0
+        };
+        let full_throttle_pct = if log_len > 0.0 {
+            (full_throttle_frames as f32 / log_len) * 100.0
+        } else {
+            0.0
+        };
+
+        let safe_div_len = if log_len > 0.0 { log_len } else { 1.0 };
 
         let avg_tyre_temp = [
-            sum_tyre_temp[0] / log_len,
-            sum_tyre_temp[1] / log_len,
-            sum_tyre_temp[2] / log_len,
-            sum_tyre_temp[3] / log_len,
+            sum_tyre_temp[0] / safe_div_len,
+            sum_tyre_temp[1] / safe_div_len,
+            sum_tyre_temp[2] / safe_div_len,
+            sum_tyre_temp[3] / safe_div_len,
         ];
 
         let suspension_travel_hist = [
-            sum_susp_travel[0] / log_len,
-            sum_susp_travel[1] / log_len,
-            sum_susp_travel[2] / log_len,
-            sum_susp_travel[3] / log_len,
+            sum_susp_travel[0] / safe_div_len,
+            sum_susp_travel[1] / safe_div_len,
+            sum_susp_travel[2] / safe_div_len,
+            sum_susp_travel[3] / safe_div_len,
         ];
 
-        let pressure_deviation = press_dev_acc / (log_len * 4.0);
-        let avg_pressure = press_sum / (log_len * 4.0);
+        let pressure_deviation = press_dev_acc / (safe_div_len * 4.0);
+        let avg_pressure = press_sum / (safe_div_len * 4.0);
 
         let mistakes = (oversteer_c + understeer_c + lockup_c) as f32;
         let control_score = (100.0 - (mistakes / 10.0)).clamp(0.0, 100.0);
         let aggro_score = (grip_usage_percent + full_throttle_pct) / 2.0;
 
         let consistency_score = if let Some(best_idx) = self.best_lap_index {
-            let diff = (lap_time_ms - self.laps[best_idx].lap_time_ms).abs();
-            (100.0 - (diff as f32 / 500.0) * 10.0).clamp(0.0, 100.0)
+            if best_idx < self.laps.len() {
+                let diff = (lap_time_ms - self.laps[best_idx].lap_time_ms).abs();
+                (100.0 - (diff as f32 / 500.0) * 10.0).clamp(0.0, 100.0)
+            } else {
+                100.0
+            }
         } else {
             100.0
         };
@@ -343,8 +375,12 @@ impl TelemetryAnalyzer {
                 let g = if i < graphics_log.len() {
                     &graphics_log[i]
                 } else {
-                    graphics_log.last().unwrap()
+                    match graphics_log.last() {
+                        Some(last) => last,
+                        None => continue,
+                    }
                 };
+
                 let x = g.car_coordinates[0][0];
                 let z = g.car_coordinates[0][2];
                 if x != 0.0 || z != 0.0 {
@@ -361,6 +397,13 @@ impl TelemetryAnalyzer {
                         max_y = z;
                     }
                 }
+
+                let slip_avg = if !p.wheel_slip.is_empty() {
+                    p.wheel_slip.iter().sum::<f32>() / p.wheel_slip.len() as f32
+                } else {
+                    0.0
+                };
+
                 trace.push(TelemetryPoint {
                     distance: g.normalized_car_position,
                     time_ms: g.i_current_time,
@@ -371,22 +414,24 @@ impl TelemetryAnalyzer {
                     steer: p.steer_angle,
                     lat_g: p.acc_g[0],
                     lon_g: p.acc_g[2],
-                    slip_avg: p.wheel_slip.iter().sum::<f32>() / 4.0,
+                    slip_avg,
                     x,
                     y: z,
                 });
             }
         }
+
         trace.sort_by(|a, b| {
             a.distance
                 .partial_cmp(&b.distance)
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(Ordering::Equal)
         });
 
         let corner_points: Vec<&TelemetryPoint> = trace
             .iter()
             .filter(|p| p.speed > 30.0 && p.lat_g.abs() > 0.5)
             .collect();
+
         let min_corner_speed_avg = if !corner_points.is_empty() {
             corner_points.iter().map(|p| p.speed).sum::<f32>() / corner_points.len() as f32
         } else {
@@ -436,7 +481,11 @@ impl TelemetryAnalyzer {
         self.laps.push(lap_data);
 
         if let Some(best_idx) = self.best_lap_index {
-            if lap_time_ms < self.laps[best_idx].lap_time_ms && lap_time_ms > 10000 {
+            if best_idx < self.laps.len() {
+                if lap_time_ms < self.laps[best_idx].lap_time_ms && lap_time_ms > 10000 {
+                    self.best_lap_index = Some(self.laps.len() - 1);
+                }
+            } else {
                 self.best_lap_index = Some(self.laps.len() - 1);
             }
         } else if lap_time_ms > 10000 {
@@ -444,9 +493,8 @@ impl TelemetryAnalyzer {
         }
     }
 
-    pub fn analyze_standalone(&self, lap: &LapData, lang: &Language) -> StandaloneAnalysis {
+    pub fn analyze_standalone(&self, lap: &LapData, _lang: &Language) -> StandaloneAnalysis {
         let mut advices = Vec::new();
-        let is_ru = matches!(lang, Language::Russian);
 
         if lap.pressure_deviation > 0.5 {
             let target = 27.5;
@@ -454,40 +502,16 @@ impl TelemetryAnalyzer {
 
             if diff > 0.5 {
                 advices.push(Advice {
-                    zone: if is_ru {
-                        "Шины".into()
-                    } else {
-                        "Tyres".into()
-                    },
-                    problem: if is_ru {
-                        format!("Давление выше: {:.1} psi", lap.avg_pressure)
-                    } else {
-                        format!("Pressure High: {:.1} psi", lap.avg_pressure)
-                    },
-                    solution: if is_ru {
-                        format!("Спустите шины на {:.1} psi.", diff)
-                    } else {
-                        format!("Deflate tyres by {:.1} psi.", diff)
-                    },
+                    zone: "Tyres".into(),
+                    problem: format!("Pressure High: {:.1} psi", lap.avg_pressure),
+                    solution: format!("Deflate tyres by {:.1} psi.", diff),
                     severity: 3,
                 });
             } else if diff < -0.5 {
                 advices.push(Advice {
-                    zone: if is_ru {
-                        "Шины".into()
-                    } else {
-                        "Tyres".into()
-                    },
-                    problem: if is_ru {
-                        format!("Давление ниже: {:.1} psi", lap.avg_pressure)
-                    } else {
-                        format!("Pressure Low: {:.1} psi", lap.avg_pressure)
-                    },
-                    solution: if is_ru {
-                        format!("Накачайте на {:.1} psi.", diff.abs())
-                    } else {
-                        format!("Inflate tyres by {:.1} psi.", diff.abs())
-                    },
+                    zone: "Tyres".into(),
+                    problem: format!("Pressure Low: {:.1} psi", lap.avg_pressure),
+                    solution: format!("Inflate tyres by {:.1} psi.", diff.abs()),
                     severity: 3,
                 });
             }
@@ -497,21 +521,9 @@ impl TelemetryAnalyzer {
             let diff = (lap.lap_time_ms - wr.time_ms) as f32 / 1000.0;
             if diff > 5.0 {
                 advices.push(Advice {
-                    zone: if is_ru {
-                        "Темп".into()
-                    } else {
-                        "Pace".into()
-                    },
-                    problem: if is_ru {
-                        format!("Отставание от WR: +{:.1}с", diff)
-                    } else {
-                        format!("Off WR Pace by +{:.1}s", diff)
-                    },
-                    solution: if is_ru {
-                        "Улучшайте выход из поворотов.".into()
-                    } else {
-                        "Focus on corner exit speed.".into()
-                    },
+                    zone: "Pace".into(),
+                    problem: format!("Off WR Pace by +{:.1}s", diff),
+                    solution: "Focus on corner exit speed.".into(),
                     severity: 1,
                 });
             }
@@ -519,65 +531,29 @@ impl TelemetryAnalyzer {
 
         if lap.track_grip < 96.0 {
             advices.push(Advice {
-                zone: if is_ru {
-                    "Трек".into()
-                } else {
-                    "Track".into()
-                },
-                problem: if is_ru {
-                    format!("Низкий держак: {:.1}%", lap.track_grip)
-                } else {
-                    format!("Low Grip: {:.1}%", lap.track_grip)
-                },
-                solution: if is_ru {
-                    "Тормозите раньше, плавнее газ.".into()
-                } else {
-                    "Brake earlier, smooth throttle.".into()
-                },
+                zone: "Track".into(),
+                problem: format!("Low Grip: {:.1}%", lap.track_grip),
+                solution: "Brake earlier, smooth throttle.".into(),
                 severity: 2,
             });
         }
 
-        let max_b = lap.max_brake_temp.iter().cloned().fold(0. / 0., f32::max);
+        let max_b = lap.max_brake_temp.iter().cloned().fold(f32::MIN, f32::max);
         if max_b > 750.0 {
             let diff = max_b - 750.0;
             advices.push(Advice {
-                zone: if is_ru {
-                    "Тормоза".into()
-                } else {
-                    "Brakes".into()
-                },
-                problem: if is_ru {
-                    format!("Перегрев: {:.0}°C (+{:.0})", max_b, diff)
-                } else {
-                    format!("Overheating: {:.0}°C (+{:.0})", max_b, diff)
-                },
-                solution: if is_ru {
-                    "Откройте дакты или увеличьте ABS.".into()
-                } else {
-                    "Open ducts or increase ABS.".into()
-                },
+                zone: "Brakes".into(),
+                problem: format!("Overheating: {:.0}°C (+{:.0})", max_b, diff),
+                solution: "Open ducts or increase ABS.".into(),
                 severity: 3,
             });
         }
 
         if lap.lockup_count > 0 {
             advices.push(Advice {
-                zone: if is_ru {
-                    "Блокировка".into()
-                } else {
-                    "Lockup".into()
-                },
-                problem: if is_ru {
-                    format!("Зафиксировано {} блок.", lap.lockup_count)
-                } else {
-                    format!("{} Lockups detected", lap.lockup_count)
-                },
-                solution: if is_ru {
-                    "Меньше давление в пике или баланс назад.".into()
-                } else {
-                    "Reduce peak pressure or bias rear.".into()
-                },
+                zone: "Lockup".into(),
+                problem: format!("{} Lockups detected", lap.lockup_count),
+                solution: "Reduce peak pressure or bias rear.".into(),
                 severity: 3,
             });
         }

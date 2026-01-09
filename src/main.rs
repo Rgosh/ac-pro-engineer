@@ -33,8 +33,19 @@ use crossterm::{
 use ratatui::prelude::*;
 use std::{
     io,
+    sync::Mutex,
     time::{Duration, Instant},
 };
+
+trait SafeLock<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T> SafeLock<T> for Mutex<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppTab {
@@ -98,7 +109,8 @@ impl AppState {
                 show_success = true;
             }
             config.last_run_version = crate::updater::CURRENT_VERSION.to_string();
-            config.save().ok();
+
+            let _res = config.save();
         }
 
         Self {
@@ -140,9 +152,8 @@ impl AppState {
             .update(self.is_connected, &self.session_info, delta);
 
         if self.active_tab == AppTab::Setup {
-            if let Ok(mut tick) = self.setup_manager.loading_tick.lock() {
-                *tick = (*tick + 1) % 100;
-            }
+            let mut tick = self.setup_manager.loading_tick.safe_lock();
+            *tick = (*tick + 1) % 100;
         }
 
         if self.stage != AppStage::Running {
@@ -361,7 +372,8 @@ fn main() -> Result<(), anyhow::Error> {
                                         Language::English => Language::Russian,
                                         Language::Russian => Language::English,
                                     };
-                                    app.config.save().ok();
+
+                                    let _res = app.config.save();
                                 }
                             }
                             KeyCode::Enter => match app.launcher_selection {
@@ -375,10 +387,10 @@ fn main() -> Result<(), anyhow::Error> {
                                         Language::English => Language::Russian,
                                         Language::Russian => Language::English,
                                     };
-                                    app.config.save().ok();
+                                    let _res = app.config.save();
                                 }
                                 5 => {
-                                    let current_status = app.updater.status.lock().unwrap().clone();
+                                    let current_status = app.updater.status.safe_lock().clone();
                                     match current_status {
                                         UpdateStatus::Idle
                                         | UpdateStatus::Error(_)
@@ -467,9 +479,10 @@ fn main() -> Result<(), anyhow::Error> {
                         | (KeyCode::Char('И'), _)
                             if app.active_tab == AppTab::Setup =>
                         {
-                            let mut active = app.setup_manager.browser_active.lock().unwrap();
+                            let mut active = app.setup_manager.browser_active.safe_lock();
                             *active = !*active;
                             if *active {
+                                drop(active);
                                 app.setup_manager.load_browser_car();
                             }
                         }
@@ -480,7 +493,7 @@ fn main() -> Result<(), anyhow::Error> {
                         | (KeyCode::Char('В'), _)
                             if app.active_tab == AppTab::Setup =>
                         {
-                            let is_browser = *app.setup_manager.browser_active.lock().unwrap();
+                            let is_browser = *app.setup_manager.browser_active.safe_lock();
 
                             if is_browser {
                                 if let Some(setup) = app.setup_manager.get_browser_selected_setup()
@@ -495,7 +508,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     app.setup_manager.get_setup_by_index(selected_idx)
                                 {
                                     let target_car =
-                                        app.setup_manager.current_car.lock().unwrap().clone();
+                                        app.setup_manager.current_car.safe_lock().clone();
                                     app.setup_manager.download_setup(&setup, &target_car);
                                 }
                             }
@@ -532,13 +545,12 @@ fn main() -> Result<(), anyhow::Error> {
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
                             } else if app.active_tab == AppTab::Setup {
-                                let is_browser = *app.setup_manager.browser_active.lock().unwrap();
+                                let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
-                                    let col = *app.setup_manager.browser_focus_col.lock().unwrap();
+                                    let col = *app.setup_manager.browser_focus_col.safe_lock();
                                     if col == 0 {
-                                        let mut idx =
-                                            app.setup_manager.browser_car_idx.lock().unwrap();
-                                        let len = app.setup_manager.manifest.lock().unwrap().len();
+                                        let mut idx = app.setup_manager.browser_car_idx.safe_lock();
+                                        let len = app.setup_manager.manifest.safe_lock().len();
                                         if len > 0 {
                                             *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
                                         }
@@ -546,9 +558,9 @@ fn main() -> Result<(), anyhow::Error> {
                                         app.setup_manager.load_browser_car();
                                     } else {
                                         let mut idx =
-                                            app.setup_manager.browser_setup_idx.lock().unwrap();
+                                            app.setup_manager.browser_setup_idx.safe_lock();
                                         let len =
-                                            app.setup_manager.browser_setups.lock().unwrap().len();
+                                            app.setup_manager.browser_setups.safe_lock().len();
                                         if len > 0 {
                                             *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
                                         }
@@ -573,13 +585,12 @@ fn main() -> Result<(), anyhow::Error> {
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
                             } else if app.active_tab == AppTab::Setup {
-                                let is_browser = *app.setup_manager.browser_active.lock().unwrap();
+                                let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
-                                    let col = *app.setup_manager.browser_focus_col.lock().unwrap();
+                                    let col = *app.setup_manager.browser_focus_col.safe_lock();
                                     if col == 0 {
-                                        let mut idx =
-                                            app.setup_manager.browser_car_idx.lock().unwrap();
-                                        let len = app.setup_manager.manifest.lock().unwrap().len();
+                                        let mut idx = app.setup_manager.browser_car_idx.safe_lock();
+                                        let len = app.setup_manager.manifest.safe_lock().len();
                                         if len > 0 {
                                             *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
                                         }
@@ -587,9 +598,9 @@ fn main() -> Result<(), anyhow::Error> {
                                         app.setup_manager.load_browser_car();
                                     } else {
                                         let mut idx =
-                                            app.setup_manager.browser_setup_idx.lock().unwrap();
+                                            app.setup_manager.browser_setup_idx.safe_lock();
                                         let len =
-                                            app.setup_manager.browser_setups.lock().unwrap().len();
+                                            app.setup_manager.browser_setups.safe_lock().len();
                                         if len > 0 {
                                             *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
                                         }
@@ -607,10 +618,9 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                         (KeyCode::Left, _) | (KeyCode::Right, _) => {
                             if app.active_tab == AppTab::Setup {
-                                let is_browser = *app.setup_manager.browser_active.lock().unwrap();
+                                let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
-                                    let mut col =
-                                        app.setup_manager.browser_focus_col.lock().unwrap();
+                                    let mut col = app.setup_manager.browser_focus_col.safe_lock();
                                     *col = if *col == 0 { 1 } else { 0 };
                                 }
                             }
