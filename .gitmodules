@@ -1,0 +1,3 @@
+[submodule "ac-setups"]
+	path = ac-setups
+	url = https://github.com/Rgosh/ac-setups

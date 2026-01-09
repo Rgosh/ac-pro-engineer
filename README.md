@@ -4,7 +4,7 @@
 
 It provides real-time analysis, live engineering advice, and a **one-click Setup Cloud** ecosystem.
 
-![Screenshot](ссылка_на_скриншот.png) ## 🚀 Why Use This?
+## 🚀 Why Use This?
 * **Zero FPS Impact:** Utilizes <0.1% CPU and minimal RAM. Perfect for competitive racing and low-end PCs.
 * **Hacker Aesthetics:** Professional TUI design. No bloat, just data.
 * **Cloud Setup Database:** Browse and download community setups directly from the app.
