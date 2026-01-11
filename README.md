@@ -4,6 +4,10 @@
 
 It provides real-time analysis, live engineering advice, and a **one-click Setup Cloud** ecosystem.
 
+> ⭐ **Like the project?**  
+> If you find AC Pro Engineer useful or interesting, please consider giving it a **GitHub Star** — it really helps visibility and motivates further development.
+
+
 ![Launcher](screenshots/Launcher.png)
 
 ## 🚀 Why Use This?
