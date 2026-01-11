@@ -17,7 +17,7 @@ pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub enum UpdateStatus {
     Idle,
     Checking,
-    UpdateAvailable(RemoteVersion),
+    UpdateAvailable,
     NoUpdate,
     Downloading(f32),
     Downloaded(String),
@@ -29,6 +29,7 @@ pub struct RemoteVersion {
     pub version: String,
     pub url: String,
     pub notes: String,
+    pub is_latest: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +37,8 @@ struct GitHubRelease {
     tag_name: String,
     body: Option<String>,
     assets: Vec<GitHubAsset>,
+    #[serde(default)]
+    prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,17 +51,75 @@ struct GitHubAsset {
 #[derive(Clone)]
 pub struct Updater {
     pub status: Arc<Mutex<UpdateStatus>>,
+    pub releases: Arc<Mutex<Vec<RemoteVersion>>>,
+    pub selected_index: Arc<Mutex<usize>>,
 }
 
 impl Updater {
     pub fn new() -> Self {
-        Self {
+        let updater = Self {
             status: Arc::new(Mutex::new(UpdateStatus::Idle)),
+            releases: Arc::new(Mutex::new(Vec::new())),
+            selected_index: Arc::new(Mutex::new(0)),
+        };
+
+        updater.check_for_updates();
+        updater
+    }
+
+    fn safe_lock<T, F>(&self, mutex: &Mutex<T>, f: F)
+    where
+        F: FnOnce(&mut T),
+    {
+        match mutex.lock() {
+            Ok(mut guard) => f(&mut *guard),
+            Err(poisoned) => f(&mut *poisoned.into_inner()),
         }
+    }
+
+    pub fn next_version(&self) {
+        let list_guard = self.releases.lock().unwrap_or_else(|e| e.into_inner());
+        if list_guard.is_empty() {
+            return;
+        }
+
+        let max_idx = list_guard.len() - 1;
+        drop(list_guard);
+
+        self.safe_lock(&self.selected_index, |idx| {
+            if *idx < max_idx {
+                *idx += 1;
+            }
+        });
+    }
+
+    pub fn prev_version(&self) {
+        let list_guard = self.releases.lock().unwrap_or_else(|e| e.into_inner());
+        if list_guard.is_empty() {
+            return;
+        }
+        drop(list_guard);
+
+        self.safe_lock(&self.selected_index, |idx| {
+            if *idx > 0 {
+                *idx -= 1;
+            }
+        });
+    }
+
+    pub fn get_selected_release(&self) -> Option<RemoteVersion> {
+        let list = self.releases.lock().unwrap_or_else(|e| e.into_inner());
+        let idx = *self
+            .selected_index
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        list.get(idx).cloned()
     }
 
     pub fn check_for_updates(&self) {
         let status = self.status.clone();
+        let releases_store = self.releases.clone();
+
         {
             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
             *lock = UpdateStatus::Checking;
@@ -71,13 +132,11 @@ impl Updater {
                 .unwrap_or_default();
 
             let url = format!(
-                "https://api.github.com/repos/{}/{}/releases/latest",
+                "https://api.github.com/repos/{}/{}/releases",
                 GITHUB_OWNER, GITHUB_REPO
             );
 
-            let response = client.get(&url).send();
-
-            match response {
+            match client.get(&url).send() {
                 Ok(resp) => {
                     if !resp.status().is_success() {
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -85,25 +144,41 @@ impl Updater {
                         return;
                     }
 
-                    match resp.json::<GitHubRelease>() {
-                        Ok(release) => {
-                            let remote_ver_str = release.tag_name.trim_start_matches('v');
-                            let asset = release.assets.iter().find(|a| a.name == BINARY_NAME);
+                    match resp.json::<Vec<GitHubRelease>>() {
+                        Ok(gh_releases) => {
+                            let mut parsed_versions = Vec::new();
 
-                            if let Some(asset) = asset {
-                                let mut state = status.lock().unwrap_or_else(|e| e.into_inner());
-                                if remote_ver_str != CURRENT_VERSION {
-                                    *state = UpdateStatus::UpdateAvailable(RemoteVersion {
+                            for (i, release) in gh_releases.iter().enumerate() {
+                                let remote_ver_str = release.tag_name.trim_start_matches('v');
+                                let asset = release.assets.iter().find(|a| a.name == BINARY_NAME);
+
+                                if let Some(asset) = asset {
+                                    parsed_versions.push(RemoteVersion {
                                         version: remote_ver_str.to_string(),
                                         url: asset.browser_download_url.clone(),
-                                        notes: release.body.unwrap_or_default(),
+                                        notes: release.body.clone().unwrap_or_default(),
+                                        is_latest: i == 0,
                                     });
+                                }
+                            }
+
+                            if !parsed_versions.is_empty() {
+                                {
+                                    let mut r_lock =
+                                        releases_store.lock().unwrap_or_else(|e| e.into_inner());
+                                    *r_lock = parsed_versions.clone();
+                                }
+
+                                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+
+                                if parsed_versions[0].version != CURRENT_VERSION {
+                                    *lock = UpdateStatus::UpdateAvailable;
                                 } else {
-                                    *state = UpdateStatus::NoUpdate;
+                                    *lock = UpdateStatus::NoUpdate;
                                 }
                             } else {
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                                *lock = UpdateStatus::Error("Asset not found".to_string());
+                                *lock = UpdateStatus::Error("No releases found".to_string());
                             }
                         }
                         Err(e) => {
@@ -120,7 +195,13 @@ impl Updater {
         });
     }
 
-    pub fn download_update(&self, info: RemoteVersion) {
+    pub fn download_selected(&self) {
+        if let Some(info) = self.get_selected_release() {
+            self.download_update(info);
+        }
+    }
+
+    fn download_update(&self, info: RemoteVersion) {
         let status = self.status.clone();
         thread::spawn(move || {
             {
@@ -144,9 +225,7 @@ impl Updater {
                 .build()
                 .unwrap_or_default();
 
-            let response = client.get(&info.url).send();
-
-            match response {
+            match client.get(&info.url).send() {
                 Ok(mut resp) => {
                     if !resp.status().is_success() {
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -214,8 +293,9 @@ impl Updater {
              chcp 65001 >nul\r\n\
              :wait_close\r\n\
              timeout /t 1 /nobreak > NUL\r\n\
-             del \"{0}\" >nul 2>&1\r\n\
-             if exist \"{0}\" goto wait_close\r\n\
+             del \"{0}.bak\" >nul 2>&1\r\n\
+             if exist \"{0}.bak\" goto wait_close\r\n\
+             move /y \"{0}\" \"{0}.bak\" >nul\r\n\
              move /y \"{1}\" \"{0}\" >nul\r\n\
              start \"\" \"{0}\"\r\n\
              (goto) 2>nul & del \"%~f0\"\r\n\
@@ -224,10 +304,10 @@ impl Updater {
         );
 
         if let Ok(mut file) = File::create(&bat_path) {
-            let _res = file.write_all(script.as_bytes());
+            let _ = file.write_all(script.as_bytes());
             drop(file);
 
-            let _child = Command::new("cmd")
+            let _ = Command::new("cmd")
                 .args(["/C", "start", "/MIN", "updater.bat"])
                 .current_dir(exe_dir)
                 .spawn();

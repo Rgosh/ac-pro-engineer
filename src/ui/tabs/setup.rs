@@ -61,9 +61,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let hint_text = if is_browser {
         if *lang == crate::config::Language::Russian {
-            "БРАУЗЕР: Стрелки - Навигация | ENTER - Выбор | 'D' - Скачать | 'B' - Назад | PgUp/PgDn - Скролл деталей"
+            "БРАУЗЕР: Стрелки - Навигация | ENTER - Выбор | 'D' - Скачать | 'B' - Назад | PgUp/PgDn - Скролл"
         } else {
-            "BROWSER: Arrows - Navigate | ENTER - Select | 'D' - Download | 'B' - Return | PgUp/PgDn - Scroll Details"
+            "BROWSER: Arrows - Navigate | ENTER - Select | 'D' - Download | 'B' - Return | PgUp/PgDn - Scroll"
         }
     } else if *lang == crate::config::Language::Russian {
         "LIVE: 'B' - База Сетапов | 'D' - Скачать | PgUp/PgDn - Скролл деталей"
@@ -117,7 +117,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
                 let right_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(7), Constraint::Min(0)])
+                    .constraints([Constraint::Max(7), Constraint::Min(0)])
                     .split(layout[1]);
                 render_header_block(f, right_layout[0], app, selected_setup, reference_setup);
                 render_comparison_table(f, right_layout[1], app, selected_setup, reference_setup);
@@ -126,7 +126,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             let selected_setup = &setups[0];
             let right_layout = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(7), Constraint::Min(0)])
+                .constraints([Constraint::Max(7), Constraint::Min(0)])
                 .split(layout[1]);
             render_header_block(f, right_layout[0], app, selected_setup, None);
             render_comparison_table(f, right_layout[1], app, selected_setup, None);
@@ -263,7 +263,7 @@ fn render_browser_mode(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         let setup = &setups[setup_idx];
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(7), Constraint::Min(0)])
+            .constraints([Constraint::Max(7), Constraint::Min(0)])
             .split(layout[2]);
         render_header_block(f, chunks[0], app, setup, None);
         render_comparison_table(f, chunks[1], app, setup, None);
@@ -388,9 +388,9 @@ fn render_header_block(
     if selected.is_remote {
         let download_text = if is_installed {
             if is_ru {
-                "✓ УСТАНОВЛЕНО (Нажми D для обновления)"
+                "✓ УСТАНОВЛЕНО (D для обновления)"
             } else {
-                "✓ INSTALLED (Press D to overwrite)"
+                "✓ INSTALLED (D to overwrite)"
             }
         } else if is_ru {
             "Нажми 'D' для СКАЧИВАНИЯ"
@@ -419,6 +419,18 @@ fn render_header_block(
             ]),
         ];
 
+        if !selected.notes.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Note: ", Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    &selected.notes,
+                    Style::default()
+                        .fg(Color::Gray)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ]));
+        }
+
         if !selected.credits.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled(
@@ -435,12 +447,10 @@ fn render_header_block(
         }
 
         lines.extend(vec![
-            Line::from(""),
             Line::from(vec![Span::styled(
                 download_text,
                 Style::default().fg(dl_color).add_modifier(Modifier::BOLD),
             )]),
-            Line::from(tr("set_dl_path", lang)),
             status_line,
         ]);
 
@@ -475,6 +485,13 @@ fn render_header_block(
             }),
         ])];
 
+        if !selected.notes.is_empty() {
+            advice_lines.push(Line::from(vec![
+                Span::styled("Note: ", Style::default().fg(Color::Yellow)),
+                Span::styled(&selected.notes, Style::default().fg(Color::Gray)),
+            ]));
+        }
+
         if !best_setup.credits.is_empty() {
             advice_lines.push(Line::from(vec![
                 Span::styled("Credits: ", Style::default().fg(Color::DarkGray)),
@@ -504,23 +521,29 @@ fn render_header_block(
             advice_lines,
         )
     } else {
-        let mut verdict_lines = vec![
-            Line::from(vec![Span::styled(
-                if is_ru {
-                    "✓ ОТЛИЧНЫЙ ВЫБОР"
-                } else {
-                    "✓ EXCELLENT CHOICE"
-                },
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(if is_ru {
-                "Этот сетап подходит."
+        let mut verdict_lines = vec![Line::from(vec![Span::styled(
+            if is_ru {
+                "✓ ОТЛИЧНЫЙ ВЫБОР"
             } else {
-                "This setup is a good match."
-            }),
-        ];
+                "✓ EXCELLENT CHOICE"
+            },
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )])];
+
+        if !selected.notes.is_empty() {
+            verdict_lines.push(Line::from(vec![
+                Span::styled("Note: ", Style::default().fg(Color::Yellow)),
+                Span::styled(&selected.notes, Style::default().fg(Color::Gray)),
+            ]));
+        }
+
+        verdict_lines.push(Line::from(if is_ru {
+            "Этот сетап подходит."
+        } else {
+            "This setup is a good match."
+        }));
 
         if !selected.credits.is_empty() {
             verdict_lines.push(Line::from(vec![
@@ -589,7 +612,7 @@ fn render_comparison_table(
         if is_ru {
             "Выбран".to_string()
         } else {
-            "Selected".to_string()
+            "Select".to_string()
         },
         ref_col_name,
         tr("set_diff", lang),
@@ -696,6 +719,33 @@ fn render_comparison_table(
         selected.wing_2,
         reference.map(|a| a.wing_2)
     );
+
+    add_header!(if is_ru { "Геометрия" } else { "Align" });
+    cmp_row!(
+        "Camber FL",
+        selected.camber_lf,
+        reference.map(|a| a.camber_lf),
+        "signed"
+    );
+    cmp_row!(
+        "Camber FR",
+        selected.camber_rf,
+        reference.map(|a| a.camber_rf),
+        "signed"
+    );
+    cmp_row!(
+        "Toe FL",
+        selected.toe_lf,
+        reference.map(|a| a.toe_lf),
+        "signed"
+    );
+    cmp_row!(
+        "Toe FR",
+        selected.toe_rf,
+        reference.map(|a| a.toe_rf),
+        "signed"
+    );
+
     add_header!(tr("grp_susp", lang));
     cmp_row!(
         format!("{} F", tr("p_arb", lang)),
@@ -717,6 +767,31 @@ fn render_comparison_table(
         selected.spring_rf,
         reference.map(|a| a.spring_rf)
     );
+    cmp_row!(
+        "Rod FL",
+        selected.rod_length_lf,
+        reference.map(|a| a.rod_length_lf),
+        "signed"
+    );
+    cmp_row!(
+        "Rod FR",
+        selected.rod_length_rf,
+        reference.map(|a| a.rod_length_rf),
+        "signed"
+    );
+    cmp_row!(
+        "Rod LR",
+        selected.rod_length_lr,
+        reference.map(|a| a.rod_length_lr),
+        "signed"
+    );
+    cmp_row!(
+        "Rod RR",
+        selected.rod_length_rr,
+        reference.map(|a| a.rod_length_rr),
+        "signed"
+    );
+
     add_header!(tr("grp_damp", lang));
     cmp_row!(
         format!("{} FL", tr("p_bump", lang)),
@@ -774,8 +849,19 @@ fn render_comparison_table(
     .block(Block::default().padding(Padding::new(1, 0, 0, 0)));
     f.render_widget(table, area);
 
-    let scrollbar_state = ((start as f64 / total_rows as f64) * 100.0) as u16;
-    let _scroll_gauge = LineGauge::default()
-        .gauge_style(Style::default().fg(Color::DarkGray))
-        .ratio(scrollbar_state as f64 / 100.0);
+    if total_rows > 0 {
+        let scrollbar_state = ((start as f64 / total_rows as f64) * 100.0) as u16;
+        let _scroll_gauge = LineGauge::default()
+            .gauge_style(Style::default().fg(Color::DarkGray))
+            .ratio(scrollbar_state as f64 / 100.0);
+        let _scroll_area = Rect {
+            x: area.x + area.width - 2,
+            y: area.y + 2,
+            width: 1,
+            height: area.height.saturating_sub(2),
+        };
+        let _s_block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(Color::DarkGray));
+    }
 }

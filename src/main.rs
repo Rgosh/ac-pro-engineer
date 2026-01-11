@@ -368,14 +368,27 @@ fn main() -> Result<(), anyhow::Error> {
                                     app.launcher_selection += 1;
                                 }
                             }
-                            KeyCode::Left | KeyCode::Right => {
+
+                            KeyCode::Left => {
                                 if app.launcher_selection == 2 {
                                     app.config.language = match app.config.language {
                                         Language::English => Language::Russian,
                                         Language::Russian => Language::English,
                                     };
-
                                     let _res = app.config.save();
+                                } else if app.launcher_selection == 5 {
+                                    app.updater.prev_version();
+                                }
+                            }
+                            KeyCode::Right => {
+                                if app.launcher_selection == 2 {
+                                    app.config.language = match app.config.language {
+                                        Language::English => Language::Russian,
+                                        Language::Russian => Language::English,
+                                    };
+                                    let _res = app.config.save();
+                                } else if app.launcher_selection == 5 {
+                                    app.updater.next_version();
                                 }
                             }
                             KeyCode::Enter => match app.launcher_selection {
@@ -394,18 +407,13 @@ fn main() -> Result<(), anyhow::Error> {
                                 5 => {
                                     let current_status = app.updater.status.safe_lock().clone();
                                     match current_status {
-                                        UpdateStatus::Idle
-                                        | UpdateStatus::Error(_)
-                                        | UpdateStatus::NoUpdate => {
-                                            app.updater.check_for_updates();
-                                        }
-                                        UpdateStatus::UpdateAvailable(info) => {
-                                            app.updater.download_update(info);
-                                        }
                                         UpdateStatus::Downloaded(new_file) => {
                                             app.updater.restart_and_apply(&new_file);
                                         }
-                                        _ => {}
+                                        UpdateStatus::Downloading(_) => {}
+                                        _ => {
+                                            app.updater.download_selected();
+                                        }
                                     }
                                 }
                                 6 => break,

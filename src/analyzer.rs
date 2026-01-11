@@ -264,17 +264,14 @@ impl TelemetryAnalyzer {
             }
 
             if p.speed_kmh > 20.0 {
-                let slip_ratio = p.slip_ratio;
-                if slip_ratio.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5 {
+                let slip_vals = p.wheel_slip;
+
+                if slip_vals.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5 {
                     lockup_c += 1;
                 }
-                let slip_angle = p.slip_angle;
-                let front_slip = (slip_angle[0].abs() + slip_angle[1].abs()) / 2.0;
-                let rear_slip = (slip_angle[2].abs() + slip_angle[3].abs()) / 2.0;
-                if rear_slip > front_slip + 5.0 {
+
+                if slip_vals[2].abs() > 0.3 || slip_vals[3].abs() > 0.3 {
                     oversteer_c += 1;
-                } else if front_slip > rear_slip + 5.0 {
-                    understeer_c += 1;
                 }
             }
 

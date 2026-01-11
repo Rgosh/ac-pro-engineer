@@ -9,8 +9,10 @@ pub struct AcPhysics {
     pub rpms: i32,
     pub steer_angle: f32,
     pub speed_kmh: f32,
+
     pub velocity: [f32; 3],
     pub acc_g: [f32; 3],
+
     pub wheel_slip: [f32; 4],
     pub wheel_load: [f32; 4],
     pub wheels_pressure: [f32; 4],
@@ -61,18 +63,11 @@ pub struct AcPhysics {
     pub tyre_contact_heading: [[f32; 3]; 4],
     pub brake_bias: f32,
     pub local_velocity: [f32; 3],
-    pub p2p_activations: i32,
-    pub p2p_status: i32,
-    pub current_max_rpm: f32,
-    pub mz: [f32; 4],
-    pub fx: [f32; 4],
-    pub fy: [f32; 4],
-    pub slip_ratio: [f32; 4],
-    pub slip_angle: [f32; 4],
-    pub tcin_action: i32,
-    pub absin_action: i32,
-    pub suspension_damage: [f32; 4],
-    pub tyre_temp: [f32; 4],
+
+    pub abs_level: i32,
+    pub tc_level: i32,
+    pub tc_in_action: f32,
+    pub abs_in_action: f32,
 }
 
 #[repr(C)]

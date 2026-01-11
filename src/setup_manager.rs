@@ -22,6 +22,8 @@ pub struct CarSetup {
     #[serde(default)]
     pub credits: String,
     #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
     pub car_id: String,
     #[serde(skip)]
     pub is_remote: bool,
@@ -555,6 +557,13 @@ fn scan_single_folder(
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0)
                 };
+                let get_s = |sec: &str, key: &str| -> String {
+                    conf.section(Some(sec))
+                        .and_then(|s| s.get(key))
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                };
+
                 let mut gears = Vec::new();
                 for i in 2..=9 {
                     let key = format!("INTERNAL_GEAR_{}", i);
@@ -579,6 +588,7 @@ fn scan_single_folder(
                     source: source.to_string(),
                     author: "Local".to_string(),
                     credits: String::new(),
+                    notes: get_s("NOTES", "VALUE"),
                     car_id: car_id.to_string(),
                     is_remote: false,
                     fuel: get("FUEL", "VALUE"),
@@ -628,6 +638,9 @@ fn scan_single_folder(
 
 fn generate_ini_content(s: &CarSetup) -> String {
     let mut out = String::new();
+    if !s.notes.is_empty() {
+        out.push_str(&format!("[NOTES]\nVALUE={}\n\n", s.notes));
+    }
     out.push_str(&format!(
         "[FUEL]\nVALUE={}\n\n[FRONT_BIAS]\nVALUE={}\n\n[ENGINE_LIMITER]\nVALUE={}\n\n",
         s.fuel, s.brake_bias, s.engine_limiter

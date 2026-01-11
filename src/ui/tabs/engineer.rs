@@ -14,14 +14,107 @@ pub fn render_horizontal(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 pub fn render_vertical(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let text = Paragraph::new("Vertical Engineer View")
-        .block(
-            Block::default()
-                .title(tr("tab_eng", &app.config.language))
-                .borders(Borders::ALL),
-        )
-        .alignment(Alignment::Center);
-    f.render_widget(text, area);
+    let is_ru = app.config.language == crate::config::Language::Russian;
+
+    let block = Block::default()
+        .title(if is_ru {
+            "Мастер Настройки"
+        } else {
+            "Setup Wizard"
+        })
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(inner);
+
+    let phase_str = match app.engineer.wizard_phase {
+        crate::engineer::WizardPhase::Entry => {
+            if is_ru {
+                "ВХОД (Entry)"
+            } else {
+                "ENTRY"
+            }
+        }
+        crate::engineer::WizardPhase::Apex => {
+            if is_ru {
+                "АПЕКС (Apex)"
+            } else {
+                "APEX"
+            }
+        }
+        crate::engineer::WizardPhase::Exit => {
+            if is_ru {
+                "ВЫХОД (Exit)"
+            } else {
+                "EXIT"
+            }
+        }
+    };
+
+    let problem_str = match app.engineer.wizard_problem {
+        crate::engineer::WizardProblem::Understeer => {
+            if is_ru {
+                "СНОС (Under)"
+            } else {
+                "UNDERSTEER"
+            }
+        }
+        crate::engineer::WizardProblem::Oversteer => {
+            if is_ru {
+                "ЗАНОС (Over)"
+            } else {
+                "OVERSTEER"
+            }
+        }
+        crate::engineer::WizardProblem::Instability => {
+            if is_ru {
+                "НЕСТАБИЛЬНОСТЬ"
+            } else {
+                "INSTABILITY"
+            }
+        }
+    };
+
+    let controls_text = format!(
+        " PHASE: < {} >  |  PROBLEM: < {} >  (Use Arrows to change)",
+        phase_str, problem_str
+    );
+
+    f.render_widget(
+        Paragraph::new(controls_text)
+            .style(
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM)),
+        layout[0],
+    );
+
+    let advice = app.engineer.get_wizard_advice();
+
+    let items: Vec<ListItem<'_>> = advice
+        .iter()
+        .map(|s| {
+            ListItem::new(Line::from(vec![
+                Span::styled(" • ", Style::default().fg(Color::Yellow)),
+                Span::raw(s),
+            ]))
+        })
+        .collect();
+
+    f.render_widget(
+        List::new(items).block(Block::default().padding(Padding::new(2, 2, 1, 1))),
+        layout[1],
+    );
 }
 
 fn render_recommendations(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -123,6 +216,9 @@ fn render_analysis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let inner = block.inner(area);
 
+    let total_lockups =
+        app.engineer.stats.lockup_frames_front + app.engineer.stats.lockup_frames_rear;
+
     let analysis = vec![
         Line::from(vec![
             Span::styled(
@@ -152,8 +248,8 @@ fn render_analysis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(app.ui_state.get_color(&theme.text)),
             ),
             Span::styled(
-                format!("{}", app.engineer.stats.lockup_frames),
-                Style::default().fg(if app.engineer.stats.lockup_frames > 10 {
+                format!("{}", total_lockups),
+                Style::default().fg(if total_lockups > 10 {
                     Color::Red
                 } else {
                     Color::Green

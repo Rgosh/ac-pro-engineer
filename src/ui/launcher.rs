@@ -128,7 +128,7 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(area);
 
-    let menu_area = center_rect(layout[0], 34, 18);
+    let menu_area = center_rect(layout[0], 36, 18);
     let info_area = layout[1].inner(&Margin {
         vertical: 2,
         horizontal: 2,
@@ -141,12 +141,52 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
 
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let update_label = match *update_status {
-        UpdateStatus::Downloading(pct) => format!("♻   {:.0}%", pct),
-        UpdateStatus::UpdateAvailable(_) => format!("!   {}", tr("launch_upd", lang)),
+        UpdateStatus::Downloading(pct) => format!(
+            "♻   {}: {:.0}%",
+            if is_ru {
+                "Скачивание"
+            } else {
+                "Downloading"
+            },
+            pct
+        ),
+        UpdateStatus::UpdateAvailable => format!(
+            "🔥  {}!",
+            if is_ru {
+                "ДОСТУПНО"
+            } else {
+                "AVAILABLE"
+            }
+        ),
+        UpdateStatus::Checking => format!(
+            "⏳  {}",
+            if is_ru {
+                "Проверка..."
+            } else {
+                "Checking..."
+            }
+        ),
+        UpdateStatus::NoUpdate => format!(
+            "✅  {}",
+            if is_ru {
+                "Версии & Откат"
+            } else {
+                "Versions & Rollback"
+            }
+        ),
+        UpdateStatus::Error(_) => format!(
+            "❌  {}",
+            if is_ru {
+                "Ошибка сети"
+            } else {
+                "Net Error"
+            }
+        ),
         _ => format!("♻   {}", tr("launch_upd", lang)),
     };
 
@@ -181,9 +221,16 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             };
 
             if i == 5 {
-                if let UpdateStatus::UpdateAvailable(_) = *update_status {
-                    if !is_selected {
-                        style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
+                if let UpdateStatus::UpdateAvailable = *update_status {
+                    if is_selected {
+                        style = Style::default()
+                            .fg(Color::Black)
+                            .bg(Color::LightGreen)
+                            .add_modifier(Modifier::BOLD);
+                    } else {
+                        style = Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD);
                     }
                 }
             }
@@ -211,6 +258,8 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
 
+    let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
+
     let title = match app.launcher_selection {
         0 => tr("launch_info_title", lang),
         1 => tr("launch_conf_title", lang),
@@ -229,8 +278,6 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let inner = block.inner(area);
     f.render_widget(block, area);
-
-    let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let content = match app.launcher_selection {
         0 => vec![
@@ -321,126 +368,118 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Line::from("© 2026 All Rights Reserved."),
         ],
         5 => {
-            let mut lines = vec![
-                Line::from(Span::styled(
-                    tr("launch_upd_title", lang),
+            let mut lines = vec![];
+
+            if let UpdateStatus::Downloading(pct) = *update_status {
+                lines.push(Line::from(Span::styled(
+                    if is_ru {
+                        "Загрузка..."
+                    } else {
+                        "Downloading..."
+                    },
+                    Style::default().fg(Color::Cyan),
+                )));
+                let filled = (pct / 5.0) as usize;
+                let bar = "█".repeat(filled) + &"░".repeat(20 - filled);
+                lines.push(Line::from(Span::styled(
+                    format!("{} {:.1}%", bar, pct),
+                    Style::default().fg(Color::Cyan),
+                )));
+            } else if let UpdateStatus::Downloaded(_) = *update_status {
+                lines.push(Line::from(Span::styled(
+                    if is_ru { "ГОТОВО!" } else { "READY!" },
                     Style::default()
                         .fg(Color::Green)
                         .add_modifier(Modifier::BOLD),
-                )),
-                Line::from(""),
-                Line::from(format!(
-                    "Current Version: v{}",
-                    crate::updater::CURRENT_VERSION
-                )),
-                Line::from(""),
-            ];
-
-            match *update_status {
-                UpdateStatus::Idle => {
-                    lines.push(Line::from(if is_ru {
-                        "Нажмите ENTER для проверки обновлений."
-                    } else {
-                        "Press ENTER to check for updates."
-                    }));
-                }
-                UpdateStatus::Checking => {
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "Соединение с сервером..."
-                        } else {
-                            "Connecting to server..."
-                        },
-                        Style::default().fg(Color::Yellow),
-                    )));
-                }
-                UpdateStatus::NoUpdate => {
-                    lines.push(Line::from(Span::styled(
-                        tr("launch_upd_ok", lang),
-                        Style::default().fg(Color::Green),
-                    )));
-                }
-                UpdateStatus::UpdateAvailable(ref info) => {
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            format!("ДОСТУПНА ВЕРСИЯ: {}", info.version)
-                        } else {
-                            format!("NEW VERSION AVAILABLE: {}", info.version)
-                        },
-                        Style::default()
-                            .fg(Color::LightGreen)
-                            .add_modifier(Modifier::BOLD),
-                    )));
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "Что нового:"
-                        } else {
-                            "Changelog:"
-                        },
-                        Style::default().fg(Color::Gray),
-                    )));
-                    lines.push(Line::from(Span::styled(
-                        &info.notes,
-                        Style::default().fg(Color::White),
-                    )));
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "Нажмите ENTER для скачивания!"
-                        } else {
-                            "Press ENTER to Download!"
-                        },
+                )));
+                lines.push(Line::from(if is_ru {
+                    "Нажмите ENTER..."
+                } else {
+                    "Press ENTER..."
+                }));
+            } else if let Some(info) = app.updater.get_selected_release() {
+                lines.push(Line::from(vec![
+                    Span::raw("ver: "),
+                    Span::styled(
+                        " < ",
                         Style::default()
                             .fg(Color::Yellow)
-                            .add_modifier(Modifier::SLOW_BLINK),
-                    )));
-                }
-                UpdateStatus::Downloading(pct) => {
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "Скачивание обновления..."
-                        } else {
-                            "Downloading update..."
-                        },
-                        Style::default().fg(Color::Cyan),
-                    )));
-                    let filled = (pct / 5.0) as usize;
-                    let bar = "█".repeat(filled) + &"░".repeat(20 - filled);
-                    lines.push(Line::from(Span::styled(
-                        format!("{} {:.1}%", bar, pct),
-                        Style::default().fg(Color::Cyan),
-                    )));
-                }
-                UpdateStatus::Downloaded(_) => {
-                    lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "ГОТОВО К УСТАНОВКЕ!"
-                        } else {
-                            "READY TO INSTALL!"
-                        },
-                        Style::default()
-                            .fg(Color::Green)
                             .add_modifier(Modifier::BOLD),
-                    )));
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(if is_ru {
-                        "Нажмите ENTER для перезапуска..."
+                    ),
+                    Span::styled(
+                        format!(" v{} ", info.version),
+                        Style::default()
+                            .fg(if info.is_latest {
+                                Color::LightGreen
+                            } else {
+                                Color::White
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        " > ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+
+                lines.push(Line::from(""));
+
+                lines.push(Line::from(Span::styled(
+                    if is_ru {
+                        " [←/→] Выбор версии   [ENTER] Установка"
                     } else {
-                        "Press ENTER to restart..."
-                    }));
-                }
-                UpdateStatus::Error(ref err) => {
+                        " [←/→] Select Version   [ENTER] Install"
+                    },
+                    Style::default().fg(Color::DarkGray).bg(Color::Black),
+                )));
+
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    if is_ru {
+                        "Список изменений:"
+                    } else {
+                        "Changelog:"
+                    },
+                    Style::default().fg(Color::Cyan),
+                )));
+
+                lines.push(Line::from(Span::styled(
+                    info.notes.clone(),
+                    Style::default().fg(Color::Gray),
+                )));
+
+                if is_legacy_version(&info.version) {
+                    lines.push(Line::from(""));
                     lines.push(Line::from(Span::styled(
-                        if is_ru { "ОШИБКА:" } else { "ERROR:" },
+                        if is_ru {
+                            "⚠️ ВНИМАНИЕ: Старая версия!"
+                        } else {
+                            "⚠️ WARNING: Legacy Version!"
+                        },
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )));
                     lines.push(Line::from(Span::styled(
-                        err,
+                        if is_ru {
+                            "В ней нет апдейтера. Вы не сможете вернуться обратно."
+                        } else {
+                            "No updater inside. You won't be able to switch back."
+                        },
+                        Style::default().fg(Color::Red),
+                    )));
+                }
+            } else {
+                if let UpdateStatus::Checking = *update_status {
+                    lines.push(Line::from("Checking GitHub..."));
+                } else {
+                    lines.push(Line::from(Span::styled(
+                        "No releases found.",
                         Style::default().fg(Color::Red),
                     )));
                 }
             }
+
             lines
         }
         6 => vec![
@@ -464,22 +503,47 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
 
-    let time_secs = app.last_update.elapsed().as_secs();
-    let (msg, color) = if time_secs < 2 {
-        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-            [(app.last_update.elapsed().as_millis() / 100 % 10) as usize];
-        (format!("{} Connecting...", spinner), Color::Yellow)
-    } else {
-        (tr("launch_on", lang), Color::Green)
+    let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (msg, color) = match *update_status {
+        UpdateStatus::UpdateAvailable => (
+            if is_ru {
+                "🔥 ДОСТУПНО ОБНОВЛЕНИЕ"
+            } else {
+                "🔥 UPDATE AVAILABLE"
+            }
+            .to_string(),
+            Color::LightGreen,
+        ),
+        UpdateStatus::Downloading(_) => (
+            if is_ru {
+                "♻ Скачивание..."
+            } else {
+                "♻ Downloading..."
+            }
+            .to_string(),
+            Color::Cyan,
+        ),
+        _ => {
+            let time_secs = app.last_update.elapsed().as_secs();
+            if time_secs < 2 {
+                let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                    [(app.last_update.elapsed().as_millis() / 100 % 10) as usize];
+                (format!("{} Connecting...", spinner), Color::Yellow)
+            } else {
+                (tr("launch_on", lang), Color::Green)
+            }
+        }
     };
 
     let layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
-    let status = Paragraph::new(msg).style(Style::default().fg(color));
+    let status = Paragraph::new(msg).style(Style::default().fg(color).add_modifier(Modifier::BOLD));
 
     let copyright = Paragraph::new(tr("launch_hint", lang))
         .alignment(Alignment::Right)
@@ -512,4 +576,35 @@ fn center_rect(r: Rect, w: u16, h: u16) -> Rect {
             Constraint::Min(0),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn is_legacy_version(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('.').collect();
+    if parts.len() < 3 {
+        return false;
+    }
+
+    let parse_part = |s: &str| -> u32 {
+        s.chars()
+            .take_while(|c| c.is_numeric())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0)
+    };
+
+    let major = parse_part(parts[0]);
+    let minor = parse_part(parts[1]);
+    let patch = parse_part(parts[2]);
+
+    if major > 0 {
+        return false;
+    }
+    if minor > 1 {
+        return false;
+    }
+    if minor == 1 {
+        return patch < 4;
+    }
+
+    true
 }

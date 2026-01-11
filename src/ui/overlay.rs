@@ -102,3 +102,12 @@ fn render_gear_text(f: &mut Frame<'_>, area: Rect, text: &str, color: Color) {
         .alignment(Alignment::Center);
     f.render_widget(p, area);
 }
+
+pub fn format_time(ms: i32) -> String {
+    let sign = if ms < 0 { "-" } else { "" };
+    let abs_ms = ms.abs();
+    let minutes = abs_ms / 60000;
+    let seconds = (abs_ms % 60000) / 1000;
+    let millis = abs_ms % 1000;
+    format!("{}{}:{:02}.{:03}", sign, minutes, seconds, millis)
+}
