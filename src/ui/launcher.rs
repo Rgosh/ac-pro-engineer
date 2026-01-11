@@ -165,7 +165,7 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     ];
 
     let sel = app.launcher_selection;
-    let items: Vec<ListItem> = menu_items
+    let items: Vec<ListItem<'_>> = menu_items
         .iter()
         .enumerate()
         .map(|(i, text)| {
@@ -308,7 +308,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(Color::Gray),
             )),
             Line::from(Span::styled(
-                "  ***:)",
+                "  ***SH:)",
                 Style::default()
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),

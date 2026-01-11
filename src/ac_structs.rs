@@ -17,7 +17,7 @@ pub struct AcPhysics {
     pub wheel_angular_speed: [f32; 4],
     pub tyre_wear: [f32; 4],
     pub tyre_dirty_level: [f32; 4],
-    pub tyre_core_temperature: [f32; 4],
+    pub tyre_core_temp: [f32; 4],
     pub camber_rad: [f32; 4],
     pub suspension_travel: [f32; 4],
     pub drs: f32,
@@ -56,12 +56,12 @@ pub struct AcPhysics {
     pub tyre_temp_m: [f32; 4],
     pub tyre_temp_o: [f32; 4],
     pub is_ai_controlled: i32,
-    pub tyre_contact_point: [f32; 12],
-    pub tyre_contact_normal: [f32; 12],
-    pub tyre_contact_heading: [f32; 12],
+    pub tyre_contact_point: [[f32; 3]; 4],
+    pub tyre_contact_normal: [[f32; 3]; 4],
+    pub tyre_contact_heading: [[f32; 3]; 4],
     pub brake_bias: f32,
     pub local_velocity: [f32; 3],
-    pub p2p_activation: i32,
+    pub p2p_activations: i32,
     pub p2p_status: i32,
     pub current_max_rpm: f32,
     pub mz: [f32; 4],
@@ -107,7 +107,7 @@ pub struct AcGraphics {
     pub flag: i32,
     pub penalty: i32,
     pub ideal_line_on: i32,
-    pub is_in_pit_line: i32,
+    pub is_in_pit_lane: i32,
     pub surface_grip: f32,
     pub mandatory_pit_done: i32,
     pub wind_speed: f32,
@@ -116,7 +116,7 @@ pub struct AcGraphics {
     pub main_display_index: i32,
     pub secondary_display_index: i32,
     pub tc: i32,
-    pub tc_cut: i32,
+    pub tccut: i32,
     pub engine_map: i32,
     pub abs: i32,
     pub fuel_x_lap: f32,
@@ -156,7 +156,7 @@ pub struct AcStatic {
     pub aid_fuel_rate: f32,
     pub aid_tire_rate: f32,
     pub aid_mechanical_damage: f32,
-    pub aid_allow_tyre_blankets: i32,
+    pub allow_tyre_blankets: i32,
     pub aid_stability: f32,
     pub aid_auto_clutch: i32,
     pub aid_auto_blip: i32,
@@ -178,47 +178,33 @@ pub struct AcStatic {
     pub is_online: i32,
 }
 
-pub fn read_ac_string(chars: &[u16]) -> String {
-    let len = chars.iter().position(|&c| c == 0).unwrap_or(chars.len());
-    String::from_utf16_lossy(&chars[..len])
+pub fn read_ac_string(src: &[u16]) -> String {
+    let len = src.iter().position(|&c| c == 0).unwrap_or(src.len());
+    String::from_utf16_lossy(&src[..len])
 }
 
 impl AcPhysics {
     pub fn get_tyre_load_ratio(&self, wheel_index: usize) -> f32 {
         if wheel_index < 4 {
-            self.wheel_load[wheel_index] / self.wheel_load.iter().sum::<f32>().max(1.0)
+            let total = self.wheel_load.iter().sum::<f32>();
+            if total > 1.0 {
+                self.wheel_load[wheel_index] / total
+            } else {
+                0.0
+            }
         } else {
             0.0
         }
     }
-    
+
     pub fn get_avg_tyre_temp(&self, wheel_index: usize) -> f32 {
         if wheel_index < 4 {
-            (self.tyre_temp_i[wheel_index] + self.tyre_temp_m[wheel_index] + self.tyre_temp_o[wheel_index]) / 3.0
+            (self.tyre_temp_i[wheel_index]
+                + self.tyre_temp_m[wheel_index]
+                + self.tyre_temp_o[wheel_index])
+                / 3.0
         } else {
             0.0
         }
-    }
-    
-    pub fn get_tyre_gradient(&self, wheel_index: usize) -> f32 {
-        if wheel_index < 4 {
-            self.tyre_temp_o[wheel_index] - self.tyre_temp_i[wheel_index]
-        } else {
-            0.0
-        }
-    }
-}
-
-impl AcGraphics {
-    pub fn get_current_time_ms(&self) -> i32 {
-        self.i_current_time
-    }
-    
-    pub fn get_best_time_ms(&self) -> i32 {
-        self.i_best_time
-    }
-    
-    pub fn get_last_time_ms(&self) -> i32 {
-        self.i_last_time
     }
 }

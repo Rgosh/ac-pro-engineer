@@ -44,7 +44,7 @@ fn render_recommendations(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
         f.render_widget(message, area);
     } else {
-        let items: Vec<ListItem> = app
+        let items: Vec<ListItem<'_>> = app
             .recommendations
             .iter()
             .take(8)

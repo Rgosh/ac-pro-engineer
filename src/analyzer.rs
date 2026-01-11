@@ -1,15 +1,21 @@
 use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::Language;
 use crate::records::TrackRecord;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LapData {
     pub lap_number: i32,
     pub lap_time_ms: i32,
     pub sectors: [i32; 3],
     pub valid: bool,
+
+    pub car_model: String,
+    pub track_name: String,
+    pub save_date: String,
+    #[serde(default)]
+    pub from_file: bool,
 
     pub air_temp: f32,
     pub road_temp: f32,
@@ -53,7 +59,7 @@ pub struct LapData {
     pub bounds_max_y: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RadarStats {
     pub smoothness: f32,
     pub aggression: f32,
@@ -62,7 +68,7 @@ pub struct RadarStats {
     pub tyre_mgmt: f32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelemetryPoint {
     pub distance: f32,
     pub time_ms: i32,
@@ -105,7 +111,10 @@ pub struct TelemetryAnalyzer {
     pub best_lap_index: Option<usize>,
     pub best_sectors: [i32; 3],
     pub world_record: Option<TrackRecord>,
+    pub reference_lap: Option<LapData>,
 }
+
+pub type Analyzer = TelemetryAnalyzer;
 
 impl TelemetryAnalyzer {
     pub fn new() -> Self {
@@ -114,6 +123,7 @@ impl TelemetryAnalyzer {
             best_lap_index: None,
             best_sectors: [i32::MAX, i32::MAX, i32::MAX],
             world_record: None,
+            reference_lap: None,
         }
     }
 
@@ -127,6 +137,8 @@ impl TelemetryAnalyzer {
         lap_time_ms: i32,
         physics_log: &[AcPhysics],
         graphics_log: &[AcGraphics],
+        car_name: String,
+        track_name: String,
     ) {
         if physics_log.is_empty() {
             return;
@@ -160,6 +172,7 @@ impl TelemetryAnalyzer {
         let road_temp = physics_log.first().map(|p| p.road_temp).unwrap_or(20.0);
         let track_grip = graphics_log.first().map(|g| g.surface_grip).unwrap_or(1.0) * 100.0;
         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+        let save_date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         let max_speed = physics_log.iter().map(|p| p.speed_kmh).fold(0.0, f32::max);
         let avg_speed = if !physics_log.is_empty() {
@@ -251,11 +264,13 @@ impl TelemetryAnalyzer {
             }
 
             if p.speed_kmh > 20.0 {
-                if p.slip_ratio.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5 {
+                let slip_ratio = p.slip_ratio;
+                if slip_ratio.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5 {
                     lockup_c += 1;
                 }
-                let front_slip = (p.slip_angle[0].abs() + p.slip_angle[1].abs()) / 2.0;
-                let rear_slip = (p.slip_angle[2].abs() + p.slip_angle[3].abs()) / 2.0;
+                let slip_angle = p.slip_angle;
+                let front_slip = (slip_angle[0].abs() + slip_angle[1].abs()) / 2.0;
+                let rear_slip = (slip_angle[2].abs() + slip_angle[3].abs()) / 2.0;
                 if rear_slip > front_slip + 5.0 {
                     oversteer_c += 1;
                 } else if front_slip > rear_slip + 5.0 {
@@ -363,7 +378,8 @@ impl TelemetryAnalyzer {
         };
 
         let mut trace = Vec::new();
-        let step = 10;
+
+        let step = 5;
 
         let mut min_x = f32::MAX;
         let mut max_x = f32::MIN;
@@ -383,7 +399,8 @@ impl TelemetryAnalyzer {
 
                 let x = g.car_coordinates[0][0];
                 let z = g.car_coordinates[0][2];
-                if x != 0.0 || z != 0.0 {
+
+                if x.abs() > 0.1 || z.abs() > 0.1 {
                     if x < min_x {
                         min_x = x;
                     }
@@ -398,8 +415,9 @@ impl TelemetryAnalyzer {
                     }
                 }
 
-                let slip_avg = if !p.wheel_slip.is_empty() {
-                    p.wheel_slip.iter().sum::<f32>() / p.wheel_slip.len() as f32
+                let wheel_slip = p.wheel_slip;
+                let slip_avg = if !wheel_slip.is_empty() {
+                    wheel_slip.iter().sum::<f32>() / wheel_slip.len() as f32
                 } else {
                     0.0
                 };
@@ -443,6 +461,10 @@ impl TelemetryAnalyzer {
             lap_time_ms,
             sectors,
             valid: true,
+            car_model: car_name,
+            track_name,
+            save_date,
+            from_file: false,
             air_temp,
             road_temp,
             track_grip,

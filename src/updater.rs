@@ -75,7 +75,9 @@ impl Updater {
                 GITHUB_OWNER, GITHUB_REPO
             );
 
-            match client.get(&url).send() {
+            let response = client.get(&url).send();
+
+            match response {
                 Ok(resp) => {
                     if !resp.status().is_success() {
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -142,7 +144,9 @@ impl Updater {
                 .build()
                 .unwrap_or_default();
 
-            match client.get(&info.url).send() {
+            let response = client.get(&info.url).send();
+
+            match response {
                 Ok(mut resp) => {
                     if !resp.status().is_success() {
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());

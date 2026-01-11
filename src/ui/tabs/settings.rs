@@ -204,7 +204,7 @@ fn render_categories_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         (SettingsCategory::Alerts, tr("cat_alerts", lang)),
     ];
 
-    let items: Vec<ListItem> = categories
+    let items: Vec<ListItem<'_>> = categories
         .iter()
         .map(|(cat, name)| {
             let is_selected = app.ui_state.settings.category == *cat;

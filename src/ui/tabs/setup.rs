@@ -175,7 +175,7 @@ fn render_browser_mode(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .browser_car_idx
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let car_items: Vec<ListItem> = manifest
+    let car_items: Vec<ListItem<'_>> = manifest
         .iter()
         .map(|m| ListItem::new(format!("{} ({})", m.id, m.count)))
         .collect();
@@ -208,7 +208,7 @@ fn render_browser_mode(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .unwrap_or_else(|e| e.into_inner());
     let target_car = app.setup_manager.get_browser_target_car();
 
-    let setup_items: Vec<ListItem> = setups
+    let setup_items: Vec<ListItem<'_>> = setups
         .iter()
         .map(|s| {
             let is_installed = app.setup_manager.is_installed(s, &target_car);
@@ -289,7 +289,7 @@ fn render_setup_list_classic(
         .title(title)
         .borders(Borders::RIGHT)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-    let items: Vec<ListItem> = setups
+    let items: Vec<ListItem<'_>> = setups
         .iter()
         .enumerate()
         .map(|(i, setup)| {
@@ -759,7 +759,7 @@ fn render_comparison_table(
     } else {
         scroll_offset
     };
-    let visible_rows = rows.into_iter().skip(start).collect::<Vec<Row>>();
+    let visible_rows = rows.into_iter().skip(start).collect::<Vec<Row<'_>>>();
 
     let table = Table::new(
         visible_rows,

@@ -2,6 +2,7 @@ use crate::ui::localization::tr;
 use crate::{AppStage, AppState, AppTab};
 use ratatui::{prelude::*, widgets::*};
 
+pub mod file_menu;
 pub mod launcher;
 pub mod localization;
 pub mod overlay;
@@ -16,6 +17,7 @@ pub struct UIState {
     pub overlay_mode: bool,
     pub last_blink: std::time::Instant,
     pub settings: tabs::settings::SettingsState,
+    pub analysis: tabs::analysis::AnalysisState,
     pub setup_list_state: ListState,
 }
 
@@ -39,6 +41,7 @@ impl UIState {
             overlay_mode: false,
             last_blink: std::time::Instant::now(),
             settings: tabs::settings::SettingsState::new(),
+            analysis: tabs::analysis::AnalysisState::new(),
             setup_list_state: list_state,
         }
     }

@@ -197,6 +197,8 @@ impl AppState {
                     last_lap_time,
                     &self.current_lap_physics,
                     &self.current_lap_graphics,
+                    self.session_info.car_name.clone(),
+                    self.session_info.track_name.clone(),
                 );
 
                 if let Some(car_specs) = self
@@ -419,6 +421,28 @@ fn main() -> Result<(), anyhow::Error> {
                         continue;
                     }
 
+                    if app.active_tab == AppTab::Analysis {
+                        let menu_active = app.ui_state.analysis.load_menu.borrow().active;
+                        if menu_active {
+                            match key.code {
+                                KeyCode::Up => app.ui_state.analysis.menu_up(),
+                                KeyCode::Down => app.ui_state.analysis.menu_down(),
+                                KeyCode::Enter => {
+                                    app.ui_state.analysis.load_selected_file(&mut app.analyzer)
+                                }
+                                KeyCode::Esc
+                                | KeyCode::Char('l')
+                                | KeyCode::Char('L')
+                                | KeyCode::Char('д')
+                                | KeyCode::Char('Д') => {
+                                    app.ui_state.analysis.toggle_load_menu();
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
+                    }
+
                     if app.active_tab == AppTab::Settings {
                         let was_editing = app.ui_state.settings.is_editing;
                         app.ui_state
@@ -471,6 +495,38 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                         (KeyCode::Char('7'), _) | (KeyCode::F(7), _) => {
                             app.active_tab = AppTab::Settings
+                        }
+
+                        (KeyCode::Char('l'), _)
+                        | (KeyCode::Char('L'), _)
+                        | (KeyCode::Char('д'), _)
+                        | (KeyCode::Char('Д'), _) => {
+                            if app.active_tab == AppTab::Analysis {
+                                app.ui_state.analysis.toggle_load_menu();
+                                continue;
+                            }
+                        }
+                        (KeyCode::Char('s'), _)
+                        | (KeyCode::Char('S'), _)
+                        | (KeyCode::Char('ы'), _)
+                        | (KeyCode::Char('Ы'), _) => {
+                            if app.active_tab == AppTab::Analysis {
+                                if let Some(idx) = app.ui_state.setup_list_state.selected() {
+                                    if let Some(lap) = app.analyzer.laps.get(idx) {
+                                        app.ui_state.analysis.save_lap_data(lap);
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        (KeyCode::Char('c'), _)
+                        | (KeyCode::Char('C'), _)
+                        | (KeyCode::Char('с'), _)
+                        | (KeyCode::Char('С'), _) => {
+                            if app.active_tab == AppTab::Analysis {
+                                app.ui_state.analysis.toggle_compare();
+                                continue;
+                            }
                         }
 
                         (KeyCode::Char('b'), _)
@@ -616,8 +672,21 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
                         }
-                        (KeyCode::Left, _) | (KeyCode::Right, _) => {
-                            if app.active_tab == AppTab::Setup {
+                        (KeyCode::Left, _) => {
+                            if app.active_tab == AppTab::Analysis {
+                                app.ui_state.analysis.prev_tab();
+                            } else if app.active_tab == AppTab::Setup {
+                                let is_browser = *app.setup_manager.browser_active.safe_lock();
+                                if is_browser {
+                                    let mut col = app.setup_manager.browser_focus_col.safe_lock();
+                                    *col = if *col == 0 { 1 } else { 0 };
+                                }
+                            }
+                        }
+                        (KeyCode::Right, _) => {
+                            if app.active_tab == AppTab::Analysis {
+                                app.ui_state.analysis.next_tab();
+                            } else if app.active_tab == AppTab::Setup {
                                 let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
                                     let mut col = app.setup_manager.browser_focus_col.safe_lock();
