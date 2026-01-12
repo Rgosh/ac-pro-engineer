@@ -110,4 +110,8 @@ If you prefer to build it yourself (requires Rust installed):
 ```bash
 git clone [https://github.com/Rgosh/ac-pro-engineer.git](https://github.com/Rgosh/ac-pro-engineer.git)
 cd ac-pro-engineer
+
 cargo build --release
+
+cargo build --release
+

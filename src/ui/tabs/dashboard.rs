@@ -121,16 +121,31 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             8000.0
         };
         let rpm_ratio = (phys.rpms as f32 / max_rpm).clamp(0.0, 1.0);
-        let rpm_color = if rpm_ratio > 0.96 {
-            Color::Red
+
+        let (rpm_color, label_text) = if rpm_ratio > 0.96 {
+            (Color::Blue, "SHIFT NOW!".to_string())
+        } else if rpm_ratio > 0.90 {
+            (Color::Red, format!("{} RPM", phys.rpms))
+        } else if rpm_ratio > 0.75 {
+            (Color::Yellow, format!("{} RPM", phys.rpms))
         } else {
-            Color::Green
+            (Color::Green, format!("{} RPM", phys.rpms))
         };
+
+        let gauge_style = if rpm_ratio > 0.96 {
+            Style::default()
+                .fg(Color::White)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(rpm_color).bg(Color::DarkGray)
+        };
+
         f.render_widget(
             LineGauge::default()
                 .ratio(rpm_ratio as f64)
-                .label(format!("{} RPM", phys.rpms))
-                .gauge_style(Style::default().fg(rpm_color).bg(Color::DarkGray)),
+                .label(label_text)
+                .gauge_style(gauge_style),
             layout[0],
         );
 

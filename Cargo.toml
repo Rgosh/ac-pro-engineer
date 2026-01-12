@@ -1,6 +1,6 @@
 [package]
 name = "ac_pro_engineer"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Rgosh"]
 description = "Professional telemetry and setup analyzer for Assetto Corsa"
@@ -25,6 +25,13 @@ lazy_static = "1.4"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 discord-rich-presence = "0.2"
 open = "5.0"
+tracing = { version = "0.1", features = [
+    "max_level_trace",
+    "release_max_level_info",
+] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-error = "0.2.1"
+
 
 [lints.rust]
 unused = { level = "warn", priority = -1 }

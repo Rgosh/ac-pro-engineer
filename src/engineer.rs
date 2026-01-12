@@ -176,6 +176,13 @@ impl Engineer {
         }
 
         self.stats.current_delta = phys.performance_meter;
+
+        if gfx.i_best_time > 0 {
+            self.stats.predicted_lap_time =
+                (gfx.i_best_time as f32 / 1000.0) + phys.performance_meter;
+        } else if gfx.i_last_time > 0 {
+            self.stats.predicted_lap_time = gfx.i_last_time as f32 / 1000.0;
+        }
     }
 
     fn analyze_driving_style(&mut self, phys: &AcPhysics) {
@@ -219,6 +226,7 @@ impl Engineer {
 
         self.analyze_tyre_pressure(phys, &mut recommendations);
         self.analyze_tyre_temperature(phys, &mut recommendations);
+        self.analyze_tyre_wear(phys, &mut recommendations);
         self.analyze_camber(phys, &mut recommendations);
         self.analyze_brakes(phys, &mut recommendations);
         self.analyze_brake_bias(&mut recommendations);
@@ -562,6 +570,53 @@ impl Engineer {
         }
     }
 
+    fn analyze_tyre_wear(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+        let ru = self.is_ru();
+
+        for i in 0..4 {
+            let wear = phys.tyre_wear[i];
+            if wear < 96.0 {
+                let name = match i {
+                    0 => "FL",
+                    1 => "FR",
+                    2 => "RL",
+                    3 => "RR",
+                    _ => "",
+                };
+
+                let (severity, msg_en, msg_ru) = if wear < 94.0 {
+                    (Severity::Critical, "WORN OUT", "ИЗНОС (Крит)")
+                } else {
+                    (Severity::Warning, "High Wear", "Сильный износ")
+                };
+
+                recs.push(Recommendation {
+                    component: if ru { "Шины" } else { "Tyres" }.to_string(),
+                    category: if ru { "Износ" } else { "Wear" }.to_string(),
+                    severity,
+                    message: if ru {
+                        format!("{} {}: {:.1}%", name, msg_ru, wear)
+                    } else {
+                        format!("{} {}: {:.1}%", name, msg_en, wear)
+                    },
+                    action: if ru {
+                        "Пит-стоп / Осторожно"
+                    } else {
+                        "Box / Careful"
+                    }
+                    .to_string(),
+                    parameters: vec![Parameter {
+                        name: "Life".to_string(),
+                        current: wear,
+                        target: 100.0,
+                        unit: "%".to_string(),
+                    }],
+                    confidence: 0.9,
+                });
+            }
+        }
+    }
+
     fn analyze_camber(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         let min_speed = 50.0;
@@ -840,13 +895,9 @@ impl Engineer {
         }
     }
 
-    fn analyze_strategy(
-        &self,
-        _phys: &AcPhysics,
-        _gfx: &AcGraphics,
-        recs: &mut Vec<Recommendation>,
-    ) {
+    fn analyze_strategy(&self, phys: &AcPhysics, gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
+
         if self.stats.fuel_laps_remaining < 2.5 && self.stats.fuel_laps_remaining > 0.0 {
             recs.push(Recommendation {
                 component: if ru { "Стратегия" } else { "Strategy" }.to_string(),
@@ -861,6 +912,48 @@ impl Engineer {
                 parameters: vec![],
                 confidence: 1.0,
             });
+        }
+
+        if gfx.session_time_left > 0.0 && gfx.fuel_x_lap > 0.0 {
+            let time_left_sec = gfx.session_time_left / 1000.0;
+
+            let lap_time_sec = if self.stats.predicted_lap_time > 0.0 {
+                self.stats.predicted_lap_time
+            } else {
+                0.0
+            };
+
+            if lap_time_sec > 30.0 {
+                let laps_remaining_in_race = time_left_sec / lap_time_sec;
+                let fuel_needed = laps_remaining_in_race * gfx.fuel_x_lap;
+                let fuel_diff = phys.fuel - fuel_needed;
+
+                if fuel_diff < -1.0 {
+                    recs.push(Recommendation {
+                        component: if ru { "Стратегия" } else { "Strategy" }.to_string(),
+                        category: if ru { "Финиш" } else { "Race Finish" }.to_string(),
+                        severity: Severity::Warning,
+                        message: if ru {
+                            format!("Не хватит {:.1} л.", fuel_diff.abs())
+                        } else {
+                            format!("Short {:.1} L", fuel_diff.abs())
+                        },
+                        action: if ru {
+                            "Экономить / Пит-стоп"
+                        } else {
+                            "Save Fuel / Box"
+                        }
+                        .to_string(),
+                        parameters: vec![Parameter {
+                            name: "Need".to_string(),
+                            current: phys.fuel,
+                            target: fuel_needed,
+                            unit: "L".to_string(),
+                        }],
+                        confidence: 0.8,
+                    });
+                }
+            }
         }
     }
 }
