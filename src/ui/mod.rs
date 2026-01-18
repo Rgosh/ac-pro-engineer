@@ -117,6 +117,7 @@ impl UIRenderer {
             AppTab::Setup => tabs::setup::render(f, main_layout[1], app),
             AppTab::Analysis => tabs::analysis::render(f, main_layout[1], app),
             AppTab::Strategy => tabs::strategy::render(f, main_layout[1], app),
+            AppTab::Ffb => tabs::ffb::render(f, main_layout[1], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[1], app),
         }
 
@@ -144,6 +145,7 @@ impl UIRenderer {
             AppTab::Setup => tabs::setup::render(f, main_layout[2], app),
             AppTab::Analysis => tabs::analysis::render(f, main_layout[2], app),
             AppTab::Strategy => tabs::strategy::render(f, main_layout[2], app),
+            AppTab::Ffb => tabs::ffb::render(f, main_layout[2], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[2], app),
         }
 
@@ -161,19 +163,23 @@ impl UIRenderer {
             format!("🔧 {}", tr("tab_setup", lang)),
             format!("📈 {}", tr("tab_anal", lang)),
             format!("🎯 {}", tr("tab_strat", lang)),
+            "🎮 Input & FFB".to_string(),
             format!("⚙️ {}", tr("tab_set", lang)),
         ];
 
+        let active_index = match app.active_tab {
+            AppTab::Dashboard => 0,
+            AppTab::Telemetry => 1,
+            AppTab::Engineer => 2,
+            AppTab::Setup => 3,
+            AppTab::Analysis => 4,
+            AppTab::Strategy => 5,
+            AppTab::Ffb => 6,
+            AppTab::Settings => 7,
+        };
+
         let tab_widget = Tabs::new(tabs)
-            .select(match app.active_tab {
-                AppTab::Dashboard => 0,
-                AppTab::Telemetry => 1,
-                AppTab::Engineer => 2,
-                AppTab::Setup => 3,
-                AppTab::Analysis => 4,
-                AppTab::Strategy => 5,
-                AppTab::Settings => 6,
-            })
+            .select(active_index)
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)

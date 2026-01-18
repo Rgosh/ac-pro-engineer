@@ -1,5 +1,6 @@
 use crate::session_info::SessionInfo;
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLIENT_ID: &str = "119876543210987654";
 
@@ -7,6 +8,7 @@ pub struct DiscordClient {
     client: Option<DiscordIpcClient>,
     last_update: std::time::Instant,
     is_connected: bool,
+    start_time: i64,
 }
 
 impl DiscordClient {
@@ -20,10 +22,16 @@ impl DiscordClient {
             }
         }
 
+        let start = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
         Self {
             client,
             last_update: std::time::Instant::now(),
             is_connected: connected,
+            start_time: start,
         }
     }
 
@@ -58,7 +66,7 @@ impl DiscordClient {
                 format!("v{}", crate::updater::CURRENT_VERSION)
             };
 
-            let payload = activity::Activity::new()
+            let mut activity = activity::Activity::new()
                 .details(&details)
                 .state(&state)
                 .assets(
@@ -69,7 +77,11 @@ impl DiscordClient {
                         .small_text(&small_text),
                 );
 
-            if client.set_activity(payload).is_err() {
+            if is_connected {
+                activity = activity.timestamps(activity::Timestamps::new().start(self.start_time));
+            }
+
+            if client.set_activity(activity).is_err() {
                 self.is_connected = false;
             }
 

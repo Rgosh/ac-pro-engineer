@@ -111,8 +111,35 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(layout[1]);
 
+    let mut total_g = 0.0;
+    let mut count = 0;
+    let mut max_g = 0.0;
+
+    for p in &lap.telemetry_trace {
+        if p.speed > 20.0 {
+            let g = (p.lat_g.powi(2) + p.lon_g.powi(2)).sqrt();
+            total_g += g;
+            if g > max_g {
+                max_g = g;
+            }
+            count += 1;
+        }
+    }
+    let avg_g = if count > 0 {
+        total_g / count as f32
+    } else {
+        0.0
+    };
+    let grip_usage = (avg_g / 2.5 * 100.0).clamp(0.0, 100.0);
+
+    let gg_title = if is_ru {
+        format!("G-G (Исп. сцепления: {:.0}%)", grip_usage)
+    } else {
+        format!("G-G Plot (Grip Usage: {:.0}%)", grip_usage)
+    };
+
     let gg_block = Block::default()
-        .title("G-G Plot")
+        .title(gg_title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -133,6 +160,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
                 radius: 2.5,
                 color: Color::Gray,
             });
+
             ctx.draw(&CanvasLine {
                 x1: -3.5,
                 y1: 0.0,
@@ -173,6 +201,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
             "Stability"
         })
         .borders(Borders::ALL);
+
     let stab_data = vec![
         Row::new(vec![
             Cell::from(if is_ru {
@@ -197,6 +226,10 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
                 "Lockups"
             }),
             Cell::from(lap.lockup_count.to_string()).style(Style::default().fg(Color::Magenta)),
+        ]),
+        Row::new(vec![
+            Cell::from(if is_ru { "Пик G-Force" } else { "Peak G" }),
+            Cell::from(format!("{:.2} G", max_g)).style(Style::default().fg(Color::Cyan)),
         ]),
     ];
     f.render_widget(

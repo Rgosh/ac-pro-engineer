@@ -2,6 +2,9 @@
 /data
 /ac-setups
 /debug
+/saved_laps
+/log
+./vscode
 config.json
 **/*.rs.bk
 *.pdb

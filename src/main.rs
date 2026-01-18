@@ -55,7 +55,36 @@ pub enum AppTab {
     Setup,
     Analysis,
     Strategy,
+    Ffb,
     Settings,
+}
+
+impl AppTab {
+    pub fn next(&self) -> Self {
+        match self {
+            AppTab::Dashboard => AppTab::Telemetry,
+            AppTab::Telemetry => AppTab::Engineer,
+            AppTab::Engineer => AppTab::Setup,
+            AppTab::Setup => AppTab::Analysis,
+            AppTab::Analysis => AppTab::Strategy,
+            AppTab::Strategy => AppTab::Ffb,
+            AppTab::Ffb => AppTab::Settings,
+            AppTab::Settings => AppTab::Dashboard,
+        }
+    }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            AppTab::Dashboard => AppTab::Settings,
+            AppTab::Settings => AppTab::Ffb,
+            AppTab::Ffb => AppTab::Strategy,
+            AppTab::Strategy => AppTab::Analysis,
+            AppTab::Analysis => AppTab::Setup,
+            AppTab::Setup => AppTab::Engineer,
+            AppTab::Engineer => AppTab::Telemetry,
+            AppTab::Telemetry => AppTab::Dashboard,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -502,6 +531,9 @@ fn main() -> Result<(), anyhow::Error> {
                             app.active_tab = AppTab::Strategy
                         }
                         (KeyCode::Char('7'), _) | (KeyCode::F(7), _) => {
+                            app.active_tab = AppTab::Ffb
+                        }
+                        (KeyCode::Char('8'), _) | (KeyCode::F(8), _) => {
                             app.active_tab = AppTab::Settings
                         }
 
@@ -590,15 +622,10 @@ fn main() -> Result<(), anyhow::Error> {
                         }
 
                         (KeyCode::Tab, KeyModifiers::NONE) => {
-                            app.active_tab = match app.active_tab {
-                                AppTab::Dashboard => AppTab::Telemetry,
-                                AppTab::Telemetry => AppTab::Engineer,
-                                AppTab::Engineer => AppTab::Setup,
-                                AppTab::Setup => AppTab::Analysis,
-                                AppTab::Analysis => AppTab::Strategy,
-                                AppTab::Strategy => AppTab::Settings,
-                                AppTab::Settings => AppTab::Dashboard,
-                            };
+                            app.active_tab = app.active_tab.next();
+                        }
+                        (KeyCode::BackTab, _) => {
+                            app.active_tab = app.active_tab.previous();
                         }
                         (KeyCode::Down, _) => {
                             if app.active_tab == AppTab::Analysis {
