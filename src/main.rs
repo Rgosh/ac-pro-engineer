@@ -420,6 +420,30 @@ fn main() -> Result<(), anyhow::Error> {
                                     app.updater.next_version();
                                 }
                             }
+
+                            KeyCode::Char('h') | KeyCode::Char('H') => {
+                                app.config.review_banner_hidden = true;
+                                let _res = app.config.save();
+                            }
+                            KeyCode::Char('o') | KeyCode::Char('O') => {
+                                let url = "https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/";
+                                #[cfg(target_os = "windows")]
+                                {
+                                    std::process::Command::new("cmd")
+                                        .args(["/C", "start", url])
+                                        .spawn()
+                                        .ok();
+                                }
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    if let Ok(mut child) =
+                                        std::process::Command::new("xdg-open").arg(url).spawn()
+                                    {
+                                        child.wait().ok();
+                                    }
+                                }
+                            }
+
                             KeyCode::Enter => match app.launcher_selection {
                                 0 => app.stage = AppStage::Running,
                                 1 => {

@@ -20,20 +20,109 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         return;
     };
 
-    let main_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(area);
-
-    render_fuel_calculator(f, main_layout[0], app, gfx, phys);
-
-    let right_layout = Layout::default()
+    let v_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(main_layout[1]);
+        .split(area);
 
-    render_tyres_strategy(f, right_layout[0], app, phys);
-    render_environment(f, right_layout[1], app, gfx, phys);
+    let top_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(v_layout[0]);
+
+    render_fuel_calculator(f, top_layout[0], app, gfx, phys);
+
+    let top_right_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(top_layout[1]);
+
+    render_tyres_strategy(f, top_right_layout[0], app, phys);
+    render_environment(f, top_right_layout[1], app, gfx, phys);
+
+    render_pace_history(f, v_layout[1], app);
+}
+
+fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let theme = &app.ui_state.theme;
+    let is_ru = app.config.language == crate::config::Language::Russian;
+
+    let block = Block::default()
+        .title(if is_ru {
+            "История Темпа (Stint Pace)"
+        } else {
+            "Race Pace History"
+        })
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+
+    if app.analyzer.laps.is_empty() {
+        let p = Paragraph::new(if is_ru {
+            "Нет завершенных кругов"
+        } else {
+            "No completed laps yet"
+        })
+        .block(block)
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let laps: Vec<(f64, f64)> = app
+        .analyzer
+        .laps
+        .iter()
+        .map(|l| (l.lap_number as f64, l.lap_time_ms as f64 / 1000.0))
+        .collect();
+
+    let min_time = laps
+        .iter()
+        .map(|(_, t)| *t)
+        .fold(f64::INFINITY, |a, b| a.min(b));
+    let max_time = laps.iter().map(|(_, t)| *t).fold(0.0f64, |a, b| a.max(b));
+
+    let y_min = (min_time - 1.0).max(0.0);
+    let y_max = max_time + 1.0;
+
+    let x_max = laps.last().map(|(n, _)| *n).unwrap_or(10.0) + 1.0;
+    let x_min = laps.first().map(|(n, _)| *n).unwrap_or(0.0);
+
+    let datasets = vec![Dataset::default()
+        .name(if is_ru {
+            "Время круга"
+        } else {
+            "Lap Time"
+        })
+        .marker(symbols::Marker::Braille)
+        .style(Style::default().fg(Color::Cyan))
+        .graph_type(GraphType::Line)
+        .data(&laps)];
+
+    let chart = Chart::new(datasets)
+        .block(block)
+        .x_axis(
+            Axis::default()
+                .title("Lap")
+                .style(Style::default().fg(Color::Gray))
+                .bounds([x_min, x_max])
+                .labels(vec![
+                    Span::from(format!("{:.0}", x_min)),
+                    Span::from(format!("{:.0}", x_max)),
+                ]),
+        )
+        .y_axis(
+            Axis::default()
+                .title("Sec")
+                .style(Style::default().fg(Color::Gray))
+                .bounds([y_min, y_max])
+                .labels(vec![
+                    Span::from(format!("{:.1}", y_min)),
+                    Span::from(format!("{:.1}", y_max)),
+                ]),
+        );
+
+    f.render_widget(chart, area);
 }
 
 fn render_fuel_calculator(

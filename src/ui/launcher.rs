@@ -3,7 +3,9 @@ use crate::ui::localization::tr;
 use crate::updater::UpdateStatus;
 use crate::AppState;
 use ratatui::{prelude::*, widgets::*};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::AtomicBool;
+
+pub static SHOW_REVIEW_BANNER: AtomicBool = AtomicBool::new(true);
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
@@ -36,6 +38,7 @@ fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .style(Style::default().bg(Color::Black))
         .border_style(
             Style::default()
@@ -87,27 +90,19 @@ fn render_header(f: &mut Frame<'_>, area: Rect, _app: &AppState) {
     );
 
     let logo_text = [
-        "   ___   _____  __     ___  ___  ___ ".to_string(),
-        "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\".to_string(),
-        " / __ |/ _/ /    /   / ___/ , _/ // /".to_string(),
-        "/_/ |_/_/  /_/|_/   /_/  /_/|_|\\___/ ".to_string(),
-        ver_str,
+        "   ___   _____  __     ___  ___  ___ ",
+        "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\",
+        " / __ |/ _/ /    /   / ___/ , _/ // /",
+        "/_/ |_/_/  /_/|_/   /_/  /_/|_|\\___/ ",
+        ver_str.as_str(),
     ];
 
-    let time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or(std::time::Duration::ZERO)
-        .as_millis();
-
-    let pulse = (time / 150) % 20;
-    let color = if pulse < 10 {
-        Color::Cyan
-    } else {
-        Color::LightCyan
-    };
-
     let logo = Paragraph::new(logo_text.join("\n"))
-        .style(Style::default().fg(color).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .alignment(Alignment::Center);
 
     let center_area = Layout::default()
@@ -123,10 +118,22 @@ fn render_header(f: &mut Frame<'_>, area: Rect, _app: &AppState) {
 }
 
 fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let mut main_area = area;
+
+    if !app.config.review_banner_hidden {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(area);
+
+        render_review_banner(f, chunks[0], app);
+        main_area = chunks[1];
+    }
+
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(area);
+        .split(main_area);
 
     let menu_area = center_rect(layout[0], 36, 18);
     let info_area = layout[1].inner(&Margin {
@@ -136,6 +143,46 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     render_menu(f, menu_area, app);
     render_info_panel(f, info_area, app);
+}
+
+fn render_review_banner(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let is_ru = app.config.language == Language::Russian;
+
+    let text = if is_ru {
+        "⭐ Это Open Source проект. Ваш отзыв помогает нам расти!"
+    } else {
+        "⭐ This is an Open Source project. Your review helps us grow!"
+    };
+
+    let hint = if is_ru {
+        "[O] Оставить отзыв  [H] Скрыть навсегда"
+    } else {
+        "[O] Leave Review  [H] Hide Forever"
+    };
+
+    let content = vec![Line::from(vec![
+        Span::styled(
+            text,
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("   "),
+        Span::styled(hint, Style::default().fg(Color::DarkGray)),
+    ])];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().bg(Color::Black));
+
+    let p = Paragraph::new(content)
+        .block(block)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(p, area);
 }
 
 fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -211,7 +258,7 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .map(|(i, text)| {
             let is_selected = i == sel;
 
-            let mut style = if is_selected {
+            let style = if is_selected {
                 Style::default()
                     .fg(Color::Black)
                     .bg(app.ui_state.get_color(&theme.highlight))
@@ -223,32 +270,35 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             if i == 5 {
                 if let UpdateStatus::UpdateAvailable = *update_status {
                     if is_selected {
-                        style = Style::default()
-                            .fg(Color::Black)
-                            .bg(Color::LightGreen)
-                            .add_modifier(Modifier::BOLD);
+                        return ListItem::new(format!("  {}", text)).style(
+                            Style::default()
+                                .fg(Color::Black)
+                                .bg(Color::LightGreen)
+                                .add_modifier(Modifier::BOLD),
+                        );
                     } else {
-                        style = Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD);
+                        return ListItem::new(format!("  {}", text)).style(
+                            Style::default()
+                                .fg(Color::Green)
+                                .add_modifier(Modifier::BOLD),
+                        );
                     }
                 }
             }
 
-            let prefix = if is_selected { " " } else { " " };
-            ListItem::new(format!("{}{}", prefix, text)).style(style)
+            let prefix = if is_selected { ">>" } else { "  " };
+            ListItem::new(format!("{} {}", prefix, text)).style(style)
         })
         .collect();
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)))
-                .title(tr("launch_menu_title", lang))
-                .title_alignment(Alignment::Center),
-        )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)))
+            .title(tr("launch_menu_title", lang))
+            .title_alignment(Alignment::Center),
+    );
 
     f.render_widget(list, area);
 }
@@ -273,6 +323,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.accent)))
         .title(title);
 
@@ -529,9 +580,15 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         _ => {
             let time_secs = app.last_update.elapsed().as_secs();
             if time_secs < 2 {
-                let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-                    [(app.last_update.elapsed().as_millis() / 100 % 10) as usize];
-                (format!("{} Connecting...", spinner), Color::Yellow)
+                (
+                    if is_ru {
+                        "Соединение..."
+                    } else {
+                        "Connecting..."
+                    }
+                    .to_string(),
+                    Color::Yellow,
+                )
             } else {
                 (tr("launch_on", lang), Color::Green)
             }

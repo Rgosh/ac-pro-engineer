@@ -1,5 +1,4 @@
 use crate::ui::localization::tr;
-use crate::ui::widgets::*;
 use crate::AppState;
 use ratatui::{prelude::*, widgets::*};
 
