@@ -11,6 +11,7 @@ windows = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
 ] }
 crossterm = "0.27"
 ratatui = "0.26"
@@ -57,3 +58,8 @@ perf = { level = "warn", priority = -1 }
 #pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 panic = "deny"
+
+
+[[bin]]
+name = "simulator"
+path = "src/bin/simulator.rs"

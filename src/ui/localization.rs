@@ -3,14 +3,12 @@ use crate::config::Language;
 pub fn tr(key: &str, lang: &Language) -> String {
     match lang {
         Language::English => match key {
-            
             "launch_start" => "START ENGINE",
             "launch_sett" => "SETTINGS",
             "launch_docs" => "DOCUMENTATION",
             "launch_cred" => "CREDITS / AUTHOR",
             "launch_upd" => "CHECK UPDATES",
             "launch_exit" => "EXIT",
-            
             "launch_menu_title" => " MAIN MENU ",
             "launch_info_title" => " INFORMATION ",
             "launch_ready" => "READY TO RACE",
@@ -18,14 +16,13 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_stat" => "Connection Status:",
             "launch_detect" => "DETECTED",
             "launch_wait" => "WAITING...",
-            
             "launch_conf_title" => "APP CONFIGURATION",
             "launch_conf_desc" => "Press ENTER to open settings.",
             "launch_lang_title" => "INTERFACE LANGUAGE",
             "launch_lang_desc" => "Use LEFT / RIGHT arrows to switch language instantly.",
             "launch_doc_title" => "USER MANUAL",
             "launch_nav" => "Navigation:",
-            "launch_nav_desc" => " F1-F7 : Switch Tabs\n Q     : Return / Quit\n Arrows: Navigate",
+            "launch_nav_desc" => " F1-F8 : Switch Tabs\n Q     : Return / Quit\n Arrows: Navigate",
             "launch_feat" => "Features:",
             "launch_feat_desc" => " • Telemetry: Live graphs\n • Engineer: Real-time advice\n • Analysis: Lap comparison",
             "launch_cred_title" => "CREDITS & AUTHOR",
@@ -39,8 +36,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_safe" => "Data is saved automatically.\nPress ENTER to close.",
             "launch_on" => "✓ System Online",
             "launch_hint" => "Press Q to Quit",
-
-            
             "settings_title" => "SETTINGS",
             "cat_general" => "General",
             "cat_eng" => "Engineer & Race",
@@ -63,11 +58,9 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "alert_wear" => "Wear Warning",
             "alert_p_min" => "Min Pressure",
             "alert_p_max" => "Max Pressure",
-            
-            
             "footer_connected" => "CONNECTED",
             "footer_disconnected" => "DISCONNECTED",
-            "footer_keys" => "F1-F7: Tabs | Q: Menu",
+            "footer_keys" => "F1-F8: Tabs | Q: Menu",
             "tab_dash" => "DASHBOARD",
             "tab_tele" => "TELEMETRY",
             "tab_eng" => "ENGINEER",
@@ -75,8 +68,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tab_anal" => "ANALYSIS",
             "tab_strat" => "STRATEGY",
             "tab_set" => "SETTINGS",
-            
-            
             "anal_waiting" => "No laps recorded yet. Drive some laps!",
             "anal_laps_list" => "Laps History",
             "anal_speed_comp" => "Speed Trace Comparison",
@@ -87,19 +78,16 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "skill_consist" => "Consistency",
             "skill_car_ctrl" => "Car Control",
             "skill_tyres" => "Tyre Mgmt",
-            
             "anal_session_info" => "Session Details",
             "info_car" => "Car",
             "info_track" => "Track",
             "info_cond" => "Conditions",
             "info_grip" => "Grip",
             "info_date" => "Date",
-            
             "anal_time" => "Lap Time",
             "anal_opt" => "Optimal",
             "anal_wr" => "World Rec",
             "anal_delta" => "Delta",
-            
             "anal_max_spd" => "Max Speed",
             "anal_avg_spd" => "Avg Speed",
             "anal_fuel_used" => "Fuel Used",
@@ -107,7 +95,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "anal_self_title" => "Detailed Coach Report",
             "anal_comp_title" => "Comparison & Advice",
             "anal_self_perfect" => "Outstanding lap! Minimal errors detected.",
-            
             "anal_stats_ext" => "Extended Physics Stats",
             "anal_full_thr" => "Full Throttle %",
             "anal_g_lat" => "Peak Lat G",
@@ -115,8 +102,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "anal_p_dev" => "Press. Deviation",
             "anal_susp" => "Susp. Usage",
             "anal_grip_use" => "Grip Usage",
-
-            
             "strat_fuel_title" => "Fuel Calculator",
             "strat_tyres_title" => "Tyre Status",
             "strat_env_title" => "Environment",
@@ -129,8 +114,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "strat_air" => "Air Temp",
             "strat_road" => "Road Temp",
             "strat_wind" => "Wind Spd",
-
-            
             "graph_speed_rpm" => "Speed & RPM",
             "graph_inputs" => "Pedal Inputs",
             "graph_gforce" => "G-Force",
@@ -146,8 +129,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tele_map" => "Track Map",
             "tele_map_waiting" => "Drive a lap to generate map...",
             "tele_live" => "Live Telemetry",
-            
-            
             "dash_tyre_status" => "TYRE MONITOR",
             "dash_perf" => "PERFORMANCE",
             "dash_session" => "SESSION INFO",
@@ -170,8 +151,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "lbl_tc" => "TC",
             "lbl_abs" => "ABS",
             "lbl_map" => "Map",
-            
-            
             "eng_recs" => "LIVE ADVICE",
             "eng_analysis" => "DRIVING STYLE",
             "eng_good" => "All systems nominal. Good driving.",
@@ -183,8 +162,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "eng_trail" => "Trail",
             "eng_lock" => "Lock",
             "eng_spin" => "Spin",
-            
-            
             "set_list" => "AVAILABLE SETUPS",
             "set_compare" => "COMPARE SETUPS",
             "set_param" => "Parameter",
@@ -218,24 +195,18 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "p_diff_c" => "Diff Coast",
             "p_gear" => "Gear",
             "p_final" => "Final Ratio",
-
-            
             "set_server_title" => "REMOTE SETUP",
             "set_download" => "Press 'D' to DOWNLOAD",
             "set_dl_path" => "File will be saved to 'downloaded' folder.",
-            
             _ => key,
         }.to_string(),
-        
         Language::Russian => match key {
-            
             "launch_start" => "ЗАПУСК ДВИГАТЕЛЯ",
             "launch_sett" => "НАСТРОЙКИ",
             "launch_docs" => "ДОКУМЕНТАЦИЯ",
             "launch_cred" => "АВТОРЫ / ИНФО",
             "launch_upd" => "ПРОВЕРИТЬ ОБНОВЛЕНИЯ",
             "launch_exit" => "ВЫХОД",
-            
             "launch_menu_title" => " ГЛАВНОЕ МЕНЮ ",
             "launch_info_title" => " ИНФОРМАЦИЯ ",
             "launch_ready" => "ГОТОВ К ГОНКЕ",
@@ -243,14 +214,13 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_stat" => "Статус подключения:",
             "launch_detect" => "ОБНАРУЖЕНО",
             "launch_wait" => "ОЖИДАНИЕ...",
-            
             "launch_conf_title" => "КОНФИГУРАЦИЯ",
             "launch_conf_desc" => "Нажмите ENTER для настроек.",
             "launch_lang_title" => "ЯЗЫК ИНТЕРФЕЙСА",
             "launch_lang_desc" => "Используйте стрелки ВЛЕВО / ВПРАВО для смены языка.",
             "launch_doc_title" => "РУКОВОДСТВО",
             "launch_nav" => "Навигация:",
-            "launch_nav_desc" => " F1-F7 : Вкладки\n Q     : Назад / Выход\n Стрелки: Меню",
+            "launch_nav_desc" => " F1-F8 : Вкладки\n Q     : Назад / Выход\n Стрелки: Меню",
             "launch_feat" => "Возможности:",
             "launch_feat_desc" => " • Телеметрия: Графики\n • Инженер: Советы\n • Анализ: Сравнение",
             "launch_cred_title" => "АВТОРЫ И БЛАГОДАРНОСТИ",
@@ -264,8 +234,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "launch_safe" => "Данные сохранены автоматически.\nНажмите ENTER для выхода.",
             "launch_on" => "✓ Система в сети",
             "launch_hint" => "Нажми Q для Выхода",
-
-            
             "settings_title" => "НАСТРОЙКИ",
             "cat_general" => "Общие",
             "cat_eng" => "Инженер и Гонка",
@@ -288,11 +256,9 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "alert_wear" => "Износ Шин",
             "alert_p_min" => "Мин. Давл.",
             "alert_p_max" => "Макс. Давл.",
-            
-            
             "footer_connected" => "ПОДКЛЮЧЕНО",
             "footer_disconnected" => "ОТКЛЮЧЕНО",
-            "footer_keys" => "F1-F7: Меню | Q: Выход",
+            "footer_keys" => "F1-F8: Меню | Q: Выход",
             "tab_dash" => "ДАШБОРД",
             "tab_tele" => "ТЕЛЕМЕТРИЯ",
             "tab_eng" => "ИНЖЕНЕР",
@@ -300,8 +266,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tab_anal" => "АНАЛИЗ",
             "tab_strat" => "СТРАТЕГИЯ",
             "tab_set" => "НАСТРОЙКИ",
-            
-            
             "anal_waiting" => "Нет записанных кругов. Выезжай на трассу!",
             "anal_laps_list" => "История Кругов",
             "anal_speed_comp" => "Сравнение Скорости",
@@ -312,19 +276,16 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "skill_consist" => "Стабильность",
             "skill_car_ctrl" => "Контроль",
             "skill_tyres" => "Шины",
-            
             "anal_session_info" => "Детали Сессии",
             "info_car" => "Авто",
             "info_track" => "Трасса",
             "info_cond" => "Погода",
             "info_grip" => "Держак",
             "info_date" => "Дата",
-
             "anal_time" => "Время",
             "anal_opt" => "Оптимал",
             "anal_wr" => "Мир. Рекорд",
             "anal_delta" => "Дельта",
-
             "anal_max_spd" => "Макс. Скор.",
             "anal_avg_spd" => "Сред. Скор.",
             "anal_fuel_used" => "Топл.",
@@ -337,7 +298,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "lbl_under" => "Недост. Повор.",
             "lbl_over" => "Избыт. Повор.",
             "lbl_lock" => "Блокировки",
-            
             "anal_comp_title" => "Сравнение и Советы",
             "anal_self_perfect" => "Потрясающий круг! Ошибок почти нет.",
             "anal_stats_ext" => "Расширенная Статистика",
@@ -348,8 +308,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "anal_p_dev" => "Откл. Давления",
             "anal_susp" => "Работа Подвески",
             "anal_grip_use" => "Исп. Сцепления",
-
-            
             "strat_fuel_title" => "Калькулятор Топлива",
             "strat_tyres_title" => "Состояние Шин",
             "strat_env_title" => "Погода",
@@ -362,8 +320,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "strat_air" => "Возд.",
             "strat_road" => "Асф.",
             "strat_wind" => "Ветер",
-
-            
             "graph_speed_rpm" => "Скорость и Обороты",
             "graph_inputs" => "Педали (Газ/Тормоз)",
             "graph_gforce" => "Перегрузки (G-Force)",
@@ -379,8 +335,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "tele_map" => "Карта Трассы",
             "tele_map_waiting" => "Проедь круг для создания карты...",
             "tele_live" => "Живая Телеметрия",
-            
-            
             "dash_tyre_status" => "МОНИТОР ШИН",
             "dash_perf" => "ПРОИЗВОДИТЕЛЬНОСТЬ",
             "dash_session" => "ИНФО О СЕССИИ",
@@ -403,8 +357,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "lbl_tc" => "TC",
             "lbl_abs" => "ABS",
             "lbl_map" => "Карта",
-            
-            
             "eng_recs" => "СОВЕТЫ В РЕАЛЬНОМ ВРЕМЕНИ",
             "eng_analysis" => "СТИЛЬ ВОЖДЕНИЯ",
             "eng_good" => "Системы в норме. Хороший темп.",
@@ -416,8 +368,6 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "eng_trail" => "Трейл",
             "eng_lock" => "Блок",
             "eng_spin" => "Букс",
-            
-           
             "set_list" => "ДОСТУПНЫЕ СЕТАПЫ",
             "set_compare" => "СРАВНЕНИЕ СЕТАПОВ",
             "set_param" => "Параметр",
@@ -451,17 +401,13 @@ pub fn tr(key: &str, lang: &Language) -> String {
             "p_diff_c" => "Дифф. Накат",
             "p_gear" => "Передача",
             "p_final" => "Главная Пара",
-            
             "view_setup" => "Сетап",
             "view_anal" => "Анализ",
             "view_strat" => "Стратегия",
             "view_tele" => "Телеметрия",
-            
-           
             "set_server_title" => "УДАЛЕННЫЙ СЕТАП",
             "set_download" => "Нажми 'D' для СКАЧИВАНИЯ",
             "set_dl_path" => "Файл будет сохранен в папку 'downloaded'.",
-
             _ => key,
         }.to_string(),
     }

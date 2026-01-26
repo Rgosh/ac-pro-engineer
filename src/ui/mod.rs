@@ -18,6 +18,7 @@ pub struct UIState {
     pub last_blink: std::time::Instant,
     pub settings: tabs::settings::SettingsState,
     pub analysis: tabs::analysis::AnalysisState,
+    pub engineer: tabs::engineer::EngineerState,
     pub setup_list_state: ListState,
 }
 
@@ -42,6 +43,7 @@ impl UIState {
             last_blink: std::time::Instant::now(),
             settings: tabs::settings::SettingsState::new(),
             analysis: tabs::analysis::AnalysisState::new(),
+            engineer: tabs::engineer::EngineerState::new(),
             setup_list_state: list_state,
         }
     }

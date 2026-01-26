@@ -189,7 +189,7 @@ impl AppState {
             return;
         }
 
-        let process_active = is_process_running("acs.exe");
+        let process_active = is_process_running("acs.exe") || is_process_running("simulator.exe");
         self.is_game_running = process_active;
 
         if !process_active && self.is_connected {
@@ -362,11 +362,20 @@ fn main() -> Result<(), anyhow::Error> {
     let mut app = AppState::new();
     let renderer = UIRenderer::new();
 
+    let mut last_tick = Instant::now();
+
     loop {
+        let target_frame_time = Duration::from_millis(app.config.update_rate);
+        let elapsed = last_tick.elapsed();
+        if elapsed < target_frame_time {
+            std::thread::sleep(target_frame_time - elapsed);
+        }
+        last_tick = Instant::now();
+
         app.tick();
         terminal.draw(|f| renderer.render(f, &app))?;
 
-        if event::poll(Duration::from_millis(16))? {
+        if event::poll(Duration::from_millis(0))? {
             match event::read()? {
                 Event::Key(key) if key.kind == event::KeyEventKind::Press => {
                     if app.show_update_success {
@@ -652,10 +661,16 @@ fn main() -> Result<(), anyhow::Error> {
                             app.active_tab = app.active_tab.previous();
                         }
                         (KeyCode::Down, _) => {
-                            if app.active_tab == AppTab::Analysis {
+                            if app.active_tab == AppTab::Analysis
+                                || app.active_tab == AppTab::Engineer
+                            {
                                 let len = app.analyzer.laps.len();
                                 if len > 0 {
-                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let cur = app
+                                        .ui_state
+                                        .setup_list_state
+                                        .selected()
+                                        .unwrap_or(len.saturating_sub(1));
                                     let next = if cur >= len - 1 { 0 } else { cur + 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
@@ -692,10 +707,16 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         (KeyCode::Up, _) => {
-                            if app.active_tab == AppTab::Analysis {
+                            if app.active_tab == AppTab::Analysis
+                                || app.active_tab == AppTab::Engineer
+                            {
                                 let len = app.analyzer.laps.len();
                                 if len > 0 {
-                                    let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let cur = app
+                                        .ui_state
+                                        .setup_list_state
+                                        .selected()
+                                        .unwrap_or(len.saturating_sub(1));
                                     let next = if cur == 0 { len - 1 } else { cur - 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
@@ -734,6 +755,8 @@ fn main() -> Result<(), anyhow::Error> {
                         (KeyCode::Left, _) => {
                             if app.active_tab == AppTab::Analysis {
                                 app.ui_state.analysis.prev_tab();
+                            } else if app.active_tab == AppTab::Engineer {
+                                app.ui_state.engineer.prev_tab();
                             } else if app.active_tab == AppTab::Setup {
                                 let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
@@ -745,6 +768,8 @@ fn main() -> Result<(), anyhow::Error> {
                         (KeyCode::Right, _) => {
                             if app.active_tab == AppTab::Analysis {
                                 app.ui_state.analysis.next_tab();
+                            } else if app.active_tab == AppTab::Engineer {
+                                app.ui_state.engineer.next_tab();
                             } else if app.active_tab == AppTab::Setup {
                                 let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
