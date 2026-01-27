@@ -36,6 +36,19 @@ pub struct LapData {
     pub pressure_deviation: f32,
     pub suspension_travel_hist: [f32; 4],
 
+    #[serde(default)]
+    pub avg_wheels_pressure: [f32; 4],
+    #[serde(default)]
+    pub avg_tyre_temp_i: [f32; 4],
+    #[serde(default)]
+    pub avg_tyre_temp_m: [f32; 4],
+    #[serde(default)]
+    pub avg_tyre_temp_o: [f32; 4],
+    #[serde(default)]
+    pub avg_brake_temp: [f32; 4],
+    #[serde(default)]
+    pub avg_ride_height: [f32; 2],
+
     pub throttle_smoothness: f32,
     pub steering_smoothness: f32,
     pub trail_braking_score: f32,
@@ -214,6 +227,13 @@ impl TelemetryAnalyzer {
         let mut press_sum = 0.0;
         let mut press_dev_acc = 0.0;
 
+        let mut sum_wheels_pressure = [0.0; 4];
+        let mut sum_tyre_temp_i = [0.0; 4];
+        let mut sum_tyre_temp_m = [0.0; 4];
+        let mut sum_tyre_temp_o = [0.0; 4];
+        let mut sum_brake_temp_avg = [0.0; 4];
+        let mut sum_ride_height = [0.0; 2];
+
         let log_len = physics_log.len() as f32;
 
         for p in physics_log {
@@ -273,6 +293,9 @@ impl TelemetryAnalyzer {
                 if slip_vals[2].abs() > 0.3 || slip_vals[3].abs() > 0.3 {
                     oversteer_c += 1;
                 }
+                if slip_vals[0].abs() > 0.3 || slip_vals[1].abs() > 0.3 {
+                    understeer_c += 1;
+                }
             }
 
             for i in 0..4 {
@@ -287,7 +310,16 @@ impl TelemetryAnalyzer {
                     press_sum += p.wheels_pressure[i];
                     press_dev_acc += (p.wheels_pressure[i] - 27.5).abs();
                 }
+
+                sum_wheels_pressure[i] += p.wheels_pressure[i];
+                sum_tyre_temp_i[i] += p.tyre_temp_i[i];
+                sum_tyre_temp_m[i] += p.tyre_temp_m[i];
+                sum_tyre_temp_o[i] += p.tyre_temp_o[i];
+                sum_brake_temp_avg[i] += p.brake_temp[i];
             }
+
+            sum_ride_height[0] += p.ride_height[0];
+            sum_ride_height[1] += p.ride_height[1];
         }
 
         let throttle_smoothness = if log_len > 0.0 {
@@ -348,6 +380,41 @@ impl TelemetryAnalyzer {
 
         let pressure_deviation = press_dev_acc / (safe_div_len * 4.0);
         let avg_pressure = press_sum / (safe_div_len * 4.0);
+
+        let avg_wheels_pressure = [
+            sum_wheels_pressure[0] / safe_div_len,
+            sum_wheels_pressure[1] / safe_div_len,
+            sum_wheels_pressure[2] / safe_div_len,
+            sum_wheels_pressure[3] / safe_div_len,
+        ];
+        let avg_tyre_temp_i = [
+            sum_tyre_temp_i[0] / safe_div_len,
+            sum_tyre_temp_i[1] / safe_div_len,
+            sum_tyre_temp_i[2] / safe_div_len,
+            sum_tyre_temp_i[3] / safe_div_len,
+        ];
+        let avg_tyre_temp_m = [
+            sum_tyre_temp_m[0] / safe_div_len,
+            sum_tyre_temp_m[1] / safe_div_len,
+            sum_tyre_temp_m[2] / safe_div_len,
+            sum_tyre_temp_m[3] / safe_div_len,
+        ];
+        let avg_tyre_temp_o = [
+            sum_tyre_temp_o[0] / safe_div_len,
+            sum_tyre_temp_o[1] / safe_div_len,
+            sum_tyre_temp_o[2] / safe_div_len,
+            sum_tyre_temp_o[3] / safe_div_len,
+        ];
+        let avg_brake_temp = [
+            sum_brake_temp_avg[0] / safe_div_len,
+            sum_brake_temp_avg[1] / safe_div_len,
+            sum_brake_temp_avg[2] / safe_div_len,
+            sum_brake_temp_avg[3] / safe_div_len,
+        ];
+        let avg_ride_height = [
+            sum_ride_height[0] / safe_div_len,
+            sum_ride_height[1] / safe_div_len,
+        ];
 
         let mistakes = (oversteer_c + understeer_c + lockup_c) as f32;
         let control_score = (100.0 - (mistakes / 10.0)).clamp(0.0, 100.0);
@@ -478,6 +545,12 @@ impl TelemetryAnalyzer {
             max_brake_temp,
             pressure_deviation,
             suspension_travel_hist,
+            avg_wheels_pressure,
+            avg_tyre_temp_i,
+            avg_tyre_temp_m,
+            avg_tyre_temp_o,
+            avg_brake_temp,
+            avg_ride_height,
             throttle_smoothness,
             steering_smoothness,
             trail_braking_score: trail_score,

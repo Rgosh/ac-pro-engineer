@@ -1,6 +1,6 @@
 [package]
 name = "ac_pro_engineer"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 authors = ["Rgosh"]
 description = "Professional telemetry and setup analyzer for Assetto Corsa"
@@ -12,6 +12,9 @@ windows = { version = "0.52", features = [
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Security",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
 ] }
 crossterm = "0.27"
 ratatui = "0.26"
@@ -34,10 +37,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-error = "0.2.1"
 
+[build-dependencies]
+winres = "0.1"
 
 [lints.rust]
 unused = { level = "warn", priority = -1 }
-unsafe_code = "deny"
+unsafe_code = "allow"
 rust-2018-idioms = "warn"
 rust-2021-compatibility = "warn"
 rust-2024-compatibility = "warn"
@@ -55,10 +60,8 @@ suspicious = { level = "warn", priority = -1 }
 style = { level = "warn", priority = -1 }
 complexity = { level = "warn", priority = -1 }
 perf = { level = "warn", priority = -1 }
-#pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 panic = "deny"
-
 
 [[bin]]
 name = "simulator"

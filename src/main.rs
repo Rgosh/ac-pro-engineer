@@ -28,7 +28,9 @@ use crate::updater::{UpdateStatus, Updater};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetSize,
+    },
 };
 use ratatui::prelude::*;
 use std::{
@@ -57,6 +59,7 @@ pub enum AppTab {
     Strategy,
     Ffb,
     Settings,
+    Guide,
 }
 
 impl AppTab {
@@ -69,13 +72,15 @@ impl AppTab {
             AppTab::Analysis => AppTab::Strategy,
             AppTab::Strategy => AppTab::Ffb,
             AppTab::Ffb => AppTab::Settings,
-            AppTab::Settings => AppTab::Dashboard,
+            AppTab::Settings => AppTab::Guide,
+            AppTab::Guide => AppTab::Dashboard,
         }
     }
 
     pub fn previous(&self) -> Self {
         match self {
-            AppTab::Dashboard => AppTab::Settings,
+            AppTab::Dashboard => AppTab::Guide,
+            AppTab::Guide => AppTab::Settings,
             AppTab::Settings => AppTab::Ffb,
             AppTab::Ffb => AppTab::Strategy,
             AppTab::Strategy => AppTab::Analysis,
@@ -125,16 +130,21 @@ pub struct AppState {
     pub analysis_results: Vec<AnalysisResult>,
     pub last_update: Instant,
     pub config: AppConfig,
+
     pub show_update_success: bool,
+    pub show_first_run_prompt: bool,
+    pub first_run_selection: usize,
+    pub show_help: bool,
 }
 
 impl AppState {
     fn new() -> Self {
         let mut config = AppConfig::load().unwrap_or_default();
         let mut show_success = false;
+        let is_first_run = config.last_run_version == "0.0.0" || config.last_run_version.is_empty();
 
         if config.last_run_version != crate::updater::CURRENT_VERSION {
-            if config.last_run_version != "0.0.0" {
+            if !is_first_run {
                 show_success = true;
             }
             config.last_run_version = crate::updater::CURRENT_VERSION.to_string();
@@ -171,6 +181,9 @@ impl AppState {
             last_update: Instant::now(),
             config,
             show_update_success: show_success,
+            show_first_run_prompt: is_first_run,
+            first_run_selection: 0,
+            show_help: false,
         }
     }
 
@@ -352,10 +365,61 @@ impl AppState {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn set_console_icon() {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
+        WM_SETICON,
+    };
+
+    unsafe {
+        let hwnd = GetConsoleWindow();
+        if hwnd.0 != 0 {
+            if let Ok(hinstance) = GetModuleHandleW(None) {
+                if let Ok(hicon) = LoadImageW(
+                    hinstance,
+                    PCWSTR(1 as *const u16),
+                    IMAGE_ICON,
+                    0,
+                    0,
+                    LR_DEFAULTSIZE,
+                ) {
+                    let icon_handle = HICON(hicon.0);
+                    SendMessageW(
+                        hwnd,
+                        WM_SETICON,
+                        windows::Win32::Foundation::WPARAM(ICON_SMALL as usize),
+                        windows::Win32::Foundation::LPARAM(icon_handle.0),
+                    );
+                    SendMessageW(
+                        hwnd,
+                        WM_SETICON,
+                        windows::Win32::Foundation::WPARAM(ICON_BIG as usize),
+                        windows::Win32::Foundation::LPARAM(icon_handle.0),
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), anyhow::Error> {
+    #[cfg(target_os = "windows")]
+    set_console_icon();
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        SetSize(140, 40)
+    )?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -382,6 +446,34 @@ fn main() -> Result<(), anyhow::Error> {
                         if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
                             app.show_update_success = false;
                         }
+                        continue;
+                    }
+
+                    if app.show_first_run_prompt {
+                        match key.code {
+                            KeyCode::Left => app.first_run_selection = 0,
+                            KeyCode::Right => app.first_run_selection = 1,
+                            KeyCode::Enter => {
+                                app.show_first_run_prompt = false;
+                                if app.first_run_selection == 0 {
+                                    app.stage = AppStage::Running;
+                                    app.active_tab = AppTab::Guide;
+                                }
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
+                    if key.code == KeyCode::Char('h') || key.code == KeyCode::Char('H') {
+                        if app.stage == AppStage::Running {
+                            app.show_help = !app.show_help;
+                            continue;
+                        }
+                    }
+
+                    if app.show_help {
+                        app.show_help = false;
                         continue;
                     }
 
@@ -430,10 +522,6 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
 
-                            KeyCode::Char('h') | KeyCode::Char('H') => {
-                                app.config.review_banner_hidden = true;
-                                let _res = app.config.save();
-                            }
                             KeyCode::Char('o') | KeyCode::Char('O') => {
                                 let url = "https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/";
                                 #[cfg(target_os = "windows")]
@@ -451,6 +539,11 @@ fn main() -> Result<(), anyhow::Error> {
                                         child.wait().ok();
                                     }
                                 }
+                            }
+
+                            KeyCode::Char('h') | KeyCode::Char('H') => {
+                                app.config.review_banner_hidden = true;
+                                let _res = app.config.save();
                             }
 
                             KeyCode::Enter => match app.launcher_selection {
@@ -526,8 +619,7 @@ fn main() -> Result<(), anyhow::Error> {
                             | KeyCode::Down
                             | KeyCode::Left
                             | KeyCode::Right
-                            | KeyCode::Enter
-                            | KeyCode::Tab => continue,
+                            | KeyCode::Enter => continue,
                             _ => {}
                         }
                     }
@@ -568,6 +660,9 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                         (KeyCode::Char('8'), _) | (KeyCode::F(8), _) => {
                             app.active_tab = AppTab::Settings
+                        }
+                        (KeyCode::Char('9'), _) | (KeyCode::F(9), _) => {
+                            app.active_tab = AppTab::Guide
                         }
 
                         (KeyCode::Char('l'), _)
@@ -674,6 +769,10 @@ fn main() -> Result<(), anyhow::Error> {
                                     let next = if cur >= len - 1 { 0 } else { cur + 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
+                            } else if app.active_tab == AppTab::Guide {
+                                let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                let next = if cur >= 15 { 0 } else { cur + 1 };
+                                app.ui_state.setup_list_state.select(Some(next));
                             } else if app.active_tab == AppTab::Setup {
                                 let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {
@@ -720,6 +819,10 @@ fn main() -> Result<(), anyhow::Error> {
                                     let next = if cur == 0 { len - 1 } else { cur - 1 };
                                     app.ui_state.setup_list_state.select(Some(next));
                                 }
+                            } else if app.active_tab == AppTab::Guide {
+                                let cur = app.ui_state.setup_list_state.selected().unwrap_or(0);
+                                let next = if cur == 0 { 15 } else { cur - 1 };
+                                app.ui_state.setup_list_state.select(Some(next));
                             } else if app.active_tab == AppTab::Setup {
                                 let is_browser = *app.setup_manager.browser_active.safe_lock();
                                 if is_browser {

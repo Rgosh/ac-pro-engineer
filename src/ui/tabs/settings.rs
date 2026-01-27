@@ -6,9 +6,9 @@ use ratatui::{prelude::*, widgets::*};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SettingsCategory {
-    General,
-    Units,
-    Alerts,
+    System,
+    Display,
+    RaceEngineer,
 }
 
 pub struct SettingsState {
@@ -20,7 +20,7 @@ pub struct SettingsState {
 impl SettingsState {
     pub fn new() -> Self {
         Self {
-            category: SettingsCategory::General,
+            category: SettingsCategory::System,
             selected_index: 0,
             is_editing: false,
         }
@@ -28,9 +28,9 @@ impl SettingsState {
 
     pub fn next_category(&mut self) {
         self.category = match self.category {
-            SettingsCategory::General => SettingsCategory::Units,
-            SettingsCategory::Units => SettingsCategory::Alerts,
-            SettingsCategory::Alerts => SettingsCategory::General,
+            SettingsCategory::System => SettingsCategory::Display,
+            SettingsCategory::Display => SettingsCategory::RaceEngineer,
+            SettingsCategory::RaceEngineer => SettingsCategory::System,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -38,10 +38,16 @@ impl SettingsState {
 
     pub fn prev_category(&mut self) {
         self.category = match self.category {
-            SettingsCategory::General => SettingsCategory::Alerts,
-            SettingsCategory::Units => SettingsCategory::General,
-            SettingsCategory::Alerts => SettingsCategory::Units,
+            SettingsCategory::System => SettingsCategory::RaceEngineer,
+            SettingsCategory::Display => SettingsCategory::System,
+            SettingsCategory::RaceEngineer => SettingsCategory::Display,
         };
+        self.selected_index = 0;
+        self.is_editing = false;
+    }
+
+    pub fn set_category(&mut self, cat: SettingsCategory) {
+        self.category = cat;
         self.selected_index = 0;
         self.is_editing = false;
     }
@@ -55,13 +61,25 @@ impl SettingsState {
                         self.selected_index -= 1
                     }
                 }
-                KeyCode::Right | KeyCode::Tab => self.next_category(),
+
+                KeyCode::Right => self.next_category(),
                 KeyCode::Left => self.prev_category(),
+
+                KeyCode::Char('a') | KeyCode::Char('A') => {
+                    self.set_category(SettingsCategory::System)
+                }
+                KeyCode::Char('s') | KeyCode::Char('S') => {
+                    self.set_category(SettingsCategory::Display)
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    self.set_category(SettingsCategory::RaceEngineer)
+                }
+
                 KeyCode::Enter => self.is_editing = true,
                 _ => {}
             }
 
-            let max_items = self.get_item_count(self.category);
+            let max_items = self.get_item_count();
             if self.selected_index >= max_items {
                 self.selected_index = max_items.saturating_sub(1);
             }
@@ -77,17 +95,17 @@ impl SettingsState {
         }
     }
 
-    fn get_item_count(&self, category: SettingsCategory) -> usize {
-        match category {
-            SettingsCategory::General => 4,
-            SettingsCategory::Units => 2,
-            SettingsCategory::Alerts => 7,
+    fn get_item_count(&self) -> usize {
+        match self.category {
+            SettingsCategory::System => 5,
+            SettingsCategory::Display => 2,
+            SettingsCategory::RaceEngineer => 7,
         }
     }
 
     fn modify_value(&self, config: &mut AppConfig, delta: f32) {
         match self.category {
-            SettingsCategory::General => match self.selected_index {
+            SettingsCategory::System => match self.selected_index {
                 0 => {
                     if delta > 0.0 {
                         config.language = Language::Russian;
@@ -97,20 +115,25 @@ impl SettingsState {
                 }
                 1 => {
                     config.update_rate =
-                        (config.update_rate as i64 + delta as i64).clamp(1, 1000) as u64
+                        (config.update_rate as i64 + delta as i64).clamp(10, 1000) as u64
                 }
                 2 => {
                     config.history_size = (config.history_size as i64 + (delta * 10.0) as i64)
-                        .clamp(10, 2000) as usize
+                        .clamp(50, 5000) as usize
                 }
                 3 => {
                     if delta.abs() > 0.0 {
                         config.auto_save = !config.auto_save
                     }
                 }
+                4 => {
+                    if delta.abs() > 0.0 {
+                        config.review_banner_hidden = !config.review_banner_hidden
+                    }
+                }
                 _ => {}
             },
-            SettingsCategory::Units => match self.selected_index {
+            SettingsCategory::Display => match self.selected_index {
                 0 => {
                     if delta > 0.0 {
                         config.pressure_unit = match config.pressure_unit {
@@ -136,7 +159,7 @@ impl SettingsState {
                 }
                 _ => {}
             },
-            SettingsCategory::Alerts => match self.selected_index {
+            SettingsCategory::RaceEngineer => match self.selected_index {
                 0 => {
                     config.alerts.tyre_pressure_min =
                         (config.alerts.tyre_pressure_min + delta * 0.1).max(0.0)
@@ -167,64 +190,218 @@ impl SettingsState {
             let _res = config.save();
         }
     }
+
+    fn get_description(&self, lang: &Language) -> String {
+        let is_ru = *lang == Language::Russian;
+        match self.category {
+            SettingsCategory::System => match self.selected_index {
+                0 => {
+                    if is_ru {
+                        "Язык интерфейса / Interface Language"
+                    } else {
+                        "Interface Language / Язык интерфейса"
+                    }
+                }
+                1 => {
+                    if is_ru {
+                        "Интервал обновления телеметрии (мс). Меньше = Плавнее."
+                    } else {
+                        "Telemetry update rate (ms). Lower = Smoother."
+                    }
+                }
+                2 => {
+                    if is_ru {
+                        "Количество точек на графиках. Больше = Длиннее история."
+                    } else {
+                        "Number of data points on charts. Higher = Longer history."
+                    }
+                }
+                3 => {
+                    if is_ru {
+                        "Авто-сохранение настроек при выходе."
+                    } else {
+                        "Automatically save settings on exit."
+                    }
+                }
+                4 => {
+                    if is_ru {
+                        "Показывать баннер 'Оставить отзыв' при запуске."
+                    } else {
+                        "Show 'Leave Review' banner on startup."
+                    }
+                }
+                _ => "",
+            },
+            SettingsCategory::Display => match self.selected_index {
+                0 => {
+                    if is_ru {
+                        "Единицы давления (PSI / Bar / kPa)."
+                    } else {
+                        "Pressure units (PSI / Bar / kPa)."
+                    }
+                }
+                1 => {
+                    if is_ru {
+                        "Единицы температуры (Цельсий / Фаренгейт)."
+                    } else {
+                        "Temperature units (Celsius / Fahrenheit)."
+                    }
+                }
+                _ => "",
+            },
+            SettingsCategory::RaceEngineer => match self.selected_index {
+                0 => {
+                    if is_ru {
+                        "Мин. давление шин (Предупреждение: Синий)."
+                    } else {
+                        "Min Tyre Pressure (Warning: Blue)."
+                    }
+                }
+                1 => {
+                    if is_ru {
+                        "Макс. давление шин (Предупреждение: Красный)."
+                    } else {
+                        "Max Tyre Pressure (Warning: Red)."
+                    }
+                }
+                2 => {
+                    if is_ru {
+                        "Мин. температура шин (Холодные)."
+                    } else {
+                        "Min Tyre Temp (Cold)."
+                    }
+                }
+                3 => {
+                    if is_ru {
+                        "Макс. температура шин (Перегрев)."
+                    } else {
+                        "Max Tyre Temp (Overheat)."
+                    }
+                }
+                4 => {
+                    if is_ru {
+                        "Критическая температура тормозов."
+                    } else {
+                        "Critical Brake Temp."
+                    }
+                }
+                5 => {
+                    if is_ru {
+                        "Остаток топлива для предупреждения (круги)."
+                    } else {
+                        "Fuel warning threshold (laps)."
+                    }
+                }
+                6 => {
+                    if is_ru {
+                        "Критический износ шин (%)."
+                    } else {
+                        "Critical Tyre Wear (%)."
+                    }
+                }
+                _ => "",
+            },
+        }
+        .to_string()
+    }
 }
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
-    let lang = &app.config.language;
 
     let main_block = Block::default()
-        .title(tr("settings_title", lang))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+        .border_type(BorderType::Double)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)))
+        .title(" CONFIGURATION TERMINAL ")
+        .title_alignment(Alignment::Center)
+        .style(Style::default().bg(Color::Black));
 
     let inner_area = main_block.inner(area);
     f.render_widget(main_block, area);
 
-    let layout = Layout::default()
+    let main_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(25), Constraint::Min(0)])
+        .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
         .split(inner_area);
 
-    render_categories_sidebar(f, layout[0], app);
-    render_settings_list(f, layout[1], app);
+    let right_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(4)])
+        .split(main_layout[1]);
+
+    render_sidebar(f, main_layout[0], app);
+    render_settings_list(f, right_layout[0], app);
+    render_description_panel(f, right_layout[1], app);
 }
 
-fn render_categories_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
 
     let block = Block::default()
         .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+        .border_style(Style::default().fg(Color::DarkGray))
+        .padding(Padding::new(0, 1, 1, 1));
 
-    let categories = [
-        (SettingsCategory::General, tr("cat_general", lang)),
-        (SettingsCategory::Units, tr("cat_units", lang)),
-        (SettingsCategory::Alerts, tr("cat_alerts", lang)),
+    let categories = vec![
+        (
+            SettingsCategory::System,
+            if is_ru { "СИСТЕМА" } else { "SYSTEM" },
+            "💻",
+            "[A]",
+        ),
+        (
+            SettingsCategory::Display,
+            if is_ru { "ДИСПЛЕЙ" } else { "DISPLAY" },
+            "👁️",
+            "[S]",
+        ),
+        (
+            SettingsCategory::RaceEngineer,
+            if is_ru { "ИНЖЕНЕР" } else { "ENGINEER" },
+            "🔧",
+            "[D]",
+        ),
     ];
 
     let items: Vec<ListItem<'_>> = categories
         .iter()
-        .map(|(cat, name)| {
+        .map(|(cat, name, icon, key)| {
             let is_selected = app.ui_state.settings.category == *cat;
 
-            let style = if is_selected {
+            let (bg, fg, modif) = if is_selected {
+                (
+                    app.ui_state.get_color(&theme.highlight),
+                    Color::Black,
+                    Modifier::BOLD,
+                )
+            } else {
+                (Color::Reset, Color::Gray, Modifier::empty())
+            };
+
+            let key_style = if is_selected {
                 Style::default()
+                    .bg(bg)
                     .fg(Color::Black)
-                    .bg(app.ui_state.get_color(&theme.highlight))
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(app.ui_state.get_color(&theme.text))
+                Style::default().fg(Color::DarkGray)
             };
 
-            let content = if is_selected {
-                format!(" » {} ", name)
-            } else {
-                format!("   {} ", name)
-            };
+            let name_span = Span::styled(
+                format!(" {} {}", icon, name),
+                Style::default().bg(bg).fg(fg).add_modifier(modif),
+            );
+            let key_span = Span::styled(format!(" {} ", key), key_style);
 
-            ListItem::new(content).style(style)
+            let spacer = Span::styled(
+                " ".repeat(area.width.saturating_sub(name.len() as u16 + 8) as usize),
+                Style::default().bg(bg),
+            );
+
+            ListItem::new(Line::from(vec![name_span, spacer, key_span]))
         })
         .collect();
 
@@ -233,119 +410,172 @@ fn render_categories_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_settings_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(2), Constraint::Min(0)])
+    let count = app.ui_state.settings.get_item_count();
+    let constraints = vec![Constraint::Length(3); count];
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
         .split(area);
 
-    let content_area = layout[1];
-
     match app.ui_state.settings.category {
-        SettingsCategory::General => render_general_settings(f, content_area, app),
-        SettingsCategory::Units => render_units_settings(f, content_area, app),
-        SettingsCategory::Alerts => render_alerts_settings(f, content_area, app),
+        SettingsCategory::System => render_system_settings(f, &rows, app),
+        SettingsCategory::Display => render_display_settings(f, &rows, app),
+        SettingsCategory::RaceEngineer => render_engineer_settings(f, &rows, app),
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_item_row(
+fn render_item(
     f: &mut Frame<'_>,
     area: Rect,
     idx: usize,
-    selected_idx: usize,
-    editing: bool,
     label: String,
     value: String,
-    theme: &crate::config::Theme,
-    ui_state: &crate::ui::UIState,
+    is_toggle: bool,
+    app: &AppState,
 ) {
-    let is_selected = idx == selected_idx;
+    let selected = idx == app.ui_state.settings.selected_index;
+    let editing = app.ui_state.settings.is_editing;
+    let theme = &app.ui_state.theme;
 
-    let label_style = if is_selected {
-        Style::default()
-            .fg(ui_state.get_color(&theme.highlight))
-            .add_modifier(Modifier::BOLD)
+    let row_style = if selected {
+        Style::default().bg(Color::DarkGray)
     } else {
-        Style::default().fg(ui_state.get_color(&theme.text))
+        Style::default()
     };
 
-    let value_style = if is_selected && editing {
-        Style::default()
-            .fg(Color::Black)
-            .bg(ui_state.get_color(&theme.accent))
-    } else if is_selected {
-        Style::default()
-            .fg(ui_state.get_color(&theme.accent))
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(ui_state.get_color(&theme.text))
-    };
+    let block = Block::default()
+        .style(row_style)
+        .padding(Padding::new(1, 1, 0, 0));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(inner);
 
-    f.render_widget(Paragraph::new(label).style(label_style), chunks[0]);
-
-    let display_value = if is_selected && !editing {
-        format!("‹ {} ›", value)
+    let label_style = if selected {
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
     } else {
-        value
+        Style::default().fg(Color::Gray)
     };
 
     f.render_widget(
-        Paragraph::new(display_value)
-            .style(value_style)
+        Paragraph::new(label)
+            .style(label_style)
+            .alignment(Alignment::Left),
+        chunks[0],
+    );
+
+    let val_style = if selected && editing {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if selected {
+        Style::default()
+            .fg(app.ui_state.get_color(&theme.highlight))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let val_text = if selected && editing {
+        format!("◄ {} ►", value)
+    } else if is_toggle {
+        let is_on = value.contains("ON") || value.contains("SHOW") || value.contains("ВКЛ");
+        let box_char = if is_on { "[■]" } else { "[ ]" };
+        format!("{} {}", box_char, value)
+    } else if selected {
+        format!("≡ {} ≡", value)
+    } else {
+        format!("  {}  ", value)
+    };
+
+    f.render_widget(
+        Paragraph::new(val_text)
+            .style(val_style)
             .alignment(Alignment::Right),
         chunks[1],
     );
 }
 
-fn render_general_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let config = &app.config;
     let lang = &config.language;
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(2); 4])
-        .split(area);
+    let is_ru = *lang == Language::Russian;
 
     let lang_str = match config.language {
-        Language::English => "English",
-        Language::Russian => "Русский",
+        Language::English => "ENGLISH",
+        Language::Russian => "РУССКИЙ",
     };
 
     let items = vec![
-        (tr("lang", lang), lang_str.to_string()),
-        (tr("update_rate", lang), format!("{}", config.update_rate)),
-        (tr("history_size", lang), format!("{}", config.history_size)),
-        (tr("auto_save", lang), format!("{}", config.auto_save)),
+        (tr("lang", lang), lang_str.to_string(), false),
+        (
+            tr("update_rate", lang),
+            format!("{} ms", config.update_rate),
+            false,
+        ),
+        (
+            tr("history_size", lang),
+            format!("{} pts", config.history_size),
+            false,
+        ),
+        (
+            tr("auto_save", lang),
+            if config.auto_save {
+                if is_ru {
+                    "ВКЛ"
+                } else {
+                    "ON"
+                }
+            } else {
+                if is_ru {
+                    "ВЫКЛ"
+                } else {
+                    "OFF"
+                }
+            }
+            .to_string(),
+            true,
+        ),
+        (
+            if is_ru {
+                "Баннер в лаунчере"
+            } else {
+                "Launcher Banner"
+            }
+            .to_string(),
+            if !config.review_banner_hidden {
+                if is_ru {
+                    "ПОКАЗАТЬ"
+                } else {
+                    "SHOW"
+                }
+            } else {
+                if is_ru {
+                    "СКРЫТЬ"
+                } else {
+                    "HIDE"
+                }
+            }
+            .to_string(),
+            true,
+        ),
     ];
 
-    for (i, (label, val)) in items.into_iter().enumerate() {
-        if i < layout.len() {
-            render_item_row(
-                f,
-                layout[i],
-                i,
-                app.ui_state.settings.selected_index,
-                app.ui_state.settings.is_editing,
-                label,
-                val,
-                &app.ui_state.theme,
-                &app.ui_state,
-            );
+    for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
+        if i < areas.len() {
+            render_item(f, areas[i], i, label, val, is_toggle, app);
         }
     }
 }
 
-fn render_units_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let config = &app.config;
     let lang = &config.language;
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(2); 2])
-        .split(area);
 
     let p_unit = match config.pressure_unit {
         PressureUnit::Psi => "PSI",
@@ -359,79 +589,94 @@ fn render_units_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     };
 
     let items = vec![
-        (tr("unit_pressure", lang), p_unit.to_string()),
-        (tr("unit_temp", lang), t_unit.to_string()),
+        (tr("unit_pressure", lang), p_unit.to_string(), false),
+        (tr("unit_temp", lang), t_unit.to_string(), false),
     ];
 
-    for (i, (label, val)) in items.into_iter().enumerate() {
-        if i < layout.len() {
-            render_item_row(
-                f,
-                layout[i],
-                i,
-                app.ui_state.settings.selected_index,
-                app.ui_state.settings.is_editing,
-                label,
-                val,
-                &app.ui_state.theme,
-                &app.ui_state,
-            );
+    for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
+        if i < areas.len() {
+            render_item(f, areas[i], i, label, val, is_toggle, app);
         }
     }
 }
 
-fn render_alerts_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let alerts = &app.config.alerts;
     let lang = &app.config.language;
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Length(2); 7])
-        .split(area);
 
     let items = vec![
         (
             tr("alert_p_min", lang),
             format!("{:.1}", alerts.tyre_pressure_min),
+            false,
         ),
         (
             tr("alert_p_max", lang),
             format!("{:.1}", alerts.tyre_pressure_max),
+            false,
         ),
         (
             tr("alert_t_min", lang),
             format!("{:.0}", alerts.tyre_temp_min),
+            false,
         ),
         (
             tr("alert_t_max", lang),
             format!("{:.0}", alerts.tyre_temp_max),
+            false,
         ),
         (
             tr("alert_b_max", lang),
             format!("{:.0}", alerts.brake_temp_max),
+            false,
         ),
         (
             tr("alert_fuel", lang),
             format!("{:.1}", alerts.fuel_warning_laps),
+            false,
         ),
         (
             tr("alert_wear", lang),
-            format!("{:.0}", alerts.wear_warning),
+            format!("{:.0}%", alerts.wear_warning),
+            false,
         ),
     ];
 
-    for (i, (label, val)) in items.into_iter().enumerate() {
-        if i < layout.len() {
-            render_item_row(
-                f,
-                layout[i],
-                i,
-                app.ui_state.settings.selected_index,
-                app.ui_state.settings.is_editing,
-                label,
-                val,
-                &app.ui_state.theme,
-                &app.ui_state,
-            );
+    for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
+        if i < areas.len() {
+            render_item(f, areas[i], i, label, val, is_toggle, app);
         }
     }
+}
+
+fn render_description_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let desc = app.ui_state.settings.get_description(&app.config.language);
+    let is_ru = app.config.language == Language::Russian;
+
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Color::Cyan))
+        .padding(Padding::new(2, 2, 1, 0));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let controls_text = if is_ru {
+        "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [A/S/D] Категории"
+    } else {
+        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D] Categories"
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(inner);
+
+    let p_desc = Paragraph::new(format!("ℹ️ {}", desc)).style(Style::default().fg(Color::White));
+    let p_ctrl = Paragraph::new(controls_text)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Right);
+
+    f.render_widget(p_desc, chunks[0]);
+    f.render_widget(p_ctrl, chunks[1]);
 }

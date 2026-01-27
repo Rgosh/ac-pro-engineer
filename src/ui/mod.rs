@@ -3,6 +3,7 @@ use crate::{AppStage, AppState, AppTab};
 use ratatui::{prelude::*, widgets::*};
 
 pub mod file_menu;
+pub mod help_overlay;
 pub mod launcher;
 pub mod localization;
 pub mod overlay;
@@ -76,6 +77,21 @@ impl UIRenderer {
                 } else {
                     self.render_main_app(f, app);
                 }
+
+                if app.show_help {
+                    let tab_idx = match app.active_tab {
+                        AppTab::Dashboard => 0,
+                        AppTab::Telemetry => 1,
+                        AppTab::Engineer => 2,
+                        AppTab::Setup => 3,
+                        AppTab::Analysis => 4,
+                        AppTab::Strategy => 5,
+                        AppTab::Ffb => 6,
+                        AppTab::Settings => 7,
+                        AppTab::Guide => 8,
+                    };
+                    help_overlay::render(f, f.size(), tab_idx);
+                }
             }
         }
     }
@@ -106,7 +122,7 @@ impl UIRenderer {
             .constraints([
                 Constraint::Length(3),
                 Constraint::Min(0),
-                Constraint::Length(2),
+                Constraint::Length(1),
             ])
             .split(f.size());
 
@@ -121,6 +137,7 @@ impl UIRenderer {
             AppTab::Strategy => tabs::strategy::render(f, main_layout[1], app),
             AppTab::Ffb => tabs::ffb::render(f, main_layout[1], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[1], app),
+            AppTab::Guide => tabs::guide::render(f, main_layout[1], app),
         }
 
         self.render_footer(f, main_layout[2], app);
@@ -133,7 +150,7 @@ impl UIRenderer {
                 Constraint::Length(3),
                 Constraint::Length(12),
                 Constraint::Min(0),
-                Constraint::Length(2),
+                Constraint::Length(1),
             ])
             .split(f.size());
 
@@ -149,6 +166,7 @@ impl UIRenderer {
             AppTab::Strategy => tabs::strategy::render(f, main_layout[2], app),
             AppTab::Ffb => tabs::ffb::render(f, main_layout[2], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[2], app),
+            AppTab::Guide => tabs::guide::render(f, main_layout[2], app),
         }
 
         self.render_footer(f, main_layout[3], app);
@@ -158,6 +176,46 @@ impl UIRenderer {
         let theme = &app.ui_state.theme;
         let lang = &app.config.language;
 
+        let mut rpm_ratio = 0.0;
+        let mut current_rpm: i32 = 0;
+        let mut max_rpm: i32 = 8000;
+
+        if let Some(phys) = app.physics_history.last() {
+            current_rpm = phys.rpms as i32;
+            let game_max = app.session_info.max_rpm;
+
+            if game_max > 0 {
+                max_rpm = game_max;
+            }
+            if current_rpm > max_rpm {
+                max_rpm = current_rpm;
+            }
+            if max_rpm > 0 {
+                rpm_ratio = (current_rpm as f32 / max_rpm as f32).clamp(0.0, 1.0);
+            }
+        }
+
+        let header_style = if rpm_ratio > 0.96 {
+            if app.ui_state.blink_state {
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD)
+            }
+        } else {
+            Style::default().fg(app.ui_state.get_color(&theme.text))
+        };
+
+        if rpm_ratio > 0.96 {
+            let flash_block = Block::default().style(header_style);
+            f.render_widget(flash_block, area);
+        }
+
         let tabs = vec![
             format!("🏁 {}", tr("tab_dash", lang)),
             format!("📊 {}", tr("tab_tele", lang)),
@@ -165,8 +223,9 @@ impl UIRenderer {
             format!("🔧 {}", tr("tab_setup", lang)),
             format!("📈 {}", tr("tab_anal", lang)),
             format!("🎯 {}", tr("tab_strat", lang)),
-            "🎮 Input & FFB".to_string(),
+            "🎮 FFB".to_string(),
             format!("⚙️ {}", tr("tab_set", lang)),
+            "📖 Guide".to_string(),
         ];
 
         let active_index = match app.active_tab {
@@ -178,6 +237,7 @@ impl UIRenderer {
             AppTab::Strategy => 5,
             AppTab::Ffb => 6,
             AppTab::Settings => 7,
+            AppTab::Guide => 8,
         };
 
         let tab_widget = Tabs::new(tabs)
@@ -187,7 +247,7 @@ impl UIRenderer {
                     .borders(Borders::BOTTOM)
                     .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
             )
-            .style(Style::default().fg(app.ui_state.get_color(&theme.text)))
+            .style(header_style)
             .highlight_style(
                 Style::default()
                     .fg(app.ui_state.get_color(&theme.highlight))
@@ -196,36 +256,141 @@ impl UIRenderer {
             .divider("│");
 
         f.render_widget(tab_widget, area);
+
+        if max_rpm > 0 {
+            let gauge_area = Rect {
+                x: area.x,
+                y: area.y + area.height.saturating_sub(1),
+                width: area.width,
+                height: 1,
+            };
+
+            if rpm_ratio > 0.0 {
+                let gauge_width = (area.width as f32 * rpm_ratio) as u16;
+                let gauge_color = if rpm_ratio > 0.96 {
+                    if app.ui_state.blink_state {
+                        Color::Red
+                    } else {
+                        Color::White
+                    }
+                } else if rpm_ratio > 0.9 {
+                    Color::Red
+                } else if rpm_ratio > 0.75 {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                };
+
+                let bar_area = Rect {
+                    width: gauge_width,
+                    ..gauge_area
+                };
+
+                let gauge_block = Block::default().style(Style::default().bg(gauge_color));
+                f.render_widget(gauge_block, bar_area);
+            }
+
+            let rpm_text = format!("{} / {} RPM", current_rpm, max_rpm);
+            let text_widget = Paragraph::new(rpm_text).alignment(Alignment::Center).style(
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+            f.render_widget(text_widget, gauge_area);
+        }
     }
 
     fn render_footer(&self, f: &mut Frame<'_>, area: Rect, app: &AppState) {
-        let lang = &app.config.language;
-        let status = if app.is_connected {
-            let blink = if app.ui_state.blink_state {
-                "●"
-            } else {
-                "○"
+        let (air, road, fuel, last, best) = if let Some(phys) = app.physics_history.last() {
+            let gfx = app.graphics_history.last();
+            let l = gfx.map(|g| g.i_last_time).unwrap_or(0);
+            let b = gfx.map(|g| g.i_best_time).unwrap_or(0);
+            (phys.air_temp, phys.road_temp, phys.fuel, l, b)
+        } else {
+            (0.0, 0.0, 0.0, 0, 0)
+        };
+
+        let car = if app.session_info.car_name.is_empty() {
+            "No Car".to_string()
+        } else {
+            app.session_info.car_name.clone()
+        };
+        let track = if app.session_info.track_name.is_empty() {
+            "No Track".to_string()
+        } else {
+            app.session_info.track_name.clone()
+        };
+
+        let fmt_lap = |ms: i32| -> String {
+            if ms <= 0 {
+                return "-:--.---".to_string();
             };
-            format!(
-                "{} {} | {} | F10: Compact Mode",
-                blink,
-                tr("footer_connected", lang),
-                tr("footer_keys", lang)
-            )
-        } else {
-            format!("{} | F10: Compact Mode", tr("footer_disconnected", lang))
+            let m = ms / 60000;
+            let s = (ms % 60000) / 1000;
+            let mil = ms % 1000;
+            format!("{}:{:02}.{:03}", m, s, mil)
         };
 
-        let status_color = if app.is_connected {
-            Color::Green
+        let status_text = if app.is_connected {
+            " ONLINE "
         } else {
-            Color::Red
+            " OFFLINE "
+        };
+        let status_style = if app.is_connected {
+            Style::default()
+                .bg(Color::Green)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .bg(Color::Red)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
         };
 
-        let footer = Paragraph::new(status)
-            .style(Style::default().fg(status_color))
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::TOP));
+        let spans = vec![
+            Span::styled(status_text, status_style),
+            Span::raw(" "),
+            Span::styled(
+                format!(" 🏎️ {} ", car),
+                Style::default().bg(Color::Blue).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(" 🗺️ {} ", track),
+                Style::default().bg(Color::Cyan).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(" ⛽ {:.1} L ", fuel),
+                Style::default().bg(Color::Red).fg(Color::White),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(" L: {} ", fmt_lap(last)),
+                Style::default().bg(Color::DarkGray).fg(Color::White),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(" B: {} ", fmt_lap(best)),
+                Style::default().bg(Color::Magenta).fg(Color::White),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(" 🌡️ A:{:.0}° R:{:.0}° ", air, road),
+                Style::default().bg(Color::Yellow).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                " [F10: Mini] [H: Help] ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ];
+
+        let footer = Paragraph::new(Line::from(spans))
+            .alignment(Alignment::Left)
+            .style(Style::default().bg(Color::Reset));
 
         f.render_widget(footer, area);
     }

@@ -1,4 +1,5 @@
 use crate::config::Language;
+use crate::process::is_process_running;
 use crate::ui::localization::tr;
 use crate::updater::UpdateStatus;
 use crate::AppState;
@@ -30,6 +31,74 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     if app.show_update_success {
         render_success_popup(f, area, app);
     }
+
+    if app.show_first_run_prompt {
+        render_first_run_popup(f, area, app);
+    }
+}
+
+fn render_first_run_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let popup_area = center_rect(area, 50, 12);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(Color::Cyan).bg(Color::Black))
+        .title(" WELCOME TO AC PRO ENGINEER ")
+        .title_alignment(Alignment::Center);
+
+    let text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "This is a professional telemetry and setup tool.",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Would you like to open the interactive guide to learn",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            "how to read the data and use hotkeys?",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(""),
+        Line::from(""),
+    ];
+
+    let yes_style = if app.first_run_selection == 0 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let no_style = if app.first_run_selection == 1 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Red)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let buttons = Line::from(vec![
+        Span::styled(" [ YES, OPEN GUIDE ] ", yes_style),
+        Span::raw("      "),
+        Span::styled(" [ NO, I'M A PRO ] ", no_style),
+    ]);
+
+    let mut content = text;
+    content.push(buttons);
+
+    let p = Paragraph::new(content)
+        .block(block)
+        .alignment(Alignment::Center);
+    f.render_widget(p, popup_area);
 }
 
 fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -330,6 +399,9 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let actual_running =
+        app.is_game_running || is_process_running("acs.exe") || is_process_running("simulator.exe");
+
     let content = match app.launcher_selection {
         0 => vec![
             Line::from(Span::styled(
@@ -343,10 +415,28 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Line::from(""),
             Line::from(vec![
                 Span::raw(format!("{} ", tr("launch_stat", lang))),
-                if app.is_game_running {
-                    Span::styled(tr("launch_detect", lang), Style::default().fg(Color::Green))
+                if actual_running {
+                    Span::styled(
+                        if is_ru {
+                            "ОБНАРУЖЕНО (ГОТОВО К СТАРТУ)"
+                        } else {
+                            "DETECTED (READY TO START)"
+                        },
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
-                    Span::styled(tr("launch_wait", lang), Style::default().fg(Color::Yellow))
+                    Span::styled(
+                        if is_ru {
+                            "ОЖИДАНИЕ SIMULATOR..."
+                        } else {
+                            "WAITING FOR SIMULATOR..."
+                        },
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::ITALIC),
+                    )
                 },
             ]),
         ],
@@ -578,36 +668,54 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Color::Cyan,
         ),
         _ => {
-            let time_secs = app.last_update.elapsed().as_secs();
-            if time_secs < 2 {
+            let actual_running = app.is_game_running
+                || is_process_running("acs.exe")
+                || is_process_running("simulator.exe");
+
+            if actual_running {
+                (tr("launch_on", lang), Color::Green)
+            } else {
                 (
                     if is_ru {
-                        "Соединение..."
+                        "ОЖИДАНИЕ СИМУЛЯТОРА..."
                     } else {
-                        "Connecting..."
+                        "WAITING FOR SIMULATOR..."
                     }
                     .to_string(),
                     Color::Yellow,
                 )
-            } else {
-                (tr("launch_on", lang), Color::Green)
             }
         }
     };
 
     let layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Percentage(40),
+            Constraint::Percentage(20),
+        ])
         .split(area);
 
     let status = Paragraph::new(msg).style(Style::default().fg(color).add_modifier(Modifier::BOLD));
 
-    let copyright = Paragraph::new(tr("launch_hint", lang))
+    let controls_hint = if is_ru {
+        "[↑/↓] Навигация   [ENTER] Выбор"
+    } else {
+        "[↑/↓] Select   [ENTER] Open"
+    };
+
+    let controls = Paragraph::new(controls_hint)
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Gray));
+
+    let copyright = Paragraph::new(format!("v{}", crate::updater::CURRENT_VERSION))
         .alignment(Alignment::Right)
         .style(Style::default().fg(Color::DarkGray));
 
     f.render_widget(status, layout[0]);
-    f.render_widget(copyright, layout[1]);
+    f.render_widget(controls, layout[1]);
+    f.render_widget(copyright, layout[2]);
 
     let border = Block::default()
         .borders(Borders::TOP)

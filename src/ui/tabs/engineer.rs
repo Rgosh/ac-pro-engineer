@@ -387,38 +387,40 @@ fn render_sector_advice(
             .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
             .split(inner_area);
 
-        let target_psi = 27.3;
-        let target_brake_temp = 500.0;
-        let base_psi = lap.avg_pressure;
-        let base_temp = 85.0;
+        let alerts = &app.config.alerts;
+        let target_psi = (alerts.tyre_pressure_min + alerts.tyre_pressure_max) / 2.0;
+        let target_brake_temp = (alerts.brake_temp_max - 150.0).max(300.0);
 
-        let fl_psi = base_psi + 0.1;
-        let fr_psi = base_psi - 0.1;
-        let rl_psi = base_psi + 0.2;
-        let rr_psi = base_psi - 0.2;
+        let fl_psi = lap.avg_wheels_pressure[0];
+        let fr_psi = lap.avg_wheels_pressure[1];
+        let rl_psi = lap.avg_wheels_pressure[2];
+        let rr_psi = lap.avg_wheels_pressure[3];
 
-        let fl_temp_i: f32 = base_temp + 12.0;
-        let fl_temp_m: f32 = base_temp + 4.0;
-        let fl_temp_o: f32 = base_temp - 2.0;
-        let fr_temp_i: f32 = base_temp - 2.0;
-        let fr_temp_m: f32 = base_temp + 3.0;
-        let fr_temp_o: f32 = base_temp + 11.0;
-        let rl_temp_i: f32 = base_temp + 6.0;
-        let rl_temp_m: f32 = base_temp + 4.0;
-        let rl_temp_o: f32 = base_temp;
-        let rr_temp_i: f32 = base_temp;
-        let rr_temp_m: f32 = base_temp + 3.0;
-        let rr_temp_o: f32 = base_temp + 5.0;
+        let fl_temp_i = lap.avg_tyre_temp_i[0];
+        let fl_temp_m = lap.avg_tyre_temp_m[0];
+        let fl_temp_o = lap.avg_tyre_temp_o[0];
 
-        let fl_brake = 480.0;
-        let fr_brake = 485.0;
-        let rl_brake = 350.0;
-        let rr_brake = 345.0;
+        let fr_temp_i = lap.avg_tyre_temp_i[1];
+        let fr_temp_m = lap.avg_tyre_temp_m[1];
+        let fr_temp_o = lap.avg_tyre_temp_o[1];
 
-        let fl_rh: f32 = 55.0;
-        let fr_rh: f32 = 55.0;
-        let rl_rh: f32 = 68.0;
-        let rr_rh: f32 = 68.0;
+        let rl_temp_i = lap.avg_tyre_temp_i[2];
+        let rl_temp_m = lap.avg_tyre_temp_m[2];
+        let rl_temp_o = lap.avg_tyre_temp_o[2];
+
+        let rr_temp_i = lap.avg_tyre_temp_i[3];
+        let rr_temp_m = lap.avg_tyre_temp_m[3];
+        let rr_temp_o = lap.avg_tyre_temp_o[3];
+
+        let fl_brake = lap.avg_brake_temp[0];
+        let fr_brake = lap.avg_brake_temp[1];
+        let rl_brake = lap.avg_brake_temp[2];
+        let rr_brake = lap.avg_brake_temp[3];
+
+        let fl_rh = lap.avg_ride_height[0] * 1000.0;
+        let fr_rh = lap.avg_ride_height[0] * 1000.0;
+        let rl_rh = lap.avg_ride_height[1] * 1000.0;
+        let rr_rh = lap.avg_ride_height[1] * 1000.0;
 
         let get_status_color = |val: f32, target: f32, tolerance: f32| -> Color {
             let diff = (val - target).abs();
@@ -808,7 +810,7 @@ fn render_sector_advice(
         let max_brake_temp = fl_brake.max(fr_brake);
         let min_brake_temp = rl_brake.min(rr_brake);
 
-        if max_brake_temp > 650.0 {
+        if max_brake_temp > (target_brake_temp + 150.0) {
             lines.push(Line::from(vec![
                 crit_tag.clone(),
                 Span::styled(
@@ -828,7 +830,7 @@ fn render_sector_advice(
                 },
                 Style::default().fg(Color::Yellow),
             )));
-        } else if min_brake_temp < 300.0 {
+        } else if min_brake_temp < (target_brake_temp - 200.0) {
             lines.push(Line::from(vec![
                 warn_tag.clone(),
                 Span::styled(
@@ -850,7 +852,8 @@ fn render_sector_advice(
             )));
         }
 
-        let target_psi_diff = (base_psi - target_psi).abs();
+        let avg_psi = (fl_psi + fr_psi + rl_psi + rr_psi) / 4.0;
+        let target_psi_diff = (avg_psi - target_psi).abs();
         if target_psi_diff > 0.4 {
             lines.push(Line::from(vec![
                 crit_tag.clone(),
@@ -858,12 +861,12 @@ fn render_sector_advice(
                     if is_ru {
                         format!(
                             " Давление не в окне (дельта: {:+.1} psi).",
-                            base_psi - target_psi
+                            avg_psi - target_psi
                         )
                     } else {
                         format!(
                             " Pressures out of window (delta: {:+.1} psi).",
-                            base_psi - target_psi
+                            avg_psi - target_psi
                         )
                     },
                     Style::default().fg(Color::Red),
