@@ -1,9 +1,9 @@
 use crate::AppState;
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyzer::LapData) {
+pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::analyzer::LapData) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let layout = Layout::default()
         .direction(Direction::Vertical)

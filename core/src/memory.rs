@@ -12,6 +12,9 @@ pub struct SharedMemory<T> {
     ptr: *const T,
 }
 
+unsafe impl<T> Send for SharedMemory<T> {}
+unsafe impl<T> Sync for SharedMemory<T> {}
+
 impl<T> SharedMemory<T> {
     pub fn connect(name: &str) -> Option<Self> {
         let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();

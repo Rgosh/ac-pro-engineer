@@ -1,0 +1,43 @@
+[package]
+name = "ac_core"
+description = "Core telemetry and setup logic for AC Pro Engineer"
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+
+[lints]
+workspace = true
+
+[dependencies]
+windows = { version = "0.52", features = [
+    "Win32_System_Memory",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+] }
+tokio = { version = "1.32", features = ["full"] }
+anyhow = "1.0"
+directories-next = "2.0"
+walkdir = "2.4"
+rust-ini = "0.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+lazy_static = "1.4"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+discord-rich-presence = "0.2"
+
+
+tracing = { version = "0.1", features = [
+    "max_level_trace",
+    "release_max_level_info",
+] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+tracing-error = "0.2.1"

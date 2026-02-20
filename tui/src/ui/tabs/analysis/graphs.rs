@@ -5,11 +5,11 @@ pub fn render(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    lap: &crate::analyzer::LapData,
-    best_lap: Option<&crate::analyzer::LapData>,
+    lap: &ac_core::analyzer::LapData,
+    best_lap: Option<&ac_core::analyzer::LapData>,
 ) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let lap_time_s = lap.lap_time_ms as f64 / 1000.0;
     let max_time_s = if lap_time_s < 1.0 { 60.0 } else { lap_time_s };

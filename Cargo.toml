@@ -1,46 +1,12 @@
-[package]
-name = "ac_pro_engineer"
+[workspace]
+members = ["core", "tui"]
+
+[workspace.package]
 version = "0.1.9"
 edition = "2021"
 authors = ["Rgosh"]
-description = "Professional telemetry and setup analyzer for Assetto Corsa"
 
-[dependencies]
-windows = { version = "0.52", features = [
-    "Win32_System_Memory",
-    "Win32_Foundation",
-    "Win32_System_Threading",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_Security",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_System_Console",
-    "Win32_System_LibraryLoader",
-] }
-crossterm = "0.27"
-ratatui = "0.26"
-anyhow = "1.0"
-directories-next = "2.0"
-walkdir = "2.4"
-rust-ini = "0.21"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = "0.4"
-lazy_static = "1.4"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
-discord-rich-presence = "0.2"
-open = "5.0"
-tracing = { version = "0.1", features = [
-    "max_level_trace",
-    "release_max_level_info",
-] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
-tracing-error = "0.2.1"
-
-[build-dependencies]
-winres = "0.1"
-
-[lints.rust]
+[workspace.lints.rust]
 unused = { level = "warn", priority = -1 }
 unsafe_code = "allow"
 rust-2018-idioms = "warn"
@@ -53,7 +19,7 @@ deprecated-safe = "warn"
 let-underscore = "warn"
 unknown-or-malformed-diagnostic-attributes = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 correctness = { level = "warn", priority = -1 }
 suspicious = { level = "warn", priority = -1 }
@@ -62,7 +28,3 @@ complexity = { level = "warn", priority = -1 }
 perf = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 panic = "deny"
-
-[[bin]]
-name = "simulator"
-path = "src/bin/simulator.rs"

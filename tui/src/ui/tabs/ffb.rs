@@ -1,11 +1,11 @@
-use crate::engineer::Engineer;
 use crate::AppState;
+use ac_core::engineer::Engineer;
 use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let layout = Layout::default()
         .direction(Direction::Vertical)

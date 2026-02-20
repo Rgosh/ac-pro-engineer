@@ -11,7 +11,7 @@ pub mod tabs;
 pub mod widgets;
 
 pub struct UIState {
-    pub theme: crate::config::Theme,
+    pub theme: ac_core::config::Theme,
     pub layout_mode: LayoutMode,
     pub show_help: bool,
     pub blink_state: bool,
@@ -36,7 +36,7 @@ impl UIState {
         list_state.select(Some(0));
 
         Self {
-            theme: crate::config::Theme::default(),
+            theme: ac_core::config::Theme::default(),
             layout_mode: LayoutMode::Auto,
             show_help: false,
             blink_state: false,
@@ -49,7 +49,7 @@ impl UIState {
         }
     }
 
-    pub fn get_color(&self, color_tuple: &crate::config::ColorTuple) -> Color {
+    pub fn get_color(&self, color_tuple: &ac_core::config::ColorTuple) -> Color {
         Color::Rgb(color_tuple.r, color_tuple.g, color_tuple.b)
     }
 

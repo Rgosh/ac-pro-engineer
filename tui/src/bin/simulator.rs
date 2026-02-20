@@ -9,9 +9,7 @@ use windows::Win32::System::Memory::{
     CreateFileMappingW, MapViewOfFile, FILE_MAP_ALL_ACCESS, PAGE_READWRITE,
 };
 
-#[path = "../ac_structs.rs"]
-mod ac_structs;
-use ac_structs::{AcGraphics, AcPhysics, AcStatic};
+use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 
 fn create_shared_memory(name: &str, size: usize) -> (HANDLE, *mut u8) {
     use std::os::windows::ffi::OsStrExt;
@@ -170,8 +168,8 @@ fn main() {
             (*phys).suspension_travel[2] = base_travel + aero_squat - (brake_dive * 0.5) + lat_roll;
             (*phys).suspension_travel[3] = base_travel + aero_squat - (brake_dive * 0.5) - lat_roll;
 
-            (*phys).ride_height[0] = (0.080 - (*phys).suspension_travel[0]).max(0.001);
-            (*phys).ride_height[1] = (0.090 - (*phys).suspension_travel[2]).max(0.001);
+            (*phys).ride_height[0] = (0.080 - (*phys).suspension_travel[0]).max(0.001_f32);
+            (*phys).ride_height[1] = (0.090 - (*phys).suspension_travel[2]).max(0.001_f32);
 
             for i in 0..4 {
                 let is_front = i < 2;

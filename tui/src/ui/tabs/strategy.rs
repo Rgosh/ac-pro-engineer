@@ -30,22 +30,22 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(v_layout[0]);
 
-    render_fuel_calculator(f, top_layout[0], app, gfx, phys);
+    render_fuel_calculator(f, top_layout[0], app, &gfx, &phys);
 
     let top_right_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(top_layout[1]);
 
-    render_tyres_strategy(f, top_right_layout[0], app, phys);
-    render_environment(f, top_right_layout[1], app, gfx, phys);
+    render_tyres_strategy(f, top_right_layout[0], app, &phys);
+    render_environment(f, top_right_layout[1], app, &gfx, &phys);
 
     render_pace_history(f, v_layout[1], app);
 }
 
 fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let block = Block::default()
         .title(if is_ru {
@@ -129,12 +129,12 @@ fn render_fuel_calculator(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    gfx: &crate::ac_structs::AcGraphics,
-    phys: &crate::ac_structs::AcPhysics,
+    gfx: &ac_core::ac_structs::AcGraphics,
+    phys: &ac_core::ac_structs::AcPhysics,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
-    let is_ru = *lang == crate::config::Language::Russian;
+    let is_ru = *lang == ac_core::config::Language::Russian;
 
     let block = Block::default()
         .title(tr("strat_fuel_title", lang))
@@ -292,13 +292,18 @@ fn render_tyres_strategy(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    phys: &crate::ac_structs::AcPhysics,
+    phys: &ac_core::ac_structs::AcPhysics,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
+    let is_ru = *lang == ac_core::config::Language::Russian;
 
     let block = Block::default()
-        .title(tr("strat_tyres_title", lang))
+        .title(if is_ru {
+            "Прогноз Жизни Шин"
+        } else {
+            "Tyre Life Predictor"
+        })
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -324,8 +329,21 @@ fn render_tyres_strategy(
         }
 
         let wear = phys.tyre_wear[i];
-        let health_pct = ((wear - 94.0) / 6.0 * 100.0).clamp(0.0, 100.0);
+        let laps_rem = app.engineer.stats.tyre_laps_remaining[i];
 
+        let laps_str = if laps_rem == 99.0 {
+            if is_ru {
+                "Оценка...".to_string()
+            } else {
+                "Calc...".to_string()
+            }
+        } else if laps_rem <= 0.0 {
+            "DEAD".to_string()
+        } else {
+            format!("{:.1} laps", laps_rem)
+        };
+
+        let health_pct = ((wear - 94.0) / 6.0 * 100.0).clamp(0.0, 100.0);
         let color = if wear > 98.0 {
             Color::Green
         } else if wear > 96.0 {
@@ -334,7 +352,7 @@ fn render_tyres_strategy(
             Color::Red
         };
 
-        let label = format!("{} ({:.1}%)", tyre_names[i], wear);
+        let label = format!("{} ({:.1}%) -> {}", tyre_names[i], wear, laps_str);
 
         let gauge = Gauge::default()
             .gauge_style(Style::default().fg(color).bg(Color::DarkGray))
@@ -349,8 +367,8 @@ fn render_environment(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    gfx: &crate::ac_structs::AcGraphics,
-    phys: &crate::ac_structs::AcPhysics,
+    gfx: &ac_core::ac_structs::AcGraphics,
+    phys: &ac_core::ac_structs::AcPhysics,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;

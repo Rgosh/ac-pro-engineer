@@ -2,9 +2,9 @@ use crate::AppState;
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyzer::LapData) {
+pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::analyzer::LapData) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -13,7 +13,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
 
     let left_col = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(layout[0]);
 
     let temp_block = Block::default()
@@ -82,9 +82,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
 
     let susp_block = Block::default()
         .title(if is_ru {
-            "Работа Подвески"
+            "Амортизаторы (Сжатие/Отбой)"
         } else {
-            "Suspension Work"
+            "Damper Histograms (Bump/Rebound)"
         })
         .borders(Borders::ALL);
     let inner_susp = susp_block.inner(left_col[1]);
@@ -94,16 +94,42 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &crate::analyz
         .direction(Direction::Vertical)
         .constraints([Constraint::Ratio(1, 4); 4])
         .split(inner_susp);
+
     for i in 0..4 {
-        let travel = *lap.suspension_travel_hist.get(i).unwrap_or(&0.0) * 1000.0;
-        let label = format!("{}: {:.1}mm avg", wheel_names[i], travel);
-        let bars = (travel / 5.0).clamp(0.0, 20.0) as usize;
-        let bar_str = "█".repeat(bars);
-        f.render_widget(
-            Paragraph::new(format!("{} {}", label, bar_str))
-                .style(Style::default().fg(Color::Cyan)),
-            susp_rows[i],
-        );
+        let hist = lap.damper_histograms.get(i).unwrap_or(&[0.0; 4]);
+
+        let fb_bars = "█".repeat((hist[1] / 3.0) as usize);
+        let sb_bars = "█".repeat((hist[0] / 3.0) as usize);
+        let sr_bars = "█".repeat((hist[2] / 3.0) as usize);
+        let fr_bars = "█".repeat((hist[3] / 3.0) as usize);
+
+        let line1 = Line::from(vec![
+            Span::styled(
+                format!("{:<2} Bump: ", wheel_names[i]),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("FB {:>2.0}% {} ", hist[1], fb_bars),
+                Style::default().fg(Color::LightRed),
+            ),
+            Span::styled(
+                format!("SB {:>2.0}% {}", hist[0], sb_bars),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]);
+        let line2 = Line::from(vec![
+            Span::styled("   Reb:  ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("FR {:>2.0}% {} ", hist[3], fr_bars),
+                Style::default().fg(Color::LightBlue),
+            ),
+            Span::styled(
+                format!("SR {:>2.0}% {}", hist[2], sr_bars),
+                Style::default().fg(Color::Cyan),
+            ),
+        ]);
+
+        f.render_widget(Paragraph::new(vec![line1, line2]), susp_rows[i]);
     }
 
     let right_col = Layout::default()

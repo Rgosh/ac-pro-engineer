@@ -3,6 +3,7 @@ use crate::config::Language;
 use crate::records::TrackRecord;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use tracing::{debug, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LapData {
@@ -48,6 +49,9 @@ pub struct LapData {
     pub avg_brake_temp: [f32; 4],
     #[serde(default)]
     pub avg_ride_height: [f32; 2],
+
+    #[serde(default)]
+    pub damper_histograms: [[f32; 4]; 4],
 
     pub throttle_smoothness: f32,
     pub steering_smoothness: f32,
@@ -157,6 +161,11 @@ impl TelemetryAnalyzer {
             return;
         }
 
+        info!(
+            "Processing Lap {} | Time: {}ms | Car: {}",
+            lap_number, lap_time_ms, car_name
+        );
+
         let last_gfx = match graphics_log.last() {
             Some(gfx) => gfx,
             None => return,
@@ -233,6 +242,13 @@ impl TelemetryAnalyzer {
         let mut sum_tyre_temp_o = [0.0; 4];
         let mut sum_brake_temp_avg = [0.0; 4];
         let mut sum_ride_height = [0.0; 2];
+
+        let mut prev_susp_travel = physics_log
+            .first()
+            .map(|p| p.suspension_travel)
+            .unwrap_or([0.0; 4]);
+        let mut damper_counts = [[0.0_f32; 4]; 4];
+        let mut damper_total_moves = [0.0_f32; 4];
 
         let log_len = physics_log.len() as f32;
 
@@ -316,11 +332,44 @@ impl TelemetryAnalyzer {
                 sum_tyre_temp_m[i] += p.tyre_temp_m[i];
                 sum_tyre_temp_o[i] += p.tyre_temp_o[i];
                 sum_brake_temp_avg[i] += p.brake_temp[i];
+
+                let delta_travel = p.suspension_travel[i] - prev_susp_travel[i];
+
+                let vel_mm_s = (delta_travel / 0.003) * 1000.0;
+
+                if vel_mm_s.abs() > 2.0 {
+                    damper_total_moves[i] += 1.0;
+                    if vel_mm_s > 30.0 {
+                        damper_counts[i][1] += 1.0;
+                    } else if vel_mm_s > 2.0 {
+                        damper_counts[i][0] += 1.0;
+                    } else if vel_mm_s < -30.0 {
+                        damper_counts[i][3] += 1.0;
+                    } else if vel_mm_s < -2.0 {
+                        damper_counts[i][2] += 1.0;
+                    }
+                }
+                prev_susp_travel[i] = p.suspension_travel[i];
             }
 
             sum_ride_height[0] += p.ride_height[0];
             sum_ride_height[1] += p.ride_height[1];
         }
+
+        let mut damper_histograms = [[0.0; 4]; 4];
+        for i in 0..4 {
+            let total = if damper_total_moves[i] > 0.0 {
+                damper_total_moves[i]
+            } else {
+                1.0
+            };
+            damper_histograms[i][0] = (damper_counts[i][0] / total) * 100.0;
+            damper_histograms[i][1] = (damper_counts[i][1] / total) * 100.0;
+            damper_histograms[i][2] = (damper_counts[i][2] / total) * 100.0;
+            damper_histograms[i][3] = (damper_counts[i][3] / total) * 100.0;
+        }
+
+        debug!("Damper Histograms calculated successfully");
 
         let throttle_smoothness = if log_len > 0.0 {
             (100.0 - (total_jerk / log_len) * 50.0).clamp(0.0, 100.0)
@@ -551,6 +600,7 @@ impl TelemetryAnalyzer {
             avg_tyre_temp_o,
             avg_brake_temp,
             avg_ride_height,
+            damper_histograms,
             throttle_smoothness,
             steering_smoothness,
             trail_braking_score: trail_score,
@@ -571,6 +621,7 @@ impl TelemetryAnalyzer {
         };
 
         self.laps.push(lap_data);
+        info!("Lap {} successfully added to telemetry stack.", lap_number);
 
         if let Some(best_idx) = self.best_lap_index {
             if best_idx < self.laps.len() {
@@ -647,6 +698,16 @@ impl TelemetryAnalyzer {
                 problem: format!("{} Lockups detected", lap.lockup_count),
                 solution: "Reduce peak pressure or bias rear.".into(),
                 severity: 3,
+            });
+        }
+
+        let front_fast_bump = (lap.damper_histograms[0][1] + lap.damper_histograms[1][1]) / 2.0;
+        if front_fast_bump > 35.0 {
+            advices.push(Advice {
+                zone: "Suspension".into(),
+                problem: format!("High Front Fast Bump ({:.0}%)", front_fast_bump),
+                solution: "Suspension bottoming out over kerbs. Stiffen front Fast Bump.".into(),
+                severity: 2,
             });
         }
 

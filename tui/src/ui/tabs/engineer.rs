@@ -1,7 +1,7 @@
-use crate::analyzer::LapData;
-use crate::config::Language;
 use crate::ui::localization::tr;
 use crate::AppState;
+use ac_core::analyzer::LapData;
+use ac_core::config::Language;
 use ratatui::{prelude::*, widgets::*};
 
 pub struct EngineerState {
@@ -129,8 +129,8 @@ fn render_live_recs(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .iter()
         .map(|r| {
             let (color, icon) = match r.severity {
-                crate::engineer::Severity::Critical => (Color::Red, "🚨"),
-                crate::engineer::Severity::Warning => (Color::Yellow, "⚠️"),
+                ac_core::engineer::Severity::Critical => (Color::Red, "🚨"),
+                ac_core::engineer::Severity::Warning => (Color::Yellow, "⚠️"),
                 _ => (Color::Green, "ℹ️"),
             };
 

@@ -3,28 +3,43 @@
 version = 4
 
 [[package]]
-name = "ac_pro_engineer"
+name = "ac_core"
 version = "0.1.9"
 dependencies = [
  "anyhow",
  "chrono",
- "crossterm",
  "directories-next",
  "discord-rich-presence",
  "lazy_static",
- "open",
- "ratatui",
  "reqwest",
  "rust-ini",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-error",
  "tracing-subscriber",
  "walkdir",
  "windows",
- "winres",
+]
+
+[[package]]
+name = "ac_tui"
+version = "0.1.9"
+dependencies = [
+ "ac_core",
+ "anyhow",
+ "crossterm",
+ "open",
+ "ratatui",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-error",
+ "tracing-subscriber",
+ "windows",
 ]
 
 [[package]]
@@ -1617,9 +1632,23 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.1.1",
+ "parking_lot",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2 0.6.1",
+ "tokio-macros",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af407857209536a95c8e56f8231ef2c2e2aff839b22e07a1ffcbc617e9db9fa5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1643,15 +1672,6 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
-]
-
-[[package]]
-name = "toml"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4f7f0dd8d50a853a531c426359045b1998f04219d88799810762cd4ad314234"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -2258,15 +2278,6 @@ checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
 dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "winres"
-version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
-dependencies = [
- "toml",
 ]
 
 [[package]]

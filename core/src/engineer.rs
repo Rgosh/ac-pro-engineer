@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use tracing::{debug, info};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Recommendation {
@@ -90,6 +91,13 @@ pub struct EngineerStats {
 
     pub current_delta: f32,
     pub predicted_lap_time: f32,
+
+    pub low_speed_rake: f32,
+    pub high_speed_rake: f32,
+    pub base_tyre_wear: [f32; 4],
+    pub stint_laps: i32,
+    pub last_lap_count: i32,
+    pub tyre_laps_remaining: [f32; 4],
 }
 
 impl EngineerStats {
@@ -112,6 +120,13 @@ impl EngineerStats {
             fuel_consumption_rate: 0.0,
             current_delta: 0.0,
             predicted_lap_time: 0.0,
+
+            low_speed_rake: 0.0,
+            high_speed_rake: 0.0,
+            base_tyre_wear: [100.0; 4],
+            stint_laps: 0,
+            last_lap_count: -1,
+            tyre_laps_remaining: [99.0; 4],
         }
     }
 }
@@ -130,6 +145,7 @@ impl DrivingStyle {
 
 impl Engineer {
     pub fn new(config: &AppConfig) -> Self {
+        info!("Engineer module initialized.");
         Self {
             config: config.clone(),
             history_size: 600,
@@ -148,6 +164,7 @@ impl Engineer {
         self.analyze_driving_style(phys);
 
         if self.stats.total_frames > self.history_size as u32 {
+            debug!("Engineer history buffer reached limit, resetting counters.");
             self.reset_counters();
         }
     }
@@ -177,6 +194,42 @@ impl Engineer {
             if phys.suspension_travel[i] < 0.005 {
                 self.stats.bottoming_frames[i] += 1;
             }
+        }
+
+        let rake = phys.ride_height[1] - phys.ride_height[0];
+        let rake_mm = rake * 1000.0;
+        if phys.speed_kmh > 50.0 && phys.speed_kmh < 90.0 {
+            if self.stats.low_speed_rake == 0.0 {
+                self.stats.low_speed_rake = rake_mm;
+            }
+            self.stats.low_speed_rake = self.stats.low_speed_rake * 0.98 + rake_mm * 0.02;
+        } else if phys.speed_kmh > 230.0 {
+            if self.stats.high_speed_rake == 0.0 {
+                self.stats.high_speed_rake = rake_mm;
+            }
+            self.stats.high_speed_rake = self.stats.high_speed_rake * 0.98 + rake_mm * 0.02;
+        }
+
+        let current_laps = gfx.completed_laps as i32;
+        if current_laps != self.stats.last_lap_count {
+            if self.stats.last_lap_count == -1 || current_laps == 0 || phys.speed_kmh < 10.0 {
+                self.stats.base_tyre_wear = phys.tyre_wear;
+                self.stats.stint_laps = 0;
+            } else {
+                self.stats.stint_laps += 1;
+                for i in 0..4 {
+                    let wear_used = self.stats.base_tyre_wear[i] - phys.tyre_wear[i];
+                    if wear_used > 0.0 && self.stats.stint_laps > 0 {
+                        let wear_per_lap = wear_used / self.stats.stint_laps as f32;
+                        let remaining_wear = phys.tyre_wear[i] - 94.0;
+                        if wear_per_lap > 0.001 {
+                            self.stats.tyre_laps_remaining[i] =
+                                (remaining_wear / wear_per_lap).max(0.0);
+                        }
+                    }
+                }
+            }
+            self.stats.last_lap_count = current_laps;
         }
 
         if phys.speed_kmh > 30.0 {
@@ -267,19 +320,21 @@ impl Engineer {
         &mut self,
         phys: &AcPhysics,
         gfx: &AcGraphics,
-        _setup: Option<&CarSetup>,
+        setup: Option<&CarSetup>,
     ) -> Vec<Recommendation> {
         let mut recommendations = Vec::new();
 
         self.analyze_tyre_pressure(phys, gfx, &mut recommendations);
         self.analyze_tyre_temperature(phys, &mut recommendations);
         self.analyze_tyre_wear(phys, &mut recommendations);
-        self.analyze_camber(phys, &mut recommendations);
+
+        self.analyze_camber(phys, setup, &mut recommendations);
         self.analyze_brakes(phys, &mut recommendations);
-        self.analyze_brake_bias(&mut recommendations);
+        self.analyze_brake_bias(setup, &mut recommendations);
+        self.analyze_aero(phys, &mut recommendations);
+
         self.analyze_driving_errors(&mut recommendations);
         self.analyze_strategy(phys, gfx, &mut recommendations);
-
         self.analyze_ffb_clipping(phys, &mut recommendations);
 
         recommendations.sort_by(|a, b| {
@@ -296,200 +351,167 @@ impl Engineer {
         recommendations
     }
 
+    fn analyze_aero(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+        let ru = self.is_ru();
+        if self.stats.high_speed_rake != 0.0
+            && self.stats.low_speed_rake != 0.0
+            && phys.speed_kmh > 200.0
+        {
+            let rake_loss = self.stats.low_speed_rake - self.stats.high_speed_rake;
+            if self.check_hysteresis("aero_rake", rake_loss > 15.0) && rake_loss > 15.0 {
+                recs.push(Recommendation {
+                    component: if ru {
+                        "Аэродинамика".to_string()
+                    } else {
+                        "Aerodynamics".to_string()
+                    },
+                    category: "Rake Loss".to_string(),
+                    severity: Severity::Warning,
+                    message: if ru {
+                        format!("Зад сильно проседает на скорости (-{:.1}мм)", rake_loss)
+                    } else {
+                        format!("Rear dropping too much at high speed (-{:.1}mm)", rake_loss)
+                    },
+                    action: if ru {
+                        "Увеличьте жесткость задних пружин (Rear Springs) или Packer".to_string()
+                    } else {
+                        "Stiffen Rear Springs or add Packers".to_string()
+                    },
+                    parameters: vec![],
+                    confidence: 0.85,
+                });
+            }
+        }
+    }
+
     pub fn get_wizard_advice(&self) -> Vec<String> {
         let is_ru = self.config.language == Language::Russian;
         let mut advice = Vec::new();
 
         match (&self.wizard_phase, &self.wizard_problem) {
             (WizardPhase::Entry, WizardProblem::Understeer) => {
-                advice.push(
-                    if is_ru {
-                        "Уменьшить отбой (Rebound) спереди"
-                    } else {
-                        "Decrease Front Rebound"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Увеличить клиренс сзади"
-                    } else {
-                        "Increase Rear Ride Height"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Сместить тормозной баланс назад"
-                    } else {
-                        "Move Brake Bias Rearwards"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Уменьшить отбой (Rebound) спереди".to_string()
+                } else {
+                    "Decrease Front Rebound".to_string()
+                });
+                advice.push(if is_ru {
+                    "Увеличить клиренс сзади".to_string()
+                } else {
+                    "Increase Rear Ride Height".to_string()
+                });
+                advice.push(if is_ru {
+                    "Сместить тормозной баланс назад".to_string()
+                } else {
+                    "Move Brake Bias Rearwards".to_string()
+                });
             }
             (WizardPhase::Entry, WizardProblem::Oversteer) => {
-                advice.push(
-                    if is_ru {
-                        "Увеличить отбой (Rebound) спереди"
-                    } else {
-                        "Increase Front Rebound"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Сместить тормозной баланс вперед"
-                    } else {
-                        "Move Brake Bias Forwards"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Увеличить переднее антикрыло"
-                    } else {
-                        "Increase Front Wing"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Увеличить отбой (Rebound) спереди".to_string()
+                } else {
+                    "Increase Front Rebound".to_string()
+                });
+                advice.push(if is_ru {
+                    "Сместить тормозной баланс вперед".to_string()
+                } else {
+                    "Move Brake Bias Forwards".to_string()
+                });
+                advice.push(if is_ru {
+                    "Увеличить переднее антикрыло".to_string()
+                } else {
+                    "Increase Front Wing".to_string()
+                });
             }
             (WizardPhase::Apex, WizardProblem::Understeer) => {
-                advice.push(
-                    if is_ru {
-                        "Мягче передние пружины"
-                    } else {
-                        "Softer Front Springs"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Мягче передний стабилизатор (ARB)"
-                    } else {
-                        "Softer Front ARB"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Больше развал (Camber) спереди"
-                    } else {
-                        "More Front Camber"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Мягче передние пружины".to_string()
+                } else {
+                    "Softer Front Springs".to_string()
+                });
+                advice.push(if is_ru {
+                    "Мягче передний стабилизатор (ARB)".to_string()
+                } else {
+                    "Softer Front ARB".to_string()
+                });
+                advice.push(if is_ru {
+                    "Больше развал (Camber) спереди".to_string()
+                } else {
+                    "More Front Camber".to_string()
+                });
             }
             (WizardPhase::Apex, WizardProblem::Oversteer) => {
-                advice.push(
-                    if is_ru {
-                        "Мягче задние пружины"
-                    } else {
-                        "Softer Rear Springs"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Мягче задний стабилизатор (ARB)"
-                    } else {
-                        "Softer Rear ARB"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Выше клиренс спереди"
-                    } else {
-                        "Increase Front Ride Height"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Мягче задние пружины".to_string()
+                } else {
+                    "Softer Rear Springs".to_string()
+                });
+                advice.push(if is_ru {
+                    "Мягче задний стабилизатор (ARB)".to_string()
+                } else {
+                    "Softer Rear ARB".to_string()
+                });
+                advice.push(if is_ru {
+                    "Выше клиренс спереди".to_string()
+                } else {
+                    "Increase Front Ride Height".to_string()
+                });
             }
             (WizardPhase::Exit, WizardProblem::Understeer) => {
-                advice.push(
-                    if is_ru {
-                        "Увеличить сжатие (Bump) спереди"
-                    } else {
-                        "Increase Front Bump"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Жестче задние пружины"
-                    } else {
-                        "Stiffer Rear Springs"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Увеличить блокировку дифференциала (Power)"
-                    } else {
-                        "Increase Diff Power"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Увеличить сжатие (Bump) спереди".to_string()
+                } else {
+                    "Increase Front Bump".to_string()
+                });
+                advice.push(if is_ru {
+                    "Жестче задние пружины".to_string()
+                } else {
+                    "Stiffer Rear Springs".to_string()
+                });
+                advice.push(if is_ru {
+                    "Увеличить блокировку дифференциала (Power)".to_string()
+                } else {
+                    "Increase Diff Power".to_string()
+                });
             }
             (WizardPhase::Exit, WizardProblem::Oversteer) => {
-                advice.push(
-                    if is_ru {
-                        "Мягче задние пружины"
-                    } else {
-                        "Softer Rear Springs"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Уменьшить сжатие (Bump) сзади"
-                    } else {
-                        "Decrease Rear Bump"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Уменьшить блокировку дифференциала (Power)"
-                    } else {
-                        "Decrease Diff Power"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Больше Traction Control"
-                    } else {
-                        "Increase TC"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Мягче задние пружины".to_string()
+                } else {
+                    "Softer Rear Springs".to_string()
+                });
+                advice.push(if is_ru {
+                    "Уменьшить сжатие (Bump) сзади".to_string()
+                } else {
+                    "Decrease Rear Bump".to_string()
+                });
+                advice.push(if is_ru {
+                    "Уменьшить блокировку дифференциала (Power)".to_string()
+                } else {
+                    "Decrease Diff Power".to_string()
+                });
+                advice.push(if is_ru {
+                    "Больше Traction Control".to_string()
+                } else {
+                    "Increase TC".to_string()
+                });
             }
             (_, WizardProblem::Instability) => {
-                advice.push(
-                    if is_ru {
-                        "Увеличить прижимную силу (Крылья)"
-                    } else {
-                        "Increase Downforce (Wings)"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Больше схождения (Toe) сзади"
-                    } else {
-                        "More Rear Toe-In"
-                    }
-                    .to_string(),
-                );
-                advice.push(
-                    if is_ru {
-                        "Жестче подвеску в целом"
-                    } else {
-                        "Stiffer Suspension Overall"
-                    }
-                    .to_string(),
-                );
+                advice.push(if is_ru {
+                    "Увеличить прижимную силу (Крылья)".to_string()
+                } else {
+                    "Increase Downforce (Wings)".to_string()
+                });
+                advice.push(if is_ru {
+                    "Больше схождения (Toe) сзади".to_string()
+                } else {
+                    "More Rear Toe-In".to_string()
+                });
+                advice.push(if is_ru {
+                    "Жестче подвеску в целом".to_string()
+                } else {
+                    "Stiffer Suspension Overall".to_string()
+                });
             }
         }
         advice
@@ -563,11 +585,10 @@ impl Engineer {
         if self.check_hysteresis("ffb_clip", is_clipping) && is_clipping {
             recs.push(Recommendation {
                 component: if ru {
-                    "Руль (FFB)"
+                    "Руль (FFB)".to_string()
                 } else {
-                    "Force Feedback"
-                }
-                .to_string(),
+                    "Force Feedback".to_string()
+                },
                 category: "Clipping".to_string(),
                 severity: Severity::Warning,
                 message: if ru {
@@ -576,11 +597,10 @@ impl Engineer {
                     format!("FFB Clipping: {:.1}% of time", clip_ratio * 100.0)
                 },
                 action: if ru {
-                    "Снизить Gain"
+                    "Снизить Gain".to_string()
                 } else {
-                    "Lower FFB Gain"
-                }
-                .to_string(),
+                    "Lower FFB Gain".to_string()
+                },
                 parameters: vec![Parameter {
                     name: "Clip Ratio".to_string(),
                     current: clip_ratio * 100.0,
@@ -652,9 +672,12 @@ impl Engineer {
                         format!("Шины ({})", class_name)
                     } else {
                         format!("Tyres ({})", class_name)
-                    }
-                    .to_string(),
-                    category: if ru { "Давление" } else { "Pressure" }.to_string(),
+                    },
+                    category: if ru {
+                        "Давление".to_string()
+                    } else {
+                        "Pressure".to_string()
+                    },
                     severity: if diff > 2.5 {
                         Severity::Warning
                     } else {
@@ -710,8 +733,16 @@ impl Engineer {
                 };
 
                 recs.push(Recommendation {
-                    component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                    category: if ru { "Износ" } else { "Wear" }.to_string(),
+                    component: if ru {
+                        "Шины".to_string()
+                    } else {
+                        "Tyres".to_string()
+                    },
+                    category: if ru {
+                        "Износ".to_string()
+                    } else {
+                        "Wear".to_string()
+                    },
                     severity,
                     message: if ru {
                         format!("{} {}: {:.1}%", name, msg_ru, wear)
@@ -719,11 +750,10 @@ impl Engineer {
                         format!("{} {}: {:.1}%", name, msg_en, wear)
                     },
                     action: if ru {
-                        "Пит-стоп / Осторожно"
+                        "Пит-стоп / Осторожно".to_string()
                     } else {
-                        "Box / Careful"
-                    }
-                    .to_string(),
+                        "Box / Careful".to_string()
+                    },
                     parameters: vec![Parameter {
                         name: "Life".to_string(),
                         current: wear,
@@ -736,7 +766,12 @@ impl Engineer {
         }
     }
 
-    fn analyze_camber(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_camber(
+        &self,
+        phys: &AcPhysics,
+        setup: Option<&CarSetup>,
+        recs: &mut Vec<Recommendation>,
+    ) {
         let ru = self.is_ru();
         if phys.speed_kmh < 50.0 {
             return;
@@ -748,17 +783,47 @@ impl Engineer {
             let temp_o = phys.tyre_temp_o[i];
             let spread = temp_i - temp_o;
 
+            let name = match i {
+                0 => "FL",
+                1 => "FR",
+                2 => "RL",
+                3 => "RR",
+                _ => "",
+            };
+
             if spread < 2.0 {
-                let name = match i {
-                    0 => "FL",
-                    1 => "FR",
-                    2 => "RL",
-                    3 => "RR",
-                    _ => "",
+                let action_text = if let Some(s) = setup {
+                    let current_camber = if i < 2 { s.camber_lf } else { s.camber_lr };
+                    if ru {
+                        format!(
+                            "Увеличить развал (сейчас: {}). Если предел -> смягчите ARB",
+                            current_camber
+                        )
+                    } else {
+                        format!(
+                            "Increase Camber (now: {}). If maxed -> soften ARB",
+                            current_camber
+                        )
+                    }
+                } else {
+                    if ru {
+                        "Увеличить отриц. развал".to_string()
+                    } else {
+                        "Increase Neg. Camber".to_string()
+                    }
                 };
+
                 recs.push(Recommendation {
-                    component: if ru { "Подвеска" } else { "Suspension" }.to_string(),
-                    category: if ru { "Развал" } else { "Camber" }.to_string(),
+                    component: if ru {
+                        "Подвеска".to_string()
+                    } else {
+                        "Suspension".to_string()
+                    },
+                    category: if ru {
+                        "Развал".to_string()
+                    } else {
+                        "Camber".to_string()
+                    },
                     severity: Severity::Info,
                     message: if ru {
                         format!(
@@ -768,12 +833,7 @@ impl Engineer {
                     } else {
                         format!("{} Contact patch inefficient (I-O: {:.1}C)", name, spread)
                     },
-                    action: if ru {
-                        "Увеличить отриц. развал"
-                    } else {
-                        "Increase Neg. Camber"
-                    }
-                    .to_string(),
+                    action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
                         current: spread,
@@ -783,28 +843,45 @@ impl Engineer {
                     confidence: 0.7,
                 });
             } else if spread > 15.0 {
-                let name = match i {
-                    0 => "FL",
-                    1 => "FR",
-                    2 => "RL",
-                    3 => "RR",
-                    _ => "",
+                let action_text = if let Some(s) = setup {
+                    let current_camber = if i < 2 { s.camber_lf } else { s.camber_lr };
+                    if ru {
+                        format!(
+                            "Уменьшить развал (сейчас: {}). Если предел -> зажмите ARB",
+                            current_camber
+                        )
+                    } else {
+                        format!(
+                            "Decrease Camber (now: {}). If maxed -> stiffen ARB",
+                            current_camber
+                        )
+                    }
+                } else {
+                    if ru {
+                        "Уменьшить отриц. развал".to_string()
+                    } else {
+                        "Decrease Neg. Camber".to_string()
+                    }
                 };
+
                 recs.push(Recommendation {
-                    component: if ru { "Подвеска" } else { "Suspension" }.to_string(),
-                    category: if ru { "Развал" } else { "Camber" }.to_string(),
+                    component: if ru {
+                        "Подвеска".to_string()
+                    } else {
+                        "Suspension".to_string()
+                    },
+                    category: if ru {
+                        "Развал".to_string()
+                    } else {
+                        "Camber".to_string()
+                    },
                     severity: Severity::Warning,
                     message: if ru {
                         format!("{} Перегрев внутренней части (I-O: {:.1}C)", name, spread)
                     } else {
                         format!("{} Inner edge overheating (I-O: {:.1}C)", name, spread)
                     },
-                    action: if ru {
-                        "Уменьшить отриц. развал"
-                    } else {
-                        "Decrease Neg. Camber"
-                    }
-                    .to_string(),
+                    action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
                         current: spread,
@@ -833,13 +910,16 @@ impl Engineer {
                         _ => "",
                     };
                     recs.push(Recommendation {
-                        component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                        category: if ru {
-                            "Температура"
+                        component: if ru {
+                            "Шины".to_string()
                         } else {
-                            "Temperature"
-                        }
-                        .to_string(),
+                            "Tyres".to_string()
+                        },
+                        category: if ru {
+                            "Температура".to_string()
+                        } else {
+                            "Temperature".to_string()
+                        },
                         severity: Severity::Critical,
                         message: if ru {
                             format!("{} ХОЛОДНАЯ: {:.0}°C", name, temp)
@@ -847,11 +927,10 @@ impl Engineer {
                             format!("{} COLD: {:.0}°C", name, temp)
                         },
                         action: if ru {
-                            "Греть шины / Аккуратнее"
+                            "Греть шины / Аккуратнее".to_string()
                         } else {
-                            "Warm tyres / Careful"
-                        }
-                        .to_string(),
+                            "Warm tyres / Careful".to_string()
+                        },
                         parameters: vec![],
                         confidence: 0.95,
                     });
@@ -866,8 +945,16 @@ impl Engineer {
         for i in 0..4 {
             if phys.brake_temp[i] > max_temp {
                 recs.push(Recommendation {
-                    component: if ru { "Тормоза" } else { "Brakes" }.to_string(),
-                    category: if ru { "Перегрев" } else { "Overheat" }.to_string(),
+                    component: if ru {
+                        "Тормоза".to_string()
+                    } else {
+                        "Brakes".to_string()
+                    },
+                    category: if ru {
+                        "Перегрев".to_string()
+                    } else {
+                        "Overheat".to_string()
+                    },
                     severity: Severity::Critical,
                     message: if ru {
                         format!("Тормоз {} горит!", i + 1)
@@ -875,11 +962,10 @@ impl Engineer {
                         format!("Brake {} cooking!", i + 1)
                     },
                     action: if ru {
-                        "Сместить баланс / Охладить"
+                        "Сместить баланс / Охладить".to_string()
                     } else {
-                        "Move bias / Cool down"
-                    }
-                    .to_string(),
+                        "Move bias / Cool down".to_string()
+                    },
                     parameters: vec![],
                     confidence: 1.0,
                 });
@@ -887,48 +973,70 @@ impl Engineer {
         }
     }
 
-    fn analyze_brake_bias(&self, recs: &mut Vec<Recommendation>) {
+    fn analyze_brake_bias(&self, setup: Option<&CarSetup>, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         let total_lockups = self.stats.lockup_frames_front + self.stats.lockup_frames_rear;
 
         if total_lockups > 20 {
+            let current_bias_str = if let Some(s) = setup {
+                if ru {
+                    format!(" (СЕЙЧАС: {}%)", s.brake_bias)
+                } else {
+                    format!(" (NOW: {}%)", s.brake_bias)
+                }
+            } else {
+                "".to_string()
+            };
+
             if self.stats.lockup_frames_front > self.stats.lockup_frames_rear * 2 {
                 recs.push(Recommendation {
-                    component: if ru { "Тормоза" } else { "Brakes" }.to_string(),
-                    category: if ru { "Баланс" } else { "Bias" }.to_string(),
+                    component: if ru {
+                        "Тормоза".to_string()
+                    } else {
+                        "Brakes".to_string()
+                    },
+                    category: if ru {
+                        "Баланс".to_string()
+                    } else {
+                        "Bias".to_string()
+                    },
                     severity: Severity::Warning,
                     message: if ru {
-                        "Блокировка ПЕРЕДНИХ колес"
+                        format!("Блокировка ПЕРЕДНИХ колес{}", current_bias_str)
                     } else {
-                        "FRONT Locking detected"
-                    }
-                    .to_string(),
+                        format!("FRONT Locking detected{}", current_bias_str)
+                    },
                     action: if ru {
-                        "Сместить баланс НАЗАД"
+                        "Сместить баланс НАЗАД".to_string()
                     } else {
-                        "Move Bias REARWARDS"
-                    }
-                    .to_string(),
+                        "Move Bias REARWARDS".to_string()
+                    },
                     parameters: vec![],
                     confidence: 0.85,
                 });
             } else if self.stats.lockup_frames_rear > self.stats.lockup_frames_front * 2 {
                 recs.push(Recommendation {
-                    component: if ru { "Тормоза" } else { "Brakes" }.to_string(),
-                    category: if ru { "Баланс" } else { "Bias" }.to_string(),
+                    component: if ru {
+                        "Тормоза".to_string()
+                    } else {
+                        "Brakes".to_string()
+                    },
+                    category: if ru {
+                        "Баланс".to_string()
+                    } else {
+                        "Bias".to_string()
+                    },
                     severity: Severity::Critical,
                     message: if ru {
-                        "Блокировка ЗАДНИХ колес (Опасно!)"
+                        format!("Блокировка ЗАДНИХ колес{}", current_bias_str)
                     } else {
-                        "REAR Locking (Danger!)"
-                    }
-                    .to_string(),
+                        format!("REAR Locking (Danger!){}", current_bias_str)
+                    },
                     action: if ru {
-                        "Сместить баланс ВПЕРЕД"
+                        "Сместить баланс ВПЕРЕД".to_string()
                     } else {
-                        "Move Bias FORWARDS"
-                    }
-                    .to_string(),
+                        "Move Bias FORWARDS".to_string()
+                    },
                     parameters: vec![],
                     confidence: 0.95,
                 });
@@ -942,26 +1050,27 @@ impl Engineer {
         let is_coasting = self.stats.coasting_frames > 60;
         if self.check_hysteresis("coast", is_coasting) && is_coasting {
             recs.push(Recommendation {
-                component: if ru { "Пилотаж" } else { "Driving" }.to_string(),
-                category: if ru {
-                    "Потеря времени"
+                component: if ru {
+                    "Пилотаж".to_string()
                 } else {
-                    "Time Loss"
-                }
-                .to_string(),
+                    "Driving".to_string()
+                },
+                category: if ru {
+                    "Потеря времени".to_string()
+                } else {
+                    "Time Loss".to_string()
+                },
                 severity: Severity::Info,
                 message: if ru {
-                    "Много наката (Coasting)"
+                    "Много наката (Coasting)".to_string()
                 } else {
-                    "Excessive Coasting"
-                }
-                .to_string(),
+                    "Excessive Coasting".to_string()
+                },
                 action: if ru {
-                    "Держите газ или тормозите"
+                    "Держите газ или тормозите".to_string()
                 } else {
-                    "Keep throttle or brake"
-                }
-                .to_string(),
+                    "Keep throttle or brake".to_string()
+                },
                 parameters: vec![],
                 confidence: 0.7,
             });
@@ -969,21 +1078,23 @@ impl Engineer {
 
         if self.stats.understeer_frames > 30 {
             recs.push(Recommendation {
-                component: if ru { "Баланс" } else { "Balance" }.to_string(),
+                component: if ru {
+                    "Баланс".to_string()
+                } else {
+                    "Balance".to_string()
+                },
                 category: "Understeer".to_string(),
                 severity: Severity::Warning,
                 message: if ru {
-                    "Снос передней оси (High Speed)"
+                    "Снос передней оси (High Speed)".to_string()
                 } else {
-                    "High Speed Understeer"
-                }
-                .to_string(),
+                    "High Speed Understeer".to_string()
+                },
                 action: if ru {
-                    "Больше крыла спереди / Мягче спереди"
+                    "Больше крыла спереди / Мягче спереди".to_string()
                 } else {
-                    "More Front Wing / Softer Front"
-                }
-                .to_string(),
+                    "More Front Wing / Softer Front".to_string()
+                },
                 parameters: vec![],
                 confidence: 0.85,
             });
@@ -991,21 +1102,23 @@ impl Engineer {
 
         if self.stats.oversteer_frames > 30 {
             recs.push(Recommendation {
-                component: if ru { "Баланс" } else { "Balance" }.to_string(),
+                component: if ru {
+                    "Баланс".to_string()
+                } else {
+                    "Balance".to_string()
+                },
                 category: "Oversteer".to_string(),
                 severity: Severity::Warning,
                 message: if ru {
-                    "Нестабильность сзади (High Speed)"
+                    "Нестабильность сзади (High Speed)".to_string()
                 } else {
-                    "High Speed Oversteer"
-                }
-                .to_string(),
+                    "High Speed Oversteer".to_string()
+                },
                 action: if ru {
-                    "Больше крыла сзади"
+                    "Больше крыла сзади".to_string()
                 } else {
-                    "More Rear Wing"
-                }
-                .to_string(),
+                    "More Rear Wing".to_string()
+                },
                 parameters: vec![],
                 confidence: 0.85,
             });
@@ -1017,8 +1130,16 @@ impl Engineer {
 
         if self.stats.fuel_laps_remaining < 2.5 && self.stats.fuel_laps_remaining > 0.0 {
             recs.push(Recommendation {
-                component: if ru { "Стратегия" } else { "Strategy" }.to_string(),
-                category: if ru { "Топливо" } else { "Fuel" }.to_string(),
+                component: if ru {
+                    "Стратегия".to_string()
+                } else {
+                    "Strategy".to_string()
+                },
+                category: if ru {
+                    "Топливо".to_string()
+                } else {
+                    "Fuel".to_string()
+                },
                 severity: Severity::Critical,
                 message: if ru {
                     format!("ТОПЛИВО: {:.1} кр.", self.stats.fuel_laps_remaining)
@@ -1046,8 +1167,16 @@ impl Engineer {
 
                 if fuel_diff < -1.0 {
                     recs.push(Recommendation {
-                        component: if ru { "Стратегия" } else { "Strategy" }.to_string(),
-                        category: if ru { "Финиш" } else { "Race Finish" }.to_string(),
+                        component: if ru {
+                            "Стратегия".to_string()
+                        } else {
+                            "Strategy".to_string()
+                        },
+                        category: if ru {
+                            "Финиш".to_string()
+                        } else {
+                            "Race Finish".to_string()
+                        },
                         severity: Severity::Warning,
                         message: if ru {
                             format!("Не хватит {:.1} л.", fuel_diff.abs())
@@ -1055,11 +1184,10 @@ impl Engineer {
                             format!("Short {:.1} L", fuel_diff.abs())
                         },
                         action: if ru {
-                            "Экономить / Пит-стоп"
+                            "Экономить / Пит-стоп".to_string()
                         } else {
-                            "Save Fuel / Box"
-                        }
-                        .to_string(),
+                            "Save Fuel / Box".to_string()
+                        },
                         parameters: vec![Parameter {
                             name: "Need".to_string(),
                             current: phys.fuel,

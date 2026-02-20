@@ -1,6 +1,6 @@
-use crate::config::{AppConfig, Language, PressureUnit, TempUnit};
 use crate::ui::localization::tr;
 use crate::AppState;
+use ac_core::config::{AppConfig, Language, PressureUnit, TempUnit};
 use crossterm::event::KeyCode;
 use ratatui::{prelude::*, widgets::*};
 

@@ -83,7 +83,7 @@ impl AnalysisState {
         }
     }
 
-    pub fn save_lap_data(&mut self, lap: &crate::analyzer::LapData) {
+    pub fn save_lap_data(&mut self, lap: &ac_core::analyzer::LapData) {
         let dir = "saved_laps";
         if let Err(e) = fs::create_dir_all(dir) {
             self.set_status(format!("Error create dir: {}", e));
@@ -139,13 +139,13 @@ impl AnalysisState {
         self.load_menu.borrow_mut().next();
     }
 
-    pub fn load_selected_file(&mut self, analyzer: &mut crate::analyzer::Analyzer) {
+    pub fn load_selected_file(&mut self, analyzer: &mut ac_core::analyzer::Analyzer) {
         let selected_file = self.load_menu.borrow().get_selected();
 
         if let Some(filename) = selected_file {
             let path = PathBuf::from("saved_laps").join(&filename);
             match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<crate::analyzer::LapData>(&content) {
+                Ok(content) => match serde_json::from_str::<ac_core::analyzer::LapData>(&content) {
                     Ok(mut lap) => {
                         lap.from_file = true;
 
@@ -168,7 +168,7 @@ impl AnalysisState {
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
-    let is_ru = *lang == crate::config::Language::Russian;
+    let is_ru = *lang == ac_core::config::Language::Russian;
 
     let has_data = !app.analyzer.laps.is_empty();
 
@@ -277,7 +277,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let titles = if is_ru {
         vec!["ОБЗОР", "ТЕЛЕМЕТРИЯ", "ДИНАМИКА", "ДВИГАТЕЛЬ", "СЦЕПЛЕНИЕ"]

@@ -1,4 +1,4 @@
-use crate::config::Language;
+use ac_core::config::Language;
 
 pub fn tr(key: &str, lang: &Language) -> String {
     match lang {

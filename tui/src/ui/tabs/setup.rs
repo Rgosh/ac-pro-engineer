@@ -1,6 +1,6 @@
-use crate::setup_manager::CarSetup;
 use crate::ui::localization::tr;
 use crate::AppState;
+use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -60,12 +60,12 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .clone();
 
     let hint_text = if is_browser {
-        if *lang == crate::config::Language::Russian {
+        if *lang == ac_core::config::Language::Russian {
             "БРАУЗЕР: Стрелки - Навигация | ENTER - Выбор | 'D' - Скачать | 'B' - Назад | PgUp/PgDn - Скролл"
         } else {
             "BROWSER: Arrows - Navigate | ENTER - Select | 'D' - Download | 'B' - Return | PgUp/PgDn - Scroll"
         }
-    } else if *lang == crate::config::Language::Russian {
+    } else if *lang == ac_core::config::Language::Russian {
         "LIVE: 'B' - База Сетапов | 'D' - Скачать | PgUp/PgDn - Скролл деталей"
     } else {
         "LIVE: 'B' - Online Database | 'D' - Download | PgUp/PgDn - Scroll Details"
@@ -350,7 +350,7 @@ fn render_header_block(
     best: Option<&CarSetup>,
 ) {
     let lang = &app.config.language;
-    let is_ru = *lang == crate::config::Language::Russian;
+    let is_ru = *lang == ac_core::config::Language::Russian;
 
     let status = app.setup_manager.get_status_message();
     let has_status = !status.is_empty();
@@ -583,7 +583,6 @@ fn render_header_block(
     );
 }
 
-#[allow(unused_macro_rules)]
 fn render_comparison_table(
     f: &mut Frame<'_>,
     area: Rect,
@@ -592,8 +591,7 @@ fn render_comparison_table(
     reference: Option<&CarSetup>,
 ) {
     let theme = &app.ui_state.theme;
-    let lang = &app.config.language;
-    let is_ru = *lang == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let scroll_offset = *app
         .setup_manager
@@ -601,23 +599,19 @@ fn render_comparison_table(
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
-    let ref_col_name = if reference.is_some() {
-        tr("set_recom", lang)
-    } else {
-        "Live".to_string()
-    };
+    if let Some(target) = reference {
+        let diffs = selected.generate_diff(target);
 
-    let header_cells = [
-        tr("set_param", lang),
-        if is_ru {
-            "Выбран".to_string()
-        } else {
-            "Select".to_string()
-        },
-        ref_col_name,
-        tr("set_diff", lang),
-    ];
-    let header = Row::new(header_cells)
+        let header = Row::new(vec![
+            if is_ru {
+                "Параметр"
+            } else {
+                "Parameter"
+            },
+            if is_ru { "Текущий" } else { "Current" },
+            if is_ru { "Эталон" } else { "Reference" },
+            if is_ru { "Разница" } else { "Diff" },
+        ])
         .style(
             Style::default()
                 .fg(app.ui_state.get_color(&theme.accent))
@@ -625,243 +619,67 @@ fn render_comparison_table(
         )
         .bottom_margin(1);
 
-    let mut rows = Vec::new();
-    macro_rules! cmp_row {
-        ($label:expr_2021, $val_sel:expr_2021, $val_ref:expr_2021) => {
-            let s_val = $val_sel;
-            let r_val = $val_ref;
-            let (r_str, diff_str, style) = if let Some(r) = r_val {
-                let diff = s_val as i32 - r as i32;
-                if diff == 0 {
-                    (
-                        format!("{}", r),
-                        "=".to_string(),
-                        Style::default().fg(Color::DarkGray),
-                    )
-                } else {
-                    (
-                        format!("{}", r),
-                        format!("{:+.0}", diff),
-                        Style::default().fg(Color::Yellow),
-                    )
-                }
+        if diffs.is_empty() {
+            let p = Paragraph::new(if is_ru {
+                "Сетапы полностью идентичны!"
             } else {
-                ("-".to_string(), "".to_string(), Style::default())
-            };
-            rows.push(Row::new(vec![
-                Cell::from(format!("  {}", $label)),
-                Cell::from(format!("{}", s_val))
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
-                Cell::from(r_str),
-                Cell::from(diff_str).style(style),
-            ]));
-        };
-        ($label:expr_2021, $val_sel:expr_2021, $val_ref:expr_2021, "signed") => {
-            let s_val = $val_sel;
-            let r_val = $val_ref;
-            let (r_str, diff_str, style) = if let Some(r) = r_val {
-                let diff = s_val - r;
-                if diff == 0 {
-                    (
-                        format!("{}", r),
-                        "=".to_string(),
-                        Style::default().fg(Color::DarkGray),
-                    )
-                } else {
-                    (
-                        format!("{}", r),
-                        format!("{:+.0}", diff),
-                        Style::default().fg(Color::Yellow),
-                    )
-                }
+                "Setups are completely identical!"
+            })
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Green));
+            f.render_widget(p, area);
+            return;
+        }
+
+        let mut diff_rows = vec![];
+        for d in diffs {
+            let diff_str = if d.diff > 0.0 {
+                format!("+{:.1}", d.diff)
             } else {
-                ("-".to_string(), "".to_string(), Style::default())
+                format!("{:.1}", d.diff)
             };
-            rows.push(Row::new(vec![
-                Cell::from(format!("  {}", $label)),
-                Cell::from(format!("{}", s_val))
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
-                Cell::from(r_str),
-                Cell::from(diff_str).style(style),
+            let color = if d.diff > 0.0 {
+                Color::Red
+            } else {
+                Color::Green
+            };
+
+            diff_rows.push(Row::new(vec![
+                Cell::from(d.name),
+                Cell::from(format!("{:.1}", d.current)),
+                Cell::from(format!("{:.1}", d.reference)),
+                Cell::from(diff_str).style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
             ]));
+        }
+
+        let total_rows = diff_rows.len();
+        let start = if scroll_offset >= total_rows {
+            total_rows.saturating_sub(1)
+        } else {
+            scroll_offset
         };
-    }
-    macro_rules! add_header {
-        ($label:expr_2021) => {
-            rows.push(Row::new(vec![
-                Cell::from($label).style(
-                    Style::default()
-                        .fg(app.ui_state.get_color(&theme.highlight))
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Cell::from(""),
-                Cell::from(""),
-                Cell::from(""),
-            ]));
-        };
-    }
+        let visible_rows = diff_rows.into_iter().skip(start).collect::<Vec<Row<'_>>>();
 
-    add_header!(tr("grp_gen", lang));
-    cmp_row!(tr("p_fuel", lang), selected.fuel, reference.map(|a| a.fuel));
-    cmp_row!(
-        tr("p_bias", lang),
-        selected.brake_bias,
-        reference.map(|a| a.brake_bias)
-    );
-    add_header!(tr("grp_aero", lang));
-    cmp_row!(
-        format!("{} 1", tr("p_wing", lang)),
-        selected.wing_1,
-        reference.map(|a| a.wing_1)
-    );
-    cmp_row!(
-        format!("{} 2", tr("p_wing", lang)),
-        selected.wing_2,
-        reference.map(|a| a.wing_2)
-    );
-
-    add_header!(if is_ru { "Геометрия" } else { "Align" });
-    cmp_row!(
-        "Camber FL",
-        selected.camber_lf,
-        reference.map(|a| a.camber_lf),
-        "signed"
-    );
-    cmp_row!(
-        "Camber FR",
-        selected.camber_rf,
-        reference.map(|a| a.camber_rf),
-        "signed"
-    );
-    cmp_row!(
-        "Toe FL",
-        selected.toe_lf,
-        reference.map(|a| a.toe_lf),
-        "signed"
-    );
-    cmp_row!(
-        "Toe FR",
-        selected.toe_rf,
-        reference.map(|a| a.toe_rf),
-        "signed"
-    );
-
-    add_header!(tr("grp_susp", lang));
-    cmp_row!(
-        format!("{} F", tr("p_arb", lang)),
-        selected.arb_front,
-        reference.map(|a| a.arb_front)
-    );
-    cmp_row!(
-        format!("{} R", tr("p_arb", lang)),
-        selected.arb_rear,
-        reference.map(|a| a.arb_rear)
-    );
-    cmp_row!(
-        format!("{} FL", tr("p_spring", lang)),
-        selected.spring_lf,
-        reference.map(|a| a.spring_lf)
-    );
-    cmp_row!(
-        format!("{} FR", tr("p_spring", lang)),
-        selected.spring_rf,
-        reference.map(|a| a.spring_rf)
-    );
-    cmp_row!(
-        "Rod FL",
-        selected.rod_length_lf,
-        reference.map(|a| a.rod_length_lf),
-        "signed"
-    );
-    cmp_row!(
-        "Rod FR",
-        selected.rod_length_rf,
-        reference.map(|a| a.rod_length_rf),
-        "signed"
-    );
-    cmp_row!(
-        "Rod LR",
-        selected.rod_length_lr,
-        reference.map(|a| a.rod_length_lr),
-        "signed"
-    );
-    cmp_row!(
-        "Rod RR",
-        selected.rod_length_rr,
-        reference.map(|a| a.rod_length_rr),
-        "signed"
-    );
-
-    add_header!(tr("grp_damp", lang));
-    cmp_row!(
-        format!("{} FL", tr("p_bump", lang)),
-        selected.damp_bump_lf,
-        reference.map(|a| a.damp_bump_lf)
-    );
-    cmp_row!(
-        format!("{} FL", tr("p_reb", lang)),
-        selected.damp_rebound_lf,
-        reference.map(|a| a.damp_rebound_lf)
-    );
-    add_header!(tr("grp_driv", lang));
-    cmp_row!(
-        tr("p_diff_p", lang),
-        selected.diff_power,
-        reference.map(|a| a.diff_power)
-    );
-    cmp_row!(
-        tr("p_diff_c", lang),
-        selected.diff_coast,
-        reference.map(|a| a.diff_coast)
-    );
-    cmp_row!(
-        tr("p_final", lang),
-        selected.final_ratio,
-        reference.map(|a| a.final_ratio)
-    );
-    for (i, gear) in selected.gears.iter().enumerate() {
-        cmp_row!(
-            format!("{} {}", tr("p_gear", lang), i + 2),
-            *gear,
-            reference.and_then(|a| a.gears.get(i).cloned())
-        );
-    }
-
-    let total_rows = rows.len();
-
-    let start = if scroll_offset >= total_rows {
-        total_rows.saturating_sub(1)
+        let table = Table::new(
+            visible_rows,
+            [
+                Constraint::Percentage(40),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+                Constraint::Percentage(20),
+            ],
+        )
+        .header(header)
+        .block(Block::default().padding(Padding::new(1, 0, 0, 0)));
+        f.render_widget(table, area);
     } else {
-        scroll_offset
-    };
-    let visible_rows = rows.into_iter().skip(start).collect::<Vec<Row<'_>>>();
-
-    let table = Table::new(
-        visible_rows,
-        [
-            Constraint::Percentage(40),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-            Constraint::Percentage(20),
-        ],
-    )
-    .header(header)
-    .block(Block::default().padding(Padding::new(1, 0, 0, 0)));
-    f.render_widget(table, area);
-
-    if total_rows > 0 {
-        let scrollbar_state = ((start as f64 / total_rows as f64) * 100.0) as u16;
-        let _scroll_gauge = LineGauge::default()
-            .gauge_style(Style::default().fg(Color::DarkGray))
-            .ratio(scrollbar_state as f64 / 100.0);
-        let _scroll_area = Rect {
-            x: area.x + area.width - 2,
-            y: area.y + 2,
-            width: 1,
-            height: area.height.saturating_sub(2),
-        };
-        let _s_block = Block::default()
-            .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(Color::DarkGray));
+        let p = Paragraph::new(if is_ru {
+            "Для сравнения выберите сетап в базе."
+        } else {
+            "Select a setup to see differences."
+        })
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(p, area);
     }
 }

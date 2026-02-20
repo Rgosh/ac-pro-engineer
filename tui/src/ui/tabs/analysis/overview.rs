@@ -5,11 +5,11 @@ pub fn render(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    lap: &crate::analyzer::LapData,
-    best_lap: Option<&crate::analyzer::LapData>,
+    lap: &ac_core::analyzer::LapData,
+    best_lap: Option<&ac_core::analyzer::LapData>,
 ) {
     let theme = &app.ui_state.theme;
-    let is_ru = app.config.language == crate::config::Language::Russian;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -45,7 +45,11 @@ pub fn render(
             Style::default().fg(color),
         )
     } else {
-        Span::raw("Session Best")
+        Span::raw(if is_ru {
+            "Лучший в сессии"
+        } else {
+            "Session Best"
+        })
     };
 
     let valid_style = if lap.valid {
@@ -277,13 +281,17 @@ pub fn render(
 
     let row2 = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+            Constraint::Percentage(33),
+        ])
         .split(chunks[2]);
 
     let car_schema_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Схема: Колеса и Температуры"
+        "Схема (T/B/W)"
     } else {
-        "Car Schema: Wheels & Temps"
+        "Car (T/B/W)"
     });
     let car_area = car_schema_block.inner(row2[0]);
     f.render_widget(car_schema_block, row2[0]);
@@ -305,7 +313,6 @@ pub fn render(
     let render_wheel = |f: &mut Frame<'_>, area: Rect, name: &str, idx: usize| {
         let temp = *lap.avg_tyre_temp.get(idx).unwrap_or(&0.0);
         let brake = *lap.max_brake_temp.get(idx).unwrap_or(&0.0);
-        let wear = 100.0;
 
         let color = if temp > 100.0 {
             Color::Red
@@ -321,11 +328,7 @@ pub fn render(
                 Style::default().add_modifier(Modifier::BOLD),
             )),
             Line::from(vec![
-                Span::raw("Tyre: "),
-                Span::styled(format!("{:.0}C", temp), Style::default().fg(color)),
-            ]),
-            Line::from(vec![
-                Span::raw("Brake: "),
+                Span::styled(format!("{:.0}C ", temp), Style::default().fg(color)),
                 Span::styled(
                     format!("{:.0}C", brake),
                     Style::default().fg(if brake > 600.0 {
@@ -334,10 +337,6 @@ pub fn render(
                         Color::Yellow
                     }),
                 ),
-            ]),
-            Line::from(vec![
-                Span::raw("Wear: "),
-                Span::styled(format!("{:.0}%", wear), Style::default().fg(Color::Green)),
             ]),
         ];
 
@@ -356,6 +355,88 @@ pub fn render(
     render_wheel(f, front_wheels[1], "FR", 1);
     render_wheel(f, rear_wheels[0], "RL", 2);
     render_wheel(f, rear_wheels[1], "RR", 3);
+
+    let ms_block = Block::default().borders(Borders::ALL).title(if is_ru {
+        "Микро-Сектора (Дельта)"
+    } else {
+        "Micro-Sectors (Delta)"
+    });
+
+    let mut ms_rows = vec![];
+
+    if let Some(best) = best_lap {
+        if !lap.telemetry_trace.is_empty() && !best.telemetry_trace.is_empty() {
+            let num_sectors = 8;
+            for i in 0..num_sectors {
+                let start_dist = i as f32 / num_sectors as f32;
+                let end_dist = (i + 1) as f32 / num_sectors as f32;
+
+                let cur_start = lap
+                    .telemetry_trace
+                    .iter()
+                    .find(|p| p.distance >= start_dist)
+                    .map(|p| p.time_ms)
+                    .unwrap_or(0);
+                let cur_end = lap
+                    .telemetry_trace
+                    .iter()
+                    .find(|p| p.distance >= end_dist)
+                    .map(|p| p.time_ms)
+                    .unwrap_or(lap.lap_time_ms);
+                let cur_time = cur_end - cur_start;
+
+                let best_start = best
+                    .telemetry_trace
+                    .iter()
+                    .find(|p| p.distance >= start_dist)
+                    .map(|p| p.time_ms)
+                    .unwrap_or(0);
+                let best_end = best
+                    .telemetry_trace
+                    .iter()
+                    .find(|p| p.distance >= end_dist)
+                    .map(|p| p.time_ms)
+                    .unwrap_or(best.lap_time_ms);
+                let best_time = best_end - best_start;
+
+                let diff = (cur_time as f32 - best_time as f32) / 1000.0;
+
+                let diff_str = if diff > 0.0 {
+                    format!("+{:.3}s", diff)
+                } else {
+                    format!("{:.3}s", diff)
+                };
+
+                let color = if diff > 0.0 {
+                    Color::Red
+                } else if diff < 0.0 {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                };
+
+                ms_rows.push(Row::new(vec![
+                    Cell::from(format!("MS {}", i + 1)),
+                    Cell::from(diff_str).style(Style::default().fg(color)),
+                ]));
+            }
+        } else {
+            ms_rows.push(Row::new(vec![Cell::from("No traces...")]));
+        }
+    } else {
+        ms_rows.push(Row::new(vec![Cell::from(if is_ru {
+            "Загрузите круг сравнения"
+        } else {
+            "Load Reference Lap"
+        })]));
+    }
+
+    let ms_table = Table::new(
+        ms_rows,
+        [Constraint::Percentage(50), Constraint::Percentage(50)],
+    )
+    .block(ms_block);
+    f.render_widget(ms_table, row2[1]);
 
     let stats_block = Block::default().borders(Borders::ALL).title(if is_ru {
         "Расширенная Статистика"
@@ -409,35 +490,11 @@ pub fn render(
         ]),
         Row::new(vec![
             Cell::from(if is_ru {
-                "Переключения"
-            } else {
-                "Gear Shifts"
-            }),
-            Cell::from(format!("{}", lap.gear_shifts)),
-        ]),
-        Row::new(vec![
-            Cell::from(if is_ru {
                 "Расход Топлива"
             } else {
                 "Fuel Used"
             }),
             Cell::from(format!("{:.2} L", lap.fuel_used)),
-        ]),
-        Row::new(vec![
-            Cell::from(if is_ru {
-                "Ошибки (Lockups)"
-            } else {
-                "Lockups"
-            }),
-            Cell::from(format!("{}", lap.lockup_count)),
-        ]),
-        Row::new(vec![
-            Cell::from(if is_ru {
-                "Ошибки (Spin)"
-            } else {
-                "Spins/Slides"
-            }),
-            Cell::from(format!("{}", lap.oversteer_count)),
         ]),
     ];
     f.render_widget(
@@ -446,7 +503,7 @@ pub fn render(
             [Constraint::Percentage(60), Constraint::Percentage(40)],
         )
         .block(stats_block),
-        row2[1],
+        row2[2],
     );
 
     let row3 = Layout::default()

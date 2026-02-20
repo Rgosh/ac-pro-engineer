@@ -11,6 +11,14 @@ use walkdir::WalkDir;
 const GITHUB_USER_REPO: &str = "Rgosh/ac-setups";
 const GITHUB_BRANCH: &str = "main";
 
+#[derive(Debug, Clone)]
+pub struct SetupDiffItem {
+    pub name: String,
+    pub current: f32,
+    pub reference: f32,
+    pub diff: f32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CarSetup {
     pub name: String,
@@ -131,6 +139,77 @@ impl CarSetup {
             score += 20;
         }
         score
+    }
+
+    pub fn generate_diff(&self, reference: &CarSetup) -> Vec<SetupDiffItem> {
+        let mut diffs = Vec::new();
+        let mut check = |name: &str, cur: f32, ref_val: f32| {
+            if (cur - ref_val).abs() > 0.001 {
+                diffs.push(SetupDiffItem {
+                    name: name.to_string(),
+                    current: cur,
+                    reference: ref_val,
+                    diff: cur - ref_val,
+                });
+            }
+        };
+
+        check("Front Wing", self.wing_1 as f32, reference.wing_1 as f32);
+        check("Rear Wing", self.wing_2 as f32, reference.wing_2 as f32);
+        check(
+            "Front ARB",
+            self.arb_front as f32,
+            reference.arb_front as f32,
+        );
+        check("Rear ARB", self.arb_rear as f32, reference.arb_rear as f32);
+        check("Fuel (L)", self.fuel as f32, reference.fuel as f32);
+        check(
+            "Brake Bias (%)",
+            self.brake_bias as f32,
+            reference.brake_bias as f32,
+        );
+        check(
+            "Camber FL",
+            self.camber_lf as f32 / 10.0,
+            reference.camber_lf as f32 / 10.0,
+        );
+        check(
+            "Camber FR",
+            self.camber_rf as f32 / 10.0,
+            reference.camber_rf as f32 / 10.0,
+        );
+        check(
+            "Camber RL",
+            self.camber_lr as f32 / 10.0,
+            reference.camber_lr as f32 / 10.0,
+        );
+        check(
+            "Camber RR",
+            self.camber_rr as f32 / 10.0,
+            reference.camber_rr as f32 / 10.0,
+        );
+        check(
+            "Spring FL",
+            self.spring_lf as f32,
+            reference.spring_lf as f32,
+        );
+        check(
+            "Spring RL",
+            self.spring_lr as f32,
+            reference.spring_lr as f32,
+        );
+        check(
+            "Pressure FL",
+            self.pressure_lf as f32,
+            reference.pressure_lf as f32,
+        );
+        check(
+            "Pressure RL",
+            self.pressure_lr as f32,
+            reference.pressure_lr as f32,
+        );
+
+        diffs
     }
 }
 

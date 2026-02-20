@@ -1,4 +1,3 @@
-use ratatui::style::Color as RatColor;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -74,12 +73,6 @@ pub struct ColorTuple {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-}
-
-impl ColorTuple {
-    pub fn to_color(&self) -> RatColor {
-        RatColor::Rgb(self.r, self.g, self.b)
-    }
 }
 
 impl Default for Theme {

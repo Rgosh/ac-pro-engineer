@@ -1,8 +1,8 @@
-use crate::config::Language;
-use crate::process::is_process_running;
 use crate::ui::localization::tr;
-use crate::updater::UpdateStatus;
 use crate::AppState;
+use ac_core::config::Language;
+use ac_core::process::is_process_running;
+use ac_core::updater::UpdateStatus;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::atomic::AtomicBool;
 
@@ -10,7 +10,6 @@ pub static SHOW_REVIEW_BANNER: AtomicBool = AtomicBool::new(true);
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
-
     let block =
         Block::default().style(Style::default().bg(app.ui_state.get_color(&theme.background)));
     f.render_widget(block, area);
@@ -91,7 +90,6 @@ fn render_first_run_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Span::raw("      "),
         Span::styled(" [ NO, I'M A PRO ] ", no_style),
     ]);
-
     let mut content = text;
     content.push(buttons);
 
@@ -133,7 +131,7 @@ fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from(format!("v{}", crate::updater::CURRENT_VERSION)),
+        Line::from(format!("v{}", ac_core::updater::CURRENT_VERSION)),
         Line::from(""),
         Line::from(Span::styled(
             if is_ru {
@@ -155,9 +153,8 @@ fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_header(f: &mut Frame<'_>, area: Rect, _app: &AppState) {
     let ver_str = format!(
         "   TELEMETRY & ENGINEER TOOL v{}    ",
-        crate::updater::CURRENT_VERSION
+        ac_core::updater::CURRENT_VERSION
     );
-
     let logo_text = [
         "   ___   _____  __     ___  ___  ___ ",
         "  / _ | / __/ |/ /    / _ \\/ _ \\/ _ \\",
@@ -173,7 +170,6 @@ fn render_header(f: &mut Frame<'_>, area: Rect, _app: &AppState) {
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Center);
-
     let center_area = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -182,7 +178,6 @@ fn render_header(f: &mut Frame<'_>, area: Rect, _app: &AppState) {
             Constraint::Min(0),
         ])
         .split(area)[1];
-
     f.render_widget(logo, center_area);
 }
 
@@ -194,7 +189,6 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(area);
-
         render_review_banner(f, chunks[0], app);
         main_area = chunks[1];
     }
@@ -216,13 +210,11 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 fn render_review_banner(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = app.config.language == Language::Russian;
-
     let text = if is_ru {
         "⭐ Это Open Source проект. Ваш отзыв помогает нам расти!"
     } else {
         "⭐ This is an Open Source project. Your review helps us grow!"
     };
-
     let hint = if is_ru {
         "[O] Оставить отзыв  [H] Скрыть навсегда"
     } else {
@@ -250,7 +242,6 @@ fn render_review_banner(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .block(block)
         .alignment(Alignment::Center)
         .wrap(Wrap { trim: true });
-
     f.render_widget(p, area);
 }
 
@@ -258,7 +249,6 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
-
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let update_label = match *update_status {
@@ -307,7 +297,14 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     };
 
     let menu_items = [
-        format!("🚀  {}", tr("launch_start", lang)),
+        format!(
+            "🖥️  {}",
+            if is_ru {
+                "ЗАПУСК (ТЕРМИНАЛ)"
+            } else {
+                "START (TERMINAL TUI)"
+            }
+        ),
         format!("⚙️   {}", tr("launch_sett", lang)),
         match app.config.language {
             Language::English => "LANGUAGE: < ENGLISH >",
@@ -326,7 +323,6 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .enumerate()
         .map(|(i, text)| {
             let is_selected = i == sel;
-
             let style = if is_selected {
                 Style::default()
                     .fg(Color::Black)
@@ -376,7 +372,6 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
-
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let title = match app.launcher_selection {
@@ -405,12 +400,18 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let content = match app.launcher_selection {
         0 => vec![
             Line::from(Span::styled(
+                "TERMINAL MODE (TUI)",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
                 tr("launch_ready", lang),
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             )),
-            Line::from(""),
             Line::from(tr("launch_conn_desc", lang)),
             Line::from(""),
             Line::from(vec![
@@ -489,7 +490,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             )),
             Line::from(""),
             Line::from("AC Pro Engineer Tool"),
-            Line::from(format!("Version: {}", crate::updater::CURRENT_VERSION)),
+            Line::from(format!("Version: {}", ac_core::updater::CURRENT_VERSION)),
             Line::from(""),
             Line::from(Span::styled(
                 tr("launch_created", lang),
@@ -504,13 +505,12 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Line::from(""),
             Line::from(tr("launch_thanks", lang)),
             Line::from("  Kunos Simulazioni (Assetto Corsa)"),
-            Line::from("  Rust Community (Ratatui, Serde)"),
+            Line::from("  Rust Community (Ratatui, Serde, Tauri)"),
             Line::from(""),
             Line::from("© 2026 All Rights Reserved."),
         ],
         5 => {
             let mut lines = vec![];
-
             if let UpdateStatus::Downloading(pct) = *update_status {
                 lines.push(Line::from(Span::styled(
                     if is_ru {
@@ -564,9 +564,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                             .add_modifier(Modifier::BOLD),
                     ),
                 ]));
-
                 lines.push(Line::from(""));
-
                 lines.push(Line::from(Span::styled(
                     if is_ru {
                         " [←/→] Выбор версии   [ENTER] Установка"
@@ -575,7 +573,6 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     },
                     Style::default().fg(Color::DarkGray).bg(Color::Black),
                 )));
-
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     if is_ru {
@@ -585,12 +582,10 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     },
                     Style::default().fg(Color::Cyan),
                 )));
-
                 lines.push(Line::from(Span::styled(
                     info.notes.clone(),
                     Style::default().fg(Color::Gray),
                 )));
-
                 if is_legacy_version(&info.version) {
                     lines.push(Line::from(""));
                     lines.push(Line::from(Span::styled(
@@ -620,7 +615,6 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     )));
                 }
             }
-
             lines
         }
         6 => vec![
@@ -637,7 +631,6 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let p = Paragraph::new(content)
         .wrap(Wrap { trim: true })
         .style(Style::default().fg(app.ui_state.get_color(&theme.text)));
-
     f.render_widget(p, inner);
 }
 
@@ -645,7 +638,6 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
-
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let (msg, color) = match *update_status {
@@ -671,7 +663,6 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             let actual_running = app.is_game_running
                 || is_process_running("acs.exe")
                 || is_process_running("simulator.exe");
-
             if actual_running {
                 (tr("launch_on", lang), Color::Green)
             } else {
@@ -698,18 +689,15 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .split(area);
 
     let status = Paragraph::new(msg).style(Style::default().fg(color).add_modifier(Modifier::BOLD));
-
     let controls_hint = if is_ru {
         "[↑/↓] Навигация   [ENTER] Выбор"
     } else {
         "[↑/↓] Select   [ENTER] Open"
     };
-
     let controls = Paragraph::new(controls_hint)
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Gray));
-
-    let copyright = Paragraph::new(format!("v{}", crate::updater::CURRENT_VERSION))
+    let copyright = Paragraph::new(format!("v{}", ac_core::updater::CURRENT_VERSION))
         .alignment(Alignment::Right)
         .style(Style::default().fg(Color::DarkGray));
 
@@ -748,7 +736,6 @@ fn is_legacy_version(v: &str) -> bool {
     if parts.len() < 3 {
         return false;
     }
-
     let parse_part = |s: &str| -> u32 {
         s.chars()
             .take_while(|c| c.is_numeric())
@@ -756,7 +743,6 @@ fn is_legacy_version(v: &str) -> bool {
             .parse()
             .unwrap_or(0)
     };
-
     let major = parse_part(parts[0]);
     let minor = parse_part(parts[1]);
     let patch = parse_part(parts[2]);
@@ -770,6 +756,5 @@ fn is_legacy_version(v: &str) -> bool {
     if minor == 1 {
         return patch < 4;
     }
-
     true
 }
