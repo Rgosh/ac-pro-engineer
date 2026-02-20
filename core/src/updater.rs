@@ -6,10 +6,11 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
+use tracing::{error, info};
 
 const GITHUB_OWNER: &str = "Rgosh";
 const GITHUB_REPO: &str = "ac-pro-engineer";
-const BINARY_NAME: &str = "ac_pro_engineer.exe";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -128,6 +129,7 @@ impl Updater {
         thread::spawn(move || {
             let client = reqwest::blocking::Client::builder()
                 .user_agent("AC-Pro-Engineer-Updater")
+                .timeout(Duration::from_secs(10))
                 .build()
                 .unwrap_or_default();
 
@@ -136,11 +138,14 @@ impl Updater {
                 GITHUB_OWNER, GITHUB_REPO
             );
 
+            info!("Checking for updates at: {}", url);
+
             match client.get(&url).send() {
                 Ok(resp) => {
                     if !resp.status().is_success() {
+                        error!("GitHub API returned non-success status: {}", resp.status());
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                        *lock = UpdateStatus::Error(format!("GitHub API error: {}", resp.status()));
+                        *lock = UpdateStatus::Error(format!("API error: {}", resp.status()));
                         return;
                     }
 
@@ -150,7 +155,9 @@ impl Updater {
 
                             for (i, release) in gh_releases.iter().enumerate() {
                                 let remote_ver_str = release.tag_name.trim_start_matches('v');
-                                let asset = release.assets.iter().find(|a| a.name == BINARY_NAME);
+
+                                let asset =
+                                    release.assets.iter().find(|a| a.name.ends_with(".exe"));
 
                                 if let Some(asset) = asset {
                                     parsed_versions.push(RemoteVersion {
@@ -172,24 +179,29 @@ impl Updater {
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
 
                                 if parsed_versions[0].version != CURRENT_VERSION {
+                                    info!("Update available: v{}", parsed_versions[0].version);
                                     *lock = UpdateStatus::UpdateAvailable;
                                 } else {
+                                    info!("App is up to date.");
                                     *lock = UpdateStatus::NoUpdate;
                                 }
                             } else {
+                                error!("GitHub API returned releases, but no .exe assets were attached!");
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                                *lock = UpdateStatus::Error("No releases found".to_string());
+                                *lock = UpdateStatus::Error("No .exe in release".to_string());
                             }
                         }
                         Err(e) => {
+                            error!("Failed to parse GitHub JSON response: {}", e);
                             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                            *lock = UpdateStatus::Error(format!("Parse error: {}", e));
+                            *lock = UpdateStatus::Error("Parse error".to_string());
                         }
                     }
                 }
                 Err(e) => {
+                    error!("Network error while fetching updates: {}", e);
                     let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                    *lock = UpdateStatus::Error(format!("Network error: {}", e));
+                    *lock = UpdateStatus::Error("Net Error (Check logs)".to_string());
                 }
             }
         });
@@ -222,12 +234,16 @@ impl Updater {
 
             let client = reqwest::blocking::Client::builder()
                 .user_agent("AC-Pro-Engineer-Updater")
+                .timeout(Duration::from_secs(30))
                 .build()
                 .unwrap_or_default();
+
+            info!("Starting download from: {}", info.url);
 
             match client.get(&info.url).send() {
                 Ok(mut resp) => {
                     if !resp.status().is_success() {
+                        error!("Download failed with status: {}", resp.status());
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                         *lock = UpdateStatus::Error("Download failed".to_string());
                         return;
@@ -242,6 +258,7 @@ impl Updater {
                                     Ok(0) => break,
                                     Ok(n) => {
                                         if file.write_all(&buffer[..n]).is_err() {
+                                            error!("Failed to write bytes to disk.");
                                             let mut lock =
                                                 status.lock().unwrap_or_else(|e| e.into_inner());
                                             *lock = UpdateStatus::Error("Write error".to_string());
@@ -256,21 +273,27 @@ impl Updater {
                                             *lock = UpdateStatus::Downloading(pct);
                                         }
                                     }
-                                    Err(_) => return,
+                                    Err(e) => {
+                                        error!("Error reading download stream: {}", e);
+                                        return;
+                                    }
                                 }
                             }
+                            info!("Download completed successfully.");
                             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                             *lock = UpdateStatus::Downloaded(file_name_str);
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            error!("Could not create temp file for update: {}", e);
                             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                             *lock = UpdateStatus::Error("File access error".to_string());
                         }
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    error!("Connection lost during download: {}", e);
                     let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                    *lock = UpdateStatus::Error("Connection lost".to_string());
+                    *lock = UpdateStatus::Error("Net Error (Check logs)".to_string());
                 }
             }
         });
