@@ -1,58 +1,59 @@
-#![allow(unsafe_code)]
-
-use std::ffi::c_void;
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::System::Memory::{
-    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ,
-};
+use memmap2::Mmap;
+use std::fmt::Debug;
+use std::fs::File;
+use std::marker::PhantomData;
+use tracing::info;
 
 pub struct SharedMemory<T> {
-    handle: HANDLE,
-    ptr: *const T,
+    mmap: Mmap,
+    _phantom: PhantomData<T>,
 }
 
 unsafe impl<T> Send for SharedMemory<T> {}
 unsafe impl<T> Sync for SharedMemory<T> {}
 
+#[allow(unsafe_code)]
 impl<T> SharedMemory<T> {
-    pub fn connect(name: &str) -> Option<Self> {
-        let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe {
-            let handle =
-                OpenFileMappingW(FILE_MAP_READ.0, false, PCWSTR(wide_name.as_ptr())).ok()?;
+    pub fn connect(name: &str) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        T: Debug,
+    {
+        use memmap2::Mmap;
 
-            if handle.is_invalid() {
-                return None;
-            }
+        let file = File::open(name)?;
 
-            let ptr = MapViewOfFile(handle, FILE_MAP_READ, 0, 0, std::mem::size_of::<T>()).Value
-                as *const T;
+        let mmap = unsafe { Mmap::map(&file) };
 
-            if ptr.is_null() {
-                let _res = CloseHandle(handle);
-                return None;
-            }
-            Some(Self { handle, ptr })
-        }
+        let Ok(mmap) = mmap else {
+            return Err(format!("Cannot map a memory file file: {}", name).into());
+        };
+
+        Ok(Self {
+            mmap,
+            _phantom: PhantomData,
+        })
     }
 
-    pub fn get(&self) -> &T {
-        unsafe { &*self.ptr }
-    }
-}
+    pub fn get(&self) -> &T
+    where
+        T: Debug,
+    {
+        info!(
+            "Required size: {}, actual size: {}",
+            size_of::<T>(),
+            self.mmap.len()
+        );
+        assert!(self.mmap.len() >= size_of::<T>(), "Invalid size");
 
-impl<T> Drop for SharedMemory<T> {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.ptr.is_null() {
-                let address = windows::Win32::System::Memory::MEMORY_MAPPED_VIEW_ADDRESS {
-                    Value: self.ptr as *mut c_void,
-                };
-                let _res = UnmapViewOfFile(address);
-            }
+        let ptr = self.mmap.as_ptr();
 
-            let _res = CloseHandle(self.handle);
-        }
+        // Alignment check
+        assert_eq!(
+            (ptr as usize) % align_of::<T>(),
+            0,
+            "mmap not aligned for T"
+        );
+
+        unsafe { &*(ptr as *const T) }
     }
 }

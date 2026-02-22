@@ -309,17 +309,17 @@ impl AppState {
 
     pub fn connect_memory(&mut self) {
         if self.physics_mem.is_none() {
-            if let Some(mem) = SharedMemory::<AcPhysics>::connect("Local\\acpmf_physics") {
+            if let Ok(mem) = SharedMemory::<AcPhysics>::connect("Local\\acpmf_physics") {
                 self.physics_mem = Some(mem);
             }
         }
         if self.physics_mem.is_some() && self.graphics_mem.is_none() {
-            if let Some(mem) = SharedMemory::<AcGraphics>::connect("Local\\acpmf_graphics") {
+            if let Ok(mem) = SharedMemory::<AcGraphics>::connect("Local\\acpmf_graphics") {
                 self.graphics_mem = Some(mem);
             }
         }
         if self.physics_mem.is_some() && self.static_mem.is_none() {
-            if let Some(mem) = SharedMemory::<AcStatic>::connect("Local\\acpmf_static") {
+            if let Ok(mem) = SharedMemory::<AcStatic>::connect("Local\\acpmf_static") {
                 let st = mem.get();
                 self.session_info.car_name = read_ac_string(&st.car_model);
                 self.session_info.track_name = read_ac_string(&st.track);

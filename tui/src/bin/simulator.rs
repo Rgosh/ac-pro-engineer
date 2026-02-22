@@ -4,13 +4,17 @@ use std::io::{self, Write};
 use std::mem::size_of;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::error;
+#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+#[cfg(target_os = "windows")]
 use windows::Win32::System::Memory::{
     CreateFileMappingW, MapViewOfFile, FILE_MAP_ALL_ACCESS, PAGE_READWRITE,
 };
 
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 
+#[cfg(target_os = "windows")]
 fn create_shared_memory(name: &str, size: usize) -> (HANDLE, *mut u8) {
     use std::os::windows::ffi::OsStrExt;
     let mut wide_name: Vec<u16> = std::ffi::OsStr::new(name).encode_wide().collect();
@@ -38,6 +42,7 @@ fn create_shared_memory(name: &str, size: usize) -> (HANDLE, *mut u8) {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn main() {
     println!("\n=== AC PRO ENGINEER: AUTOMATED TELEMETRY SIMULATOR ===");
     println!("Initializing shared memory...");
@@ -217,4 +222,9 @@ fn main() {
 
         thread::sleep(Duration::from_millis(16));
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn main() {
+    error!("Not implemented on this platform.");
 }
