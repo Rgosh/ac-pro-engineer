@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn get_tyre_color(temp: f32) -> Color {

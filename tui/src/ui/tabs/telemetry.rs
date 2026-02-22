@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
 
@@ -154,11 +154,13 @@ fn render_steering_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .map(|(i, p)| (i as f64, p.steer_angle as f64 * 360.0))
         .collect();
 
-    let chart = Chart::new(vec![Dataset::default()
-        .name(tr("lbl_steer", lang))
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::White))
-        .data(&steer)])
+    let chart = Chart::new(vec![
+        Dataset::default()
+            .name(tr("lbl_steer", lang))
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::White))
+            .data(&steer),
+    ])
     .block(
         Block::default()
             .title(tr("graph_steering", lang))

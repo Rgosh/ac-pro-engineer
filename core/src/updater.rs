@@ -56,6 +56,12 @@ pub struct Updater {
     pub selected_index: Arc<Mutex<usize>>,
 }
 
+impl Default for Updater {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Updater {
     pub fn new() -> Self {
         let updater = Self {
@@ -186,7 +192,9 @@ impl Updater {
                                     *lock = UpdateStatus::NoUpdate;
                                 }
                             } else {
-                                error!("GitHub API returned releases, but no .exe assets were attached!");
+                                error!(
+                                    "GitHub API returned releases, but no .exe assets were attached!"
+                                );
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                                 *lock = UpdateStatus::Error("No .exe in release".to_string());
                             }
@@ -299,7 +307,10 @@ impl Updater {
         });
     }
 
-    pub fn restart_and_apply(&self, _new_file_name: &str) {
+    pub fn restart_and_apply(
+        &self,
+        _new_file_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let current_exe =
             env::current_exe().unwrap_or_else(|_| PathBuf::from("ac_pro_engineer.exe"));
         let exe_dir = current_exe
@@ -326,16 +337,16 @@ impl Updater {
             exe_path, new_exe_str
         );
 
-        if let Ok(mut file) = File::create(&bat_path) {
-            let _ = file.write_all(script.as_bytes());
-            drop(file);
+        let mut file = File::create(&bat_path)?;
 
-            let _ = Command::new("cmd")
-                .args(["/C", "start", "/MIN", "updater.bat"])
-                .current_dir(exe_dir)
-                .spawn();
+        file.write_all(script.as_bytes())?;
+        drop(file);
 
-            std::process::exit(0);
-        }
+        Command::new("cmd")
+            .args(["/C", "start", "/MIN", "updater.bat"])
+            .current_dir(exe_dir)
+            .spawn()?;
+
+        std::process::exit(0);
     }
 }

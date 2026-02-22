@@ -133,6 +133,12 @@ pub struct TelemetryAnalyzer {
 
 pub type Analyzer = TelemetryAnalyzer;
 
+impl Default for TelemetryAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TelemetryAnalyzer {
     pub fn new() -> Self {
         Self {

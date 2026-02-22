@@ -1,4 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
+use std::error::Error;
 use std::fs;
 
 #[derive(Debug, Clone)]
@@ -27,28 +28,27 @@ impl FileMenu {
         }
     }
 
-    pub fn refresh_files(&mut self) {
+    pub fn refresh_files(&mut self) -> Result<(), Box<dyn Error>> {
         self.files.clear();
         let dir = "saved_laps";
-        if let Err(_) = fs::metadata(dir) {
-            let _ = fs::create_dir(dir);
+        if fs::metadata(dir).is_err() {
+            fs::create_dir(dir)?;
         }
 
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
-                if let Ok(file_type) = entry.file_type() {
-                    if file_type.is_file() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if name.ends_with(".json") {
-                                self.files.push(name.to_string());
-                            }
-                        }
-                    }
+                if let Ok(file_type) = entry.file_type()
+                    && file_type.is_file()
+                    && let Some(name) = entry.file_name().to_str()
+                    && name.ends_with(".json")
+                {
+                    self.files.push(name.to_string());
                 }
             }
         }
         self.files.sort();
         self.files.reverse();
+        Ok(())
     }
 
     pub fn next(&mut self) {

@@ -1,5 +1,5 @@
 use crate::session_info::SessionInfo;
-use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use discord_rich_presence::{DiscordIpc, DiscordIpcClient, activity};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLIENT_ID: &str = "119876543210987654";
@@ -11,15 +11,21 @@ pub struct DiscordClient {
     start_time: i64,
 }
 
+impl Default for DiscordClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiscordClient {
     pub fn new() -> Self {
         let mut client = DiscordIpcClient::new(CLIENT_ID).ok();
         let mut connected = false;
 
-        if let Some(c) = &mut client {
-            if c.connect().is_ok() {
-                connected = true;
-            }
+        if let Some(c) = &mut client
+            && c.connect().is_ok()
+        {
+            connected = true;
         }
 
         let start = SystemTime::now()

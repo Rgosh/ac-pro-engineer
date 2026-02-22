@@ -1,17 +1,22 @@
 #![allow(unsafe_code)]
 
+#[cfg(target_os = "windows")]
 use std::io::{self, Write};
+#[cfg(target_os = "windows")]
 use std::mem::size_of;
+#[cfg(target_os = "windows")]
 use std::thread;
+#[cfg(target_os = "windows")]
 use std::time::{Duration, Instant};
 use tracing::error;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Memory::{
-    CreateFileMappingW, MapViewOfFile, FILE_MAP_ALL_ACCESS, PAGE_READWRITE,
+    CreateFileMappingW, FILE_MAP_ALL_ACCESS, MapViewOfFile, PAGE_READWRITE,
 };
 
+#[cfg(target_os = "windows")]
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 
 #[cfg(target_os = "windows")]

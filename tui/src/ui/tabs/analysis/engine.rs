@@ -28,12 +28,14 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         })
         .collect();
 
-    let chart_rpm = Chart::new(vec![Dataset::default()
-        .name("RPM")
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Red))
-        .graph_type(GraphType::Line)
-        .data(&rpm_data)])
+    let chart_rpm = Chart::new(vec![
+        Dataset::default()
+            .name("RPM")
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Red))
+            .graph_type(GraphType::Line)
+            .data(&rpm_data),
+    ])
     .block(
         Block::default()
             .title(if is_ru {
@@ -53,7 +55,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
 
     f.render_widget(chart_rpm, layout[0]);
 
-    let mut gear_counts = vec![0u64; 9];
+    let mut gear_counts = [0u64; 9];
     let mut total_points = 0;
 
     for p in &lap.telemetry_trace {
@@ -143,11 +145,13 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
 
     let fuel_data = vec![(0.0, 10.0), (max_time_s, (10.0 - lap.fuel_used) as f64)];
 
-    let fuel_chart = Chart::new(vec![Dataset::default()
-        .name("Fuel")
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Magenta))
-        .data(&fuel_data)])
+    let fuel_chart = Chart::new(vec![
+        Dataset::default()
+            .name("Fuel")
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Magenta))
+            .data(&fuel_data),
+    ])
     .block(
         Block::default()
             .title(if is_ru {

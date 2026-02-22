@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -89,16 +89,18 @@ fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let x_max = laps.last().map(|(n, _)| *n).unwrap_or(10.0) + 1.0;
     let x_min = laps.first().map(|(n, _)| *n).unwrap_or(0.0);
 
-    let datasets = vec![Dataset::default()
-        .name(if is_ru {
-            "Время круга"
-        } else {
-            "Lap Time"
-        })
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Cyan))
-        .graph_type(GraphType::Line)
-        .data(&laps)];
+    let datasets = vec![
+        Dataset::default()
+            .name(if is_ru {
+                "Время круга"
+            } else {
+                "Lap Time"
+            })
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Cyan))
+            .graph_type(GraphType::Line)
+            .data(&laps),
+    ];
 
     let chart = Chart::new(datasets)
         .block(block)

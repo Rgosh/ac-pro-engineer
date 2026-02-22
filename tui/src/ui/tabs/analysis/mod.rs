@@ -1,6 +1,6 @@
+use crate::AppState;
 use crate::ui::file_menu::FileMenu;
 use crate::ui::localization::tr;
-use crate::AppState;
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
 use std::fs;
@@ -247,7 +247,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             f.render_widget(status_p, footer_layout[0]);
         }
 
-        let hint_parts = vec![
+        let hint_parts = [
             if is_ru {
                 "←/→ Вкладки"
             } else {
@@ -271,7 +271,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     if app.ui_state.analysis.load_menu.borrow().active {
         let mut menu = app.ui_state.analysis.load_menu.borrow_mut();
-        crate::ui::file_menu::render(f, area, &mut *menu, is_ru);
+        crate::ui::file_menu::render(f, area, &mut menu, is_ru);
     }
 }
 
@@ -359,16 +359,14 @@ fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     "File"
                 };
                 content = format!("💾 {} | {}", car_short, time_str);
+            } else if is_best {
+                style = style.fg(Color::Green).add_modifier(Modifier::BOLD);
+                content = format!("★ L{} | {}", lap.lap_number + 1, time_str);
+            } else if !lap.valid {
+                style = style.fg(Color::Red);
+                content = format!("L{} (X) | {}", lap.lap_number + 1, time_str);
             } else {
-                if is_best {
-                    style = style.fg(Color::Green).add_modifier(Modifier::BOLD);
-                    content = format!("★ L{} | {}", lap.lap_number + 1, time_str);
-                } else if !lap.valid {
-                    style = style.fg(Color::Red);
-                    content = format!("L{} (X) | {}", lap.lap_number + 1, time_str);
-                } else {
-                    content = format!("🏁 L{} | {}", lap.lap_number + 1, time_str);
-                }
+                content = format!("🏁 L{} | {}", lap.lap_number + 1, time_str);
             }
 
             ListItem::new(content).style(style)

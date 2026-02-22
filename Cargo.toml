@@ -4,7 +4,7 @@ members = ["core", "tui"]
 
 [workspace.package]
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 authors = ["Rgosh"]
 
 [workspace.dependencies]

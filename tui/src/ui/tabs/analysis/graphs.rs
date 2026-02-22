@@ -32,20 +32,19 @@ pub fn render(
     let mut delta_data = vec![];
     let mut has_delta = false;
 
-    if let Some(bl) = best_lap {
-        if bl.lap_number != lap.lap_number
-            && !lap.telemetry_trace.is_empty()
-            && !bl.telemetry_trace.is_empty()
-        {
-            let min_len = lap.telemetry_trace.len().min(bl.telemetry_trace.len());
-            for i in 0..min_len {
-                let p_curr = &lap.telemetry_trace[i];
-                let p_best = &bl.telemetry_trace[i];
-                let dt = (p_curr.time_ms as f64 - p_best.time_ms as f64) / 1000.0;
-                delta_data.push((p_curr.time_ms as f64 / 1000.0, dt));
-            }
-            has_delta = true;
+    if let Some(bl) = best_lap
+        && bl.lap_number != lap.lap_number
+        && !lap.telemetry_trace.is_empty()
+        && !bl.telemetry_trace.is_empty()
+    {
+        let min_len = lap.telemetry_trace.len().min(bl.telemetry_trace.len());
+        for i in 0..min_len {
+            let p_curr = &lap.telemetry_trace[i];
+            let p_best = &bl.telemetry_trace[i];
+            let dt = (p_curr.time_ms as f64 - p_best.time_ms as f64) / 1000.0;
+            delta_data.push((p_curr.time_ms as f64 / 1000.0, dt));
         }
+        has_delta = true;
     }
 
     if !has_delta {
@@ -56,20 +55,22 @@ pub fn render(
             .collect();
     }
 
-    let delta_chart = Chart::new(vec![Dataset::default()
-        .name(if is_ru {
-            "Дельта (сек)"
-        } else {
-            "Time Delta (s)"
-        })
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(if has_delta {
-            Color::Yellow
-        } else {
-            Color::DarkGray
-        }))
-        .graph_type(GraphType::Line)
-        .data(&delta_data)])
+    let delta_chart = Chart::new(vec![
+        Dataset::default()
+            .name(if is_ru {
+                "Дельта (сек)"
+            } else {
+                "Time Delta (s)"
+            })
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(if has_delta {
+                Color::Yellow
+            } else {
+                Color::DarkGray
+            }))
+            .graph_type(GraphType::Line)
+            .data(&delta_data),
+    ])
     .block(
         Block::default()
             .title(if is_ru {
@@ -94,34 +95,36 @@ pub fn render(
         .map(|p| (p.time_ms as f64 / 1000.0, p.speed as f64))
         .collect();
 
-    let mut speed_datasets = vec![Dataset::default()
-        .name(if is_ru {
-            "Тек. Скор"
-        } else {
-            "Cur Speed"
-        })
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Cyan))
-        .graph_type(GraphType::Line)
-        .data(&speed_data)];
+    let mut speed_datasets = vec![
+        Dataset::default()
+            .name(if is_ru {
+                "Тек. Скор"
+            } else {
+                "Cur Speed"
+            })
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Cyan))
+            .graph_type(GraphType::Line)
+            .data(&speed_data),
+    ];
 
     let best_speed_data: Vec<(f64, f64)>;
-    if let Some(bl) = best_lap {
-        if bl.lap_number != lap.lap_number {
-            best_speed_data = bl
-                .telemetry_trace
-                .iter()
-                .map(|p| (p.time_ms as f64 / 1000.0, p.speed as f64))
-                .collect();
-            speed_datasets.push(
-                Dataset::default()
-                    .name(if is_ru { "Лучшая" } else { "Best" })
-                    .marker(symbols::Marker::Braille)
-                    .style(Style::default().fg(Color::Gray))
-                    .graph_type(GraphType::Line)
-                    .data(&best_speed_data),
-            );
-        }
+    if let Some(bl) = best_lap
+        && bl.lap_number != lap.lap_number
+    {
+        best_speed_data = bl
+            .telemetry_trace
+            .iter()
+            .map(|p| (p.time_ms as f64 / 1000.0, p.speed as f64))
+            .collect();
+        speed_datasets.push(
+            Dataset::default()
+                .name(if is_ru { "Лучшая" } else { "Best" })
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(Color::Gray))
+                .graph_type(GraphType::Line)
+                .data(&best_speed_data),
+        );
     }
 
     let speed_chart = Chart::new(speed_datasets)
@@ -187,11 +190,13 @@ pub fn render(
         .iter()
         .map(|p| (p.time_ms as f64 / 1000.0, p.steer as f64 * 360.0))
         .collect();
-    let steer_chart = Chart::new(vec![Dataset::default()
-        .name("Steer")
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Yellow))
-        .data(&steer_data)])
+    let steer_chart = Chart::new(vec![
+        Dataset::default()
+            .name("Steer")
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Yellow))
+            .data(&steer_data),
+    ])
     .block(
         Block::default()
             .title(if is_ru {

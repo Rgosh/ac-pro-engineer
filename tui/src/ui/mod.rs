@@ -181,7 +181,7 @@ impl UIRenderer {
         let mut max_rpm: i32 = 8000;
 
         if let Some(phys) = app.physics_history.last() {
-            current_rpm = phys.rpms as i32;
+            current_rpm = phys.rpms;
             let game_max = app.session_info.max_rpm;
 
             if game_max > 0 {

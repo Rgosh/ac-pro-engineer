@@ -251,6 +251,12 @@ impl<T> SafeLock<T> for Mutex<T> {
     }
 }
 
+impl Default for SetupManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SetupManager {
     pub fn new() -> Self {
         let manager = Self {
@@ -290,10 +296,8 @@ impl SetupManager {
             loop {
                 let is_empty = manifest_clone.safe_lock().is_empty();
 
-                if is_empty {
-                    if let Some(m) = fetch_manifest() {
-                        *manifest_clone.safe_lock() = m;
-                    }
+                if is_empty && let Some(m) = fetch_manifest() {
+                    *manifest_clone.safe_lock() = m;
                 }
 
                 let car = car_clone.safe_lock().clone();
@@ -358,20 +362,20 @@ impl SetupManager {
     }
 
     pub fn is_installed(&self, setup: &CarSetup, target_car: &str) -> bool {
-        if let Some(user_dirs) = UserDirs::new() {
-            if let Some(docs) = user_dirs.document_dir() {
-                let safe_name = setup
-                    .name
-                    .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
-                let file_name = format!("{}_{}.ini", setup.author, safe_name);
-                let path = docs
-                    .join("Assetto Corsa")
-                    .join("setups")
-                    .join(target_car)
-                    .join("downloaded")
-                    .join(file_name);
-                return path.exists();
-            }
+        if let Some(user_dirs) = UserDirs::new()
+            && let Some(docs) = user_dirs.document_dir()
+        {
+            let safe_name = setup
+                .name
+                .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
+            let file_name = format!("{}_{}.ini", setup.author, safe_name);
+            let path = docs
+                .join("Assetto Corsa")
+                .join("setups")
+                .join(target_car)
+                .join("downloaded")
+                .join(file_name);
+            return path.exists();
         }
         false
     }
@@ -536,12 +540,13 @@ impl SetupManager {
     pub fn get_active_setup(&self) -> Option<CarSetup> {
         let idx = *self.active_setup_index.safe_lock();
         let setups = self.setups.safe_lock();
-        if let Some(i) = idx {
-            if i < setups.len() {
-                return Some(setups[i].clone());
-            }
+        if let Some(i) = idx
+            && i < setups.len()
+        {
+            Some(setups[i].clone())
+        } else {
+            None
         }
-        None
     }
 }
 
@@ -551,12 +556,13 @@ fn fetch_manifest() -> Option<Vec<ManifestItem>> {
         "https://raw.githubusercontent.com/{}/{}/manifest.json",
         GITHUB_USER_REPO, GITHUB_BRANCH
     );
-    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send() {
-        if resp.status().is_success() {
-            return resp.json().ok();
-        }
+    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send()
+        && resp.status().is_success()
+    {
+        resp.json().ok()
+    } else {
+        None
     }
-    None
 }
 
 fn fetch_server_setups(car: &str) -> Option<Vec<CarSetup>> {
@@ -565,44 +571,44 @@ fn fetch_server_setups(car: &str) -> Option<Vec<CarSetup>> {
         "https://raw.githubusercontent.com/{}/{}/{}.json",
         GITHUB_USER_REPO, GITHUB_BRANCH, car
     );
-    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send() {
-        if resp.status().is_success() {
-            if let Ok(mut setups) = resp.json::<Vec<CarSetup>>() {
-                for s in &mut setups {
-                    s.is_remote = true;
-                    s.car_id = car.to_string();
-                    if s.author.is_empty() {
-                        s.author = "Server".to_string();
-                    }
-                }
-                return Some(setups);
+    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send()
+        && resp.status().is_success()
+        && let Ok(mut setups) = resp.json::<Vec<CarSetup>>()
+    {
+        for s in &mut setups {
+            s.is_remote = true;
+            s.car_id = car.to_string();
+            if s.author.is_empty() {
+                s.author = "Server".to_string();
             }
         }
+        Some(setups)
+    } else {
+        None
     }
-    None
 }
 
 fn scan_folders(car_model: &str, track_name: &str) -> Vec<CarSetup> {
     let mut found = Vec::new();
-    if let Some(user_dirs) = UserDirs::new() {
-        if let Some(docs) = user_dirs.document_dir() {
-            let base_path = docs.join("Assetto Corsa").join("setups").join(car_model);
-            if !track_name.is_empty() && track_name != "-" {
-                scan_single_folder(
-                    &base_path.join(track_name),
-                    track_name,
-                    car_model,
-                    &mut found,
-                );
-            }
-            scan_single_folder(&base_path.join("generic"), "Generic", car_model, &mut found);
+    if let Some(user_dirs) = UserDirs::new()
+        && let Some(docs) = user_dirs.document_dir()
+    {
+        let base_path = docs.join("Assetto Corsa").join("setups").join(car_model);
+        if !track_name.is_empty() && track_name != "-" {
             scan_single_folder(
-                &base_path.join("downloaded"),
-                "Downloaded",
+                &base_path.join(track_name),
+                track_name,
                 car_model,
                 &mut found,
             );
         }
+        scan_single_folder(&base_path.join("generic"), "Generic", car_model, &mut found);
+        scan_single_folder(
+            &base_path.join("downloaded"),
+            "Downloaded",
+            car_model,
+            &mut found,
+        );
     }
     found
 }
@@ -622,95 +628,95 @@ fn scan_single_folder(
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "ini") {
-            if let Ok(conf) = Ini::load_from_file(path) {
-                let get = |sec: &str, key: &str| -> u32 {
-                    conf.section(Some(sec))
-                        .and_then(|s| s.get(key))
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0)
-                };
-                let get_i = |sec: &str, key: &str| -> i32 {
-                    conf.section(Some(sec))
-                        .and_then(|s| s.get(key))
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0)
-                };
-                let get_s = |sec: &str, key: &str| -> String {
-                    conf.section(Some(sec))
-                        .and_then(|s| s.get(key))
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-                };
+        if path.is_file()
+            && path.extension().is_some_and(|ext| ext == "ini")
+            && let Ok(conf) = Ini::load_from_file(path)
+        {
+            let get = |sec: &str, key: &str| -> u32 {
+                conf.section(Some(sec))
+                    .and_then(|s| s.get(key))
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0)
+            };
+            let get_i = |sec: &str, key: &str| -> i32 {
+                conf.section(Some(sec))
+                    .and_then(|s| s.get(key))
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0)
+            };
+            let get_s = |sec: &str, key: &str| -> String {
+                conf.section(Some(sec))
+                    .and_then(|s| s.get(key))
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            };
 
-                let mut gears = Vec::new();
-                for i in 2..=9 {
-                    let key = format!("INTERNAL_GEAR_{}", i);
-                    if let Some(val) = conf
-                        .section(Some(key.as_str()))
-                        .and_then(|s| s.get("VALUE"))
-                    {
-                        if let Ok(v) = val.parse::<u32>() {
-                            gears.push(v);
-                        }
-                    }
+            let mut gears = Vec::new();
+            for i in 2..=9 {
+                let key = format!("INTERNAL_GEAR_{}", i);
+                if let Some(val) = conf
+                    .section(Some(key.as_str()))
+                    .and_then(|s| s.get("VALUE"))
+                    && let Ok(v) = val.parse::<u32>()
+                {
+                    gears.push(v);
                 }
-
-                let name = path
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "Unknown".to_string());
-
-                list.push(CarSetup {
-                    name,
-                    path: path.to_path_buf(),
-                    source: source.to_string(),
-                    author: "Local".to_string(),
-                    credits: String::new(),
-                    notes: get_s("NOTES", "VALUE"),
-                    car_id: car_id.to_string(),
-                    is_remote: false,
-                    fuel: get("FUEL", "VALUE"),
-                    brake_bias: get("FRONT_BIAS", "VALUE"),
-                    engine_limiter: get("ENGINE_LIMITER", "VALUE"),
-                    pressure_lf: get("PRESSURE_LF", "VALUE"),
-                    pressure_rf: get("PRESSURE_RF", "VALUE"),
-                    pressure_lr: get("PRESSURE_LR", "VALUE"),
-                    pressure_rr: get("PRESSURE_RR", "VALUE"),
-                    wing_1: get("WING_1", "VALUE"),
-                    wing_2: get("WING_2", "VALUE"),
-                    camber_lf: get_i("CAMBER_LF", "VALUE"),
-                    camber_rf: get_i("CAMBER_RF", "VALUE"),
-                    camber_lr: get_i("CAMBER_LR", "VALUE"),
-                    camber_rr: get_i("CAMBER_RR", "VALUE"),
-                    toe_lf: get_i("TOE_OUT_LF", "VALUE"),
-                    toe_rf: get_i("TOE_OUT_RF", "VALUE"),
-                    toe_lr: get_i("TOE_OUT_LR", "VALUE"),
-                    toe_rr: get_i("TOE_OUT_RR", "VALUE"),
-                    spring_lf: get("SPRING_RATE_LF", "VALUE"),
-                    spring_rf: get("SPRING_RATE_RF", "VALUE"),
-                    spring_lr: get("SPRING_RATE_LR", "VALUE"),
-                    spring_rr: get("SPRING_RATE_RR", "VALUE"),
-                    rod_length_lf: get_i("ROD_LENGTH_LF", "VALUE"),
-                    rod_length_rf: get_i("ROD_LENGTH_RF", "VALUE"),
-                    rod_length_lr: get_i("ROD_LENGTH_LR", "VALUE"),
-                    rod_length_rr: get_i("ROD_LENGTH_RR", "VALUE"),
-                    arb_front: get("ARB_FRONT", "VALUE"),
-                    arb_rear: get("ARB_REAR", "VALUE"),
-                    damp_bump_lf: get("DAMP_BUMP_LF", "VALUE"),
-                    damp_bump_rf: get("DAMP_BUMP_RF", "VALUE"),
-                    damp_bump_lr: get("DAMP_BUMP_LR", "VALUE"),
-                    damp_bump_rr: get("DAMP_BUMP_RR", "VALUE"),
-                    damp_rebound_lf: get("DAMP_REBOUND_LF", "VALUE"),
-                    damp_rebound_rf: get("DAMP_REBOUND_RF", "VALUE"),
-                    damp_rebound_lr: get("DAMP_REBOUND_LR", "VALUE"),
-                    damp_rebound_rr: get("DAMP_REBOUND_RR", "VALUE"),
-                    diff_power: get("DIFF_POWER", "VALUE"),
-                    diff_coast: get("DIFF_COAST", "VALUE"),
-                    final_ratio: get("FINAL_RATIO", "VALUE"),
-                    gears,
-                });
             }
+
+            let name = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            list.push(CarSetup {
+                name,
+                path: path.to_path_buf(),
+                source: source.to_string(),
+                author: "Local".to_string(),
+                credits: String::new(),
+                notes: get_s("NOTES", "VALUE"),
+                car_id: car_id.to_string(),
+                is_remote: false,
+                fuel: get("FUEL", "VALUE"),
+                brake_bias: get("FRONT_BIAS", "VALUE"),
+                engine_limiter: get("ENGINE_LIMITER", "VALUE"),
+                pressure_lf: get("PRESSURE_LF", "VALUE"),
+                pressure_rf: get("PRESSURE_RF", "VALUE"),
+                pressure_lr: get("PRESSURE_LR", "VALUE"),
+                pressure_rr: get("PRESSURE_RR", "VALUE"),
+                wing_1: get("WING_1", "VALUE"),
+                wing_2: get("WING_2", "VALUE"),
+                camber_lf: get_i("CAMBER_LF", "VALUE"),
+                camber_rf: get_i("CAMBER_RF", "VALUE"),
+                camber_lr: get_i("CAMBER_LR", "VALUE"),
+                camber_rr: get_i("CAMBER_RR", "VALUE"),
+                toe_lf: get_i("TOE_OUT_LF", "VALUE"),
+                toe_rf: get_i("TOE_OUT_RF", "VALUE"),
+                toe_lr: get_i("TOE_OUT_LR", "VALUE"),
+                toe_rr: get_i("TOE_OUT_RR", "VALUE"),
+                spring_lf: get("SPRING_RATE_LF", "VALUE"),
+                spring_rf: get("SPRING_RATE_RF", "VALUE"),
+                spring_lr: get("SPRING_RATE_LR", "VALUE"),
+                spring_rr: get("SPRING_RATE_RR", "VALUE"),
+                rod_length_lf: get_i("ROD_LENGTH_LF", "VALUE"),
+                rod_length_rf: get_i("ROD_LENGTH_RF", "VALUE"),
+                rod_length_lr: get_i("ROD_LENGTH_LR", "VALUE"),
+                rod_length_rr: get_i("ROD_LENGTH_RR", "VALUE"),
+                arb_front: get("ARB_FRONT", "VALUE"),
+                arb_rear: get("ARB_REAR", "VALUE"),
+                damp_bump_lf: get("DAMP_BUMP_LF", "VALUE"),
+                damp_bump_rf: get("DAMP_BUMP_RF", "VALUE"),
+                damp_bump_lr: get("DAMP_BUMP_LR", "VALUE"),
+                damp_bump_rr: get("DAMP_BUMP_RR", "VALUE"),
+                damp_rebound_lf: get("DAMP_REBOUND_LF", "VALUE"),
+                damp_rebound_rf: get("DAMP_REBOUND_RF", "VALUE"),
+                damp_rebound_lr: get("DAMP_REBOUND_LR", "VALUE"),
+                damp_rebound_rr: get("DAMP_REBOUND_RR", "VALUE"),
+                diff_power: get("DIFF_POWER", "VALUE"),
+                diff_coast: get("DIFF_COAST", "VALUE"),
+                final_ratio: get("FINAL_RATIO", "VALUE"),
+                gears,
+            });
         }
     }
 }

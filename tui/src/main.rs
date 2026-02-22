@@ -1,7 +1,7 @@
 mod ui;
 
 use crate::ui::{UIRenderer, UIState};
-use ac_core::ac_structs::{read_ac_string, AcGraphics, AcPhysics, AcStatic};
+use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
 use ac_core::config::{AppConfig, Language};
 use ac_core::content_manager::ContentManager;
@@ -17,7 +17,7 @@ use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetSize,
+        EnterAlternateScreen, LeaveAlternateScreen, SetSize, disable_raw_mode, enable_raw_mode,
     },
 };
 use ratatui::prelude::*;
@@ -33,10 +33,10 @@ use std::fs::File;
 use std::path::PathBuf;
 use tracing::metadata::LevelFilter;
 use tracing::{error, info};
+use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
 
 //noinspection RsReplaceMatchExpr
 pub fn setup_logging(
@@ -48,10 +48,10 @@ pub fn setup_logging(
         None => &PathBuf::from("logs").with_file_name("ac_engineer.log"),
     };
 
-    if let Some(parent) = file.parent() {
-        if let Err(error) = fs::create_dir_all(parent) {
-            error!(error = ?error, "Cannot create log directory");
-        };
+    if let Some(parent) = file.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        error!(error = ?error, "Cannot create log directory");
     }
 
     let file = File::create(file)?;
@@ -228,6 +228,12 @@ pub struct AppState {
     pub show_help: bool,
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut config = AppConfig::load().unwrap_or_default();
@@ -307,10 +313,11 @@ impl AppState {
 
         if !process_active && self.is_connected {
             self.disconnect();
-        } else if process_active && !self.is_connected {
-            if let Err(error) = self.connect_memory() {
-                error!(error = ?error, "Cannot connect to shard memory");
-            }
+        } else if process_active
+            && !self.is_connected
+            && let Err(error) = self.connect_memory()
+        {
+            error!(error = ?error, "Cannot connect to shared memory");
         }
 
         if !self.is_connected {
@@ -459,13 +466,13 @@ impl AppState {
 
 #[cfg(target_os = "windows")]
 fn set_console_icon() {
-    use windows::core::PCWSTR;
     use windows::Win32::System::Console::GetConsoleWindow;
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
-        LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
+        HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE, LoadImageW, SendMessageW,
         WM_SETICON,
     };
+    use windows::core::PCWSTR;
 
     unsafe {
         let hwnd = GetConsoleWindow();
@@ -577,132 +584,136 @@ fn main() -> Result<(), anyhow::Error> {
             app.tick();
             terminal.draw(|f| renderer.render(f, &app))?;
 
-            if event::poll(target_frame_time.saturating_sub(start.elapsed()))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == event::KeyEventKind::Press {
-                        if app.show_update_success {
-                            if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
-                                app.show_update_success = false;
-                            }
-                            continue;
-                        }
+            if event::poll(target_frame_time.saturating_sub(start.elapsed()))?
+                && let Event::Key(key) = event::read()?
+                && key.kind == event::KeyEventKind::Press
+            {
+                if app.show_update_success {
+                    if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
+                        app.show_update_success = false;
+                    }
+                    continue;
+                }
 
-                        if app.show_first_run_prompt {
-                            match key.code {
-                                KeyCode::Left => app.first_run_selection = 0,
-                                KeyCode::Right => app.first_run_selection = 1,
-                                KeyCode::Enter => {
-                                    app.show_first_run_prompt = false;
-                                    if app.first_run_selection == 0 {
-                                        app.stage = AppStage::Running;
-                                        app.active_tab = AppTab::Guide;
-                                    }
-                                }
-                                _ => {}
+                if app.show_first_run_prompt {
+                    match key.code {
+                        KeyCode::Left => app.first_run_selection = 0,
+                        KeyCode::Right => app.first_run_selection = 1,
+                        KeyCode::Enter => {
+                            app.show_first_run_prompt = false;
+                            if app.first_run_selection == 0 {
+                                app.stage = AppStage::Running;
+                                app.active_tab = AppTab::Guide;
                             }
-                            continue;
                         }
+                        _ => {}
+                    }
+                    continue;
+                }
 
-                        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL
-                        {
-                            break 'outer;
-                        }
+                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                    break 'outer;
+                }
 
-                        match key.code {
-                            KeyCode::Up => {
-                                if app.launcher_selection > 0 {
-                                    app.launcher_selection -= 1;
-                                }
-                            }
-                            KeyCode::Down => {
-                                if app.launcher_selection < 6 {
-                                    app.launcher_selection += 1;
-                                }
-                            }
-                            KeyCode::Left => {
-                                if app.launcher_selection == 2 {
-                                    app.config.language = match app.config.language {
-                                        Language::English => Language::Russian,
-                                        Language::Russian => Language::English,
-                                    };
-                                    let _res = app.config.save();
-                                } else if app.launcher_selection == 5 {
-                                    app.updater.prev_version();
-                                }
-                            }
-                            KeyCode::Right => {
-                                if app.launcher_selection == 2 {
-                                    app.config.language = match app.config.language {
-                                        Language::English => Language::Russian,
-                                        Language::Russian => Language::English,
-                                    };
-                                    let _res = app.config.save();
-                                } else if app.launcher_selection == 5 {
-                                    app.updater.next_version();
-                                }
-                            }
-                            KeyCode::Char('o') | KeyCode::Char('O') => {
-                                let url = "https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/";
-                                #[cfg(target_os = "windows")]
-                                {
-                                    std::process::Command::new("cmd")
-                                        .args(["/C", "start", url])
-                                        .spawn()
-                                        .ok();
-                                }
-                                #[cfg(not(target_os = "windows"))]
-                                {
-                                    if let Ok(mut child) =
-                                        std::process::Command::new("xdg-open").arg(url).spawn()
-                                    {
-                                        child.wait().ok();
-                                    }
-                                }
-                            }
-                            KeyCode::Char('h') | KeyCode::Char('H') => {
-                                app.config.review_banner_hidden = true;
-                                let _res = app.config.save();
-                            }
-                            KeyCode::Enter => match app.launcher_selection {
-                                0 => {
-                                    app.stage = AppStage::Running;
-                                    app.is_gui = false;
-                                }
-                                1 => {
-                                    app.stage = AppStage::Running;
-                                    app.active_tab = AppTab::Settings;
-                                    app.is_gui = false;
-                                }
-                                2 => {
-                                    app.config.language = match app.config.language {
-                                        Language::English => Language::Russian,
-                                        Language::Russian => Language::English,
-                                    };
-                                    let _res = app.config.save();
-                                }
-                                5 => {
-                                    let current_status = app.updater.status.safe_lock().clone();
-                                    match current_status {
-                                        UpdateStatus::Downloaded(new_file) => {
-                                            app.updater.restart_and_apply(&new_file);
-                                        }
-                                        UpdateStatus::Downloading(_) => {}
-                                        _ => {
-                                            app.updater.download_selected();
-                                        }
-                                    }
-                                }
-                                6 => break 'outer,
-                                _ => {}
-                            },
-                            KeyCode::Char('q')
-                            | KeyCode::Char('Q')
-                            | KeyCode::Char('й')
-                            | KeyCode::Char('Й')
-                            | KeyCode::Esc => break 'outer,
-                            _ => {}
+                match key.code {
+                    KeyCode::Up => {
+                        if app.launcher_selection > 0 {
+                            app.launcher_selection -= 1;
                         }
                     }
+                    KeyCode::Down => {
+                        if app.launcher_selection < 6 {
+                            app.launcher_selection += 1;
+                        }
+                    }
+                    KeyCode::Left => {
+                        if app.launcher_selection == 2 {
+                            app.config.language = match app.config.language {
+                                Language::English => Language::Russian,
+                                Language::Russian => Language::English,
+                            };
+                            let _res = app.config.save();
+                        } else if app.launcher_selection == 5 {
+                            app.updater.prev_version();
+                        }
+                    }
+                    KeyCode::Right => {
+                        if app.launcher_selection == 2 {
+                            app.config.language = match app.config.language {
+                                Language::English => Language::Russian,
+                                Language::Russian => Language::English,
+                            };
+                            let _res = app.config.save();
+                        } else if app.launcher_selection == 5 {
+                            app.updater.next_version();
+                        }
+                    }
+                    KeyCode::Char('o') | KeyCode::Char('O') => {
+                        let url = "https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/";
+                        #[cfg(target_os = "windows")]
+                        {
+                            std::process::Command::new("cmd")
+                                .args(["/C", "start", url])
+                                .spawn()
+                                .ok();
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            if let Ok(mut child) =
+                                std::process::Command::new("xdg-open").arg(url).spawn()
+                            {
+                                child.wait().ok();
+                            }
+                        }
+                    }
+                    KeyCode::Char('h') | KeyCode::Char('H') => {
+                        app.config.review_banner_hidden = true;
+                        let _res = app.config.save();
+                    }
+                    KeyCode::Enter => match app.launcher_selection {
+                        0 => {
+                            app.stage = AppStage::Running;
+                            app.is_gui = false;
+                        }
+                        1 => {
+                            app.stage = AppStage::Running;
+                            app.active_tab = AppTab::Settings;
+                            app.is_gui = false;
+                        }
+                        2 => {
+                            app.config.language = match app.config.language {
+                                Language::English => Language::Russian,
+                                Language::Russian => Language::English,
+                            };
+                            let _res = app.config.save();
+                        }
+                        5 => {
+                            let current_status = app.updater.status.safe_lock().clone();
+                            match current_status {
+                                UpdateStatus::Downloaded(new_file) => {
+                                    let result = app.updater.restart_and_apply(&new_file);
+                                    if let Err(error) = result {
+                                        error!(
+                                            error = ?error,
+                                            "Could not install an update"
+                                        );
+                                    }
+                                }
+                                UpdateStatus::Downloading(_) => {}
+                                _ => {
+                                    app.updater.download_selected();
+                                }
+                            }
+                        }
+                        6 => break 'outer,
+                        _ => {}
+                    },
+                    KeyCode::Char('q')
+                    | KeyCode::Char('Q')
+                    | KeyCode::Char('й')
+                    | KeyCode::Char('Й')
+                    | KeyCode::Esc => break 'outer,
+                    _ => {}
                 }
             }
 
@@ -717,16 +728,18 @@ fn main() -> Result<(), anyhow::Error> {
         let bg_app = Arc::clone(&app_arc);
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let bg_handle = std::thread::spawn(move || loop {
-            if rx.try_recv().is_ok() {
-                break;
+        let bg_handle = std::thread::spawn(move || {
+            loop {
+                if rx.try_recv().is_ok() {
+                    break;
+                }
+                let rate = {
+                    let app_lock = bg_app.lock().unwrap();
+                    app_lock.config.update_rate
+                };
+                std::thread::sleep(Duration::from_millis(rate));
+                bg_app.lock().unwrap().tick();
             }
-            let rate = {
-                let app_lock = bg_app.lock().unwrap();
-                app_lock.config.update_rate
-            };
-            std::thread::sleep(Duration::from_millis(rate));
-            bg_app.lock().unwrap().tick();
         });
 
         loop {
@@ -738,368 +751,325 @@ fn main() -> Result<(), anyhow::Error> {
 
             {
                 let app_lock = app_arc.lock().unwrap();
-                terminal.draw(|f| renderer.render(f, &*app_lock))?;
+                terminal.draw(|f| renderer.render(f, &app_lock))?;
             }
 
-            if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == event::KeyEventKind::Press {
-                        let mut app_lock = app_arc.lock().unwrap();
+            if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?
+                && let Event::Key(key) = event::read()?
+                && key.kind == event::KeyEventKind::Press
+            {
+                let mut app_lock = app_arc.lock().unwrap();
 
-                        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL
-                        {
-                            app_lock.stage = AppStage::Launcher;
-                            app_lock.disconnect();
-                            continue;
-                        }
+                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                    app_lock.stage = AppStage::Launcher;
+                    app_lock.disconnect();
+                    continue;
+                }
 
-                        if key.code == KeyCode::Char('h') || key.code == KeyCode::Char('H') {
-                            app_lock.show_help = !app_lock.show_help;
-                            continue;
-                        }
+                if key.code == KeyCode::Char('h') || key.code == KeyCode::Char('H') {
+                    app_lock.show_help = !app_lock.show_help;
+                    continue;
+                }
 
-                        if app_lock.show_help {
-                            app_lock.show_help = false;
-                            continue;
-                        }
+                if app_lock.show_help {
+                    app_lock.show_help = false;
+                    continue;
+                }
 
-                        if key.code == KeyCode::F(10) {
-                            app_lock.ui_state.overlay_mode = !app_lock.ui_state.overlay_mode;
-                            continue;
-                        }
+                if key.code == KeyCode::F(10) {
+                    app_lock.ui_state.overlay_mode = !app_lock.ui_state.overlay_mode;
+                    continue;
+                }
 
-                        if app_lock.active_tab == AppTab::Analysis {
-                            let menu_active = app_lock.ui_state.analysis.load_menu.borrow().active;
-                            if menu_active {
-                                match key.code {
-                                    KeyCode::Up => app_lock.ui_state.analysis.menu_up(),
-                                    KeyCode::Down => app_lock.ui_state.analysis.menu_down(),
-                                    KeyCode::Enter => {
-                                        let mut analyzer = std::mem::replace(
-                                            &mut app_lock.analyzer,
-                                            TelemetryAnalyzer::new(),
-                                        );
-                                        app_lock
-                                            .ui_state
-                                            .analysis
-                                            .load_selected_file(&mut analyzer);
-                                        app_lock.analyzer = analyzer;
-                                    }
-                                    KeyCode::Esc
-                                    | KeyCode::Char('l')
-                                    | KeyCode::Char('L')
-                                    | KeyCode::Char('д')
-                                    | KeyCode::Char('Д') => {
-                                        app_lock.ui_state.analysis.toggle_load_menu();
-                                    }
-                                    _ => {}
-                                }
-                                continue;
+                if app_lock.active_tab == AppTab::Analysis {
+                    let menu_active = app_lock.ui_state.analysis.load_menu.borrow().active;
+                    if menu_active {
+                        match key.code {
+                            KeyCode::Up => app_lock.ui_state.analysis.menu_up(),
+                            KeyCode::Down => app_lock.ui_state.analysis.menu_down(),
+                            KeyCode::Enter => {
+                                let mut analyzer = std::mem::replace(
+                                    &mut app_lock.analyzer,
+                                    TelemetryAnalyzer::new(),
+                                );
+                                app_lock.ui_state.analysis.load_selected_file(&mut analyzer);
+                                app_lock.analyzer = analyzer;
                             }
-                        }
-
-                        if app_lock.active_tab == AppTab::Settings {
-                            let was_editing = app_lock.ui_state.settings.is_editing;
-                            let mut cfg = app_lock.config.clone();
-                            app_lock.ui_state.settings.handle_input(key.code, &mut cfg);
-                            app_lock.config = cfg;
-                            if was_editing || app_lock.ui_state.settings.is_editing {
-                                continue;
-                            }
-                            match key.code {
-                                KeyCode::Up
-                                | KeyCode::Down
-                                | KeyCode::Left
-                                | KeyCode::Right
-                                | KeyCode::Enter => continue,
-                                _ => {}
-                            }
-                        }
-
-                        match (key.code, key.modifiers) {
-                            (KeyCode::Char('q'), _)
-                            | (KeyCode::Char('Q'), _)
-                            | (KeyCode::Char('й'), _)
-                            | (KeyCode::Char('Й'), _) => {
-                                app_lock.stage = AppStage::Launcher;
-                                app_lock.disconnect();
-                            }
-                            (KeyCode::Esc, _) => {
-                                app_lock.stage = AppStage::Launcher;
-                                app_lock.disconnect();
-                            }
-                            (KeyCode::Char('1'), _) | (KeyCode::F(1), _) => {
-                                app_lock.active_tab = AppTab::Dashboard
-                            }
-                            (KeyCode::Char('2'), _) | (KeyCode::F(2), _) => {
-                                app_lock.active_tab = AppTab::Telemetry
-                            }
-                            (KeyCode::Char('3'), _) | (KeyCode::F(3), _) => {
-                                app_lock.active_tab = AppTab::Engineer
-                            }
-                            (KeyCode::Char('4'), _) | (KeyCode::F(4), _) => {
-                                app_lock.active_tab = AppTab::Setup
-                            }
-                            (KeyCode::Char('5'), _) | (KeyCode::F(5), _) => {
-                                app_lock.active_tab = AppTab::Analysis
-                            }
-                            (KeyCode::Char('6'), _) | (KeyCode::F(6), _) => {
-                                app_lock.active_tab = AppTab::Strategy
-                            }
-                            (KeyCode::Char('7'), _) | (KeyCode::F(7), _) => {
-                                app_lock.active_tab = AppTab::Ffb
-                            }
-                            (KeyCode::Char('8'), _) | (KeyCode::F(8), _) => {
-                                app_lock.active_tab = AppTab::Settings
-                            }
-                            (KeyCode::Char('9'), _) | (KeyCode::F(9), _) => {
-                                app_lock.active_tab = AppTab::Guide
-                            }
-                            (KeyCode::Char('l'), _)
-                            | (KeyCode::Char('L'), _)
-                            | (KeyCode::Char('д'), _)
-                            | (KeyCode::Char('Д'), _) => {
-                                if app_lock.active_tab == AppTab::Analysis {
-                                    app_lock.ui_state.analysis.toggle_load_menu();
-                                }
-                            }
-                            (KeyCode::Char('s'), _)
-                            | (KeyCode::Char('S'), _)
-                            | (KeyCode::Char('ы'), _)
-                            | (KeyCode::Char('Ы'), _) => {
-                                if app_lock.active_tab == AppTab::Analysis {
-                                    if let Some(idx) = app_lock.ui_state.setup_list_state.selected()
-                                    {
-                                        if let Some(lap) = app_lock.analyzer.laps.get(idx).cloned()
-                                        {
-                                            app_lock.ui_state.analysis.save_lap_data(&lap);
-                                        }
-                                    }
-                                }
-                            }
-                            (KeyCode::Char('c'), _)
-                            | (KeyCode::Char('C'), _)
-                            | (KeyCode::Char('с'), _)
-                            | (KeyCode::Char('С'), _) => {
-                                if app_lock.active_tab == AppTab::Analysis {
-                                    app_lock.ui_state.analysis.toggle_compare();
-                                }
-                            }
-                            (KeyCode::Char('b'), _)
-                            | (KeyCode::Char('B'), _)
-                            | (KeyCode::Char('и'), _)
-                            | (KeyCode::Char('И'), _)
-                                if app_lock.active_tab == AppTab::Setup =>
-                            {
-                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
-                                *active = !*active;
-                                if *active {
-                                    drop(active);
-                                    app_lock.setup_manager.load_browser_car();
-                                }
-                            }
-                            (KeyCode::Char('d'), _)
-                            | (KeyCode::Char('D'), _)
-                            | (KeyCode::Char('в'), _)
-                            | (KeyCode::Char('В'), _)
-                                if app_lock.active_tab == AppTab::Setup =>
-                            {
-                                let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
-                                if is_browser {
-                                    if let Some(setup) =
-                                        app_lock.setup_manager.get_browser_selected_setup()
-                                    {
-                                        let target_car =
-                                            app_lock.setup_manager.get_browser_target_car();
-                                        app_lock.setup_manager.download_setup(&setup, &target_car);
-                                    }
-                                } else if let Some(selected_idx) =
-                                    app_lock.ui_state.setup_list_state.selected()
-                                {
-                                    if let Some(setup) =
-                                        app_lock.setup_manager.get_setup_by_index(selected_idx)
-                                    {
-                                        let target_car =
-                                            app_lock.setup_manager.current_car.safe_lock().clone();
-                                        app_lock.setup_manager.download_setup(&setup, &target_car);
-                                    }
-                                }
-                            }
-                            (KeyCode::PageUp, _) => {
-                                if app_lock.active_tab == AppTab::Setup {
-                                    app_lock.setup_manager.scroll_details(-1);
-                                }
-                            }
-                            (KeyCode::PageDown, _) => {
-                                if app_lock.active_tab == AppTab::Setup {
-                                    app_lock.setup_manager.scroll_details(1);
-                                }
-                            }
-                            (KeyCode::Tab, KeyModifiers::NONE) => {
-                                app_lock.active_tab = app_lock.active_tab.next()
-                            }
-                            (KeyCode::BackTab, _) => {
-                                app_lock.active_tab = app_lock.active_tab.previous()
-                            }
-                            (KeyCode::Down, _) => {
-                                if app_lock.active_tab == AppTab::Analysis
-                                    || app_lock.active_tab == AppTab::Engineer
-                                {
-                                    let len = app_lock.analyzer.laps.len();
-                                    if len > 0 {
-                                        let cur = app_lock
-                                            .ui_state
-                                            .setup_list_state
-                                            .selected()
-                                            .unwrap_or(len.saturating_sub(1));
-                                        let next = if cur >= len - 1 { 0 } else { cur + 1 };
-                                        app_lock.ui_state.setup_list_state.select(Some(next));
-                                    }
-                                } else if app_lock.active_tab == AppTab::Guide {
-                                    let cur =
-                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let next = if cur >= 15 { 0 } else { cur + 1 };
-                                    app_lock.ui_state.setup_list_state.select(Some(next));
-                                } else if app_lock.active_tab == AppTab::Setup {
-                                    let is_browser =
-                                        *app_lock.setup_manager.browser_active.safe_lock();
-                                    if is_browser {
-                                        let col =
-                                            *app_lock.setup_manager.browser_focus_col.safe_lock();
-                                        if col == 0 {
-                                            let mut idx =
-                                                app_lock.setup_manager.browser_car_idx.safe_lock();
-                                            let len =
-                                                app_lock.setup_manager.manifest.safe_lock().len();
-                                            if len > 0 {
-                                                *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
-                                            }
-                                            drop(idx);
-                                            app_lock.setup_manager.load_browser_car();
-                                        } else {
-                                            let mut idx = app_lock
-                                                .setup_manager
-                                                .browser_setup_idx
-                                                .safe_lock();
-                                            let len = app_lock
-                                                .setup_manager
-                                                .browser_setups
-                                                .safe_lock()
-                                                .len();
-                                            if len > 0 {
-                                                *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
-                                            }
-                                        }
-                                    } else {
-                                        let len = app_lock.setup_manager.get_setups().len();
-                                        if len > 0 {
-                                            let cur = app_lock
-                                                .ui_state
-                                                .setup_list_state
-                                                .selected()
-                                                .unwrap_or(0);
-                                            let next = if cur >= len - 1 { 0 } else { cur + 1 };
-                                            app_lock.ui_state.setup_list_state.select(Some(next));
-                                        }
-                                    }
-                                }
-                            }
-                            (KeyCode::Up, _) => {
-                                if app_lock.active_tab == AppTab::Analysis
-                                    || app_lock.active_tab == AppTab::Engineer
-                                {
-                                    let len = app_lock.analyzer.laps.len();
-                                    if len > 0 {
-                                        let cur = app_lock
-                                            .ui_state
-                                            .setup_list_state
-                                            .selected()
-                                            .unwrap_or(len.saturating_sub(1));
-                                        let next = if cur == 0 { len - 1 } else { cur - 1 };
-                                        app_lock.ui_state.setup_list_state.select(Some(next));
-                                    }
-                                } else if app_lock.active_tab == AppTab::Guide {
-                                    let cur =
-                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let next = if cur == 0 { 15 } else { cur - 1 };
-                                    app_lock.ui_state.setup_list_state.select(Some(next));
-                                } else if app_lock.active_tab == AppTab::Setup {
-                                    let is_browser =
-                                        *app_lock.setup_manager.browser_active.safe_lock();
-                                    if is_browser {
-                                        let col =
-                                            *app_lock.setup_manager.browser_focus_col.safe_lock();
-                                        if col == 0 {
-                                            let mut idx =
-                                                app_lock.setup_manager.browser_car_idx.safe_lock();
-                                            let len =
-                                                app_lock.setup_manager.manifest.safe_lock().len();
-                                            if len > 0 {
-                                                *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
-                                            }
-                                            drop(idx);
-                                            app_lock.setup_manager.load_browser_car();
-                                        } else {
-                                            let mut idx = app_lock
-                                                .setup_manager
-                                                .browser_setup_idx
-                                                .safe_lock();
-                                            let len = app_lock
-                                                .setup_manager
-                                                .browser_setups
-                                                .safe_lock()
-                                                .len();
-                                            if len > 0 {
-                                                *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
-                                            }
-                                        }
-                                    } else {
-                                        let len = app_lock.setup_manager.get_setups().len();
-                                        if len > 0 {
-                                            let cur = app_lock
-                                                .ui_state
-                                                .setup_list_state
-                                                .selected()
-                                                .unwrap_or(0);
-                                            let next = if cur == 0 { len - 1 } else { cur - 1 };
-                                            app_lock.ui_state.setup_list_state.select(Some(next));
-                                        }
-                                    }
-                                }
-                            }
-                            (KeyCode::Left, _) => {
-                                if app_lock.active_tab == AppTab::Analysis {
-                                    app_lock.ui_state.analysis.prev_tab();
-                                } else if app_lock.active_tab == AppTab::Engineer {
-                                    app_lock.ui_state.engineer.prev_tab();
-                                } else if app_lock.active_tab == AppTab::Setup {
-                                    let is_browser =
-                                        *app_lock.setup_manager.browser_active.safe_lock();
-                                    if is_browser {
-                                        let mut col =
-                                            app_lock.setup_manager.browser_focus_col.safe_lock();
-                                        *col = if *col == 0 { 1 } else { 0 };
-                                    }
-                                }
-                            }
-                            (KeyCode::Right, _) => {
-                                if app_lock.active_tab == AppTab::Analysis {
-                                    app_lock.ui_state.analysis.next_tab();
-                                } else if app_lock.active_tab == AppTab::Engineer {
-                                    app_lock.ui_state.engineer.next_tab();
-                                } else if app_lock.active_tab == AppTab::Setup {
-                                    let is_browser =
-                                        *app_lock.setup_manager.browser_active.safe_lock();
-                                    if is_browser {
-                                        let mut col =
-                                            app_lock.setup_manager.browser_focus_col.safe_lock();
-                                        *col = if *col == 0 { 1 } else { 0 };
-                                    }
-                                }
+                            KeyCode::Esc
+                            | KeyCode::Char('l')
+                            | KeyCode::Char('L')
+                            | KeyCode::Char('д')
+                            | KeyCode::Char('Д') => {
+                                app_lock.ui_state.analysis.toggle_load_menu();
                             }
                             _ => {}
                         }
+                        continue;
                     }
+                }
+
+                if app_lock.active_tab == AppTab::Settings {
+                    let was_editing = app_lock.ui_state.settings.is_editing;
+                    let mut cfg = app_lock.config.clone();
+                    app_lock.ui_state.settings.handle_input(key.code, &mut cfg);
+                    app_lock.config = cfg;
+                    if was_editing || app_lock.ui_state.settings.is_editing {
+                        continue;
+                    }
+                    match key.code {
+                        KeyCode::Up
+                        | KeyCode::Down
+                        | KeyCode::Left
+                        | KeyCode::Right
+                        | KeyCode::Enter => continue,
+                        _ => {}
+                    }
+                }
+
+                match (key.code, key.modifiers) {
+                    (KeyCode::Char('q'), _)
+                    | (KeyCode::Char('Q'), _)
+                    | (KeyCode::Char('й'), _)
+                    | (KeyCode::Char('Й'), _) => {
+                        app_lock.stage = AppStage::Launcher;
+                        app_lock.disconnect();
+                    }
+                    (KeyCode::Esc, _) => {
+                        app_lock.stage = AppStage::Launcher;
+                        app_lock.disconnect();
+                    }
+                    (KeyCode::Char('1'), _) | (KeyCode::F(1), _) => {
+                        app_lock.active_tab = AppTab::Dashboard
+                    }
+                    (KeyCode::Char('2'), _) | (KeyCode::F(2), _) => {
+                        app_lock.active_tab = AppTab::Telemetry
+                    }
+                    (KeyCode::Char('3'), _) | (KeyCode::F(3), _) => {
+                        app_lock.active_tab = AppTab::Engineer
+                    }
+                    (KeyCode::Char('4'), _) | (KeyCode::F(4), _) => {
+                        app_lock.active_tab = AppTab::Setup
+                    }
+                    (KeyCode::Char('5'), _) | (KeyCode::F(5), _) => {
+                        app_lock.active_tab = AppTab::Analysis
+                    }
+                    (KeyCode::Char('6'), _) | (KeyCode::F(6), _) => {
+                        app_lock.active_tab = AppTab::Strategy
+                    }
+                    (KeyCode::Char('7'), _) | (KeyCode::F(7), _) => {
+                        app_lock.active_tab = AppTab::Ffb
+                    }
+                    (KeyCode::Char('8'), _) | (KeyCode::F(8), _) => {
+                        app_lock.active_tab = AppTab::Settings
+                    }
+                    (KeyCode::Char('9'), _) | (KeyCode::F(9), _) => {
+                        app_lock.active_tab = AppTab::Guide
+                    }
+                    (KeyCode::Char('l'), _)
+                    | (KeyCode::Char('L'), _)
+                    | (KeyCode::Char('д'), _)
+                    | (KeyCode::Char('Д'), _) => {
+                        if app_lock.active_tab == AppTab::Analysis {
+                            app_lock.ui_state.analysis.toggle_load_menu();
+                        }
+                    }
+                    (KeyCode::Char('s'), _)
+                    | (KeyCode::Char('S'), _)
+                    | (KeyCode::Char('ы'), _)
+                    | (KeyCode::Char('Ы'), _) => {
+                        if app_lock.active_tab == AppTab::Analysis
+                            && let Some(idx) = app_lock.ui_state.setup_list_state.selected()
+                            && let Some(lap) = app_lock.analyzer.laps.get(idx).cloned()
+                        {
+                            app_lock.ui_state.analysis.save_lap_data(&lap);
+                        }
+                    }
+                    (KeyCode::Char('c'), _)
+                    | (KeyCode::Char('C'), _)
+                    | (KeyCode::Char('с'), _)
+                    | (KeyCode::Char('С'), _) => {
+                        if app_lock.active_tab == AppTab::Analysis {
+                            app_lock.ui_state.analysis.toggle_compare();
+                        }
+                    }
+                    (KeyCode::Char('b'), _)
+                    | (KeyCode::Char('B'), _)
+                    | (KeyCode::Char('и'), _)
+                    | (KeyCode::Char('И'), _)
+                        if app_lock.active_tab == AppTab::Setup =>
+                    {
+                        let mut active = app_lock.setup_manager.browser_active.safe_lock();
+                        *active = !*active;
+                        if *active {
+                            drop(active);
+                            app_lock.setup_manager.load_browser_car();
+                        }
+                    }
+                    (KeyCode::Char('d'), _)
+                    | (KeyCode::Char('D'), _)
+                    | (KeyCode::Char('в'), _)
+                    | (KeyCode::Char('В'), _)
+                        if app_lock.active_tab == AppTab::Setup =>
+                    {
+                        let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                        if is_browser {
+                            if let Some(setup) = app_lock.setup_manager.get_browser_selected_setup()
+                            {
+                                let target_car = app_lock.setup_manager.get_browser_target_car();
+                                app_lock.setup_manager.download_setup(&setup, &target_car);
+                            }
+                        } else if let Some(selected_idx) =
+                            app_lock.ui_state.setup_list_state.selected()
+                            && let Some(setup) =
+                                app_lock.setup_manager.get_setup_by_index(selected_idx)
+                        {
+                            let target_car = app_lock.setup_manager.current_car.safe_lock().clone();
+                            app_lock.setup_manager.download_setup(&setup, &target_car);
+                        }
+                    }
+                    (KeyCode::PageUp, _) => {
+                        if app_lock.active_tab == AppTab::Setup {
+                            app_lock.setup_manager.scroll_details(-1);
+                        }
+                    }
+                    (KeyCode::PageDown, _) => {
+                        if app_lock.active_tab == AppTab::Setup {
+                            app_lock.setup_manager.scroll_details(1);
+                        }
+                    }
+                    (KeyCode::Tab, KeyModifiers::NONE) => {
+                        app_lock.active_tab = app_lock.active_tab.next()
+                    }
+                    (KeyCode::BackTab, _) => app_lock.active_tab = app_lock.active_tab.previous(),
+                    (KeyCode::Down, _) => {
+                        if app_lock.active_tab == AppTab::Analysis
+                            || app_lock.active_tab == AppTab::Engineer
+                        {
+                            let len = app_lock.analyzer.laps.len();
+                            if len > 0 {
+                                let cur = app_lock
+                                    .ui_state
+                                    .setup_list_state
+                                    .selected()
+                                    .unwrap_or(len.saturating_sub(1));
+                                let next = if cur >= len - 1 { 0 } else { cur + 1 };
+                                app_lock.ui_state.setup_list_state.select(Some(next));
+                            }
+                        } else if app_lock.active_tab == AppTab::Guide {
+                            let cur = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                            let next = if cur >= 15 { 0 } else { cur + 1 };
+                            app_lock.ui_state.setup_list_state.select(Some(next));
+                        } else if app_lock.active_tab == AppTab::Setup {
+                            let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            if is_browser {
+                                let col = *app_lock.setup_manager.browser_focus_col.safe_lock();
+                                if col == 0 {
+                                    let mut idx =
+                                        app_lock.setup_manager.browser_car_idx.safe_lock();
+                                    let len = app_lock.setup_manager.manifest.safe_lock().len();
+                                    if len > 0 {
+                                        *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
+                                    }
+                                    drop(idx);
+                                    app_lock.setup_manager.load_browser_car();
+                                } else {
+                                    let mut idx =
+                                        app_lock.setup_manager.browser_setup_idx.safe_lock();
+                                    let len =
+                                        app_lock.setup_manager.browser_setups.safe_lock().len();
+                                    if len > 0 {
+                                        *idx = if *idx >= len - 1 { 0 } else { *idx + 1 };
+                                    }
+                                }
+                            } else {
+                                let len = app_lock.setup_manager.get_setups().len();
+                                if len > 0 {
+                                    let cur =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur >= len - 1 { 0 } else { cur + 1 };
+                                    app_lock.ui_state.setup_list_state.select(Some(next));
+                                }
+                            }
+                        }
+                    }
+                    (KeyCode::Up, _) => {
+                        if app_lock.active_tab == AppTab::Analysis
+                            || app_lock.active_tab == AppTab::Engineer
+                        {
+                            let len = app_lock.analyzer.laps.len();
+                            if len > 0 {
+                                let cur = app_lock
+                                    .ui_state
+                                    .setup_list_state
+                                    .selected()
+                                    .unwrap_or(len.saturating_sub(1));
+                                let next = if cur == 0 { len - 1 } else { cur - 1 };
+                                app_lock.ui_state.setup_list_state.select(Some(next));
+                            }
+                        } else if app_lock.active_tab == AppTab::Guide {
+                            let cur = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                            let next = if cur == 0 { 15 } else { cur - 1 };
+                            app_lock.ui_state.setup_list_state.select(Some(next));
+                        } else if app_lock.active_tab == AppTab::Setup {
+                            let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            if is_browser {
+                                let col = *app_lock.setup_manager.browser_focus_col.safe_lock();
+                                if col == 0 {
+                                    let mut idx =
+                                        app_lock.setup_manager.browser_car_idx.safe_lock();
+                                    let len = app_lock.setup_manager.manifest.safe_lock().len();
+                                    if len > 0 {
+                                        *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
+                                    }
+                                    drop(idx);
+                                    app_lock.setup_manager.load_browser_car();
+                                } else {
+                                    let mut idx =
+                                        app_lock.setup_manager.browser_setup_idx.safe_lock();
+                                    let len =
+                                        app_lock.setup_manager.browser_setups.safe_lock().len();
+                                    if len > 0 {
+                                        *idx = if *idx == 0 { len - 1 } else { *idx - 1 };
+                                    }
+                                }
+                            } else {
+                                let len = app_lock.setup_manager.get_setups().len();
+                                if len > 0 {
+                                    let cur =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let next = if cur == 0 { len - 1 } else { cur - 1 };
+                                    app_lock.ui_state.setup_list_state.select(Some(next));
+                                }
+                            }
+                        }
+                    }
+                    (KeyCode::Left, _) => {
+                        if app_lock.active_tab == AppTab::Analysis {
+                            app_lock.ui_state.analysis.prev_tab();
+                        } else if app_lock.active_tab == AppTab::Engineer {
+                            app_lock.ui_state.engineer.prev_tab();
+                        } else if app_lock.active_tab == AppTab::Setup {
+                            let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            if is_browser {
+                                let mut col = app_lock.setup_manager.browser_focus_col.safe_lock();
+                                *col = if *col == 0 { 1 } else { 0 };
+                            }
+                        }
+                    }
+                    (KeyCode::Right, _) => {
+                        if app_lock.active_tab == AppTab::Analysis {
+                            app_lock.ui_state.analysis.next_tab();
+                        } else if app_lock.active_tab == AppTab::Engineer {
+                            app_lock.ui_state.engineer.next_tab();
+                        } else if app_lock.active_tab == AppTab::Setup {
+                            let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            if is_browser {
+                                let mut col = app_lock.setup_manager.browser_focus_col.safe_lock();
+                                *col = if *col == 0 { 1 } else { 0 };
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
 

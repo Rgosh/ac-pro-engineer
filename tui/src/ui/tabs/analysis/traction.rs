@@ -143,12 +143,14 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         .map(|p| (p.lat_g.abs() as f64, p.gas as f64 * 100.0))
         .collect();
 
-    let scatter = Chart::new(vec![Dataset::default()
-        .name("Gas vs Lat G")
-        .marker(symbols::Marker::Dot)
-        .style(Style::default().fg(Color::Yellow))
-        .graph_type(GraphType::Scatter)
-        .data(&throttle_g_data)])
+    let scatter = Chart::new(vec![
+        Dataset::default()
+            .name("Gas vs Lat G")
+            .marker(symbols::Marker::Dot)
+            .style(Style::default().fg(Color::Yellow))
+            .graph_type(GraphType::Scatter)
+            .data(&throttle_g_data),
+    ])
     .block(
         Block::default()
             .title(if is_ru {
