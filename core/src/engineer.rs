@@ -1,4 +1,4 @@
-use crate::ac_structs::{read_ac_string, AcGraphics, AcPhysics};
+use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
@@ -620,7 +620,7 @@ impl Engineer {
     ) {
         let ru = self.is_ru();
 
-        let compound_name = read_ac_string(&gfx.tyre_compound).to_lowercase();
+        let compound_name = gfx.tyre_compound.to_string().to_lowercase();
 
         let (optimal_pressure, tolerance, class_name) = if compound_name.contains("street")
             || compound_name.contains("sport")

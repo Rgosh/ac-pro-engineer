@@ -132,10 +132,72 @@ pub enum AppStage {
     Running,
 }
 
+#[cfg(target_os = "windows")]
+static SHM_MEM_DIR: &str = "Local\\";
+#[cfg(not(target_os = "windows"))]
+static SHM_MEM_DIR: &str = "/dev/shm/";
+
+static SHM_MEM_PHYSICS: &str = "acpmf_physics";
+static SHM_MEM_GRAPHICS: &str = "acpmf_graphics";
+static SHM_MEM_STATIC: &str = "acpmf_static";
+
+pub struct Memory {
+    physics_mem: SharedMemory<AcPhysics>,
+    graphics_mem: SharedMemory<AcGraphics>,
+    static_mem: SharedMemory<AcStatic>,
+
+    ac_physics: AcPhysics,
+    ac_graphics: AcGraphics,
+    ac_static: AcStatic,
+}
+
+impl Memory {
+    pub fn try_connect() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            physics_mem: SharedMemory::<AcPhysics>::connect(&Self::get_mem(SHM_MEM_PHYSICS))?,
+            graphics_mem: SharedMemory::<AcGraphics>::connect(&Self::get_mem(SHM_MEM_GRAPHICS))?,
+            static_mem: SharedMemory::<AcStatic>::connect(&Self::get_mem(SHM_MEM_STATIC))?,
+            ac_physics: AcPhysics::default(),
+            ac_graphics: AcGraphics::default(),
+            ac_static: AcStatic::default(),
+        })
+    }
+
+    pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.ac_physics = self
+            .physics_mem
+            .get()
+            .map_err(|e| anyhow::format_err!("Cannot read physics: {e:?}"))?;
+        self.ac_graphics = self
+            .graphics_mem
+            .get()
+            .map_err(|e| anyhow::format_err!("Cannot read graphics: {e:?}"))?;
+        self.ac_static = self
+            .static_mem
+            .get()
+            .map_err(|e| anyhow::format_err!("Cannot read static: {e:?}"))?;
+        Ok(())
+    }
+
+    fn get_mem(name: &str) -> String {
+        format!("{}{}", SHM_MEM_DIR, name)
+    }
+
+    pub fn physics(&self) -> &AcPhysics {
+        &self.ac_physics
+    }
+
+    pub fn graphics(&self) -> &AcGraphics {
+        &self.ac_graphics
+    }
+
+    pub fn stat(&self) -> &AcStatic {
+        &self.ac_static
+    }
+}
+
 pub struct AppState {
-    pub physics_mem: Option<SharedMemory<AcPhysics>>,
-    pub graphics_mem: Option<SharedMemory<AcGraphics>>,
-    pub static_mem: Option<SharedMemory<AcStatic>>,
+    pub mem: Option<Memory>,
     pub setup_manager: SetupManager,
     pub content_manager: ContentManager,
     pub record_manager: RecordManager,
@@ -181,9 +243,7 @@ impl AppState {
         }
 
         Self {
-            physics_mem: None,
-            graphics_mem: None,
-            static_mem: None,
+            mem: None,
             setup_manager: SetupManager::new(),
             content_manager: ContentManager::new(),
             record_manager: RecordManager::new(),
@@ -215,6 +275,18 @@ impl AppState {
         }
     }
 
+    pub fn ac_graphics(&self) -> Option<&AcGraphics> {
+        self.mem.as_ref().map(|mem| &mem.ac_graphics)
+    }
+
+    pub fn ac_physics(&self) -> Option<&AcPhysics> {
+        self.mem.as_ref().map(|mem| &mem.ac_physics)
+    }
+
+    pub fn ac_static(&self) -> Option<&AcStatic> {
+        self.mem.as_ref().map(|mem| &mem.ac_static)
+    }
+
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
         let delta = self.engineer.stats.current_delta;
@@ -236,19 +308,25 @@ impl AppState {
         if !process_active && self.is_connected {
             self.disconnect();
         } else if process_active && !self.is_connected {
-            self.connect_memory();
+            if let Err(error) = self.connect_memory() {
+                error!(error = ?error, "Cannot connect to shard memory");
+            }
         }
 
         if !self.is_connected {
             return;
         }
 
-        let (phys, gfx) =
-            if let (Some(phys_mem), Some(gfx_mem)) = (&self.physics_mem, &self.graphics_mem) {
-                (*phys_mem.get(), *gfx_mem.get())
-            } else {
-                return;
-            };
+        let Some(mem) = self.mem.as_mut() else {
+            return;
+        };
+
+        if let Err(error) = mem.refresh() {
+            error!(error = ?error, "Cannot refresh memory");
+            return;
+        }
+
+        let (phys, gfx, stat) = (mem.ac_physics, mem.ac_graphics, mem.ac_static);
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
@@ -275,11 +353,7 @@ impl AppState {
                     .content_manager
                     .get_car_specs(&self.session_info.car_name)
                 {
-                    let track_len = self
-                        .static_mem
-                        .as_ref()
-                        .map(|m| m.get().track_spline_length)
-                        .unwrap_or(0.0);
+                    let track_len = stat.track_spline_length;
                     let mut rec = self.record_manager.get_or_calculate_record(
                         &self.session_info.car_name,
                         &self.session_info.track_name,
@@ -317,51 +391,42 @@ impl AppState {
     }
 
     pub fn disconnect(&mut self) {
-        self.physics_mem = None;
-        self.graphics_mem = None;
-        self.static_mem = None;
+        self.mem = None;
         self.is_connected = false;
         self.session_info = SessionInfo::default();
         self.recommendations.clear();
     }
 
-    pub fn connect_memory(&mut self) {
-        if self.physics_mem.is_none() {
-            if let Ok(mem) = SharedMemory::<AcPhysics>::connect("Local\\acpmf_physics") {
-                self.physics_mem = Some(mem);
-            }
-        }
-        if self.physics_mem.is_some() && self.graphics_mem.is_none() {
-            if let Ok(mem) = SharedMemory::<AcGraphics>::connect("Local\\acpmf_graphics") {
-                self.graphics_mem = Some(mem);
-            }
-        }
-        if self.physics_mem.is_some() && self.static_mem.is_none() {
-            if let Ok(mem) = SharedMemory::<AcStatic>::connect("Local\\acpmf_static") {
-                let st = mem.get();
-                self.session_info.car_name = read_ac_string(&st.car_model);
-                self.session_info.track_name = read_ac_string(&st.track);
-                self.session_info.track_config = read_ac_string(&st.track_configuration);
-                self.session_info.player_name = read_ac_string(&st.player_nick);
-                self.session_info.max_rpm = st.max_rpm;
-                self.session_info.max_fuel = st.max_fuel;
+    pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.mem.is_none() {
+            let mut mem = Memory::try_connect()?;
+            mem.refresh()?;
 
-                let specs = self
-                    .content_manager
-                    .get_car_specs(&self.session_info.car_name)
-                    .cloned();
-                let rec = self.record_manager.get_or_calculate_record(
-                    &self.session_info.car_name,
-                    &self.session_info.track_name,
-                    &self.session_info.track_config,
-                    specs.as_ref(),
-                    st.track_spline_length,
-                );
-                self.analyzer.set_world_record(rec);
-                self.static_mem = Some(mem);
-                self.is_connected = true;
-            }
+            let st = &mem.ac_static;
+            self.session_info.car_name = st.car_model.to_string();
+            self.session_info.track_name = st.track.to_string();
+            self.session_info.track_config = st.track_configuration.to_string();
+            self.session_info.player_name = st.player_nick.to_string();
+            self.session_info.max_rpm = st.max_rpm;
+            self.session_info.max_fuel = st.max_fuel;
+
+            let specs = self
+                .content_manager
+                .get_car_specs(&self.session_info.car_name)
+                .cloned();
+            let rec = self.record_manager.get_or_calculate_record(
+                &self.session_info.car_name,
+                &self.session_info.track_name,
+                &self.session_info.track_config,
+                specs.as_ref(),
+                st.track_spline_length,
+            );
+            self.analyzer.set_world_record(rec);
+            self.is_connected = true;
+
+            self.mem = Some(mem);
         }
+        Ok(())
     }
 
     pub fn update_live_buffers(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {

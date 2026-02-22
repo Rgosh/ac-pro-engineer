@@ -172,6 +172,10 @@ fn render_steering_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let Some(mem) = app.mem.as_ref() else {
+        return;
+    };
+
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
 
@@ -208,21 +212,19 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     });
                 }
 
-                if let Some(gfx) = &app.graphics_mem {
-                    let g = gfx.get();
+                let g = mem.ac_graphics;
 
-                    let car_x = g.car_coordinates[0][0] as f64;
-                    let car_y = g.car_coordinates[0][2] as f64;
+                let car_x = g.car_coordinates.get(0, 0) as f64;
+                let car_y = g.car_coordinates.get(0, 2) as f64;
 
-                    let scale = (x_bounds[1] - x_bounds[0]) / 50.0;
+                let scale = (x_bounds[1] - x_bounds[0]) / 50.0;
 
-                    ctx.draw(&Circle {
-                        x: car_x,
-                        y: car_y,
-                        radius: scale,
-                        color: Color::Red,
-                    });
-                }
+                ctx.draw(&Circle {
+                    x: car_x,
+                    y: car_y,
+                    radius: scale,
+                    color: Color::Red,
+                });
             });
 
         f.render_widget(canvas, area);
@@ -239,9 +241,7 @@ fn render_friction_circle(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    if let Some(phys) = &app.physics_mem {
-        let data = phys.get();
-
+    if let Some(data) = app.ac_physics() {
         let lat = data.acc_g[0] as f64;
         let lon = data.acc_g[2] as f64;
 
@@ -328,12 +328,11 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    if let Some(phys) = &app.physics_mem {
-        let p = phys.get();
+    if let Some(phys) = app.ac_physics() {
         let rows = vec![
             Row::new(vec![
                 Cell::from("Speed").style(Style::default().fg(Color::Gray)),
-                Cell::from(format!("{:.0} km/h", p.speed_kmh)).style(
+                Cell::from(format!("{:.0} km/h", phys.speed_kmh)).style(
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
@@ -342,12 +341,12 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Row::new(vec![
                 Cell::from("Gear").style(Style::default().fg(Color::Gray)),
                 Cell::from(
-                    (if p.gear == 0 {
+                    (if phys.gear == 0 {
                         "R".into()
-                    } else if p.gear == 1 {
+                    } else if phys.gear == 1 {
                         "N".into()
                     } else {
-                        (p.gear - 1).to_string()
+                        (phys.gear - 1).to_string()
                     })
                     .to_string(),
                 )
@@ -355,15 +354,17 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             ]),
             Row::new(vec![
                 Cell::from("Lat G").style(Style::default().fg(Color::Gray)),
-                Cell::from(format!("{:.2}", p.acc_g[0])).style(Style::default().fg(Color::White)),
+                Cell::from(format!("{:.2}", phys.acc_g[0]))
+                    .style(Style::default().fg(Color::White)),
             ]),
             Row::new(vec![
                 Cell::from("Lon G").style(Style::default().fg(Color::Gray)),
-                Cell::from(format!("{:.2}", p.acc_g[2])).style(Style::default().fg(Color::White)),
+                Cell::from(format!("{:.2}", phys.acc_g[2]))
+                    .style(Style::default().fg(Color::White)),
             ]),
             Row::new(vec![
                 Cell::from("Steer").style(Style::default().fg(Color::Gray)),
-                Cell::from(format!("{:.0}°", p.steer_angle * 360.0))
+                Cell::from(format!("{:.0}°", phys.steer_angle * 360.0))
                     .style(Style::default().fg(Color::White)),
             ]),
         ];

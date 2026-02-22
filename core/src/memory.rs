@@ -1,8 +1,9 @@
+use anyhow::anyhow;
 use memmap2::Mmap;
 use std::fmt::Debug;
 use std::fs::File;
 use std::marker::PhantomData;
-use tracing::info;
+use zerocopy::{IntoBytes, TryFromBytes};
 
 pub struct SharedMemory<T> {
     mmap: Mmap,
@@ -34,26 +35,17 @@ impl<T> SharedMemory<T> {
         })
     }
 
-    pub fn get(&self) -> &T
+    pub fn get(&self) -> Result<T, Box<dyn std::error::Error>>
     where
-        T: Debug,
+        T: TryFromBytes + Debug,
     {
-        info!(
-            "Required size: {}, actual size: {}",
-            size_of::<T>(),
-            self.mmap.len()
-        );
-        assert!(self.mmap.len() >= size_of::<T>(), "Invalid size");
-
-        let ptr = self.mmap.as_ptr();
-
-        // Alignment check
-        assert_eq!(
-            (ptr as usize) % align_of::<T>(),
-            0,
-            "mmap not aligned for T"
-        );
-
-        unsafe { &*(ptr as *const T) }
+        let size = size_of::<T>();
+        let bytes = &self.mmap;
+        if bytes.len() < size {
+            return Err(anyhow!("Incorrect buffer size").into());
+        }
+        let bytes = bytes[..size].as_bytes();
+        T::try_read_from_bytes(bytes)
+            .map_err(|err| anyhow::format_err!("Error converting type: {err:?}").into())
     }
 }

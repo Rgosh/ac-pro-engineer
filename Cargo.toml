@@ -9,6 +9,7 @@ authors = ["Rgosh"]
 
 [workspace.dependencies]
 anyhow = "1.0"
+zerocopy = "0.8.39"
 chrono = "0.4"
 clap = "4.5.60"
 crossterm = "0.29.0"

@@ -1,5 +1,10 @@
+use std::fmt::Display;
+use std::fmt::Formatter;
+use tracing::info;
+use zerocopy::TryFromBytes;
+
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcPhysics {
     pub packet_id: i32,
     pub gas: f32,
@@ -71,7 +76,51 @@ pub struct AcPhysics {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, TryFromBytes)]
+pub struct StringU16_33([u16; 33]);
+
+impl Default for StringU16_33 {
+    fn default() -> Self {
+        Self([0u16; 33])
+    }
+}
+
+impl Display for StringU16_33 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name = read_ac_string(&self.0);
+        info!("Format name: '{name}'");
+        write!(f, "{}", name)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, TryFromBytes)]
+pub struct CarCoordinates([[f32; 3]; 60]);
+
+impl Default for CarCoordinates {
+    fn default() -> Self {
+        Self([[0f32; 3]; 60])
+    }
+}
+
+impl CarCoordinates {
+    pub fn get(&self, first: usize, second: usize) -> f32 {
+        self.0[first][second]
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, TryFromBytes)]
+pub struct CarId([i32; 60]);
+
+impl Default for CarId {
+    fn default() -> Self {
+        Self([0i32; 60])
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcGraphics {
     pub packet_id: i32,
     pub status: i32,
@@ -91,12 +140,12 @@ pub struct AcGraphics {
     pub current_sector_index: i32,
     pub last_sector_time: i32,
     pub number_of_laps: i32,
-    pub tyre_compound: [u16; 33],
+    pub tyre_compound: StringU16_33,
     pub replay_time_multiplier: f32,
     pub normalized_car_position: f32,
     pub active_cars: i32,
-    pub car_coordinates: [[f32; 3]; 60],
-    pub car_id: [i32; 60],
+    pub car_coordinates: CarCoordinates,
+    pub car_id: CarId,
     pub player_car_id: i32,
     pub penalty_time: f32,
     pub flag: i32,
@@ -126,17 +175,17 @@ pub struct AcGraphics {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcStatic {
     pub sm_version: [u16; 15],
     pub ac_version: [u16; 15],
     pub number_of_sessions: i32,
     pub num_cars: i32,
-    pub car_model: [u16; 33],
-    pub track: [u16; 33],
-    pub player_name: [u16; 33],
-    pub player_surname: [u16; 33],
-    pub player_nick: [u16; 33],
+    pub car_model: StringU16_33,
+    pub track: StringU16_33,
+    pub player_name: StringU16_33,
+    pub player_surname: StringU16_33,
+    pub player_nick: StringU16_33,
     pub sector_count: i32,
     pub max_torque: f32,
     pub max_power: f32,
@@ -162,11 +211,11 @@ pub struct AcStatic {
     pub engine_brake_settings_count: i32,
     pub ers_power_controller_count: i32,
     pub track_spline_length: f32,
-    pub track_configuration: [u16; 33],
+    pub track_configuration: StringU16_33,
     pub ers_max_j: f32,
     pub is_timed_race: i32,
     pub has_extra_lap: i32,
-    pub car_skin: [u16; 33],
+    pub car_skin: StringU16_33,
     pub reversed_grid_positions: i32,
     pub pit_window_start: i32,
     pub pit_window_end: i32,
@@ -201,5 +250,17 @@ impl AcPhysics {
         } else {
             0.0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ac_struct() {
+        assert_eq!(size_of::<AcGraphics>(), 1320);
+        assert_eq!(size_of::<AcPhysics>(), 596);
+        assert_eq!(size_of::<AcStatic>(), 688);
     }
 }

@@ -6,9 +6,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    let (gfx, phys) = if let (Some(g_mem), Some(p_mem)) = (&app.graphics_mem, &app.physics_mem) {
-        (g_mem.get(), p_mem.get())
-    } else {
+    let Some(mem) = app.mem.as_ref() else {
         let block = Block::default()
             .title(tr("tab_strat", lang))
             .borders(Borders::ALL)
@@ -19,6 +17,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         f.render_widget(text, area);
         return;
     };
+
+    let gfx = mem.ac_graphics;
+    let phys = mem.ac_physics;
 
     let v_layout = Layout::default()
         .direction(Direction::Vertical)

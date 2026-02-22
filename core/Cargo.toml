@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+zerocopy = { workspace = true, features = ["derive"] }
 directories-next = { workspace = true }
 walkdir = { workspace = true }
 rust-ini = { workspace = true }
