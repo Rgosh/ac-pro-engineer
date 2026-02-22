@@ -1,10 +1,28 @@
 [workspace]
+resolver = "2"
 members = ["core", "tui"]
 
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
 authors = ["Rgosh"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+chrono = "0.4"
+crossterm = "0.29.0"
+directories-next = "2.0"
+discord-rich-presence = "0.2"
+ratatui = "0.26"
+serde = "1.0"
+serde_json = "1.0"
+reqwest = "0.11"
+rust-ini = "0.21"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+windows = "0.52"
+walkdir = "2.4"
 
 [workspace.lints.rust]
 unused = { level = "warn", priority = -1 }
