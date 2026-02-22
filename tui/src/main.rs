@@ -27,32 +27,50 @@ use std::{
     time::{Duration, Instant},
 };
 
+use clap::{Parser, ValueEnum};
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
-use tracing::{debug, info, Level};
-use tracing_appender::rolling;
-use tracing_subscriber::FmtSubscriber;
+use tracing::metadata::LevelFilter;
+use tracing::{error, info};
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 
-pub fn setup_logging() -> tracing_appender::non_blocking::WorkerGuard {
-    let log_dir = PathBuf::from("logs");
-    let _ = fs::create_dir_all(&log_dir);
+//noinspection RsReplaceMatchExpr
+pub fn setup_logging(
+    file: Option<&PathBuf>,
+    level: AppLogLevel,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = match file {
+        Some(file) => file,
+        None => &PathBuf::from("logs").with_file_name("ac_engineer.log"),
+    };
 
-    let file_appender = rolling::daily(log_dir, "ac_engineer.log");
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    if let Some(parent) = file.parent() {
+        if let Err(error) = fs::create_dir_all(parent) {
+            error!(error = ?error, "Cannot create log directory");
+        };
+    }
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .with_writer(non_blocking)
-        .with_ansi(false)
-        .with_target(false)
-        .with_file(true)
+    let file = File::create(file)?;
+
+    let debug_log = tracing_subscriber::fmt::layer()
+        .with_writer(file)
         .with_line_number(true)
-        .finish();
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_span_events(FmtSpan::ACTIVE)
+        .with_ansi(false)
+        .compact();
 
-    tracing::subscriber::set_global_default(subscriber).expect("Setting default subscriber failed");
+    tracing_subscriber::registry()
+        .with(debug_log.with_filter(LevelFilter::from(level)))
+        .init();
 
     info!("AC Pro Engineer v0.2.0 Logger Initialized");
-    guard
+    Ok(())
 }
 
 pub trait SafeLock<T> {
@@ -415,8 +433,54 @@ fn set_console_icon() {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct AppArgs {
+    /// Do not write logs into the log
+    #[arg(short, long, conflicts_with = "log-level", conflicts_with = "log")]
+    silent: bool,
+
+    /// Log level
+    #[arg(short, long, id = "log-level", conflicts_with = "silent")]
+    log_level: Option<AppLogLevel>,
+
+    /// Log file
+    #[arg(long, conflicts_with = "silent")]
+    log: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Clone, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum AppLogLevel {
+    Trace,
+    #[cfg_attr(debug_assertions, default)]
+    Debug,
+    #[cfg_attr(not(debug_assertions), default)]
+    Info,
+    Warn,
+    Error,
+}
+
+impl From<AppLogLevel> for tracing::metadata::LevelFilter {
+    fn from(value: AppLogLevel) -> Self {
+        match value {
+            AppLogLevel::Trace => Self::TRACE,
+            AppLogLevel::Debug => Self::DEBUG,
+            AppLogLevel::Info => Self::INFO,
+            AppLogLevel::Warn => Self::WARN,
+            AppLogLevel::Error => Self::ERROR,
+        }
+    }
+}
+
 fn main() -> Result<(), anyhow::Error> {
-    let _log_guard = setup_logging();
+    let args = AppArgs::parse();
+
+    if !args.silent {
+        setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
     info!("Starting application and connecting to telemetry...");
 
     #[cfg(target_os = "windows")]

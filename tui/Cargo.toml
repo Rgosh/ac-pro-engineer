@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 ac_core = { path = "../core" }
+clap = { workspace = true, features = ["derive"] }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
 anyhow = { workspace = true }
@@ -20,7 +21,6 @@ tracing = { workspace = true, features = [
     "release_max_level_info",
 ] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing-appender = { workspace = true }
 
 [target.'cfg(target_os="windows")'.dependencies]
 windows = { workspace = true, features = [
