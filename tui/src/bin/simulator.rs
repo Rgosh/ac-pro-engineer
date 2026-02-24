@@ -8,7 +8,6 @@ use std::mem::size_of;
 use std::thread;
 #[cfg(target_os = "windows")]
 use std::time::{Duration, Instant};
-use tracing::error;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
 #[cfg(target_os = "windows")]
@@ -20,7 +19,10 @@ use windows::Win32::System::Memory::{
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 
 #[cfg(target_os = "windows")]
-fn create_shared_memory(name: &str, size: usize) -> (HANDLE, *mut u8) {
+fn create_shared_memory(
+    name: &str,
+    size: usize,
+) -> Result<(HANDLE, *mut u8), Box<dyn std::error::Error>> {
     use std::os::windows::ffi::OsStrExt;
     let mut wide_name: Vec<u16> = std::ffi::OsStr::new(name).encode_wide().collect();
     wide_name.push(0);
@@ -40,21 +42,21 @@ fn create_shared_memory(name: &str, size: usize) -> (HANDLE, *mut u8) {
         let ptr = mapped_view.Value as *mut u8;
 
         if ptr.is_null() {
-            panic!("Failed to map view of file");
+            return Err("Failed to map view of file".into());
         }
 
-        (handle, ptr)
+        Ok((handle, ptr))
     }
 }
 
 #[cfg(target_os = "windows")]
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== AC PRO ENGINEER: AUTOMATED TELEMETRY SIMULATOR ===");
     println!("Initializing shared memory...");
 
-    let (_h_phys, phys_ptr) = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>());
-    let (_h_gfx, gfx_ptr) = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>());
-    let (_h_stat, stat_ptr) = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>());
+    let (_h_phys, phys_ptr) = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>())?;
+    let (_h_gfx, gfx_ptr) = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>())?;
+    let (_h_stat, stat_ptr) = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>())?;
 
     let phys = phys_ptr as *mut AcPhysics;
     let gfx = gfx_ptr as *mut AcGraphics;
@@ -64,27 +66,9 @@ fn main() {
         (*stat).max_rpm = 9000;
         (*stat).max_fuel = 120.0;
         (*stat).track_spline_length = 7004.0;
-
-        let car_str = "kunos_ferrari_488_gt3";
-        for (i, c) in car_str.encode_utf16().enumerate() {
-            if i < 32 {
-                (*stat).car_model[i] = c;
-            }
-        }
-
-        let track_str = "spa";
-        for (i, c) in track_str.encode_utf16().enumerate() {
-            if i < 32 {
-                (*stat).track[i] = c;
-            }
-        }
-
-        let player_str = "Simulator_User";
-        for (i, c) in player_str.encode_utf16().enumerate() {
-            if i < 32 {
-                (*stat).player_nick[i] = c;
-            }
-        }
+        (*stat).car_model = "kunos_ferrari_488_gt3".into();
+        (*stat).track = "spa".into();
+        (*stat).player_nick = "Simulator_User".into();
     }
 
     println!("Simulation started. Press Ctrl+C to stop.");
@@ -151,7 +135,7 @@ fn main() {
             (*gfx).normalized_car_position = (dist % 7004.0) / 7004.0;
 
             let compound = [0u16; 33];
-            (*gfx).tyre_compound = compound;
+            (*gfx).tyre_compound = compound.into();
 
             (*phys).speed_kmh = speed;
             (*phys).gas = gas;
@@ -222,7 +206,7 @@ fn main() {
                 "\r[SIMULATOR] Mode: {:<20} | Spd: {:>3.0} km/h | Fuel: {:>4.1} L | Lap: {}   ",
                 scenario_name, speed, fuel, lap_count
             );
-            io::stdout().flush().unwrap();
+            io::stdout().flush()?;
         }
 
         thread::sleep(Duration::from_millis(16));
@@ -231,5 +215,5 @@ fn main() {
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
-    error!("Not implemented on this platform.");
+    tracing::error!("Not implemented on this platform.");
 }

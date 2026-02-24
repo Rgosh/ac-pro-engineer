@@ -93,6 +93,24 @@ impl Display for StringU16_33 {
     }
 }
 
+impl From<&str> for StringU16_33 {
+    fn from(value: &str) -> Self {
+        let mut arr = [0u16; 33];
+        for (i, c) in value.encode_utf16().enumerate() {
+            if i < 32 {
+                arr[i] = c;
+            }
+        }
+        Self(arr)
+    }
+}
+
+impl From<[u16; 33]> for StringU16_33 {
+    fn from(value: [u16; 33]) -> Self {
+        Self(value)
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, TryFromBytes)]
 pub struct CarCoordinates([[f32; 3]; 60]);
