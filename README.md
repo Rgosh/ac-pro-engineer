@@ -3,6 +3,7 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/releases)
 [![License](https://img.shields.io/github/license/Rgosh/ac-pro-engineer)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/stargazers)
+[![Linux Badge](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)](#linux-section)
 
 **AC Pro Engineer** is a standalone telemetry and race engineer tool designed for pure performance and utility. Unlike heavy Electron-based overlays, this tool runs in a **Terminal User Interface (TUI)** using Rust for maximum speed and zero lag.
 
@@ -114,4 +115,40 @@ cd ac-pro-engineer
 cargo build --release
 
 cargo build --release
+```
 
+<a name="linux-section"></a>
+
+## ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+
+The tool can show different information from the game by reading the game's shared memory. However, it is not
+possible to directly access a Windows app's shared memory from a Linux app. So for that to work, we need
+a small helper Windows tool [`shm-bridge.exe`](https://github.com/poljar/shm-bridge). This repository contains
+a modified version of the bridge, which can be stopped by entering `exit` from the command line, instead of `Ctrl-C`.
+
+Unlike the native Windows version, `ac_pro_engineer` on Linux **must be** started before the game (`acs.exe`) to create
+the necessary shared memory links. It is not required to start the app before the `Content Manager`.
+
+### Building for Linux
+
+1. Build a Linux verison of `ac_pro_engineer`:
+   ```shell
+   cargo build --bin ac_pro_engineer --release
+   ```
+2. Build a *Windows* version of `shm-bridge.exe`
+   ```shell
+   cargo build --bin shm-bridge --target x86_64-pc-windows-gnu --release
+   ```
+3. Optional. For simplicity, copy both binary files into the same directory:
+   ```shell
+   mkdir bin \
+   && cp target/release/ac_pro_engineer ./bin \
+   && cp target/x86_64-pc-windows-gnu/release/shm-bridge.exe ./bin
+   ```
+
+### Running on Linux
+
+1. Put both `ac_pro_engineer` (Linux version) and `shm-bridge.exe` (Windows version) into the same folder.
+2. Make sure [protontricks](https://github.com/Matoking/protontricks) is installed.
+3. Run `ac_pro_engineer`.
+4. Run the game.

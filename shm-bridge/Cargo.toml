@@ -1,0 +1,24 @@
+[package]
+name = "shm-bridge"
+authors = ["Damir Jelić <poljar@termina.org.uk>", "Maksym Vasylchuk <mvasilchuk@gmail.com>"]
+description = "Shared memory bridge for Wine/Proton and Linux apps."
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "shm-bridge"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+windows = { workspace = true, features = [
+    "Wdk_System_SystemServices",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Memory",
+] }
+
+[lints]
+workspace = true

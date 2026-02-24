@@ -1,3 +1,4 @@
+mod platform;
 mod ui;
 
 use crate::ui::{UIRenderer, UIState};
@@ -545,7 +546,8 @@ impl From<AppLogLevel> for tracing::metadata::LevelFilter {
     }
 }
 
-fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
     let args = AppArgs::parse();
 
     if !args.silent {
@@ -554,6 +556,9 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     info!("Starting application and connecting to telemetry...");
+
+    #[cfg(target_os = "linux")]
+    let _mem_bridge = platform::linux::SharedMemoryBridge::start().await?;
 
     #[cfg(target_os = "windows")]
     set_console_icon();

@@ -16,6 +16,7 @@ crossterm = { workspace = true }
 ratatui = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros", "process"] }
 tracing = { workspace = true, features = [
     "max_level_trace",
     "release_max_level_info",
