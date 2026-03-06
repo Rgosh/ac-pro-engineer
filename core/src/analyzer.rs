@@ -133,6 +133,12 @@ pub struct TelemetryAnalyzer {
 
 pub type Analyzer = TelemetryAnalyzer;
 
+impl Default for TelemetryAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TelemetryAnalyzer {
     pub fn new() -> Self {
         Self {
@@ -510,8 +516,8 @@ impl TelemetryAnalyzer {
                     }
                 };
 
-                let x = g.car_coordinates[0][0];
-                let z = g.car_coordinates[0][2];
+                let x = g.car_coordinates.get(0, 0);
+                let z = g.car_coordinates.get(0, 2);
 
                 if x.abs() > 0.1 || z.abs() > 0.1 {
                     if x < min_x {

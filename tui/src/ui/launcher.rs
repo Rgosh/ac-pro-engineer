@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ac_core::config::Language;
 use ac_core::process::is_process_running;
 use ac_core::updater::UpdateStatus;

@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ac_core::config::{AppConfig, Language, PressureUnit, TempUnit};
 use crossterm::event::KeyCode;
 use ratatui::{prelude::*, widgets::*};
@@ -345,7 +345,7 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .border_style(Style::default().fg(Color::DarkGray))
         .padding(Padding::new(0, 1, 1, 1));
 
-    let categories = vec![
+    let categories = [
         (
             SettingsCategory::System,
             if is_ru { "СИСТЕМА" } else { "SYSTEM" },
@@ -526,17 +526,9 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         (
             tr("auto_save", lang),
             if config.auto_save {
-                if is_ru {
-                    "ВКЛ"
-                } else {
-                    "ON"
-                }
+                if is_ru { "ВКЛ" } else { "ON" }
             } else {
-                if is_ru {
-                    "ВЫКЛ"
-                } else {
-                    "OFF"
-                }
+                if is_ru { "ВЫКЛ" } else { "OFF" }
             }
             .to_string(),
             true,
@@ -549,17 +541,9 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             }
             .to_string(),
             if !config.review_banner_hidden {
-                if is_ru {
-                    "ПОКАЗАТЬ"
-                } else {
-                    "SHOW"
-                }
+                if is_ru { "ПОКАЗАТЬ" } else { "SHOW" }
             } else {
-                if is_ru {
-                    "СКРЫТЬ"
-                } else {
-                    "HIDE"
-                }
+                if is_ru { "СКРЫТЬ" } else { "HIDE" }
             }
             .to_string(),
             true,

@@ -1,4 +1,4 @@
-use crate::ac_structs::{read_ac_string, AcGraphics, AcPhysics};
+use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
@@ -100,6 +100,12 @@ pub struct EngineerStats {
     pub tyre_laps_remaining: [f32; 4],
 }
 
+impl Default for EngineerStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EngineerStats {
     pub fn new() -> Self {
         Self {
@@ -128,6 +134,12 @@ impl EngineerStats {
             last_lap_count: -1,
             tyre_laps_remaining: [99.0; 4],
         }
+    }
+}
+
+impl Default for DrivingStyle {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -176,7 +188,7 @@ impl Engineer {
             self.stats.ffb_clip_frames += 1;
         }
 
-        if self.stats.total_frames % 3 == 0 {
+        if self.stats.total_frames.is_multiple_of(3) {
             let t = self.stats.total_frames as f64;
             self.stats.input_history.push((
                 t,
@@ -210,7 +222,7 @@ impl Engineer {
             self.stats.high_speed_rake = self.stats.high_speed_rake * 0.98 + rake_mm * 0.02;
         }
 
-        let current_laps = gfx.completed_laps as i32;
+        let current_laps = gfx.completed_laps;
         if current_laps != self.stats.last_lap_count {
             if self.stats.last_lap_count == -1 || current_laps == 0 || phys.speed_kmh < 10.0 {
                 self.stats.base_tyre_wear = phys.tyre_wear;
@@ -308,10 +320,10 @@ impl Engineer {
             return true;
         }
 
-        if let Some(last_seen) = self.alert_timers.get(key) {
-            if now.duration_since(*last_seen) < Duration::from_secs_f32(2.0) {
-                return true;
-            }
+        if let Some(last_seen) = self.alert_timers.get(key)
+            && now.duration_since(*last_seen) < Duration::from_secs_f32(2.0)
+        {
+            return true;
         }
         false
     }
@@ -620,7 +632,7 @@ impl Engineer {
     ) {
         let ru = self.is_ru();
 
-        let compound_name = read_ac_string(&gfx.tyre_compound).to_lowercase();
+        let compound_name = gfx.tyre_compound.to_string().to_lowercase();
 
         let (optimal_pressure, tolerance, class_name) = if compound_name.contains("street")
             || compound_name.contains("sport")
@@ -653,17 +665,9 @@ impl Engineer {
                     _ => "",
                 };
                 let action_text = if pressure < optimal_pressure {
-                    if ru {
-                        "Накачать"
-                    } else {
-                        "Inflate"
-                    }
+                    if ru { "Накачать" } else { "Inflate" }
                 } else {
-                    if ru {
-                        "Спустить"
-                    } else {
-                        "Deflate"
-                    }
+                    if ru { "Спустить" } else { "Deflate" }
                 }
                 .to_string();
 

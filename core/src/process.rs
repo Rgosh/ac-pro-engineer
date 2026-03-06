@@ -1,11 +1,15 @@
 #![allow(unsafe_code)]
 
+#[cfg(target_os = "windows")]
 use std::mem::size_of;
+#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+#[cfg(target_os = "windows")]
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 
+#[cfg(target_os = "windows")]
 pub fn is_process_running(target_name: &str) -> bool {
     unsafe {
         let snapshot: HANDLE = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
@@ -45,6 +49,13 @@ pub fn is_process_running(target_name: &str) -> bool {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+#[tracing::instrument(ret, level = "debug")]
+pub fn is_process_running(_target_name: &str) -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
 #[allow(dead_code)]
 pub fn get_process_id(process_name: &str) -> Option<u32> {
     unsafe {

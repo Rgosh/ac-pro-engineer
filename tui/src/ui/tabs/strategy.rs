@@ -1,14 +1,12 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    let (gfx, phys) = if let (Some(g_mem), Some(p_mem)) = (&app.graphics_mem, &app.physics_mem) {
-        (g_mem.get(), p_mem.get())
-    } else {
+    let Some(mem) = app.mem.as_ref() else {
         let block = Block::default()
             .title(tr("tab_strat", lang))
             .borders(Borders::ALL)
@@ -19,6 +17,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         f.render_widget(text, area);
         return;
     };
+
+    let gfx = mem.ac_graphics;
+    let phys = mem.ac_physics;
 
     let v_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -88,16 +89,18 @@ fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let x_max = laps.last().map(|(n, _)| *n).unwrap_or(10.0) + 1.0;
     let x_min = laps.first().map(|(n, _)| *n).unwrap_or(0.0);
 
-    let datasets = vec![Dataset::default()
-        .name(if is_ru {
-            "Время круга"
-        } else {
-            "Lap Time"
-        })
-        .marker(symbols::Marker::Braille)
-        .style(Style::default().fg(Color::Cyan))
-        .graph_type(GraphType::Line)
-        .data(&laps)];
+    let datasets = vec![
+        Dataset::default()
+            .name(if is_ru {
+                "Время круга"
+            } else {
+                "Lap Time"
+            })
+            .marker(symbols::Marker::Braille)
+            .style(Style::default().fg(Color::Cyan))
+            .graph_type(GraphType::Line)
+            .data(&laps),
+    ];
 
     let chart = Chart::new(datasets)
         .block(block)

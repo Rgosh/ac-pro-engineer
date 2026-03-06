@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn get_tyre_color(temp: f32) -> Color {
@@ -74,9 +74,7 @@ pub fn render_tyre_widget(
     app: &AppState,
     label: &str,
 ) {
-    if let Some(phys) = &app.physics_mem {
-        let data = phys.get();
-
+    if let Some(data) = app.ac_physics() {
         let theme = &app.ui_state.theme;
         let block = Block::default()
             .title(label)
@@ -160,9 +158,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         ])
         .split(area);
 
-    if let Some(phys) = &app.physics_mem {
-        let data = phys.get();
-
+    if let Some(data) = app.ac_physics() {
         let speed_block = Block::default()
             .title(tr("lbl_speed", lang))
             .borders(Borders::ALL);

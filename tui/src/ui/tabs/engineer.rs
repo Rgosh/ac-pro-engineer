@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ac_core::analyzer::LapData;
 use ac_core::config::Language;
 use ratatui::{prelude::*, widgets::*};

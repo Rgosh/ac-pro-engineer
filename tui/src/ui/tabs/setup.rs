@@ -1,5 +1,5 @@
-use crate::ui::localization::tr;
 use crate::AppState;
+use crate::ui::localization::tr;
 use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
 

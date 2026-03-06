@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,17 +24,23 @@ pub struct ContentManager {
     pub ac_root: PathBuf,
 }
 
+impl Default for ContentManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContentManager {
     pub fn new() -> Self {
-  
-        let ac_root = Self::detect_ac_root().unwrap_or(PathBuf::from(r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa"));
-        
+        let ac_root = Self::detect_ac_root().unwrap_or(PathBuf::from(
+            r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa",
+        ));
+
         let mut manager = Self {
             cars: Vec::new(),
             ac_root,
         };
-        
-      
+
         manager.scan_cars();
         manager
     }
@@ -58,62 +64,68 @@ impl ContentManager {
 
     pub fn scan_cars(&mut self) {
         let cars_dir = self.ac_root.join("content").join("cars");
-        if !cars_dir.exists() { return; }
+        if !cars_dir.exists() {
+            return;
+        }
 
-      
-        for entry in WalkDir::new(&cars_dir).min_depth(1).max_depth(1).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&cars_dir)
+            .min_depth(1)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if entry.file_type().is_dir() {
                 let car_id = entry.file_name().to_string_lossy().to_string();
                 let ui_path = entry.path().join("ui").join("ui_car.json");
-                
-                if ui_path.exists() {
-                    if let Ok(content) = fs::read_to_string(ui_path) {
-                        if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&content) {
-                            let name = json_val["name"].as_str().unwrap_or("Unknown").to_string();
-                            let brand = json_val["brand"].as_str().unwrap_or("Unknown").to_string();
-                            let desc = json_val["description"].as_str().unwrap_or("").to_string();
-                            let class = json_val["class"].as_str().unwrap_or("street").to_string();
-                            
-                            let (power_s, torque_s, weight_s) = if let Some(specs) = json_val.get("specs") {
-                                (
-                                    specs["bhp"].as_str().unwrap_or("0").to_string(),
-                                    specs["torque"].as_str().unwrap_or("0").to_string(),
-                                    specs["weight"].as_str().unwrap_or("1000").to_string()
-                                )
-                            } else {
-                                ("0".to_string(), "0".to_string(), "1000".to_string())
-                            };
-                            
-                            let power_clean = extract_number(&power_s).unwrap_or(100.0);
-                            let weight_clean = extract_number(&weight_s).unwrap_or(1000.0);
 
-                            self.cars.push(CarSpecs {
-                                id: car_id,
-                                name,
-                                brand,
-                                description: desc,
-                                class,
-                                power: power_s,
-                                torque: torque_s,
-                                weight: weight_s,
-                                year: json_val["year"].as_i64().map(|y| y as i32),
-                                power_hp: power_clean,
-                                weight_kg: weight_clean,
-                            });
-                        }
-                    }
+                if ui_path.exists()
+                    && let Ok(content) = fs::read_to_string(ui_path)
+                    && let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&content)
+                {
+                    let name = json_val["name"].as_str().unwrap_or("Unknown").to_string();
+                    let brand = json_val["brand"].as_str().unwrap_or("Unknown").to_string();
+                    let desc = json_val["description"].as_str().unwrap_or("").to_string();
+                    let class = json_val["class"].as_str().unwrap_or("street").to_string();
+
+                    let (power_s, torque_s, weight_s) = if let Some(specs) = json_val.get("specs") {
+                        (
+                            specs["bhp"].as_str().unwrap_or("0").to_string(),
+                            specs["torque"].as_str().unwrap_or("0").to_string(),
+                            specs["weight"].as_str().unwrap_or("1000").to_string(),
+                        )
+                    } else {
+                        ("0".to_string(), "0".to_string(), "1000".to_string())
+                    };
+
+                    let power_clean = extract_number(&power_s).unwrap_or(100.0);
+                    let weight_clean = extract_number(&weight_s).unwrap_or(1000.0);
+
+                    self.cars.push(CarSpecs {
+                        id: car_id,
+                        name,
+                        brand,
+                        description: desc,
+                        class,
+                        power: power_s,
+                        torque: torque_s,
+                        weight: weight_s,
+                        year: json_val["year"].as_i64().map(|y| y as i32),
+                        power_hp: power_clean,
+                        weight_kg: weight_clean,
+                    });
                 }
             }
         }
     }
-    
+
     pub fn get_car_specs(&self, car_id: &str) -> Option<&CarSpecs> {
         self.cars.iter().find(|c| c.id == car_id)
     }
 }
 
 fn extract_number(s: &str) -> Option<f32> {
-    let num_str: String = s.chars()
+    let num_str: String = s
+        .chars()
         .filter(|c| c.is_ascii_digit() || *c == '.')
         .collect();
     num_str.parse().ok()

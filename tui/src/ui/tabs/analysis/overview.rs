@@ -36,7 +36,7 @@ pub fn render(
     let time_str = format!("{}:{:02}.{:03}", min, sec, ms);
 
     let diff_text = if let Some(best) = best_lap {
-        let diff = lap.lap_time_ms as i32 - best.lap_time_ms as i32;
+        let diff = lap.lap_time_ms - best.lap_time_ms;
         let sign = if diff > 0 { "+" } else { "-" };
         let abs_diff = diff.abs();
         let color = if diff > 0 { Color::Red } else { Color::Green };
@@ -133,45 +133,39 @@ pub fn render(
             Cell::from(format!("{:.3}", lap.sectors[0] as f64 / 1000.0)),
             Cell::from(format!("{:.3}", best_s1 as f64 / 1000.0))
                 .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!(
-                "{:.3}",
-                (lap.sectors[0] as i32 - best_s1 as i32) as f64 / 1000.0
-            ))
-            .style(Style::default().fg(if lap.sectors[0] <= best_s1 {
-                Color::Green
-            } else {
-                Color::Red
-            })),
+            Cell::from(format!("{:.3}", (lap.sectors[0] - best_s1) as f64 / 1000.0)).style(
+                Style::default().fg(if lap.sectors[0] <= best_s1 {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
         ]),
         Row::new(vec![
             Cell::from("S2"),
             Cell::from(format!("{:.3}", lap.sectors[1] as f64 / 1000.0)),
             Cell::from(format!("{:.3}", best_s2 as f64 / 1000.0))
                 .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!(
-                "{:.3}",
-                (lap.sectors[1] as i32 - best_s2 as i32) as f64 / 1000.0
-            ))
-            .style(Style::default().fg(if lap.sectors[1] <= best_s2 {
-                Color::Green
-            } else {
-                Color::Red
-            })),
+            Cell::from(format!("{:.3}", (lap.sectors[1] - best_s2) as f64 / 1000.0)).style(
+                Style::default().fg(if lap.sectors[1] <= best_s2 {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
         ]),
         Row::new(vec![
             Cell::from("S3"),
             Cell::from(format!("{:.3}", lap.sectors[2] as f64 / 1000.0)),
             Cell::from(format!("{:.3}", best_s3 as f64 / 1000.0))
                 .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!(
-                "{:.3}",
-                (lap.sectors[2] as i32 - best_s3 as i32) as f64 / 1000.0
-            ))
-            .style(Style::default().fg(if lap.sectors[2] <= best_s3 {
-                Color::Green
-            } else {
-                Color::Red
-            })),
+            Cell::from(format!("{:.3}", (lap.sectors[2] - best_s3) as f64 / 1000.0)).style(
+                Style::default().fg(if lap.sectors[2] <= best_s3 {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
         ]),
         Row::new(vec![
             Cell::from(if is_ru {
@@ -184,7 +178,7 @@ pub fn render(
                 .style(Style::default().fg(Color::Magenta)),
             Cell::from(format!(
                 "{:.3}",
-                (lap.lap_time_ms as i32 - theoretical_best as i32) as f64 / 1000.0
+                (lap.lap_time_ms - theoretical_best) as f64 / 1000.0
             ))
             .style(Style::default().fg(Color::Yellow)),
         ]),
