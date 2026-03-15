@@ -55,3 +55,12 @@ complexity = { level = "warn", priority = -1 }
 perf = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 panic = "deny"
+
+[profile.release]
+lto = true
+opt-level = 3
+strip = "debuginfo"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
