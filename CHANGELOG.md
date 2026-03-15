@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.0] - Unreleased
+
+### 🚀 New Features & Enhancements
+- **Automated Release Pipeline**: Added `cargo-dist` configuration and a GitHub Actions workflow that builds and publishes Linux and Windows binaries, with shell and PowerShell installers.
+
+---
+
 ## [v0.2.3] - 2026-07-30
 
 ### 🚀 New Features & Enhancements
