@@ -254,6 +254,24 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
             Cell::from(lap.lockup_count.to_string()).style(Style::default().fg(Color::Magenta)),
         ]),
         Row::new(vec![
+            Cell::from(if is_ru {
+                "Скраббинг (Scrub)"
+            } else {
+                "Scrubbing"
+            }),
+            Cell::from(lap.scrubbing_incidents.to_string())
+                .style(Style::default().fg(Color::Yellow)),
+        ]),
+        Row::new(vec![
+            Cell::from(if is_ru {
+                "Перекрут руля"
+            } else {
+                "Over-rotation"
+            }),
+            Cell::from(format!("{:.0}°", lap.max_steering_over_rotation))
+                .style(Style::default().fg(Color::Red)),
+        ]),
+        Row::new(vec![
             Cell::from(if is_ru { "Пик G-Force" } else { "Peak G" }),
             Cell::from(format!("{:.2} G", max_g)).style(Style::default().fg(Color::Cyan)),
         ]),

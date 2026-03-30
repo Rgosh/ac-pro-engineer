@@ -26,22 +26,40 @@ impl SharedMemoryBridge {
 
         let process_handle = tokio::spawn(async move {
             info!("[shm-bridge] Starting bridge process from");
-            let mut child = Command::new("protontricks-launch");
-            let child = child
+
+            let proton_cmd = std::env::var("AC_PROTON_PATH")
+                .unwrap_or_else(|_| "protontricks-launch".to_string());
+            let is_test = std::env::var("AC_TEST_MODE").is_ok();
+
+            let mut child = if is_test {
+                if cfg!(target_os = "windows") {
+                    let mut c = Command::new("cmd");
+                    c.args(["/C", "echo Simulated Proton Execution Started & more"]);
+                    c
+                } else {
+                    let mut c = Command::new("sh");
+                    c.args(["-c", "echo Simulated Proton Execution Started; cat"]);
+                    c
+                }
+            } else {
+                let mut c = Command::new(proton_cmd);
+                c.args([
+                    "--appid",
+                    &GAME_ID.to_string(),
+                    &format!("{pwd}/shm-bridge.exe"),
+                ]);
+                c
+            };
+
+            let mut child = child
                 .envs(std::env::vars())
                 // These envs are required to fix 100% CPU usage by winedevice.exe
                 .env("DBUS_FATAL_WARNINGS", "0")
                 .env("WINEDLLOVERRIDES", "winebus.sys=d")
-                .args([
-                    "--appid",
-                    &GAME_ID.to_string(),
-                    &format!("{pwd}/shm-bridge.exe"),
-                ])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let mut child = child.spawn()?;
+                .stderr(Stdio::piped())
+                .spawn()?;
 
             let stdout = child.stdout.take();
             if let Some(stdout) = stdout {
@@ -73,7 +91,7 @@ impl SharedMemoryBridge {
                     // through Protontricks layer. We cannot send any signal to the bridge
                     // process, because it runs in Wine, and we cannot just kill Protontricks,
                     // or there will be remaining memory files links in /dev/shm.
-                    input.write_all("exit".as_bytes()).await?;
+                    input.write_all("exit\n".as_bytes()).await?;
                     input.flush().await?;
                 }
             }

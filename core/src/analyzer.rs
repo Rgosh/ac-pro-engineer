@@ -66,6 +66,9 @@ pub struct LapData {
     pub lockup_count: i32,
     pub car_control_score: f32,
 
+    pub scrubbing_incidents: i32,
+    pub max_steering_over_rotation: f32,
+
     pub radar_stats: RadarStats,
 
     pub telemetry_trace: Vec<TelemetryPoint>,
@@ -227,6 +230,8 @@ impl TelemetryAnalyzer {
         let mut oversteer_c = 0;
         let mut understeer_c = 0;
         let mut lockup_c = 0;
+        let mut scrubbing_c = 0;
+        let mut max_over_rotation = 0.0_f32;
 
         let mut total_jerk = 0.0;
         let mut prev_acc = 0.0;
@@ -317,6 +322,16 @@ impl TelemetryAnalyzer {
                 }
                 if slip_vals[0].abs() > 0.3 || slip_vals[1].abs() > 0.3 {
                     understeer_c += 1;
+                }
+
+                if p.speed_kmh > 40.0 && p.steer_angle.abs() > 0.15 {
+                    if slip_vals[0] > 0.15 || slip_vals[1] > 0.15 {
+                        scrubbing_c += 1;
+                        let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
+                        if excess > max_over_rotation {
+                            max_over_rotation = excess;
+                        }
+                    }
                 }
             }
 
@@ -617,6 +632,8 @@ impl TelemetryAnalyzer {
             oversteer_count: oversteer_c / 5,
             understeer_count: understeer_c / 5,
             lockup_count: lockup_c / 5,
+            scrubbing_incidents: scrubbing_c / 10,
+            max_steering_over_rotation: max_over_rotation,
             car_control_score: control_score,
             radar_stats: radar,
             telemetry_trace: trace,

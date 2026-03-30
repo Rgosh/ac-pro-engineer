@@ -60,13 +60,10 @@ pub enum WizardProblem {
 pub struct Engineer {
     config: AppConfig,
     history_size: usize,
-
     pub stats: EngineerStats,
     pub driving_style: DrivingStyle,
-
     pub wizard_phase: WizardPhase,
     pub wizard_problem: WizardProblem,
-
     alert_timers: HashMap<String, Instant>,
 }
 
@@ -80,18 +77,15 @@ pub struct EngineerStats {
     pub oversteer_frames: u32,
     pub understeer_frames: u32,
     pub coasting_frames: u32,
+    pub scrubbing_frames: u32,
+    pub current_excess_steer: f32,
     pub total_frames: u32,
-
     pub ffb_clip_frames: u32,
-
     pub input_history: Vec<(f64, f64, f64, f64, f64)>,
-
     pub fuel_laps_remaining: f32,
     pub fuel_consumption_rate: f32,
-
     pub current_delta: f32,
     pub predicted_lap_time: f32,
-
     pub low_speed_rake: f32,
     pub high_speed_rake: f32,
     pub base_tyre_wear: [f32; 4],
@@ -117,16 +111,15 @@ impl EngineerStats {
             oversteer_frames: 0,
             understeer_frames: 0,
             coasting_frames: 0,
+            scrubbing_frames: 0,
+            current_excess_steer: 0.0,
             total_frames: 0,
-
             ffb_clip_frames: 0,
             input_history: Vec::with_capacity(200),
-
             fuel_laps_remaining: 0.0,
             fuel_consumption_rate: 0.0,
             current_delta: 0.0,
             predicted_lap_time: 0.0,
-
             low_speed_rake: 0.0,
             high_speed_rake: 0.0,
             base_tyre_wear: [100.0; 4],
@@ -161,10 +154,8 @@ impl Engineer {
         Self {
             config: config.clone(),
             history_size: 600,
-
             stats: EngineerStats::new(),
             driving_style: DrivingStyle::new(),
-
             wizard_phase: WizardPhase::Entry,
             wizard_problem: WizardProblem::Understeer,
             alert_timers: HashMap::new(),
@@ -215,7 +206,7 @@ impl Engineer {
                 self.stats.low_speed_rake = rake_mm;
             }
             self.stats.low_speed_rake = self.stats.low_speed_rake * 0.98 + rake_mm * 0.02;
-        } else if phys.speed_kmh > 230.0 {
+        } else if phys.speed_kmh > 160.0 {
             if self.stats.high_speed_rake == 0.0 {
                 self.stats.high_speed_rake = rake_mm;
             }
@@ -235,8 +226,9 @@ impl Engineer {
                         let wear_per_lap = wear_used / self.stats.stint_laps as f32;
                         let remaining_wear = phys.tyre_wear[i] - 94.0;
                         if wear_per_lap > 0.001 {
+                            let laps = (remaining_wear / wear_per_lap).max(0.0);
                             self.stats.tyre_laps_remaining[i] =
-                                (remaining_wear / wear_per_lap).max(0.0);
+                                if laps > 500.0 { 500.0 } else { laps };
                         }
                     }
                 }
@@ -265,6 +257,19 @@ impl Engineer {
 
         if phys.speed_kmh > 30.0 && phys.gas < 0.05 && phys.brake < 0.05 {
             self.stats.coasting_frames += 1;
+        }
+
+        if phys.speed_kmh > 40.0 && phys.steer_angle.abs() > 0.15 {
+            if phys.wheel_slip[0] > 0.15 || phys.wheel_slip[1] > 0.15 {
+                self.stats.scrubbing_frames += 1;
+                let excess = (phys.steer_angle.abs() - 0.15) * 57.2958;
+                if excess > self.stats.current_excess_steer {
+                    self.stats.current_excess_steer = excess;
+                }
+            }
+        } else if self.stats.scrubbing_frames > 0 && self.stats.scrubbing_frames < 45 {
+            self.stats.scrubbing_frames = 0;
+            self.stats.current_excess_steer = 0.0;
         }
 
         if gfx.fuel_x_lap > 0.0 {
@@ -309,6 +314,8 @@ impl Engineer {
         self.stats.oversteer_frames = 0;
         self.stats.understeer_frames = 0;
         self.stats.coasting_frames = 0;
+        self.stats.scrubbing_frames = 0;
+        self.stats.current_excess_steer = 0.0;
         self.stats.total_frames = 0;
         self.stats.ffb_clip_frames = 0;
     }
@@ -341,6 +348,7 @@ impl Engineer {
         self.analyze_tyre_wear(phys, &mut recommendations);
 
         self.analyze_camber(phys, setup, &mut recommendations);
+        self.analyze_suspension(phys, &mut recommendations);
         self.analyze_brakes(phys, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
         self.analyze_aero(phys, &mut recommendations);
@@ -363,14 +371,52 @@ impl Engineer {
         recommendations
     }
 
+    fn analyze_suspension(&mut self, _phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+        let ru = self.is_ru();
+        let mut bottoming_detected = false;
+        for i in 0..4 {
+            if self.stats.bottoming_frames[i] > 30 {
+                bottoming_detected = true;
+                break;
+            }
+        }
+        if self.check_hysteresis("bottoming", bottoming_detected) && bottoming_detected {
+            recs.push(Recommendation {
+                component: if ru {
+                    "Подвеска".to_string()
+                } else {
+                    "Suspension".to_string()
+                },
+                category: if ru {
+                    "Пробой".to_string()
+                } else {
+                    "Bottoming".to_string()
+                },
+                severity: Severity::Critical,
+                message: if ru {
+                    "Удары днищем о трассу!".to_string()
+                } else {
+                    "Chassis bottoming out!".to_string()
+                },
+                action: if ru {
+                    "Увеличьте клиренс или жесткость".to_string()
+                } else {
+                    "Increase ride height or stiffness".to_string()
+                },
+                parameters: vec![],
+                confidence: 0.95,
+            });
+        }
+    }
+
     fn analyze_aero(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         if self.stats.high_speed_rake != 0.0
             && self.stats.low_speed_rake != 0.0
-            && phys.speed_kmh > 200.0
+            && phys.speed_kmh > 150.0
         {
             let rake_loss = self.stats.low_speed_rake - self.stats.high_speed_rake;
-            if self.check_hysteresis("aero_rake", rake_loss > 15.0) && rake_loss > 15.0 {
+            if self.check_hysteresis("aero_rake", rake_loss > 10.0) && rake_loss > 10.0 {
                 recs.push(Recommendation {
                     component: if ru {
                         "Аэродинамика".to_string()
@@ -900,9 +946,10 @@ impl Engineer {
 
     fn analyze_tyre_temperature(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let min_temp = 70.0;
+        let max_temp = 105.0;
         let ru = self.is_ru();
 
-        if phys.speed_kmh > 150.0 {
+        if phys.speed_kmh > 100.0 {
             for i in 0..4 {
                 let temp = phys.get_avg_tyre_temp(i);
                 if temp < min_temp {
@@ -924,16 +971,49 @@ impl Engineer {
                         } else {
                             "Temperature".to_string()
                         },
-                        severity: Severity::Critical,
+                        severity: Severity::Warning,
                         message: if ru {
                             format!("{} ХОЛОДНАЯ: {:.0}°C", name, temp)
                         } else {
                             format!("{} COLD: {:.0}°C", name, temp)
                         },
                         action: if ru {
-                            "Греть шины / Аккуратнее".to_string()
+                            "Греть шины".to_string()
                         } else {
-                            "Warm tyres / Careful".to_string()
+                            "Warm tyres".to_string()
+                        },
+                        parameters: vec![],
+                        confidence: 0.95,
+                    });
+                } else if temp > max_temp {
+                    let name = match i {
+                        0 => "FL",
+                        1 => "FR",
+                        2 => "RL",
+                        3 => "RR",
+                        _ => "",
+                    };
+                    recs.push(Recommendation {
+                        component: if ru {
+                            "Шины".to_string()
+                        } else {
+                            "Tyres".to_string()
+                        },
+                        category: if ru {
+                            "Перегрев".to_string()
+                        } else {
+                            "Overheat".to_string()
+                        },
+                        severity: Severity::Critical,
+                        message: if ru {
+                            format!("{} ПЕРЕГРЕВ: {:.0}°C", name, temp)
+                        } else {
+                            format!("{} OVERHEATING: {:.0}°C", name, temp)
+                        },
+                        action: if ru {
+                            "Остудить шины".to_string()
+                        } else {
+                            "Cool tyres".to_string()
                         },
                         parameters: vec![],
                         confidence: 0.95,
@@ -1126,6 +1206,38 @@ impl Engineer {
                 parameters: vec![],
                 confidence: 0.85,
             });
+        }
+
+        let is_scrubbing = self.stats.scrubbing_frames > 45;
+        if self.check_hysteresis("scrubbing", is_scrubbing) && is_scrubbing {
+            let excess = self.stats.current_excess_steer;
+            recs.push(Recommendation {
+                component: if ru {
+                    "Пилотаж".to_string()
+                } else {
+                    "Driving".to_string()
+                },
+                category: if ru {
+                    "Скраббинг".to_string()
+                } else {
+                    "Overdriving".to_string()
+                },
+                severity: Severity::Warning,
+                message: if ru {
+                    format!("Перекрут руля на {:.0}°! Шины скользят.", excess)
+                } else {
+                    format!("Steering over-rotated by {:.0}°! Tyres sliding.", excess)
+                },
+                action: if ru {
+                    format!("Уменьши угол руля на {:.0}°", excess)
+                } else {
+                    format!("Reduce steering angle by {:.0}°", excess)
+                },
+                parameters: vec![],
+                confidence: 0.95,
+            });
+            self.stats.scrubbing_frames = 0;
+            self.stats.current_excess_steer = 0.0;
         }
     }
 

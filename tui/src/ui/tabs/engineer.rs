@@ -446,7 +446,7 @@ fn render_sector_advice(
         let is_oversteering = lap.oversteer_count > lap.understeer_count && lap.oversteer_count > 2;
         let is_understeering =
             lap.understeer_count > lap.oversteer_count && lap.understeer_count > 2;
-        let is_bottoming = false;
+        let is_bottoming = fl_rh < 15.0 || fr_rh < 15.0 || rl_rh < 15.0 || rr_rh < 15.0;
 
         let car_body_style = Style::default().fg(Color::DarkGray);
         let wheel_style = Style::default()

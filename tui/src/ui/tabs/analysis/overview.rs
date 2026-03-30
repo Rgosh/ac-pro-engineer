@@ -490,6 +490,17 @@ pub fn render(
             }),
             Cell::from(format!("{:.2} L", lap.fuel_used)),
         ]),
+        Row::new(vec![
+            Cell::from(if is_ru {
+                "Скраббинг (Ошибки)"
+            } else {
+                "Scrubbing (Errors)"
+            }),
+            Cell::from(format!(
+                "{}x (Max {:.0}°)",
+                lap.scrubbing_incidents, lap.max_steering_over_rotation
+            )),
+        ]),
     ];
     f.render_widget(
         Table::new(

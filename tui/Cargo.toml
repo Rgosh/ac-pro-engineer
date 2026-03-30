@@ -1,8 +1,8 @@
 [package]
 name = "ac_tui"
 description = "Professional telemetry TUI for Assetto Corsa"
-
-version.workspace = true
+version = "0.2.2"
+default-run = "ac_pro_engineer"
 edition.workspace = true
 authors.workspace = true
 
@@ -16,7 +16,12 @@ crossterm = { workspace = true }
 ratatui = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros", "process"] }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "rt",
+    "macros",
+    "process",
+] }
 tracing = { workspace = true, features = [
     "max_level_trace",
     "release_max_level_info",

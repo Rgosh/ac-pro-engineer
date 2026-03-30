@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::io::Read;
 use std::marker::PhantomData;
 use zerocopy::TryFromBytes;
 
@@ -45,7 +46,7 @@ impl<T> SharedMemory<T> {
         if bytes.len() < size {
             return Err(anyhow!("Incorrect buffer size").into());
         }
-        let bytes = bytes[..size].as_bytes();
+        let bytes = &bytes[..size];
         T::try_read_from_bytes(bytes)
             .map_err(|err| anyhow::format_err!("Error converting type: {err:?}").into())
     }

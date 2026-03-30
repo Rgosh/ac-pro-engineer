@@ -1,0 +1,8 @@
+[package]
+name = "tests_suite"
+version = "0.2.2"
+edition = "2021"
+
+[dependencies]
+ac_core = { path = "../core" }
+tokio = { version = "1", features = ["full", "test-util"] }

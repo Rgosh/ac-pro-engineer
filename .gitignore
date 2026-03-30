@@ -1,6 +1,7 @@
 
 /target/
 /debug/
+/releases/
 *.pdb
 *.exe
 
