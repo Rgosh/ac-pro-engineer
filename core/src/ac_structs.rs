@@ -2,6 +2,14 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use zerocopy::TryFromBytes;
 
+/// Compile-time guarantee that these structs still match the Assetto Corsa
+/// shared-memory ABI. A mismatch is a build error, not a test failure.
+const _: () = {
+    assert!(size_of::<AcGraphics>() == 1320);
+    assert!(size_of::<AcPhysics>() == 596);
+    assert!(size_of::<AcStatic>() == 688);
+};
+
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcPhysics {
@@ -270,17 +278,5 @@ impl AcPhysics {
         } else {
             0.0
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ac_struct() {
-        assert_eq!(size_of::<AcGraphics>(), 1320);
-        assert_eq!(size_of::<AcPhysics>(), 596);
-        assert_eq!(size_of::<AcStatic>(), 688);
     }
 }
