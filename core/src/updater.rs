@@ -283,6 +283,9 @@ impl Updater {
                                     }
                                     Err(e) => {
                                         error!("Error reading download stream: {}", e);
+                                        let mut lock =
+                                            status.lock().unwrap_or_else(|e| e.into_inner());
+                                        *lock = UpdateStatus::Error("Download interrupted".to_string());
                                         return;
                                     }
                                 }
