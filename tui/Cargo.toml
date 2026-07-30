@@ -1,7 +1,7 @@
 [package]
 name = "ac_tui"
 description = "Professional telemetry TUI for Assetto Corsa"
-version = "0.2.2"
+version = "0.2.3"
 default-run = "ac_pro_engineer"
 edition.workspace = true
 authors.workspace = true
