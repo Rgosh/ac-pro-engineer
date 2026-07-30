@@ -739,4 +739,43 @@ impl TelemetryAnalyzer {
             advices,
         }
     }
+
+    pub fn predictive_lap_time_ms(&self, current_i_lap_time: i32, current_normalized_pos: f32) -> Option<i32> {
+        if current_normalized_pos > 0.05 && current_normalized_pos < 0.99 && current_i_lap_time > 1000 {
+            let estimated = (current_i_lap_time as f32 / current_normalized_pos) as i32;
+            Some(estimated)
+        } else {
+            None
+        }
+    }
+
+    pub fn theoretical_best_lap_ms(&self) -> Option<i32> {
+        if self.laps.is_empty() {
+            return None;
+        }
+
+        let mut best_s1 = i32::MAX;
+        let mut best_s2 = i32::MAX;
+        let mut best_s3 = i32::MAX;
+
+        for lap in &self.laps {
+            if lap.valid {
+                if lap.sectors[0] > 0 && lap.sectors[0] < best_s1 {
+                    best_s1 = lap.sectors[0];
+                }
+                if lap.sectors[1] > 0 && lap.sectors[1] < best_s2 {
+                    best_s2 = lap.sectors[1];
+                }
+                if lap.sectors[2] > 0 && lap.sectors[2] < best_s3 {
+                    best_s3 = lap.sectors[2];
+                }
+            }
+        }
+
+        if best_s1 != i32::MAX && best_s2 != i32::MAX && best_s3 != i32::MAX {
+            Some(best_s1 + best_s2 + best_s3)
+        } else {
+            None
+        }
+    }
 }
