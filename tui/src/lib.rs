@@ -68,7 +68,10 @@ pub trait SafeLock<T> {
 
 impl<T> SafeLock<T> for Mutex<T> {
     fn safe_lock(&self) -> std::sync::MutexGuard<'_, T> {
-        self.lock().unwrap_or_else(|e| e.into_inner())
+        match self.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
     }
 }
 

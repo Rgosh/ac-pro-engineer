@@ -5,6 +5,7 @@ pub mod content_manager;
 pub mod discord;
 pub mod engineer;
 pub mod memory;
+pub mod overlay;
 pub mod process;
 pub mod records;
 pub mod session_info;

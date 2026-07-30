@@ -1,84 +1,74 @@
 use ac_core::config::Language;
 use ac_core::overlay::OverlayMode;
-use ac_tui::ui::{overlay, UIRenderer};
-use ac_tui::{AppStage, AppState, AppTab};
+use ac_tui::ui::UIRenderer;
+use ac_tui::{AppStage, AppState, AppTab, SafeLock};
+use image::{ImageBuffer, Rgb};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use std::fs;
 use std::path::Path;
 
-fn buffer_to_svg(buffer: &ratatui::buffer::Buffer, width: u16, height: u16, title: &str) -> String {
-    let char_width = 8;
-    let char_height = 16;
-    let svg_w = width as usize * char_width;
-    let svg_h = height as usize * char_height + 30;
+fn buffer_to_png(buffer: &ratatui::buffer::Buffer, width: u16, height: u16, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let char_w = 9u32;
+    let char_h = 18u32;
+    let img_w = (width as u32) * char_w;
+    let img_h = (height as u32) * char_h;
 
-    let mut svg = String::new();
-    svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"background-color: #0f1419; font-family: monospace; font-size: 13px;\">",
-        svg_w, svg_h
-    ));
-    svg.push_str(&format!(
-        "<rect width=\"100%\" height=\"30\" fill=\"#1a202c\"/><text x=\"10\" y=\"20\" fill=\"#6366f1\" font-weight=\"bold\">RaceEngineer TUI Visual Test: {}</text>",
-        title
-    ));
+    let mut imgbuf: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_pixel(img_w, img_h, Rgb([15u8, 20u8, 25u8]));
 
     for y in 0..height {
         for x in 0..width {
             let cell = buffer.get(x, y);
             let ch = cell.symbol();
-            if ch == " " {
+            if ch.is_empty() || ch == " " {
+                let bg_color = match cell.bg {
+                    ratatui::style::Color::DarkGray => Rgb([40u8, 45u8, 55u8]),
+                    ratatui::style::Color::Gray => Rgb([60u8, 65u8, 75u8]),
+                    ratatui::style::Color::Blue => Rgb([30u8, 58u8, 138u8]),
+                    _ => Rgb([15u8, 20u8, 25u8]),
+                };
+                for px in (x as u32 * char_w)..((x as u32 + 1) * char_w) {
+                    for py in (y as u32 * char_h)..((y as u32 + 1) * char_h) {
+                        if px < img_w && py < img_h {
+                            imgbuf.put_pixel(px, py, bg_color);
+                        }
+                    }
+                }
                 continue;
             }
-            let px = x as usize * char_width + 5;
-            let py = y as usize * char_height + 45;
 
             let fg_color = match cell.fg {
-                ratatui::style::Color::Red => "#f87171",
-                ratatui::style::Color::Green => "#4ade80",
-                ratatui::style::Color::Yellow => "#facc15",
-                ratatui::style::Color::Blue => "#60a5fa",
-                ratatui::style::Color::Magenta => "#c084fc",
-                ratatui::style::Color::Cyan => "#38bdf8",
-                ratatui::style::Color::Gray | ratatui::style::Color::DarkGray => "#9ca3af",
-                ratatui::style::Color::White => "#f3f4f6",
-                _ => "#e2e8f0",
+                ratatui::style::Color::Red => Rgb([248u8, 113u8, 113u8]),
+                ratatui::style::Color::Green => Rgb([74u8, 222u8, 128u8]),
+                ratatui::style::Color::Yellow => Rgb([250u8, 204u8, 21u8]),
+                ratatui::style::Color::Blue => Rgb([96u8, 165u8, 250u8]),
+                ratatui::style::Color::Magenta => Rgb([192u8, 132u8, 252u8]),
+                ratatui::style::Color::Cyan => Rgb([56u8, 189u8, 248u8]),
+                ratatui::style::Color::Gray => Rgb([156u8, 163u8, 175u8]),
+                ratatui::style::Color::DarkGray => Rgb([107u8, 114u8, 128u8]),
+                ratatui::style::Color::White => Rgb([243u8, 244u8, 246u8]),
+                _ => Rgb([226u8, 232u8, 240u8]),
             };
 
-            let escaped_ch = match ch {
-                "&" => "&amp;",
-                "<" => "&lt;",
-                ">" => "&gt;",
-                "\"" => "&quot;",
-                "'" => "&apos;",
-                other => other,
-            };
+            let start_x = (x as u32) * char_w;
+            let start_y = (y as u32) * char_h;
 
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" fill=\"{}\">{}</text>",
-                px, py, fg_color, escaped_ch
-            ));
+            for px in (start_x + 1)..(start_x + char_w - 1) {
+                for py in (start_y + 2)..(start_y + char_h - 2) {
+                    if px < img_w && py < img_h {
+                        imgbuf.put_pixel(px, py, fg_color);
+                    }
+                }
+            }
         }
     }
 
-    svg.push_str("</svg>");
-    svg
-}
-
-fn buffer_to_text(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) -> String {
-    let mut text = String::new();
-    for y in 0..height {
-        for x in 0..width {
-            let cell = buffer.get(x, y);
-            text.push_str(cell.symbol());
-        }
-        text.push('\n');
-    }
-    text
+    imgbuf.save(output_path)?;
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting RaceEngineer TUI Menu & Action Test Runner...");
+    println!("Starting English PNG Screenshot Generator...");
 
     let width = 140;
     let height = 40;
@@ -86,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = AppState::new(OverlayMode::External);
+    app.config.language = Language::English;
     let renderer = UIRenderer::new();
 
     let screenshot_dir = Path::new("screenshots");
@@ -93,106 +84,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(screenshot_dir)?;
     }
 
-    // 1. Test Launcher Stage
+    // 1. Launcher.png
     app.stage = AppStage::Launcher;
     terminal.draw(|f| renderer.render(f, &app))?;
-    let svg = buffer_to_svg(terminal.backend().buffer(), width, height, "Launcher");
-    let txt = buffer_to_text(terminal.backend().buffer(), width, height);
-    fs::write(screenshot_dir.join("test_stage_launcher.svg"), svg)?;
-    fs::write(screenshot_dir.join("test_stage_launcher.txt"), txt)?;
-    println!("  [OK] Tested Stage Launcher");
+    buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join("Launcher.png"))?;
+    println!("  [OK] Rendered Launcher.png");
 
-    // 2. Test Running Stage
+    // 2. Main Running Stage (English Only)
     app.stage = AppStage::Running;
 
-    let tabs = [
-        (AppTab::Dashboard, "Dashboard"),
-        (AppTab::Telemetry, "Telemetry"),
-        (AppTab::Engineer, "Engineer"),
-        (AppTab::Setup, "Setup"),
-        (AppTab::Analysis, "Analysis"),
-        (AppTab::Strategy, "Strategy"),
-        (AppTab::Ffb, "FFB_Tuning"),
-        (AppTab::Settings, "Settings"),
-        (AppTab::Guide, "Guide"),
+    let targets = [
+        (AppTab::Dashboard, "Dashboard.png"),
+        (AppTab::Telemetry, "Telemetry.png"),
+        (AppTab::Engineer, "Engineer.png"),
+        (AppTab::Setup, "Setup_1.png"),
+        (AppTab::Analysis, "Analysis.png"),
+        (AppTab::Strategy, "Strategy.png"),
     ];
 
-    // 3. Test All Tabs in English
-    app.config.language = Language::English;
-    for (tab, name) in &tabs {
+    for (tab, filename) in &targets {
         app.active_tab = *tab;
         terminal.draw(|f| renderer.render(f, &app))?;
-        let svg = buffer_to_svg(
-            terminal.backend().buffer(),
-            width,
-            height,
-            &format!("Tab - {} (EN)", name),
-        );
-        let txt = buffer_to_text(terminal.backend().buffer(), width, height);
-        fs::write(
-            screenshot_dir.join(format!("test_tab_{}_en.svg", name.to_lowercase())),
-            svg,
-        )?;
-        fs::write(
-            screenshot_dir.join(format!("test_tab_{}_en.txt", name.to_lowercase())),
-            txt,
-        )?;
-        println!("  [OK] Tested Tab {} (English)", name);
+        buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join(filename))?;
+        println!("  [OK] Rendered {}", filename);
     }
 
-    // 4. Test All Tabs in Russian
-    app.config.language = Language::Russian;
-    for (tab, name) in &tabs {
-        app.active_tab = *tab;
-        terminal.draw(|f| renderer.render(f, &app))?;
-        let svg = buffer_to_svg(
-            terminal.backend().buffer(),
-            width,
-            height,
-            &format!("Tab - {} (RU)", name),
-        );
-        let txt = buffer_to_text(terminal.backend().buffer(), width, height);
-        fs::write(
-            screenshot_dir.join(format!("test_tab_{}_ru.svg", name.to_lowercase())),
-            svg,
-        )?;
-        fs::write(
-            screenshot_dir.join(format!("test_tab_{}_ru.txt", name.to_lowercase())),
-            txt,
-        )?;
-        println!("  [OK] Tested Tab {} (Russian)", name);
-    }
-
-    // 5. Test Overlay Control Center Popup Modal
-    app.show_overlay_menu = true;
-    terminal.draw(|f| {
-        renderer.render(f, &app);
-        overlay::render(f, f.size(), &app);
-    })?;
-    let svg = buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        "Overlay Menu Modal",
-    );
-    let txt = buffer_to_text(terminal.backend().buffer(), width, height);
-    fs::write(screenshot_dir.join("test_modal_overlay_menu.svg"), svg)?;
-    fs::write(screenshot_dir.join("test_modal_overlay_menu.txt"), txt)?;
-    app.show_overlay_menu = false;
-    println!("  [OK] Tested Overlay Menu Modal");
-
-    // 6. Test Help Modal
-    app.show_help = true;
+    // 3. Setup_cloud.png
+    app.active_tab = AppTab::Setup;
+    *app.setup_manager.browser_active.safe_lock() = true;
     terminal.draw(|f| renderer.render(f, &app))?;
-    let svg = buffer_to_svg(terminal.backend().buffer(), width, height, "Help Modal");
-    let txt = buffer_to_text(terminal.backend().buffer(), width, height);
-    fs::write(screenshot_dir.join("test_modal_help.svg"), svg)?;
-    fs::write(screenshot_dir.join("test_modal_help.txt"), txt)?;
-    app.show_help = false;
-    println!("  [OK] Tested Help Modal");
+    buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join("Setup_cloud.png"))?;
+    println!("  [OK] Rendered Setup_cloud.png");
 
-    println!("\nALL TUI MENU & ACTION TESTS PASSED SUCCESSFULLY!");
-    println!("Visual screenshots saved to screenshots/ directory.");
-
+    println!("\nALL ENGLISH PNG SCREENSHOTS GENERATED SUCCESSFULLY!");
     Ok(())
 }

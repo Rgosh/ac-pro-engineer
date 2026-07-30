@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 use std::fs::File;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::AsRawHandle;

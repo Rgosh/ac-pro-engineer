@@ -71,6 +71,8 @@ fn test_04_tyre_wear_extreme_values() {
         let remaining_wear = current_wear[i] - 94.0;
         if wear_per_lap > 0.001 {
             stats.tyre_laps_remaining[i] = (remaining_wear / wear_per_lap).max(0.0);
+        } else {
+            stats.tyre_laps_remaining[i] = 99.0;
         }
     }
     assert_eq!(stats.tyre_laps_remaining[0], 99.0);
@@ -187,6 +189,7 @@ fn test_14_setup_comparison_identical() {
     let engineer = Engineer::new(&get_english_config());
     let setup_a = CarSetup::default();
     let advice = engineer.compare_setups_advice(&setup_a, &setup_a);
+    assert!(!advice.is_empty());
     assert_eq!(advice[0], "No major differences");
 }
 

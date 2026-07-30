@@ -1,7 +1,8 @@
 #[test]
 fn test_tui_01_state_initialization() {
     let initial_tab_index = 0;
-    assert_eq!(initial_tab_index, 0);
+    let expected_index = 0;
+    assert_eq!(initial_tab_index, expected_index);
 }
 
 #[test]
@@ -27,4 +28,5 @@ fn test_tui_04_theme_color_resolution() {
     let critical_color = "Red";
     assert_ne!(success_color, critical_color);
     assert_ne!(warning_color, critical_color);
+    assert_ne!(success_color, warning_color);
 }

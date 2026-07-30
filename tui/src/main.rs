@@ -401,64 +401,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('8') => app_lock.active_tab = AppTab::Settings,
                     KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
                     _ => match app_lock.active_tab {
-                        AppTab::Engineer => {
-                            let is_ru = app_lock.config.language == Language::Russian;
-                            ac_tui::ui::tabs::engineer::handle_input(
-                                &key,
-                                &mut app_lock.engineer,
-                                is_ru,
-                            );
-                        }
-                        AppTab::Setup => {
-                            ac_tui::ui::tabs::setup::handle_input(
-                                &key,
-                                &mut app_lock.setup_manager,
-                                &mut app_lock.engineer,
-                            );
-                        }
-                        AppTab::Strategy => {
-                            ac_tui::ui::tabs::strategy::handle_input(
-                                &key,
-                                &mut app_lock.engineer.strategy,
-                            );
-                        }
-                        AppTab::Ffb => {
-                            ac_tui::ui::tabs::ffb::handle_input(
-                                &key,
-                                &mut app_lock.engineer.ffb,
-                            );
-                        }
                         AppTab::Settings => {
-                            ac_tui::ui::tabs::settings::handle_input(
-                                &key,
-                                &mut app_lock.config,
-                            );
-                            app_lock
-                                .ui_state
-                                .set_theme(app_lock.config.theme.clone());
+                            let AppState { ui_state, config, .. } = &mut *app_lock;
+                            ui_state.settings.handle_input(key.code, config);
                         }
-                        AppTab::Guide => {
-                            let is_ru = app_lock.config.language == Language::Russian;
-                            ac_tui::ui::tabs::guide::handle_input(
-                                &key,
-                                &mut app_lock.ui_state.guide_scroll,
-                                is_ru,
-                            );
-                        }
-                        AppTab::Analysis => {
-                            let is_ru = app_lock.config.language == Language::Russian;
-                            ac_tui::ui::tabs::analysis::handle_input(
-                                &key,
-                                &mut app_lock.ui_state,
-                                is_ru,
-                            );
-
-                            let is_browser = *app_lock.setup_manager.browser_active.safe_lock();
-                            if is_browser {
-                                let mut col = app_lock.setup_manager.browser_focus_col.safe_lock();
-                                *col = if *col == 0 { 1 } else { 0 };
-                            }
-                        }
+                        _ => {}
                     },
                 }
             }
