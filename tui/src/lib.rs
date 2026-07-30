@@ -616,6 +616,11 @@ impl AppState {
         self.is_connected = false;
         self.session_info = SessionInfo::default();
         self.recommendations.clear();
+        self.physics_history.clear();
+        self.graphics_history.clear();
+        self.current_lap_physics.clear();
+        self.current_lap_graphics.clear();
+        self.current_lap_number = -1;
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
