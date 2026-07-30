@@ -1317,3 +1317,57 @@ impl Engineer {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TyreCornerAdjustment {
+    pub corner_name: String,
+    pub current_psi: f32,
+    pub recommended_delta_psi: f32,
+    pub temp_spread_c: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TyrePressureOptimizer {
+    pub corners: [TyreCornerAdjustment; 4],
+}
+
+impl TyrePressureOptimizer {
+    pub fn calculate(phys: &AcPhysics, target_psi: f32) -> Self {
+        let labels = ["FL", "FR", "RL", "RR"];
+        let mut corners = Vec::with_capacity(4);
+
+        for i in 0..4 {
+            let p_psi = phys.wheels_pressure[i];
+            let t_i = phys.tyre_temp_i[i];
+            let t_o = phys.tyre_temp_o[i];
+            let spread = t_i - t_o;
+            let p_delta = target_psi - p_psi;
+
+            let rec_delta = if p_delta.abs() > 0.5 {
+                (p_delta * 10.0).round() / 10.0
+            } else if spread > 12.0 {
+                -0.3
+            } else if spread < -8.0 {
+                0.3
+            } else {
+                0.0
+            };
+
+            corners.push(TyreCornerAdjustment {
+                corner_name: labels[i].to_string(),
+                current_psi: p_psi,
+                recommended_delta_psi: rec_delta,
+                temp_spread_c: spread,
+            });
+        }
+
+        Self {
+            corners: [
+                corners[0].clone(),
+                corners[1].clone(),
+                corners[2].clone(),
+                corners[3].clone(),
+            ],
+        }
+    }
+}
