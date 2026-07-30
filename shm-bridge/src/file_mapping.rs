@@ -18,9 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::{fs::File, os::windows::prelude::AsRawHandle};
-
+use std::fs::File;
 use anyhow::{Context, Result, anyhow};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::prelude::AsRawHandle;
+#[cfg(target_os = "windows")]
 use windows::{
     Wdk::System::SystemServices::PAGE_READWRITE,
     Win32::{
@@ -30,45 +33,21 @@ use windows::{
     core::HSTRING,
 };
 
-/// File-backed named shared memory[1].
-///
-/// This will create named shared memory backed by a file.
-///
-/// The shared memory will be kept alive as long as the [`FileMapping`] object
-/// is allive, dropping it will free the shared memory.
-///
-/// The [`FileMapping`] uses the Windows [`CreateFileMappingW`] function
-/// underneath.
-///
-/// [1]: https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory
+/// File-backed named shared memory.
+#[cfg(target_os = "windows")]
 pub struct FileMapping {
     handle: HANDLE,
 }
 
+#[cfg(target_os = "windows")]
 impl FileMapping {
-    /// Create a new [`FileMapping`], the given file will be used as the backing
-    /// storage.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name the [`FileMapping`] should have, other Windows
-    ///   applications can open the shared memory using this name.
-    ///
-    /// * `file` - The file that should be used as the backing storage of the
-    ///   [`FileMapping`]. The file will be resized to have the correct length.
-    ///
-    /// * `size` - The desiered size the [`FileMapping`] should have, i.e. the
-    ///   number of bytes the [`FileMapping`] should have.
     pub fn new(name: &str, file: &File, size: usize) -> Result<Self> {
-        // Ensure the file is of the correct size.
         file.set_len(size as u64)
             .context("Couldn't set the file size of the FileMapping.")?;
 
         let high_size: u32 = ((size as u64 & 0xFFFF_FFFF_0000_0000_u64) >> 32) as u32;
         let low_size: u32 = (size as u64 & 0xFFFF_FFFF_u64) as u32;
 
-        // Windows uses UTF-16, so we need to convert the UTF-8 based Rust string
-        // accordingly.
         let name = HSTRING::from(name);
         let handle = HANDLE(file.as_raw_handle() as _);
 
@@ -90,9 +69,19 @@ impl FileMapping {
     }
 }
 
+#[cfg(target_os = "windows")]
 impl Drop for FileMapping {
     fn drop(&mut self) {
-        // There's not much we can do if an error happens here, so let's ignore it.
         let _unused = unsafe { CloseHandle(self.handle) };
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub struct FileMapping;
+
+#[cfg(not(target_os = "windows"))]
+impl FileMapping {
+    pub fn new(_name: &str, _file: &File, _size: usize) -> Result<Self> {
+        Err(anyhow!("shm-bridge FileMapping is only supported on Windows/Wine environment"))
     }
 }

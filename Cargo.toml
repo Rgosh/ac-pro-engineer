@@ -1,4 +1,5 @@
 [workspace]
+resolver = "3"
 members = ["core", "tui", "shm-bridge", "tests_suite"]
 
 [workspace.package]
