@@ -81,6 +81,7 @@ struct AppArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    ac_core::crash_logger::init_crash_handler();
     let args = AppArgs::parse();
 
     let overlay_mode = if args.overlay_test_d {

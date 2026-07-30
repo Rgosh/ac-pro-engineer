@@ -2,6 +2,7 @@ pub mod ac_structs;
 pub mod analyzer;
 pub mod config;
 pub mod content_manager;
+pub mod crash_logger;
 pub mod discord;
 pub mod engineer;
 pub mod memory;
