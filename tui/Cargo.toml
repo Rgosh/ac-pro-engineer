@@ -36,6 +36,10 @@ windows = { workspace = true, features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[lib]
+name = "ac_tui"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ac_pro_engineer"
 path = "src/main.rs"
@@ -43,3 +47,7 @@ path = "src/main.rs"
 [[bin]]
 name = "simulator"
 path = "src/bin/simulator.rs"
+
+[[bin]]
+name = "tui_tester"
+path = "src/bin/tui_tester.rs"
