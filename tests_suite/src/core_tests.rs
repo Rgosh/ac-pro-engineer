@@ -318,3 +318,100 @@ fn test_21_localization_russian_wizard() {
     let advice = engineer.get_wizard_advice();
     assert!(advice.contains(&"Уменьшить отбой (Rebound) спереди".to_string()));
 }
+
+#[test]
+fn test_22_tyre_pressure_optimizer() {
+    use ac_core::ac_structs::AcPhysics;
+    use ac_core::engineer::TyrePressureOptimizer;
+
+    let mut phys = AcPhysics::default();
+    phys.wheels_pressure = [26.0, 27.5, 27.5, 27.5];
+    phys.tyre_temp_i = [95.0, 85.0, 85.0, 85.0];
+    phys.tyre_temp_o = [80.0, 85.0, 85.0, 85.0];
+
+    let opt = TyrePressureOptimizer::calculate(&phys, 27.5);
+    assert_eq!(opt.corners[0].corner_name, "FL");
+    assert!(opt.corners[0].recommended_delta_psi > 0.0);
+}
+
+#[test]
+fn test_23_predictive_lap_time_calculation() {
+    use ac_core::analyzer::TelemetryAnalyzer;
+    let analyzer = TelemetryAnalyzer::new();
+    let estimated = analyzer.predictive_lap_time_ms(40000, 0.5);
+    assert_eq!(estimated, Some(80000));
+}
+
+#[test]
+fn test_24_theoretical_best_lap_calculation() {
+    use ac_core::analyzer::{LapData, TelemetryAnalyzer};
+    let mut analyzer = TelemetryAnalyzer::new();
+
+    let mut lap1 = LapData {
+        lap_number: 1,
+        lap_time_ms: 85000,
+        sectors: [25000, 30000, 30000],
+        valid: true,
+        car_model: "test".into(),
+        track_name: "test".into(),
+        save_date: "2026-07-30".into(),
+        from_file: false,
+        air_temp: 20.0,
+        road_temp: 30.0,
+        track_grip: 98.0,
+        timestamp: "12:00".into(),
+        max_speed: 250.0,
+        avg_speed: 200.0,
+        avg_pressure: 27.5,
+        min_corner_speed_avg: 80.0,
+        fuel_used: 2.0,
+        gear_shifts: 30,
+        peak_lat_g: 2.0,
+        peak_brake_g: 3.0,
+        avg_tyre_temp: [85.0; 4],
+        max_brake_temp: [400.0; 4],
+        pressure_deviation: 0.1,
+        suspension_travel_hist: [10.0; 4],
+        avg_wheels_pressure: [27.5; 4],
+        avg_tyre_temp_i: [85.0; 4],
+        avg_tyre_temp_m: [85.0; 4],
+        avg_tyre_temp_o: [85.0; 4],
+        avg_brake_temp: [400.0; 4],
+        avg_ride_height: [30.0; 2],
+        damper_histograms: [[25.0; 4]; 4],
+        throttle_smoothness: 90.0,
+        steering_smoothness: 90.0,
+        trail_braking_score: 85.0,
+        coasting_percent: 5.0,
+        pedal_overlap_percent: 2.0,
+        full_throttle_percent: 60.0,
+        grip_usage_percent: 90.0,
+        oversteer_count: 0,
+        understeer_count: 0,
+        lockup_count: 0,
+        car_control_score: 90.0,
+        scrubbing_incidents: 0,
+        max_steering_over_rotation: 0.0,
+        radar_stats: ac_core::analyzer::RadarStats {
+            consistency: 90.0,
+            car_control: 90.0,
+            aggression: 80.0,
+            smoothness: 90.0,
+            tyre_mgmt: 90.0,
+        },
+        telemetry_trace: vec![],
+        bounds_min_x: 0.0,
+        bounds_max_x: 100.0,
+        bounds_min_y: 0.0,
+        bounds_max_y: 100.0,
+    };
+
+    let mut lap2 = lap1.clone();
+    lap2.sectors = [24000, 31000, 29000];
+
+    analyzer.laps.push(lap1);
+    analyzer.laps.push(lap2);
+
+    let theoretical = analyzer.theoretical_best_lap_ms();
+    assert_eq!(theoretical, Some(24000 + 30000 + 29000));
+}

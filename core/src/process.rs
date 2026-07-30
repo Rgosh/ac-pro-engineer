@@ -50,9 +50,29 @@ pub fn is_process_running(target_name: &str) -> bool {
 }
 
 #[cfg(not(target_os = "windows"))]
-#[tracing::instrument(ret, level = "debug")]
-pub fn is_process_running(_target_name: &str) -> bool {
-    true
+pub fn is_process_running(target_name: &str) -> bool {
+    use std::fs;
+    use std::path::Path;
+
+    if Path::new("/dev/shm/acpmf_physics").exists() {
+        return true;
+    }
+
+    if let Ok(entries) = fs::read_dir("/proc") {
+        for entry in entries.flatten() {
+            let path = entry.path().join("cmdline");
+            if let Ok(cmdline) = fs::read_to_string(path) {
+                let lower = cmdline.to_lowercase();
+                if lower.contains(&target_name.to_lowercase())
+                    || lower.contains("shm-bridge")
+                    || lower.contains("acs.exe")
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 #[cfg(target_os = "windows")]
