@@ -189,8 +189,10 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     if let Some(best_idx) = app.analyzer.best_lap_index {
         let lap = &app.analyzer.laps[best_idx];
 
-        let margin_x = (lap.bounds_max_x - lap.bounds_min_x) * 0.1;
-        let margin_y = (lap.bounds_max_y - lap.bounds_min_y) * 0.1;
+        let diff_x = (lap.bounds_max_x - lap.bounds_min_x).max(1.0);
+        let diff_y = (lap.bounds_max_y - lap.bounds_min_y).max(1.0);
+        let margin_x = diff_x * 0.1;
+        let margin_y = diff_y * 0.1;
 
         let x_bounds = [
             (lap.bounds_min_x - margin_x) as f64,
