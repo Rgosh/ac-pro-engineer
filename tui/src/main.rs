@@ -380,15 +380,18 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('?') => {
                         app_lock.show_help = true;
                     }
-                    KeyCode::Char('q')
+                    KeyCode::Esc
+                    | KeyCode::Char('q')
                     | KeyCode::Char('Q')
                     | KeyCode::Char('й')
                     | KeyCode::Char('Й') => {
                         app_lock.stage = AppStage::Launcher;
-                        app_lock.disconnect();
+                        if !app_lock.is_demo_mode {
+                            app_lock.disconnect();
+                        }
                         continue;
                     }
-                    KeyCode::Char('l') | KeyCode::Char('L') => {
+                    KeyCode::Char('l') | KeyCode::Char('L') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app_lock.config.language = match app_lock.config.language {
                             Language::English => Language::Russian,
                             Language::Russian => Language::English,
@@ -414,6 +417,38 @@ async fn main() -> Result<(), anyhow::Error> {
                         AppTab::Settings => {
                             let AppState { ui_state, config, .. } = &mut *app_lock;
                             ui_state.settings.handle_input(key.code, config);
+                        }
+                        AppTab::Analysis => {
+                            match key.code {
+                                KeyCode::Char('s') | KeyCode::Char('S') => {
+                                    if let Some(best) = app_lock.analyzer.best_lap_index
+                                        && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
+                                    {
+                                        app_lock.ui_state.analysis.save_lap_data(&lap);
+                                    }
+                                }
+                                KeyCode::Char('l') | KeyCode::Char('L') => {
+                                    app_lock.ui_state.analysis.toggle_load_menu();
+                                }
+                                KeyCode::Char('c') | KeyCode::Char('C') => {
+                                    app_lock.ui_state.analysis.toggle_compare();
+                                }
+                                KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
+                                KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
+                                KeyCode::Up => app_lock.ui_state.analysis.menu_up(),
+                                KeyCode::Down => app_lock.ui_state.analysis.menu_down(),
+                                KeyCode::Enter => {
+                                    let AppState { ui_state, analyzer, .. } = &mut *app_lock;
+                                    ui_state.analysis.load_selected_file(analyzer);
+                                }
+                                _ => {}
+                            }
+                        }
+                        AppTab::Setup => {
+                            if key.code == KeyCode::Char('b') || key.code == KeyCode::Char('B') {
+                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
+                                *active = !*active;
+                            }
                         }
                         _ => {}
                     },

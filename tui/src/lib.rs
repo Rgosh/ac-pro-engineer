@@ -293,7 +293,6 @@ impl AppState {
         self.is_demo_mode = true;
         self.is_connected = true;
         self.is_game_running = true;
-        self.stage = AppStage::Running;
 
         let mut sess = SessionInfo::default();
         sess.car_name = "Ferrari SF70H".to_string();
