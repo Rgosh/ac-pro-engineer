@@ -76,7 +76,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 warn("DELTA DISPLAY:"),
                 t("Compares current lap vs your BEST session lap. GREEN = Faster. RED = Slower."),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         1 => (
@@ -96,7 +96,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "If bars max out constantly, increase Bump Stop stiffness (Packer) or ride height.",
                 ),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         2 => (
@@ -127,7 +127,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Brakes transfer heat to the tyre core. Target: 350-500°C."),
                 fix("If >650°C: Open Brake Ducts to prevent fade and tyre cooking."),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         3 => (
@@ -140,7 +140,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Use UP/DOWN to browse setups. Use LEFT/RIGHT to switch cars."),
                 fix("Press [ D ] to inject the setup directly into AC. No restarting required."),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         4 => (
@@ -163,7 +163,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 Line::from(""),
                 t("CONTROLS: [ S ] Save Lap | [ L ] Load Lap | [ C ] Toggle Ghost"),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         5 => (
@@ -182,7 +182,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 ),
                 fix("Short Shift: Shift at lower RPMs to consume less fuel per engine cycle."),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         6 => (
@@ -210,7 +210,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "Trail Braking: You should see the brake trace slowly decrease as G-forces rise in corner entry.",
                 ),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         7 => (
@@ -224,7 +224,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "Note: Lower update rate means less CPU usage, but the UI might feel less smooth.",
                 ),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         8 => (
@@ -236,7 +236,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Use UP/DOWN ARROWS to scroll through the different physics chapters."),
                 t("Press any F-key (F1-F8) to return to live data."),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
         _ => (
@@ -249,7 +249,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 warn("H: Show/Hide this Engineering Assistant"),
                 warn("Q / ESC: Exit safely"),
                 Line::from(""),
-                t("[ PRESS 'H' TO CLOSE ]"),
+                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
         ),
     }

@@ -432,7 +432,7 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                             KeyCode::Down => {
                                 let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                if current < 7 {
+                                if current < 15 {
                                     app_lock.ui_state.setup_list_state.select(Some(current + 1));
                                 }
                             }
