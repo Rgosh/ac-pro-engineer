@@ -1,22 +1,17 @@
 #![allow(unsafe_code)]
 
-#[cfg(target_os = "windows")]
+use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use std::io::{self, Write};
-#[cfg(target_os = "windows")]
 use std::mem::size_of;
-#[cfg(target_os = "windows")]
 use std::thread;
-#[cfg(target_os = "windows")]
 use std::time::{Duration, Instant};
+
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Memory::{
     CreateFileMappingW, FILE_MAP_ALL_ACCESS, MapViewOfFile, PAGE_READWRITE,
 };
-
-#[cfg(target_os = "windows")]
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 
 #[cfg(target_os = "windows")]
 fn create_shared_memory(
@@ -49,14 +44,47 @@ fn create_shared_memory(
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "windows"))]
+fn create_shared_memory(
+    name: &str,
+    size: usize,
+) -> Result<*mut u8, Box<dyn std::error::Error>> {
+    use std::fs::OpenOptions;
+
+    let path = format!("/dev/shm/{}", name.replace("Local\\", ""));
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+
+    file.set_len(size as u64)?;
+
+    let mmap = unsafe { memmap2::MmapMut::map_mut(&file)? };
+    let ptr = mmap.as_ptr() as *mut u8;
+
+    std::mem::forget(mmap);
+    Ok(ptr)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== AC PRO ENGINEER: AUTOMATED TELEMETRY SIMULATOR ===");
     println!("Initializing shared memory...");
 
+    #[cfg(target_os = "windows")]
     let (_h_phys, phys_ptr) = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>())?;
+    #[cfg(target_os = "windows")]
     let (_h_gfx, gfx_ptr) = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>())?;
+    #[cfg(target_os = "windows")]
     let (_h_stat, stat_ptr) = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>())?;
+
+    #[cfg(not(target_os = "windows"))]
+    let phys_ptr = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>())?;
+    #[cfg(not(target_os = "windows"))]
+    let gfx_ptr = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>())?;
+    #[cfg(not(target_os = "windows"))]
+    let stat_ptr = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>())?;
 
     let phys = phys_ptr as *mut AcPhysics;
     let gfx = gfx_ptr as *mut AcGraphics;
@@ -100,120 +128,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "ACCELERATION",
             )
         } else if scenario_timer < 15.0 {
-            (0.0, 1.0, 0.0, 2, 0.0, -1.2, "HEAVY BRAKING")
-        } else if scenario_timer < 25.0 {
-            let s_factor = (scenario_timer - 15.0).sin();
             (
-                0.6,
                 0.0,
-                s_factor * 45.0,
+                0.9,
+                -0.4,
+                2,
+                -1.8,
+                -1.2,
+                "HEAVY BRAKING & TURN-IN",
+            )
+        } else if scenario_timer < 22.0 {
+            (
+                0.4,
+                0.0,
+                0.5,
                 3,
-                s_factor * 1.5,
+                2.2,
                 0.1,
-                "CORNERING",
+                "APEX CORNERING (MAX G)",
             )
         } else {
-            (0.0, 1.0, 10.0, 1, 0.2, -0.8, "ERROR SIMULATION")
+            (
+                0.85,
+                0.0,
+                0.1,
+                5,
+                0.5,
+                0.3,
+                "CORNER EXIT & FULL THROTTLE",
+            )
         };
 
-        if gas > 0.0 {
-            speed += gas * 1.5;
+        if gas > 0.5 {
+            speed = (speed + 2.5).min(285.0);
+        } else if brake > 0.5 {
+            speed = (speed - 4.0).max(60.0);
         }
-        if brake > 0.0 {
-            speed -= brake * 3.0;
+
+        let rpm = (3000.0 + (speed / 300.0) * 5500.0 + (scenario_timer * 100.0).sin() * 200.0) as i32;
+        dist += (speed / 3.6) * 0.016;
+        fuel = (fuel - 0.0005f32).max(0.0f32);
+
+        if lap_elapsed_ms > 120_000 {
+            lap_count += 1;
+            last_lap_time = Instant::now();
         }
-        speed = speed.clamp(0.0, 280.0);
-        dist += speed / 3.6 * 0.016;
 
         unsafe {
-            (*gfx).status = 2;
-            (*gfx).session = 3;
-            (*gfx).completed_laps = lap_count;
-            (*gfx).i_current_time = lap_elapsed_ms;
-            (*gfx).i_last_time = 135000;
-            (*gfx).i_best_time = 134500;
-            (*gfx).normalized_car_position = (dist % 7004.0) / 7004.0;
-
-            let compound = [0u16; 33];
-            (*gfx).tyre_compound = compound.into();
-
-            (*phys).speed_kmh = speed;
+            (*phys).packet_id = (*phys).packet_id.wrapping_add(1);
             (*phys).gas = gas;
             (*phys).brake = brake;
-            (*phys).steer_angle = steer / 360.0;
-            (*phys).gear = gear.min(6);
-            (*phys).rpms = (3000.0 + speed * 20.0).min(9000.0) as i32;
             (*phys).fuel = fuel;
-
+            (*phys).gear = gear;
+            (*phys).rpms = rpm;
+            (*phys).steer_angle = steer;
+            (*phys).speed_kmh = speed;
             (*phys).acc_g = [lat_g, 0.0, lon_g];
 
-            let brake_heat = if brake > 0.0 { 10.0 } else { -2.0 };
-            for i in 0..4 {
-                (*phys).brake_temp[i] = ((*phys).brake_temp[i] + brake_heat).clamp(150.0, 800.0);
-            }
+            let temp_base = 80.0 + (speed / 280.0) * 15.0;
+            (*phys).tyre_temp_i = [temp_base + 3.0, temp_base + 4.0, temp_base + 1.0, temp_base + 2.0];
+            (*phys).tyre_temp_m = [temp_base, temp_base + 1.0, temp_base - 1.0, temp_base];
+            (*phys).tyre_temp_o = [temp_base - 3.0, temp_base - 2.0, temp_base - 4.0, temp_base - 3.0];
+            (*phys).wheels_pressure = [27.4, 27.8, 27.1, 27.3];
+            (*phys).brake_temp = [450.0, 470.0, 380.0, 390.0];
 
-            let aero_squat = (speed / 300.0).powi(2) * 0.030;
-            let brake_dive = if brake > 0.0 { 0.015 } else { 0.0 };
-            let lat_roll = lat_g * 0.010;
-            let base_travel = 0.050;
-
-            (*phys).suspension_travel[0] = base_travel + aero_squat + brake_dive + lat_roll;
-            (*phys).suspension_travel[1] = base_travel + aero_squat + brake_dive - lat_roll;
-            (*phys).suspension_travel[2] = base_travel + aero_squat - (brake_dive * 0.5) + lat_roll;
-            (*phys).suspension_travel[3] = base_travel + aero_squat - (brake_dive * 0.5) - lat_roll;
-
-            (*phys).ride_height[0] = (0.080 - (*phys).suspension_travel[0]).max(0.001_f32);
-            (*phys).ride_height[1] = (0.090 - (*phys).suspension_travel[2]).max(0.001_f32);
-
-            for i in 0..4 {
-                let is_front = i < 2;
-                let is_left = i % 2 == 0;
-                let lat_load = if is_left { -lat_g } else { lat_g };
-
-                let core_t =
-                    80.0 + (speed * 0.05) + (brake * 20.0 * if is_front { 1.0 } else { 0.3 });
-                (*phys).tyre_core_temp[i] = core_t;
-
-                let camber_heat = 5.0;
-                let corner_heat = if lat_load > 0.0 { lat_load * 10.0 } else { 0.0 };
-
-                (*phys).tyre_temp_i[i] = core_t + camber_heat;
-                (*phys).tyre_temp_m[i] = core_t;
-                (*phys).tyre_temp_o[i] = core_t - camber_heat + corner_heat;
-
-                let base_psi = 26.0;
-                let temp_factor = (core_t - 20.0) * 0.1;
-                (*phys).wheels_pressure[i] = base_psi + temp_factor;
-
-                if scenario_timer > 25.0 && brake > 0.5 {
-                    (*phys).wheel_slip[i] = 5.0;
-                    (*phys).wheel_angular_speed[i] = 0.0;
-                } else {
-                    (*phys).wheel_slip[i] = 0.1;
-                    (*phys).wheel_angular_speed[i] = speed / 2.0;
-                }
-            }
-
-            if lap_elapsed_ms > 135000 {
-                last_lap_time = Instant::now();
-                lap_count += 1;
-                fuel -= 2.5;
-            }
+            (*gfx).packet_id = (*gfx).packet_id.wrapping_add(1);
+            (*gfx).status = 2; // AC_LIVE
+            (*gfx).completed_laps = lap_count;
+            (*gfx).position = 1;
+            (*gfx).i_current_time = lap_elapsed_ms;
+            (*gfx).i_last_time = 121452;
+            (*gfx).i_best_time = 120890;
+            (*gfx).session_time_left = (3600.0 - total_elapsed).max(0.0);
+            (*gfx).distance_traveled = dist;
+            (*gfx).surface_grip = 0.98;
         }
 
-        if (total_elapsed * 10.0) as i32 % 10 == 0 {
-            print!(
-                "\r[SIMULATOR] Mode: {:<20} | Spd: {:>3.0} km/h | Fuel: {:>4.1} L | Lap: {}   ",
-                scenario_name, speed, fuel, lap_count
-            );
-            io::stdout().flush()?;
-        }
+        print!(
+            "\r[{:02}:{:02}] Scenario: {:<28} | Spd: {:3.0} km/h | RPM: {:5} | Gear: {} | Fuel: {:4.1}L",
+            (total_elapsed as u32) / 60,
+            (total_elapsed as u32) % 60,
+            scenario_name,
+            speed,
+            rpm,
+            gear,
+            fuel
+        );
+        io::stdout().flush().ok();
 
         thread::sleep(Duration::from_millis(16));
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn main() {
-    tracing::error!("Not implemented on this platform.");
 }

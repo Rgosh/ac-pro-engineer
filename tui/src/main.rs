@@ -377,7 +377,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
 
                 match key.code {
-                    KeyCode::Char('?') => {
+                    KeyCode::Char('?') | KeyCode::Char(',') | KeyCode::F(1) => {
                         app_lock.show_help = true;
                     }
                     KeyCode::Esc
@@ -418,19 +418,39 @@ async fn main() -> Result<(), anyhow::Error> {
                             let AppState { ui_state, config, .. } = &mut *app_lock;
                             ui_state.settings.handle_input(key.code, config);
                         }
+                        AppTab::Engineer => match key.code {
+                            KeyCode::Left => app_lock.ui_state.engineer.prev_tab(),
+                            KeyCode::Right => app_lock.ui_state.engineer.next_tab(),
+                            _ => {}
+                        },
+                        AppTab::Guide => match key.code {
+                            KeyCode::Up => {
+                                let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                                }
+                            }
+                            KeyCode::Down => {
+                                let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                if current < 7 {
+                                    app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                }
+                            }
+                            _ => {}
+                        },
                         AppTab::Analysis => {
                             match key.code {
-                                KeyCode::Char('s') | KeyCode::Char('S') => {
+                                KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char('ы') | KeyCode::Char('Ы') => {
                                     if let Some(best) = app_lock.analyzer.best_lap_index
                                         && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
                                     {
                                         app_lock.ui_state.analysis.save_lap_data(&lap);
                                     }
                                 }
-                                KeyCode::Char('l') | KeyCode::Char('L') => {
+                                KeyCode::Char('l') | KeyCode::Char('L') | KeyCode::Char('д') | KeyCode::Char('Д') => {
                                     app_lock.ui_state.analysis.toggle_load_menu();
                                 }
-                                KeyCode::Char('c') | KeyCode::Char('C') => {
+                                KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Char('с') | KeyCode::Char('С') => {
                                     app_lock.ui_state.analysis.toggle_compare();
                                 }
                                 KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
@@ -445,9 +465,12 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         AppTab::Setup => {
-                            if key.code == KeyCode::Char('b') || key.code == KeyCode::Char('B') {
-                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
-                                *active = !*active;
+                            match key.code {
+                                KeyCode::Char('b') | KeyCode::Char('B') | KeyCode::Char('и') | KeyCode::Char('И') => {
+                                    let mut active = app_lock.setup_manager.browser_active.safe_lock();
+                                    *active = !*active;
+                                }
+                                _ => {}
                             }
                         }
                         _ => {}

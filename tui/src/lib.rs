@@ -313,6 +313,92 @@ impl AppState {
         stat.track = ac_core::ac_structs::StringU16_33::from("monza");
         self.mock_static = Some(stat);
 
+        if self.analyzer.laps.is_empty() {
+            let mut trace_points = Vec::with_capacity(300);
+            for i in 0..300 {
+                let t = i as f32 * 0.05;
+                let spd = 180.0 + (t * 2.0).sin() * 70.0;
+                let px = (t * 0.8).cos() * 150.0;
+                let py = (t * 0.8).sin() * 80.0;
+                trace_points.push(ac_core::analyzer::TelemetryPoint {
+                    time_ms: i * 50,
+                    distance: i as f32 * 10.0,
+                    speed: spd,
+                    gas: 0.9,
+                    brake: 0.0,
+                    steer: (t * 0.8).sin() * 0.4,
+                    gear: 6,
+                    lat_g: (t * 0.8).sin() * 1.5,
+                    lon_g: (t * 1.5).cos() * 1.2,
+                    x: px,
+                    y: py,
+                    slip_avg: 0.02,
+                });
+            }
+
+            let mock_lap = ac_core::analyzer::LapData {
+                lap_number: 5,
+                lap_time_ms: 81452,
+                sectors: [24120, 28350, 28982],
+                valid: true,
+                car_model: "Ferrari SF70H".to_string(),
+                track_name: "Autodromo Nazionale Monza".to_string(),
+                save_date: "2026-07-31".to_string(),
+                from_file: false,
+                air_temp: 22.5,
+                road_temp: 34.0,
+                track_grip: 98.0,
+                timestamp: "14:32:05".to_string(),
+                max_speed: 342.5,
+                avg_speed: 254.2,
+                avg_pressure: 27.4,
+                min_corner_speed_avg: 78.5,
+                fuel_used: 2.85,
+                gear_shifts: 42,
+                peak_lat_g: 2.45,
+                peak_brake_g: 4.85,
+                avg_tyre_temp: [88.5, 87.2, 91.0, 89.4],
+                max_brake_temp: [580.0, 565.0, 490.0, 485.0],
+                pressure_deviation: 0.15,
+                suspension_travel_hist: [12.4, 11.8, 14.2, 13.9],
+                avg_wheels_pressure: [27.4, 27.6, 27.5, 27.3],
+                avg_tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
+                avg_tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
+                avg_tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
+                avg_brake_temp: [450.0, 442.0, 380.0, 375.0],
+                avg_ride_height: [25.0, 55.0],
+                damper_histograms: [[25.0, 35.0, 20.0, 20.0]; 4],
+                throttle_smoothness: 94.2,
+                steering_smoothness: 91.8,
+                trail_braking_score: 88.4,
+                coasting_percent: 4.2,
+                pedal_overlap_percent: 1.1,
+                full_throttle_percent: 68.5,
+                grip_usage_percent: 94.8,
+                oversteer_count: 1,
+                understeer_count: 2,
+                lockup_count: 0,
+                car_control_score: 95.0,
+                scrubbing_incidents: 0,
+                max_steering_over_rotation: 0.0,
+                radar_stats: ac_core::analyzer::RadarStats {
+                    consistency: 94.0,
+                    car_control: 95.0,
+                    aggression: 88.0,
+                    smoothness: 93.0,
+                    tyre_mgmt: 91.0,
+                },
+                telemetry_trace: trace_points,
+                bounds_min_x: -160.0,
+                bounds_max_x: 160.0,
+                bounds_min_y: -90.0,
+                bounds_max_y: 90.0,
+            };
+
+            self.analyzer.laps.push(mock_lap);
+            self.analyzer.best_lap_index = Some(0);
+        }
+
         self.update_demo_tick();
     }
 
