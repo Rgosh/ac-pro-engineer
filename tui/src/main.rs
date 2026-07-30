@@ -77,6 +77,9 @@ struct AppArgs {
 
     #[arg(long = "overlay--test-vr")]
     overlay_test_vr: bool,
+
+    #[arg(short = 'd', long = "demo", help = "Run in live simulation mode with realistic telemetry data")]
+    demo: bool,
 }
 
 #[tokio::main]
@@ -105,6 +108,11 @@ async fn main() -> Result<(), anyhow::Error> {
     #[cfg(target_os = "windows")]
     set_console_icon();
 
+    let mut app = AppState::new(overlay_mode);
+    if args.demo {
+        app.enable_demo_simulation();
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
@@ -118,11 +126,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = AppState::new(overlay_mode);
     let renderer = UIRenderer::new();
 
     'outer: loop {
-        app.stage = AppStage::Launcher;
+        if !args.demo {
+            app.stage = AppStage::Launcher;
+        }
 
         loop {
             let target_frame_time = Duration::from_millis(app.config.update_rate);

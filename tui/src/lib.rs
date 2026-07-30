@@ -220,6 +220,8 @@ pub struct AppState {
     pub mock_physics: Option<AcPhysics>,
     pub mock_graphics: Option<AcGraphics>,
     pub mock_static: Option<AcStatic>,
+    pub is_demo_mode: bool,
+    pub demo_tick_counter: u64,
     pub show_help: bool,
     pub show_overlay_menu: bool,
     pub overlay_menu_selection: usize,
@@ -252,6 +254,8 @@ impl AppState {
             mock_physics: None,
             mock_graphics: None,
             mock_static: None,
+            is_demo_mode: false,
+            demo_tick_counter: 0,
             setup_manager: SetupManager::new(),
             content_manager: ContentManager::new(),
             record_manager: RecordManager::new(),
@@ -285,6 +289,84 @@ impl AppState {
         }
     }
 
+    pub fn enable_demo_simulation(&mut self) {
+        self.is_demo_mode = true;
+        self.is_connected = true;
+        self.is_game_running = true;
+        self.stage = AppStage::Running;
+
+        let mut sess = SessionInfo::default();
+        sess.car_name = "Ferrari SF70H".to_string();
+        sess.track_name = "Autodromo Nazionale Monza".to_string();
+        sess.track_config = "GP".to_string();
+        sess.player_name = "Pro Sim Racer".to_string();
+        sess.session_type = "Practice".to_string();
+        sess.lap_count = 6;
+        sess.session_time_left = 1800.0;
+        sess.max_rpm = 12500;
+        sess.max_fuel = 110.0;
+        self.session_info = sess;
+
+        let mut stat = AcStatic::default();
+        stat.max_rpm = 12500;
+        stat.max_fuel = 110.0;
+        stat.car_model = ac_core::ac_structs::StringU16_33::from("ks_ferrari_sf70h");
+        stat.track = ac_core::ac_structs::StringU16_33::from("monza");
+        self.mock_static = Some(stat);
+
+        self.update_demo_tick();
+    }
+
+    pub fn update_demo_tick(&mut self) {
+        self.demo_tick_counter = self.demo_tick_counter.wrapping_add(1);
+        let t = (self.demo_tick_counter as f32) * 0.05;
+
+        let speed = 180.0 + (t * 1.5).sin() * 90.0;
+        let rpm = (8500.0 + (t * 1.5).sin() * 3200.0) as i32;
+        let gear = ((speed / 45.0) as i32).clamp(1, 7);
+        let gas = (0.5 + (t * 1.2).cos() * 0.5).clamp(0.0, 1.0);
+        let brake = if (t * 1.2).cos() < -0.4 { 0.75 } else { 0.0 };
+        let steer = (t * 0.7).sin() * 0.35;
+        let lat_g = (t * 0.7).sin() * 1.6;
+        let lon_g = (t * 1.2).cos() * 1.3;
+
+        let mut phys = AcPhysics::default();
+        phys.speed_kmh = speed;
+        phys.rpms = rpm;
+        phys.gear = gear;
+        phys.fuel = 34.2;
+        phys.gas = gas;
+        phys.brake = brake;
+        phys.clutch = 0.0;
+        phys.steer_angle = steer;
+        phys.acc_g = [lat_g, 0.0, lon_g];
+        phys.wheels_pressure = [27.4, 27.6, 27.5, 27.3];
+        phys.tyre_temp_i = [89.2 + (t.sin() * 2.0), 88.0, 92.1, 90.5];
+        phys.tyre_temp_m = [86.4 + (t.sin() * 2.0), 85.2, 89.0, 87.8];
+        phys.tyre_temp_o = [82.1 + (t.sin() * 2.0), 81.0, 85.2, 84.0];
+        phys.brake_temp = [450.0 + (t.cos() * 30.0), 442.0, 380.0, 375.0];
+        phys.air_temp = 22.5;
+        phys.road_temp = 34.0;
+        phys.tc = 3.0;
+        phys.abs = 2.0;
+        self.mock_physics = Some(phys);
+
+        let mut gfx = AcGraphics::default();
+        gfx.surface_grip = 0.98;
+        gfx.completed_laps = 5;
+        gfx.i_current_time = ((t * 1000.0) as i32) % 81452;
+        gfx.i_last_time = 81452;
+        gfx.i_best_time = 81452;
+        gfx.position = 2;
+        gfx.fuel_x_lap = 2.85;
+        self.mock_graphics = Some(gfx);
+
+        self.physics_history.push(phys);
+        if self.physics_history.len() > 300 {
+            self.physics_history.remove(0);
+        }
+    }
+
     pub fn ac_graphics(&self) -> Option<&AcGraphics> {
         if let Some(ref mock) = self.mock_graphics {
             Some(mock)
@@ -314,6 +396,11 @@ impl AppState {
         let delta = self.engineer.stats.current_delta;
         self.discord
             .update(self.is_connected, &self.session_info, delta);
+
+        if self.is_demo_mode {
+            self.update_demo_tick();
+            return;
+        }
 
         if self.active_tab == AppTab::Setup {
             let mut tick = self.setup_manager.loading_tick.safe_lock();
