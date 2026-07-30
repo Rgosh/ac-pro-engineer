@@ -246,6 +246,7 @@ impl TelemetryAnalyzer {
         let mut sum_susp_travel = [0.0; 4];
         let mut press_sum = 0.0;
         let mut press_dev_acc = 0.0;
+        let mut pressure_sample_frames = 0_u32;
 
         let mut sum_wheels_pressure = [0.0; 4];
         let mut sum_tyre_temp_i = [0.0; 4];
@@ -264,6 +265,10 @@ impl TelemetryAnalyzer {
         let log_len = physics_log.len() as f32;
 
         for p in physics_log {
+            if p.speed_kmh > 50.0 {
+                pressure_sample_frames += 1;
+            }
+
             let acc = p.acc_g[2];
             total_jerk += (acc - prev_acc).abs();
             prev_acc = acc;
@@ -448,8 +453,9 @@ impl TelemetryAnalyzer {
             sum_susp_travel[3] / safe_div_len,
         ];
 
-        let pressure_deviation = press_dev_acc / (safe_div_len * 4.0);
-        let avg_pressure = press_sum / (safe_div_len * 4.0);
+        let pressure_sample_count = (pressure_sample_frames as f32 * 4.0).max(1.0);
+        let pressure_deviation = press_dev_acc / pressure_sample_count;
+        let avg_pressure = press_sum / pressure_sample_count;
 
         let avg_wheels_pressure = [
             sum_wheels_pressure[0] / safe_div_len,
@@ -777,5 +783,39 @@ impl TelemetryAnalyzer {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TelemetryAnalyzer;
+    use crate::ac_structs::{AcGraphics, AcPhysics};
+
+    #[test]
+    fn pressure_metrics_only_use_high_speed_samples() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let high_speed = AcPhysics {
+            speed_kmh: 120.0,
+            wheels_pressure: [28.0; 4],
+            ..Default::default()
+        };
+        let low_speed = AcPhysics {
+            speed_kmh: 30.0,
+            wheels_pressure: [20.0; 4],
+            ..Default::default()
+        };
+
+        analyzer.process_lap(
+            1,
+            90_000,
+            &[high_speed, low_speed],
+            &[AcGraphics::default()],
+            "test_car".to_string(),
+            "test_track".to_string(),
+        );
+
+        let lap = analyzer.laps.last().expect("lap should be recorded");
+        assert!((lap.avg_pressure - 28.0).abs() < f32::EPSILON);
+        assert!((lap.pressure_deviation - 0.5).abs() < f32::EPSILON);
     }
 }
