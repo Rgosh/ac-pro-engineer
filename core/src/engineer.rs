@@ -162,6 +162,10 @@ impl Engineer {
         }
     }
 
+    pub fn update_config(&mut self, config: &AppConfig) {
+        self.config = config.clone();
+    }
+
     pub fn update(&mut self, phys: &AcPhysics, gfx: &AcGraphics, _session: &SessionInfo) {
         self.update_stats(phys, gfx);
         self.analyze_driving_style(phys);
@@ -224,7 +228,8 @@ impl Engineer {
                     let wear_used = self.stats.base_tyre_wear[i] - phys.tyre_wear[i];
                     if wear_used > 0.0 && self.stats.stint_laps > 0 {
                         let wear_per_lap = wear_used / self.stats.stint_laps as f32;
-                        let remaining_wear = phys.tyre_wear[i] - 94.0;
+                        let replacement_threshold = (self.config.alerts.wear_warning - 2.0).max(0.0);
+                        let remaining_wear = phys.tyre_wear[i] - replacement_threshold;
                         if wear_per_lap > 0.001 {
                             let laps = (remaining_wear / wear_per_lap).max(0.0);
                             self.stats.tyre_laps_remaining[i] =
@@ -680,22 +685,33 @@ impl Engineer {
 
         let compound_name = gfx.tyre_compound.to_string().to_lowercase();
 
-        let (optimal_pressure, tolerance, class_name) = if compound_name.contains("street")
+        let class_name = if compound_name.contains("street")
             || compound_name.contains("sport")
             || compound_name.contains("eco")
             || compound_name.contains("semislick")
         {
-            (32.0, 2.0, "Street")
+            "Street"
         } else if compound_name.contains("wet") || compound_name.contains("rain") {
-            (30.0, 1.5, "Wet")
+            "Wet"
         } else {
-            (27.5, 1.2, "Racing")
+            "Racing"
         };
+        let pressure_min = self
+            .config
+            .alerts
+            .tyre_pressure_min
+            .min(self.config.alerts.tyre_pressure_max);
+        let pressure_max = self
+            .config
+            .alerts
+            .tyre_pressure_min
+            .max(self.config.alerts.tyre_pressure_max);
+        let optimal_pressure = (pressure_min + pressure_max) / 2.0;
 
         for i in 0..4 {
             let pressure = phys.wheels_pressure[i];
             let diff = (pressure - optimal_pressure).abs();
-            let is_error = diff > tolerance;
+            let is_error = pressure < pressure_min || pressure > pressure_max;
 
             let key = format!("pres_{}", i);
             if self.check_hysteresis(&key, is_error) && phys.speed_kmh > 10.0 {
@@ -762,7 +778,8 @@ impl Engineer {
 
         for i in 0..4 {
             let wear = phys.tyre_wear[i];
-            let is_worn = wear < 96.0;
+            let warning_threshold = self.config.alerts.wear_warning;
+            let is_worn = wear < warning_threshold;
 
             if self.check_hysteresis(&format!("wear_{}", i), is_worn) {
                 if !is_worn {
@@ -776,7 +793,7 @@ impl Engineer {
                     3 => "RR",
                     _ => "",
                 };
-                let (severity, msg_en, msg_ru) = if wear < 94.0 {
+                let (severity, msg_en, msg_ru) = if wear < (warning_threshold - 2.0).max(0.0) {
                     (Severity::Critical, "WORN OUT", "ИЗНОС (Крит)")
                 } else {
                     (Severity::Warning, "High Wear", "Сильный износ")
@@ -945,8 +962,8 @@ impl Engineer {
     }
 
     fn analyze_tyre_temperature(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
-        let min_temp = 70.0;
-        let max_temp = 105.0;
+        let min_temp = self.config.alerts.tyre_temp_min.min(self.config.alerts.tyre_temp_max);
+        let max_temp = self.config.alerts.tyre_temp_min.max(self.config.alerts.tyre_temp_max);
         let ru = self.is_ru();
 
         if phys.speed_kmh > 100.0 {
@@ -1024,7 +1041,7 @@ impl Engineer {
     }
 
     fn analyze_brakes(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
-        let max_temp = 750.0;
+        let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
         for i in 0..4 {
             if phys.brake_temp[i] > max_temp {
@@ -1244,7 +1261,9 @@ impl Engineer {
     fn analyze_strategy(&self, phys: &AcPhysics, gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
 
-        if self.stats.fuel_laps_remaining < 2.5 && self.stats.fuel_laps_remaining > 0.0 {
+        if self.stats.fuel_laps_remaining < self.config.alerts.fuel_warning_laps
+            && self.stats.fuel_laps_remaining > 0.0
+        {
             recs.push(Recommendation {
                 component: if ru {
                     "Стратегия".to_string()
@@ -1315,6 +1334,34 @@ impl Engineer {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Engineer;
+    use crate::ac_structs::{AcGraphics, AcPhysics};
+    use crate::config::AppConfig;
+
+    #[test]
+    fn tyre_pressure_alert_uses_updated_configuration() {
+        let mut config = AppConfig::default();
+        config.alerts.tyre_pressure_max = 31.0;
+        let mut engineer = Engineer::new(&config);
+        let physics = AcPhysics {
+            speed_kmh: 60.0,
+            wheels_pressure: [30.0; 4],
+            ..Default::default()
+        };
+        let graphics = AcGraphics::default();
+
+        let recommendations = engineer.analyze_live(&physics, &graphics, None);
+        assert!(!recommendations.iter().any(|rec| rec.category == "Pressure"));
+
+        config.alerts.tyre_pressure_max = 29.0;
+        engineer.update_config(&config);
+        let recommendations = engineer.analyze_live(&physics, &graphics, None);
+        assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
     }
 }
 

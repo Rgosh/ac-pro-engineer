@@ -539,6 +539,7 @@ impl AppState {
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
+        self.engineer.update_config(&self.config);
         self.engineer.update(&phys, &gfx, &self.session_info);
 
         self.overlay_manager.update(&self.session_info);
