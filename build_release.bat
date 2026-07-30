@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set VERSION=v0.2.2
+set VERSION=v0.2.3
 set RELEASE_DIR=releases
 set BUNDLE_NAME=ac_pro_engineer_%VERSION%
 set BUNDLE_DIR=%RELEASE_DIR%\%BUNDLE_NAME%
