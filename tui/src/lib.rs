@@ -217,6 +217,9 @@ pub struct AppState {
     pub show_update_success: bool,
     pub show_first_run_prompt: bool,
     pub first_run_selection: usize,
+    pub mock_physics: Option<AcPhysics>,
+    pub mock_graphics: Option<AcGraphics>,
+    pub mock_static: Option<AcStatic>,
     pub show_help: bool,
     pub show_overlay_menu: bool,
     pub overlay_menu_selection: usize,
@@ -246,6 +249,9 @@ impl AppState {
 
         Self {
             mem: None,
+            mock_physics: None,
+            mock_graphics: None,
+            mock_static: None,
             setup_manager: SetupManager::new(),
             content_manager: ContentManager::new(),
             record_manager: RecordManager::new(),
@@ -280,15 +286,27 @@ impl AppState {
     }
 
     pub fn ac_graphics(&self) -> Option<&AcGraphics> {
-        self.mem.as_ref().map(|mem| &mem.ac_graphics)
+        if let Some(ref mock) = self.mock_graphics {
+            Some(mock)
+        } else {
+            self.mem.as_ref().map(|mem| &mem.ac_graphics)
+        }
     }
 
     pub fn ac_physics(&self) -> Option<&AcPhysics> {
-        self.mem.as_ref().map(|mem| &mem.ac_physics)
+        if let Some(ref mock) = self.mock_physics {
+            Some(mock)
+        } else {
+            self.mem.as_ref().map(|mem| &mem.ac_physics)
+        }
     }
 
     pub fn ac_static(&self) -> Option<&AcStatic> {
-        self.mem.as_ref().map(|mem| &mem.ac_static)
+        if let Some(ref mock) = self.mock_static {
+            Some(mock)
+        } else {
+            self.mem.as_ref().map(|mem| &mem.ac_static)
+        }
     }
 
     pub fn tick(&mut self) {
