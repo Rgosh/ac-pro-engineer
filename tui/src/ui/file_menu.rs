@@ -21,7 +21,7 @@ impl FileMenu {
     pub fn toggle(&mut self) {
         self.active = !self.active;
         if self.active {
-            self.refresh_files();
+            let _ = self.refresh_files();
             if !self.files.is_empty() {
                 self.state.select(Some(0));
             }

@@ -25,7 +25,7 @@ macro_rules! generate_distro_tests {
                 }
 
                 let cmd_string = format!(
-                    "echo [MOCK VM] OS: {}, Launcher: {}, Proton: {}, Prefix: {}",
+                    "echo '[MOCK VM] OS: {}, Launcher: {}, Proton: {}, Prefix: {}'",
                     $distro, $launcher, $proton_bin, $wine_prefix
                 );
 
@@ -51,8 +51,10 @@ macro_rules! generate_distro_tests {
                     tokio::time::timeout(std::time::Duration::from_secs(5), process.wait()).await;
                 assert!(status.is_ok());
 
-                let exit_status = status.unwrap().expect("Failed to get exit status from VM");
-                assert!(exit_status.success() || !exit_status.success());
+                let exit_status = status
+                    .expect("Timeout waiting for mock VM process")
+                    .expect("Failed to get exit status from VM");
+                assert!(exit_status.success());
             }
 
             #[tokio::test]
@@ -78,18 +80,21 @@ macro_rules! generate_distro_tests {
 
             #[tokio::test]
             async fn test_03_env_isolation() {
-                std::env::set_var("AC_PROTON_PATH", $proton_bin);
-                std::env::set_var("AC_TEST_MODE", "1");
+                let env_path_key = format!("AC_PROTON_PATH_{}", stringify!($mod_name));
+                let env_test_key = format!("AC_TEST_MODE_{}", stringify!($mod_name));
 
-                let proton_path = std::env::var("AC_PROTON_PATH")
+                std::env::set_var(&env_path_key, $proton_bin);
+                std::env::set_var(&env_test_key, "1");
+
+                let proton_path = std::env::var(&env_path_key)
                     .unwrap_or_else(|_| "protontricks-launch".to_string());
                 assert_eq!(proton_path, $proton_bin);
 
-                let is_test = std::env::var("AC_TEST_MODE").is_ok();
+                let is_test = std::env::var(&env_test_key).is_ok();
                 assert!(is_test);
 
-                std::env::remove_var("AC_PROTON_PATH");
-                std::env::remove_var("AC_TEST_MODE");
+                std::env::remove_var(&env_path_key);
+                std::env::remove_var(&env_test_key);
             }
         }
     };

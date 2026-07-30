@@ -434,7 +434,7 @@ fn render_header_block(
         if !selected.credits.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled(
-                    if is_ru { "Credits: " } else { "Credits: " },
+                    if is_ru { "Создатели: " } else { "Credits: " },
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(

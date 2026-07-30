@@ -9,6 +9,7 @@ use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
 use ac_core::memory::SharedMemory;
+use ac_core::overlay::{OverlayManager, OverlayMode};
 use ac_core::process::is_process_running;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -39,7 +40,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-//noinspection RsReplaceMatchExpr
 pub fn setup_logging(
     file: Option<&PathBuf>,
     level: AppLogLevel,
@@ -207,13 +207,13 @@ pub struct AppState {
     pub engineer: Engineer,
     pub analyzer: TelemetryAnalyzer,
     pub ui_state: UIState,
+    pub overlay_manager: OverlayManager,
     pub stage: AppStage,
     pub launcher_selection: usize,
     pub is_game_running: bool,
     pub is_connected: bool,
     pub active_tab: AppTab,
     pub session_info: SessionInfo,
-    pub is_gui: bool,
     pub physics_history: Vec<AcPhysics>,
     pub graphics_history: Vec<AcGraphics>,
     pub current_lap_physics: Vec<AcPhysics>,
@@ -227,16 +227,18 @@ pub struct AppState {
     pub show_first_run_prompt: bool,
     pub first_run_selection: usize,
     pub show_help: bool,
+    pub show_overlay_menu: bool,
+    pub overlay_menu_selection: usize,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new(OverlayMode::External)
     }
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(overlay_mode: OverlayMode) -> Self {
         let mut config = AppConfig::load().unwrap_or_default();
         let mut show_success = false;
         let is_first_run = config.last_run_version == "0.0.0" || config.last_run_version.is_empty();
@@ -249,6 +251,8 @@ impl AppState {
             let _res = config.save();
         }
 
+        let overlay_manager = OverlayManager::new(overlay_mode);
+
         Self {
             mem: None,
             setup_manager: SetupManager::new(),
@@ -259,13 +263,13 @@ impl AppState {
             engineer: Engineer::new(&config),
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
+            overlay_manager,
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
-            is_gui: false,
             physics_history: Vec::with_capacity(300),
             graphics_history: Vec::with_capacity(300),
             current_lap_physics: Vec::with_capacity(10000),
@@ -279,6 +283,8 @@ impl AppState {
             show_first_run_prompt: is_first_run,
             first_run_selection: 0,
             show_help: false,
+            show_overlay_menu: false,
+            overlay_menu_selection: 0,
         }
     }
 
@@ -322,6 +328,20 @@ impl AppState {
         }
 
         if !self.is_connected {
+            if self.overlay_manager.mode == OverlayMode::StandaloneTest {
+                let s = &mut self.overlay_manager.state;
+                s.speed_kmh = (s.speed_kmh + 1) % 320;
+                s.rpm = (s.rpm + 75) % 9000;
+                s.gear = (s.speed_kmh / 50) + 1;
+
+                if s.rpm > 8000 {
+                    s.engineer_messages = vec!["SHIFT UP NOW!".to_string()];
+                } else if s.speed_kmh > 280 {
+                    s.engineer_messages = vec!["HEAVY BRAKING AHEAD".to_string()];
+                } else {
+                    s.engineer_messages.clear();
+                }
+            }
             return;
         }
 
@@ -339,6 +359,12 @@ impl AppState {
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
         self.engineer.update(&phys, &gfx, &self.session_info);
+
+        self.overlay_manager.update(&self.session_info);
+        let s = &mut self.overlay_manager.state;
+        s.speed_kmh = phys.speed_kmh as i32;
+        s.gear = phys.gear - 1;
+        s.rpm = phys.rpms;
 
         let completed_laps = gfx.completed_laps;
         if self.current_lap_number == -1 {
@@ -396,6 +422,12 @@ impl AppState {
         self.recommendations = self
             .engineer
             .analyze_live(&phys, &gfx, active_setup.as_ref());
+
+        self.overlay_manager.state.engineer_messages = self
+            .recommendations
+            .iter()
+            .map(|rec| rec.message.clone())
+            .collect();
     }
 
     pub fn disconnect(&mut self) {
@@ -509,17 +541,20 @@ fn set_console_icon() {
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct AppArgs {
-    /// Do not write logs into the log
     #[arg(short, long, conflicts_with = "log-level", conflicts_with = "log")]
     silent: bool,
 
-    /// Log level
     #[arg(short, long, id = "log-level", conflicts_with = "silent")]
     log_level: Option<AppLogLevel>,
 
-    /// Log file
     #[arg(long, conflicts_with = "silent")]
     log: Option<PathBuf>,
+
+    #[arg(long = "overlay--test--d")]
+    overlay_test_d: bool,
+
+    #[arg(long = "overlay--test-vr")]
+    overlay_test_vr: bool,
 }
 
 #[derive(Debug, Default, Clone, ValueEnum)]
@@ -550,6 +585,14 @@ impl From<AppLogLevel> for tracing::metadata::LevelFilter {
 async fn main() -> Result<(), anyhow::Error> {
     let args = AppArgs::parse();
 
+    let overlay_mode = if args.overlay_test_d {
+        OverlayMode::StandaloneTest
+    } else if args.overlay_test_vr {
+        OverlayMode::VR
+    } else {
+        OverlayMode::External
+    };
+
     if !args.silent {
         setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
             .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -576,7 +619,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = AppState::new();
+    let mut app = AppState::new(overlay_mode);
     let renderer = UIRenderer::new();
 
     'outer: loop {
@@ -587,6 +630,9 @@ async fn main() -> Result<(), anyhow::Error> {
             let start = Instant::now();
 
             app.tick();
+
+            app.overlay_manager.render_manual_state();
+
             terminal.draw(|f| renderer.render(f, &app))?;
 
             if event::poll(target_frame_time.saturating_sub(start.elapsed()))?
@@ -678,12 +724,10 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Enter => match app.launcher_selection {
                         0 => {
                             app.stage = AppStage::Running;
-                            app.is_gui = false;
                         }
                         1 => {
                             app.stage = AppStage::Running;
                             app.active_tab = AppTab::Settings;
-                            app.is_gui = false;
                         }
                         2 => {
                             app.config.language = match app.config.language {
@@ -727,7 +771,6 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        let is_gui = app.is_gui;
         let app_arc = Arc::new(Mutex::new(app));
 
         let bg_app = Arc::clone(&app_arc);
@@ -739,35 +782,87 @@ async fn main() -> Result<(), anyhow::Error> {
                     break;
                 }
                 let rate = {
-                    let app_lock = bg_app.lock().unwrap();
+                    let app_lock = bg_app.safe_lock();
                     app_lock.config.update_rate
                 };
                 std::thread::sleep(Duration::from_millis(rate));
-                bg_app.lock().unwrap().tick();
+                bg_app.safe_lock().tick();
             }
         });
 
         loop {
             let rate = {
-                let app_lock = app_arc.lock().unwrap();
+                let app_lock = app_arc.safe_lock();
                 app_lock.config.update_rate
             };
             let start = Instant::now();
 
             {
-                let app_lock = app_arc.lock().unwrap();
-                terminal.draw(|f| renderer.render(f, &app_lock))?;
+                let mut app_lock = app_arc.safe_lock();
+
+                app_lock.overlay_manager.render_manual_state();
+
+                terminal.draw(|f| {
+                    renderer.render(f, &app_lock);
+                    if app_lock.show_overlay_menu {
+                        crate::ui::overlay::render(f, f.size(), &app_lock);
+                    }
+                })?;
             }
 
             if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?
                 && let Event::Key(key) = event::read()?
                 && key.kind == event::KeyEventKind::Press
             {
-                let mut app_lock = app_arc.lock().unwrap();
+                let mut app_lock = app_arc.safe_lock();
 
                 if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                     app_lock.stage = AppStage::Launcher;
                     app_lock.disconnect();
+                    continue;
+                }
+
+                if key.code == KeyCode::F(10) {
+                    if !app_lock.show_overlay_menu {
+                        if !app_lock.overlay_manager.is_active {
+                            app_lock.overlay_manager.set_active(true);
+                        }
+                        app_lock.show_overlay_menu = true;
+                    } else {
+                        app_lock.show_overlay_menu = false;
+                    }
+                    continue;
+                }
+
+                if app_lock.show_overlay_menu {
+                    match key.code {
+                        KeyCode::Up => {
+                            if app_lock.overlay_menu_selection > 0 {
+                                app_lock.overlay_menu_selection -= 1;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if app_lock.overlay_menu_selection < 2 {
+                                app_lock.overlay_menu_selection += 1;
+                            }
+                        }
+                        KeyCode::Enter => match app_lock.overlay_menu_selection {
+                            0 => app_lock.overlay_manager.toggle(),
+                            1 => {
+                                app_lock.overlay_manager.state.show_telemetry =
+                                    !app_lock.overlay_manager.state.show_telemetry
+                            }
+                            2 => {
+                                app_lock.overlay_manager.state.show_engineer =
+                                    !app_lock.overlay_manager.state.show_engineer
+                            }
+                            _ => {}
+                        },
+                        KeyCode::Esc => {
+                            app_lock.show_overlay_menu = false;
+                        }
+                        _ => {}
+                    }
                     continue;
                 }
 
@@ -778,11 +873,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 if app_lock.show_help {
                     app_lock.show_help = false;
-                    continue;
-                }
-
-                if key.code == KeyCode::F(10) {
-                    app_lock.ui_state.overlay_mode = !app_lock.ui_state.overlay_mode;
                     continue;
                 }
 
@@ -1078,17 +1168,17 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
-            let stage = app_arc.lock().unwrap().stage;
+            let stage = app_arc.safe_lock().stage;
             if stage == AppStage::Launcher {
                 let _ = tx.send(());
-                let _ = bg_handle.join();
+                let _unused = bg_handle.join();
                 break;
             }
         }
 
         app = match Arc::try_unwrap(app_arc) {
-            Ok(mutex) => mutex.into_inner().unwrap(),
-            Err(_) => panic!("Failed to unwrap Arc"),
+            Ok(mutex) => mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
+            Err(arc) => std::mem::take(&mut *arc.safe_lock()),
         };
     }
 

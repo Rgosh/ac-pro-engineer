@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::io::Read;
 use std::marker::PhantomData;
 use zerocopy::TryFromBytes;
 
