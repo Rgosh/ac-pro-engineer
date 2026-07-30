@@ -2,268 +2,106 @@ use ac_core::config::Language;
 use ac_core::overlay::OverlayMode;
 use ac_tui::ui::UIRenderer;
 use ac_tui::{AppStage, AppState, AppTab, SafeLock};
-use image::{ImageBuffer, Rgb};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use std::fs;
 use std::path::Path;
 
-fn get_ascii_glyph(c: char) -> [u8; 12] {
-    match c {
-        'A' | 'a' => [0x18, 0x24, 0x42, 0x42, 0x7E, 0x42, 0x42, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'B' | 'b' => [0x7C, 0x42, 0x42, 0x7C, 0x42, 0x42, 0x42, 0x7C, 0x00, 0x00, 0x00, 0x00],
-        'C' | 'c' => [0x3C, 0x42, 0x40, 0x40, 0x40, 0x40, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'D' | 'd' => [0x78, 0x44, 0x42, 0x42, 0x42, 0x42, 0x44, 0x78, 0x00, 0x00, 0x00, 0x00],
-        'E' | 'e' => [0x7E, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00],
-        'F' | 'f' => [0x7E, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x00],
-        'G' | 'g' => [0x3C, 0x42, 0x40, 0x4E, 0x42, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'H' | 'h' => [0x42, 0x42, 0x42, 0x7E, 0x42, 0x42, 0x42, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'I' | 'i' => [0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'J' | 'j' => [0x1E, 0x0C, 0x0C, 0x0C, 0x0C, 0x4C, 0x4C, 0x38, 0x00, 0x00, 0x00, 0x00],
-        'K' | 'k' => [0x44, 0x48, 0x50, 0x60, 0x50, 0x48, 0x44, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'L' | 'l' => [0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00],
-        'M' | 'm' => [0x42, 0x66, 0x5A, 0x42, 0x42, 0x42, 0x42, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'N' | 'n' => [0x42, 0x62, 0x52, 0x4A, 0x46, 0x42, 0x42, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'O' | 'o' => [0x3C, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'P' | 'p' => [0x7C, 0x42, 0x42, 0x7C, 0x40, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x00],
-        'Q' | 'q' => [0x3C, 0x42, 0x42, 0x42, 0x4A, 0x44, 0x42, 0x3D, 0x00, 0x00, 0x00, 0x00],
-        'R' | 'r' => [0x7C, 0x42, 0x42, 0x7C, 0x50, 0x48, 0x44, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'S' | 's' => [0x3C, 0x42, 0x40, 0x3C, 0x02, 0x02, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'T' | 't' => [0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00],
-        'U' | 'u' => [0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        'V' | 'v' => [0x42, 0x42, 0x42, 0x42, 0x42, 0x24, 0x24, 0x18, 0x00, 0x00, 0x00, 0x00],
-        'W' | 'w' => [0x42, 0x42, 0x42, 0x42, 0x42, 0x5A, 0x66, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'X' | 'x' => [0x42, 0x24, 0x18, 0x18, 0x18, 0x24, 0x42, 0x42, 0x00, 0x00, 0x00, 0x00],
-        'Y' | 'y' => [0x42, 0x42, 0x24, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00],
-        'Z' | 'z' => [0x7E, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00],
-        '0' => [0x3C, 0x46, 0x4A, 0x52, 0x62, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        '1' => [0x18, 0x28, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00, 0x00, 0x00, 0x00],
-        '2' => [0x3C, 0x42, 0x02, 0x04, 0x18, 0x20, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00],
-        '3' => [0x3C, 0x42, 0x02, 0x1C, 0x02, 0x02, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        '4' => [0x08, 0x18, 0x28, 0x48, 0x7E, 0x08, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00],
-        '5' => [0x7E, 0x40, 0x7C, 0x02, 0x02, 0x02, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        '6' => [0x1C, 0x20, 0x40, 0x7C, 0x42, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        '7' => [0x7E, 0x02, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00],
-        '8' => [0x3C, 0x42, 0x42, 0x3C, 0x42, 0x42, 0x42, 0x3C, 0x00, 0x00, 0x00, 0x00],
-        '9' => [0x3C, 0x42, 0x42, 0x3E, 0x02, 0x02, 0x04, 0x38, 0x00, 0x00, 0x00, 0x00],
-        ':' => [0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00],
-        ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x08, 0x10, 0x00, 0x00, 0x00],
-        '-' => [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '+' => [0x00, 0x18, 0x18, 0x7E, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '=' => [0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '%' => [0x62, 0x64, 0x08, 0x10, 0x26, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '(' => [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00],
-        ')' => [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '[' => [0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00],
-        ']' => [0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '/' => [0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '\\' => [0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '|' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00],
-        '!' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '?' => [0x3C, 0x42, 0x04, 0x08, 0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '#' => [0x24, 0x24, 0x7E, 0x24, 0x7E, 0x24, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '*' => [0x00, 0x24, 0x18, 0x7E, 0x18, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        '@' => [0x3C, 0x42, 0x5A, 0x5A, 0x5C, 0x40, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00],
-        _ => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-    }
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
-fn buffer_to_png(buffer: &ratatui::buffer::Buffer, width: u16, height: u16, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let char_w = 9u32;
-    let char_h = 18u32;
+fn buffer_to_svg(
+    buffer: &ratatui::buffer::Buffer,
+    width: u16,
+    height: u16,
+    output_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let char_w = 10u32;
+    let char_h = 20u32;
+    let font_size = 14u32;
     let img_w = (width as u32) * char_w;
     let img_h = (height as u32) * char_h;
 
-    let mut imgbuf: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_pixel(img_w, img_h, Rgb([15u8, 20u8, 25u8]));
+    let mut svg = String::with_capacity(64 * 1024);
+    svg.push_str(&format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}" style="background-color: #0f1419; font-family: 'Consolas', 'Fira Code', 'DejaVu Sans Mono', monospace; font-size: {}px;">"#,
+        img_w, img_h, img_w, img_h, font_size
+    ));
+    svg.push('\n');
 
+    // 1. Draw Cell Backgrounds
+    for y in 0..height {
+        for x in 0..width {
+            let cell = buffer.get(x, y);
+            let bg_color = match cell.bg {
+                ratatui::style::Color::DarkGray => "#282d37",
+                ratatui::style::Color::Gray => "#3c414b",
+                ratatui::style::Color::Blue => "#1e3a8a",
+                ratatui::style::Color::Red => "#991b1b",
+                ratatui::style::Color::Green => "#166534",
+                ratatui::style::Color::Yellow => "#854d0e",
+                ratatui::style::Color::Cyan => "#155e75",
+                ratatui::style::Color::Magenta => "#701a75",
+                _ => continue,
+            };
+
+            let px = (x as u32) * char_w;
+            let py = (y as u32) * char_h;
+            svg.push_str(&format!(
+                r#"  <rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+                px, py, char_w, char_h, bg_color
+            ));
+            svg.push('\n');
+        }
+    }
+
+    // 2. Draw Cell Text Glyphs
     for y in 0..height {
         for x in 0..width {
             let cell = buffer.get(x, y);
             let symbol = cell.symbol();
-
-            let bg_color = match cell.bg {
-                ratatui::style::Color::DarkGray => Rgb([40u8, 45u8, 55u8]),
-                ratatui::style::Color::Gray => Rgb([60u8, 65u8, 75u8]),
-                ratatui::style::Color::Blue => Rgb([30u8, 58u8, 138u8]),
-                _ => Rgb([15u8, 20u8, 25u8]),
-            };
-
-            let fg_color = match cell.fg {
-                ratatui::style::Color::Red => Rgb([248u8, 113u8, 113u8]),
-                ratatui::style::Color::Green => Rgb([74u8, 222u8, 128u8]),
-                ratatui::style::Color::Yellow => Rgb([250u8, 204u8, 21u8]),
-                ratatui::style::Color::Blue => Rgb([96u8, 165u8, 250u8]),
-                ratatui::style::Color::Magenta => Rgb([192u8, 132u8, 252u8]),
-                ratatui::style::Color::Cyan => Rgb([56u8, 189u8, 248u8]),
-                ratatui::style::Color::Gray => Rgb([156u8, 163u8, 175u8]),
-                ratatui::style::Color::DarkGray => Rgb([107u8, 114u8, 128u8]),
-                ratatui::style::Color::White => Rgb([243u8, 244u8, 246u8]),
-                _ => Rgb([226u8, 232u8, 240u8]),
-            };
-
-            let start_x = (x as u32) * char_w;
-            let start_y = (y as u32) * char_h;
-
-            // 1. Draw cell background
-            for px in start_x..(start_x + char_w) {
-                for py in start_y..(start_y + char_h) {
-                    if px < img_w && py < img_h {
-                        imgbuf.put_pixel(px, py, bg_color);
-                    }
-                }
-            }
-
             if symbol.is_empty() || symbol == " " {
                 continue;
             }
 
-            let first_char = symbol.chars().next().unwrap_or(' ');
+            let fg_color = match cell.fg {
+                ratatui::style::Color::Red => "#f87171",
+                ratatui::style::Color::Green => "#4ade80",
+                ratatui::style::Color::Yellow => "#facc15",
+                ratatui::style::Color::Blue => "#60a5fa",
+                ratatui::style::Color::Magenta => "#c084fc",
+                ratatui::style::Color::Cyan => "#38bdf8",
+                ratatui::style::Color::Gray => "#9ca3af",
+                ratatui::style::Color::DarkGray => "#6b7280",
+                ratatui::style::Color::White => "#f3f4f6",
+                _ => "#e2e8f0",
+            };
 
-            // 2. Box drawing characters & block characters
-            match first_char {
-                '─' | '═' => {
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..(start_x + char_w) {
-                        if px < img_w && mid_y < img_h {
-                            imgbuf.put_pixel(px, mid_y, fg_color);
-                            imgbuf.put_pixel(px, mid_y + 1, fg_color);
-                        }
-                    }
-                }
-                '│' | '║' => {
-                    let mid_x = start_x + char_w / 2;
-                    for py in start_y..(start_y + char_h) {
-                        if mid_x < img_w && py < img_h {
-                            imgbuf.put_pixel(mid_x, py, fg_color);
-                            imgbuf.put_pixel(mid_x + 1, py, fg_color);
-                        }
-                    }
-                }
-                '┌' | '╔' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in mid_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in mid_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '┐' | '╗' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..=mid_x {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in mid_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '└' | '╚' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in mid_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in start_y..=mid_y {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '┘' | '╝' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..=mid_x {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in start_y..=mid_y {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '├' | '╠' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for py in start_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                    for px in mid_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                }
-                '┤' | '╣' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for py in start_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                    for px in start_x..=mid_x {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                }
-                '┬' | '╦' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in mid_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '┴' | '╩' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in start_y..=mid_y {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '┼' | '╬' => {
-                    let mid_x = start_x + char_w / 2;
-                    let mid_y = start_y + char_h / 2;
-                    for px in start_x..(start_x + char_w) {
-                        imgbuf.put_pixel(px, mid_y, fg_color);
-                    }
-                    for py in start_y..(start_y + char_h) {
-                        imgbuf.put_pixel(mid_x, py, fg_color);
-                    }
-                }
-                '█' => {
-                    for px in start_x..(start_x + char_w) {
-                        for py in start_y..(start_y + char_h) {
-                            if px < img_w && py < img_h {
-                                imgbuf.put_pixel(px, py, fg_color);
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    // Standard ASCII text glyph
-                    let glyph = get_ascii_glyph(first_char);
-                    for (row_idx, &row_byte) in glyph.iter().enumerate() {
-                        for col_idx in 0..8 {
-                            if (row_byte & (1 << (7 - col_idx))) != 0 {
-                                let px = start_x + (col_idx as u32) + 1;
-                                let py = start_y + (row_idx as u32) + 3;
-                                if px < img_w && py < img_h {
-                                    imgbuf.put_pixel(px, py, fg_color);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let px = (x as u32) * char_w + 1;
+            let py = (y as u32) * char_h + 15;
+
+            let escaped = escape_xml(symbol);
+            svg.push_str(&format!(
+                r#"  <text x="{}" y="{}" fill="{}">{}</text>"#,
+                px, py, fg_color, escaped
+            ));
+            svg.push('\n');
         }
     }
 
-    imgbuf.save(output_path)?;
+    svg.push_str("</svg>\n");
+
+    fs::write(output_path, svg)?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting English PNG Screenshot Generator (Text Glyph Rasterizer)...");
+    println!("Starting SVG Vector Screenshot Generator (14 target screens)...");
 
     let width = 140;
     let height = 40;
@@ -279,38 +117,93 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(screenshot_dir)?;
     }
 
-    // 1. Launcher.png
+    // 1. Launcher.svg
     app.stage = AppStage::Launcher;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join("Launcher.png"))?;
-    println!("  [OK] Rendered Launcher.png");
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Launcher.svg"),
+    )?;
+    println!("  [1/14] Rendered Launcher.svg");
 
-    // 2. Main Running Stage (English Only)
+    // 2. Main Running Stage
     app.stage = AppStage::Running;
 
     let targets = [
-        (AppTab::Dashboard, "Dashboard.png"),
-        (AppTab::Telemetry, "Telemetry.png"),
-        (AppTab::Engineer, "Engineer.png"),
-        (AppTab::Setup, "Setup_1.png"),
-        (AppTab::Analysis, "Analysis.png"),
-        (AppTab::Strategy, "Strategy.png"),
+        (AppTab::Dashboard, "Dashboard.svg"),
+        (AppTab::Telemetry, "Telemetry.svg"),
+        (AppTab::Engineer, "Engineer.svg"),
+        (AppTab::Setup, "Setup_1.svg"),
+        (AppTab::Analysis, "Analysis_Overview.svg"),
+        (AppTab::Strategy, "Strategy.svg"),
+        (AppTab::Ffb, "FFB_Tuning.svg"),
+        (AppTab::Settings, "Settings.svg"),
+        (AppTab::Guide, "Guide.svg"),
     ];
 
     for (tab, filename) in &targets {
         app.active_tab = *tab;
         terminal.draw(|f| renderer.render(f, &app))?;
-        buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join(filename))?;
+        buffer_to_svg(
+            terminal.backend().buffer(),
+            width,
+            height,
+            &screenshot_dir.join(filename),
+        )?;
         println!("  [OK] Rendered {}", filename);
     }
 
-    // 3. Setup_cloud.png
+    // 3. Setup_cloud.svg
     app.active_tab = AppTab::Setup;
     *app.setup_manager.browser_active.safe_lock() = true;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_png(terminal.backend().buffer(), width, height, &screenshot_dir.join("Setup_cloud.png"))?;
-    println!("  [OK] Rendered Setup_cloud.png");
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Setup_cloud.svg"),
+    )?;
+    *app.setup_manager.browser_active.safe_lock() = false;
+    println!("  [OK] Rendered Setup_cloud.svg");
 
-    println!("\nALL ENGLISH PNG SCREENSHOTS GENERATED WITH CRISP TEXT GLYPHS!");
+    // 4. Analysis_Radar.svg
+    app.active_tab = AppTab::Analysis;
+    app.ui_state.analysis.next_tab();
+    terminal.draw(|f| renderer.render(f, &app))?;
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Analysis_Radar.svg"),
+    )?;
+    println!("  [OK] Rendered Analysis_Radar.svg");
+
+    // 5. Help_Modal.svg
+    app.ui_state.show_help = true;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Help_Modal.svg"),
+    )?;
+    app.ui_state.show_help = false;
+    println!("  [OK] Rendered Help_Modal.svg");
+
+    // 6. Overlay_Control.svg
+    app.ui_state.overlay_mode = true;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Overlay_Control.svg"),
+    )?;
+    app.ui_state.overlay_mode = false;
+    println!("  [OK] Rendered Overlay_Control.svg");
+
+    println!("\nALL 14 VECTOR SVG SCREENSHOTS GENERATED SUCCESSFULLY!");
     Ok(())
 }
