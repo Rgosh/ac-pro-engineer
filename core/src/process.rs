@@ -52,27 +52,32 @@ pub fn is_process_running(target_name: &str) -> bool {
 #[cfg(not(target_os = "windows"))]
 pub fn is_process_running(target_name: &str) -> bool {
     use std::fs;
-    use std::path::Path;
 
-    if Path::new("/dev/shm/acpmf_physics").exists() {
-        return true;
-    }
-
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
+    let target_lower = target_name.to_lowercase();
+    let is_proc_alive = if let Ok(entries) = fs::read_dir("/proc") {
+        entries.flatten().any(|entry| {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
                 let lower = cmdline.to_lowercase();
-                if lower.contains(&target_name.to_lowercase())
-                    || lower.contains("shm-bridge")
+                lower.contains(&target_lower)
                     || lower.contains("acs.exe")
-                {
-                    return true;
-                }
+                    || lower.contains("assetto corsa")
+                    || lower.contains("shm-bridge")
+                    || lower.contains("shm_bridge")
+                    || lower.contains("simulator")
+            } else {
+                false
             }
-        }
+        })
+    } else {
+        false
+    };
+
+    if !is_proc_alive {
+        return false;
     }
-    false
+
+    std::path::Path::new("/dev/shm/acpmf_physics").exists() || is_proc_alive
 }
 
 #[cfg(target_os = "windows")]
@@ -113,5 +118,16 @@ pub fn get_process_id(process_name: &str) -> Option<u32> {
         }
         let _res = CloseHandle(snapshot);
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_non_existent_process_returns_false() {
+        let running = is_process_running("non_existent_process_xyz_9999");
+        assert!(!running);
     }
 }
