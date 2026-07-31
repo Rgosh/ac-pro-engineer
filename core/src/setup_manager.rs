@@ -319,6 +319,8 @@ pub struct SetupManager {
 
     pub fetch_state: Arc<Mutex<FetchState>>,
     pub last_status: Arc<Mutex<String>>,
+    pub shutdown_flag: Arc<std::sync::atomic::AtomicBool>,
+    pub bg_thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
 
 trait SafeLock<T> {
@@ -338,7 +340,27 @@ impl Default for SetupManager {
 }
 
 impl SetupManager {
+    pub fn shutdown(&self) {
+        self.shutdown_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut lock) = self.bg_thread.lock() {
+            if let Some(handle) = lock.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+}
+
+impl Drop for SetupManager {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+impl SetupManager {
     pub fn new() -> Self {
+        let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let bg_thread_slot = Arc::new(Mutex::new(None));
+
         let manager = Self {
             setups: Arc::new(Mutex::new(Vec::new())),
             current_car: Arc::new(Mutex::new(String::new())),
@@ -357,6 +379,9 @@ impl SetupManager {
 
             fetch_state: Arc::new(Mutex::new(FetchState::Idle)),
             last_status: Arc::new(Mutex::new(String::new())),
+
+            shutdown_flag: shutdown.clone(),
+            bg_thread: bg_thread_slot.clone(),
         };
 
         let setups_clone = manager.setups.clone();
@@ -365,7 +390,9 @@ impl SetupManager {
         let fetch_state_clone = manager.fetch_state.clone();
         let manifest_clone = manager.manifest.clone();
 
-        thread::spawn(move || {
+        let shutdown_loop = shutdown.clone();
+
+        let handle = thread::spawn(move || {
             let mut last_car = String::new();
             let mut last_track = String::new();
 
@@ -374,6 +401,10 @@ impl SetupManager {
             }
 
             loop {
+                if shutdown_loop.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+
                 let is_empty = manifest_clone.safe_lock().is_empty();
                 if is_empty {
                     if let Ok(m) = fetch_manifest() {
@@ -468,9 +499,17 @@ impl SetupManager {
 
                     *setups_clone.safe_lock() = all_setups;
                 }
-                thread::sleep(Duration::from_millis(500));
+
+                for _ in 0..10 {
+                    if shutdown_loop.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                }
             }
         });
+
+        *bg_thread_slot.safe_lock() = Some(handle);
 
         manager
     }
@@ -1022,5 +1061,17 @@ mod tests {
         } else {
             panic!("Expected FetchState::Failed");
         }
+    }
+
+    #[test]
+    fn test_setup_manager_shutdown_joins_background_thread() {
+        let mgr = SetupManager::new();
+        assert!(mgr.bg_thread.safe_lock().is_some());
+        assert!(!mgr.shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
+
+        mgr.shutdown();
+
+        assert!(mgr.shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(mgr.bg_thread.safe_lock().is_none());
     }
 }
