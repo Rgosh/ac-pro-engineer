@@ -5,6 +5,7 @@ use crate::ui::{UIRenderer, UIState};
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
 use ac_core::config::{AppConfig, Language};
+use ac_core::RingBuffer;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
@@ -205,8 +206,8 @@ pub struct AppState {
     pub is_connected: bool,
     pub active_tab: AppTab,
     pub session_info: SessionInfo,
-    pub physics_history: Vec<AcPhysics>,
-    pub graphics_history: Vec<AcGraphics>,
+    pub physics_history: RingBuffer<AcPhysics>,
+    pub graphics_history: RingBuffer<AcGraphics>,
     pub current_lap_physics: Vec<AcPhysics>,
     pub current_lap_graphics: Vec<AcGraphics>,
     pub current_lap_number: i32,
@@ -271,8 +272,8 @@ impl AppState {
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
-            physics_history: Vec::with_capacity(300),
-            graphics_history: Vec::with_capacity(300),
+            physics_history: RingBuffer::new(config.history_size),
+            graphics_history: RingBuffer::new(config.history_size),
             current_lap_physics: Vec::with_capacity(10000),
             current_lap_graphics: Vec::with_capacity(10000),
             current_lap_number: -1,
@@ -727,13 +728,14 @@ impl AppState {
         Ok(())
     }
 
+    pub fn apply_config(&mut self) {
+        let cap = self.config.history_size;
+        self.physics_history.set_capacity(cap);
+        self.graphics_history.set_capacity(cap);
+        self.engineer.update_config(&self.config);
+    }
+
     pub fn update_live_buffers(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
-        if self.physics_history.len() >= 300 {
-            self.physics_history.remove(0);
-        }
-        if self.graphics_history.len() >= 300 {
-            self.graphics_history.remove(0);
-        }
         self.physics_history.push(*phys);
         self.graphics_history.push(*gfx);
     }

@@ -498,3 +498,37 @@ fn test_33_session_timing_format_mm_ss() {
     let formatted2 = SessionTiming::format_time_left_ms(65_500.0);
     assert_eq!(formatted2, "1:05");
 }
+
+#[test]
+fn test_34_ring_buffer_history_size_dynamic_reconfiguration() {
+    use ac_core::RingBuffer;
+
+    // 1. Initial capacity 50
+    let mut buf = RingBuffer::new(50);
+    for i in 0..100 {
+        buf.push(i);
+    }
+    assert_eq!(buf.capacity(), 50);
+    assert_eq!(buf.len(), 50);
+    assert_eq!(buf[0], 50);
+    assert_eq!(buf[49], 99);
+
+    // 2. Expand capacity to 5000 (like high history_size setting)
+    buf.set_capacity(5000);
+    assert_eq!(buf.capacity(), 5000);
+    assert_eq!(buf.len(), 50); // existing 50 items preserved
+    for i in 100..600 {
+        buf.push(i);
+    }
+    assert_eq!(buf.len(), 550);
+    assert_eq!(buf[0], 50);
+    assert_eq!(buf[549], 599);
+
+    // 3. Shrink capacity to 300 on the fly
+    buf.set_capacity(300);
+    assert_eq!(buf.capacity(), 300);
+    assert_eq!(buf.len(), 300);
+    // Newest 300 items preserved (300..600)
+    assert_eq!(buf[0], 300);
+    assert_eq!(buf[299], 599);
+}

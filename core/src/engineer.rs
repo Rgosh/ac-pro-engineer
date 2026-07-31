@@ -81,7 +81,7 @@ pub struct EngineerStats {
     pub current_excess_steer: f32,
     pub total_frames: u32,
     pub ffb_clip_frames: u32,
-    pub input_history: Vec<(f64, f64, f64, f64, f64)>,
+    pub input_history: crate::RingBuffer<(f64, f64, f64, f64, f64)>,
     pub fuel_laps_remaining: f32,
     pub fuel_consumption_rate: f32,
     pub current_delta: f32,
@@ -115,7 +115,7 @@ impl EngineerStats {
             current_excess_steer: 0.0,
             total_frames: 0,
             ffb_clip_frames: 0,
-            input_history: Vec::with_capacity(200),
+            input_history: crate::RingBuffer::new(300),
             fuel_laps_remaining: 0.0,
             fuel_consumption_rate: 0.0,
             current_delta: 0.0,
@@ -164,6 +164,7 @@ impl Engineer {
 
     pub fn update_config(&mut self, config: &AppConfig) {
         self.config = config.clone();
+        self.stats.input_history.set_capacity(config.history_size);
     }
 
     pub fn update(&mut self, phys: &AcPhysics, gfx: &AcGraphics, _session: &SessionInfo) {
@@ -192,9 +193,6 @@ impl Engineer {
                 phys.brake as f64,
                 phys.final_ff as f64,
             ));
-            if self.stats.input_history.len() > 200 {
-                self.stats.input_history.remove(0);
-            }
         }
 
         for i in 0..4 {

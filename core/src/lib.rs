@@ -9,6 +9,9 @@ pub mod memory;
 pub mod overlay;
 pub mod process;
 pub mod records;
+pub mod ring_buffer;
 pub mod session_info;
 pub mod setup_manager;
 pub mod updater;
+
+pub use ring_buffer::RingBuffer;

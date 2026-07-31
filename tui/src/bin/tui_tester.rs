@@ -228,7 +228,9 @@ fn create_populated_app_state() -> AppState {
             slip_avg: 0.02,
         });
     }
-    app.physics_history = history;
+    for p in history {
+        app.physics_history.push(p);
+    }
 
     // Lap Data for Analysis
     let mock_lap = LapData {
