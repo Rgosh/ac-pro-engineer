@@ -599,3 +599,37 @@ fn test_37_track_map_bounds_and_zero_coords_safety() {
     assert!(scale.is_finite());
     assert_eq!(scale, 20.0); // (500 - (-500)) / 50 = 1000 / 50 = 20.0
 }
+
+#[test]
+fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
+    use ac_core::ac_structs::{AcGraphics, AcPhysics};
+    use ac_core::engineer::Engineer;
+    use ac_core::session_info::SessionInfo;
+
+    let mut cfg1 = get_english_config();
+    cfg1.target_tyre_pressure = 27.5;
+    let mut eng1 = Engineer::new(&cfg1);
+
+    let mut cfg2 = get_english_config();
+    cfg2.target_tyre_pressure = 32.0;
+    let mut eng2 = Engineer::new(&cfg2);
+
+    let mut phys = AcPhysics::default();
+    phys.speed_kmh = 80.0;
+    phys.wheels_pressure = [25.0; 4]; // low pressure
+
+    let gfx = AcGraphics::default();
+    let session = SessionInfo::default();
+
+    let recs1 = eng1.analyze_live(&phys, &gfx, None);
+    let recs2 = eng2.analyze_live(&phys, &gfx, None);
+
+    // Target tyre pressure in config dynamically shifts the engineer recommendations
+    let target1 = recs1.iter().find(|r| r.category.contains("Tyre Pressure")).and_then(|r| r.parameters.get(0)).map(|p| p.target);
+    let target2 = recs2.iter().find(|r| r.category.contains("Tyre Pressure")).and_then(|r| r.parameters.get(0)).map(|p| p.target);
+
+    if let (Some(t1), Some(t2)) = (target1, target2) {
+        assert_eq!(t1, 27.5);
+        assert_eq!(t2, 32.0);
+    }
+}

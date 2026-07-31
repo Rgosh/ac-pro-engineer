@@ -707,7 +707,11 @@ impl Engineer {
             .alerts
             .tyre_pressure_min
             .max(self.config.alerts.tyre_pressure_max);
-        let optimal_pressure = (pressure_min + pressure_max) / 2.0;
+        let optimal_pressure = if self.config.target_tyre_pressure > 0.0 {
+            self.config.target_tyre_pressure
+        } else {
+            (pressure_min + pressure_max) / 2.0
+        };
 
         for i in 0..4 {
             let pressure = phys.wheels_pressure[i];
@@ -1299,7 +1303,7 @@ impl Engineer {
             );
 
             if laps_remaining_in_race > 0.0 {
-                let fuel_needed = laps_remaining_in_race * gfx.fuel_x_lap;
+                let fuel_needed = (laps_remaining_in_race * gfx.fuel_x_lap) + self.config.fuel_safety_margin;
                 let fuel_diff = phys.fuel - fuel_needed;
 
                 if fuel_diff < -1.0 {
