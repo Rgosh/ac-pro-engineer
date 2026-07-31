@@ -289,7 +289,18 @@ pub struct ManifestItem {
     pub authors: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum FetchState {
+    Idle,
+    Loading,
+    Ready,
+    Failed {
+        error: String,
+        retry_at: std::time::Instant,
+        attempts: u32,
+    },
+}
+
 pub struct SetupManager {
     pub setups: Arc<Mutex<Vec<CarSetup>>>,
     pub current_car: Arc<Mutex<String>>,
@@ -306,7 +317,7 @@ pub struct SetupManager {
     pub details_scroll: Arc<Mutex<usize>>,
     pub loading_tick: Arc<Mutex<usize>>,
 
-    pub server_fetch_done: Arc<Mutex<bool>>,
+    pub fetch_state: Arc<Mutex<FetchState>>,
     pub last_status: Arc<Mutex<String>>,
 }
 
@@ -344,29 +355,30 @@ impl SetupManager {
             details_scroll: Arc::new(Mutex::new(0)),
             loading_tick: Arc::new(Mutex::new(0)),
 
-            server_fetch_done: Arc::new(Mutex::new(false)),
+            fetch_state: Arc::new(Mutex::new(FetchState::Idle)),
             last_status: Arc::new(Mutex::new(String::new())),
         };
 
         let setups_clone = manager.setups.clone();
         let car_clone = manager.current_car.clone();
         let track_clone = manager.current_track.clone();
-        let fetch_flag = manager.server_fetch_done.clone();
+        let fetch_state_clone = manager.fetch_state.clone();
         let manifest_clone = manager.manifest.clone();
 
         thread::spawn(move || {
             let mut last_car = String::new();
             let mut last_track = String::new();
 
-            if let Some(m) = fetch_manifest() {
+            if let Ok(m) = fetch_manifest() {
                 *manifest_clone.safe_lock() = m;
             }
 
             loop {
                 let is_empty = manifest_clone.safe_lock().is_empty();
-
-                if is_empty && let Some(m) = fetch_manifest() {
-                    *manifest_clone.safe_lock() = m;
+                if is_empty {
+                    if let Ok(m) = fetch_manifest() {
+                        *manifest_clone.safe_lock() = m;
+                    }
                 }
 
                 let car = car_clone.safe_lock().clone();
@@ -374,45 +386,89 @@ impl SetupManager {
 
                 if !car.is_empty() {
                     if car != last_car || track != last_track {
-                        *fetch_flag.safe_lock() = false;
+                        *fetch_state_clone.safe_lock() = FetchState::Idle;
                         last_car = car.clone();
                         last_track = track.clone();
                         setups_clone.safe_lock().clear();
                     }
 
                     let mut all_setups = scan_folders(&car, &track);
+                    let current_state = fetch_state_clone.safe_lock().clone();
 
-                    let mut needs_fetch = false;
-                    {
-                        if !*fetch_flag.safe_lock() {
-                            needs_fetch = true;
-                        }
-                    }
-
-                    if needs_fetch {
-                        if let Some(mut server_setups) = fetch_server_setups(&car) {
-                            for s in &mut server_setups {
-                                if s.car_id.is_empty() {
-                                    s.car_id = car.clone();
+                    match current_state {
+                        FetchState::Idle => {
+                            *fetch_state_clone.safe_lock() = FetchState::Loading;
+                            match fetch_server_setups(&car) {
+                                Ok(mut server_setups) => {
+                                    for s in &mut server_setups {
+                                        if s.car_id.is_empty() {
+                                            s.car_id = car.clone();
+                                        }
+                                    }
+                                    all_setups.append(&mut server_setups);
+                                    *fetch_state_clone.safe_lock() = FetchState::Ready;
+                                }
+                                Err(err_msg) => {
+                                    let backoff_secs = 2u64.pow(1);
+                                    let retry_at = std::time::Instant::now() + Duration::from_secs(backoff_secs);
+                                    *fetch_state_clone.safe_lock() = FetchState::Failed {
+                                        error: err_msg,
+                                        retry_at,
+                                        attempts: 1,
+                                    };
                                 }
                             }
-                            all_setups.append(&mut server_setups);
                         }
-                        *fetch_flag.safe_lock() = true;
-                    } else {
-                        let existing = setups_clone.safe_lock();
-                        let remotes: Vec<CarSetup> = existing
-                            .iter()
-                            .filter(|s| s.is_remote && s.car_id == car)
-                            .cloned()
-                            .collect();
-                        drop(existing);
-                        all_setups.extend(remotes);
+                        FetchState::Failed { error: _, retry_at, attempts } => {
+                            if std::time::Instant::now() >= retry_at {
+                                *fetch_state_clone.safe_lock() = FetchState::Loading;
+                                match fetch_server_setups(&car) {
+                                    Ok(mut server_setups) => {
+                                        for s in &mut server_setups {
+                                            if s.car_id.is_empty() {
+                                                s.car_id = car.clone();
+                                            }
+                                        }
+                                        all_setups.append(&mut server_setups);
+                                        *fetch_state_clone.safe_lock() = FetchState::Ready;
+                                    }
+                                    Err(err_msg) => {
+                                        let next_attempts = attempts + 1;
+                                        let backoff_secs = 2u64.pow(next_attempts.min(6)).min(60);
+                                        let next_retry = std::time::Instant::now() + Duration::from_secs(backoff_secs);
+                                        *fetch_state_clone.safe_lock() = FetchState::Failed {
+                                            error: err_msg,
+                                            retry_at: next_retry,
+                                            attempts: next_attempts,
+                                        };
+                                    }
+                                }
+                            } else {
+                                let existing = setups_clone.safe_lock();
+                                let remotes: Vec<CarSetup> = existing
+                                    .iter()
+                                    .filter(|s| s.is_remote && s.car_id == car)
+                                    .cloned()
+                                    .collect();
+                                drop(existing);
+                                all_setups.extend(remotes);
+                            }
+                        }
+                        FetchState::Loading | FetchState::Ready => {
+                            let existing = setups_clone.safe_lock();
+                            let remotes: Vec<CarSetup> = existing
+                                .iter()
+                                .filter(|s| s.is_remote && s.car_id == car)
+                                .cloned()
+                                .collect();
+                            drop(existing);
+                            all_setups.extend(remotes);
+                        }
                     }
 
                     *setups_clone.safe_lock() = all_setups;
                 }
-                thread::sleep(Duration::from_secs(5));
+                thread::sleep(Duration::from_millis(500));
             }
         });
 
@@ -467,7 +523,7 @@ impl SetupManager {
             let car_id_clone = car_id.clone();
             drop(manifest);
 
-            if let Some(mut setups) = fetch_server_setups(&car_id_clone) {
+            if let Ok(mut setups) = fetch_server_setups(&car_id_clone) {
                 for s in &mut setups {
                     s.car_id = car_id_clone.clone();
                 }
@@ -500,7 +556,7 @@ impl SetupManager {
         if *c != car || *t != track {
             *c = car.to_string();
             *t = track.to_string();
-            *self.server_fetch_done.safe_lock() = false;
+            *self.fetch_state.safe_lock() = FetchState::Idle;
             *self.details_scroll.safe_lock() = 0;
         }
     }
@@ -578,7 +634,7 @@ impl SetupManager {
                 Ok(_) => {
                     *status_lock = format!("✅ SAVED to {}!", target_car);
                     drop(status_lock);
-                    *self.server_fetch_done.safe_lock() = false;
+                    *self.fetch_state.safe_lock() = FetchState::Idle;
                     return true;
                 }
                 Err(e) => {
@@ -626,42 +682,59 @@ impl SetupManager {
     }
 }
 
-fn fetch_manifest() -> Option<Vec<ManifestItem>> {
-    let client = reqwest::blocking::Client::new();
+fn fetch_manifest() -> Result<Vec<ManifestItem>, String> {
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Client build error: {}", e)),
+    };
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/manifest.json",
         GITHUB_USER_REPO, GITHUB_BRANCH
     );
-    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send()
-        && resp.status().is_success()
-    {
-        resp.json().ok()
-    } else {
-        None
+    let resp = match client.get(&url).send() {
+        Ok(r) => r,
+        Err(e) => return Err(format!("Network error: {}", e)),
+    };
+    if !resp.status().is_success() {
+        return Err(format!("HTTP status {}", resp.status()));
     }
+    resp.json::<Vec<ManifestItem>>().map_err(|e| format!("JSON parse error: {}", e))
 }
 
-fn fetch_server_setups(car: &str) -> Option<Vec<CarSetup>> {
-    let client = reqwest::blocking::Client::new();
+fn fetch_server_setups(car: &str) -> Result<Vec<CarSetup>, String> {
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Client build error: {}", e)),
+    };
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}.json",
         GITHUB_USER_REPO, GITHUB_BRANCH, car
     );
-    if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send()
-        && resp.status().is_success()
-        && let Ok(mut setups) = resp.json::<Vec<CarSetup>>()
-    {
-        for s in &mut setups {
-            s.is_remote = true;
-            s.car_id = car.to_string();
-            if s.author.is_empty() {
-                s.author = "Server".to_string();
-            }
-        }
-        Some(setups)
-    } else {
-        None
+    let resp = match client.get(&url).send() {
+        Ok(r) => r,
+        Err(e) => return Err(format!("Network error: {}", e)),
+    };
+    if !resp.status().is_success() {
+        return Err(format!("HTTP status {}", resp.status()));
     }
+    let mut setups = match resp.json::<Vec<CarSetup>>() {
+        Ok(s) => s,
+        Err(e) => return Err(format!("JSON parse error: {}", e)),
+    };
+    for s in &mut setups {
+        s.is_remote = true;
+        s.car_id = car.to_string();
+        if s.author.is_empty() {
+            s.author = "Server".to_string();
+        }
+    }
+    Ok(setups)
 }
 
 fn scan_folders(car_model: &str, track_name: &str) -> Vec<CarSetup> {
@@ -918,5 +991,36 @@ mod tests {
         assert!(path.starts_with(&tmp));
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_fetch_state_context_change_resets_state() {
+        let mgr = SetupManager::new();
+        mgr.set_context("ks_ferrari_sf70h", "monza");
+        *mgr.fetch_state.safe_lock() = FetchState::Ready;
+
+        assert_eq!(*mgr.fetch_state.safe_lock(), FetchState::Ready);
+
+        // Context change to a new car resets fetch_state to Idle
+        mgr.set_context("ks_porsche_911_gt3_rs", "spa");
+        assert_eq!(*mgr.fetch_state.safe_lock(), FetchState::Idle);
+    }
+
+    #[test]
+    fn test_fetch_state_failed_exponential_backoff() {
+        let err_msg = "404 Not Found".to_string();
+        let retry_at = std::time::Instant::now() + Duration::from_secs(4);
+        let state = FetchState::Failed {
+            error: err_msg.clone(),
+            retry_at,
+            attempts: 2,
+        };
+
+        if let FetchState::Failed { error, attempts, .. } = &state {
+            assert_eq!(error, "404 Not Found");
+            assert_eq!(*attempts, 2);
+        } else {
+            panic!("Expected FetchState::Failed");
+        }
     }
 }

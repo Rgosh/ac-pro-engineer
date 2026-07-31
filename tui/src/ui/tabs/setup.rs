@@ -15,36 +15,54 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = main_block.inner(area);
     f.render_widget(main_block, area);
 
-    let fetching = !*app
+    let fetch_state = app
         .setup_manager
-        .server_fetch_done
+        .fetch_state
         .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .map(|s| s.clone())
+        .unwrap_or(ac_core::setup_manager::FetchState::Idle);
 
-    if fetching {
-        let tick = *app
-            .setup_manager
-            .loading_tick
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-        let frame = frames[tick % frames.len()];
-        let spinner_text = format!(" {} Loading... ", frame);
-        let spinner = Paragraph::new(spinner_text)
-            .style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .alignment(Alignment::Right);
+    match fetch_state {
+        ac_core::setup_manager::FetchState::Loading
+        | ac_core::setup_manager::FetchState::Idle => {
+            let tick = *app
+                .setup_manager
+                .loading_tick
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let frame = frames[tick % frames.len()];
+            let spinner_text = format!(" {} Loading... ", frame);
+            let spinner = Paragraph::new(spinner_text)
+                .style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .alignment(Alignment::Right);
 
-        let spinner_area = Rect {
-            x: area.x + area.width - 15,
-            y: area.y,
-            width: 14,
-            height: 1,
-        };
-        f.render_widget(spinner, spinner_area);
+            let spinner_area = Rect {
+                x: area.x + area.width - 15,
+                y: area.y,
+                width: 14,
+                height: 1,
+            };
+            f.render_widget(spinner, spinner_area);
+        }
+        ac_core::setup_manager::FetchState::Failed { ref error, .. } => {
+            let err_text = format!(" ⚠ Cloud Error ");
+            let err_widget = Paragraph::new(err_text)
+                .style(Style::default().fg(Color::Red))
+                .alignment(Alignment::Right);
+            let err_area = Rect {
+                x: area.x + area.width - 20,
+                y: area.y,
+                width: 19,
+                height: 1,
+            };
+            f.render_widget(err_widget, err_area);
+        }
+        ac_core::setup_manager::FetchState::Ready => {}
     }
 
     let is_browser = *app
