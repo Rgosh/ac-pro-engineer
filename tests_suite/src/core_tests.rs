@@ -532,3 +532,14 @@ fn test_34_ring_buffer_history_size_dynamic_reconfiguration() {
     assert_eq!(buf[0], 300);
     assert_eq!(buf[299], 599);
 }
+
+#[test]
+fn test_35_config_resolve_data_path_and_autosave_semantics() {
+    let mut config = ac_core::config::AppConfig::default();
+    let resolved = config.resolve_data_path();
+    assert!(!resolved.as_os_str().is_empty());
+    assert_ne!(resolved, std::path::PathBuf::from("./data"));
+
+    config.data_path = std::path::PathBuf::from("/custom/telemetry/path");
+    assert_eq!(config.resolve_data_path(), std::path::PathBuf::from("/custom/telemetry/path"));
+}

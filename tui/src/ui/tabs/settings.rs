@@ -185,10 +185,6 @@ impl SettingsState {
                 _ => {}
             },
         }
-
-        if config.auto_save {
-            let _res = config.save();
-        }
     }
 
     fn get_description(&self, lang: &Language) -> String {

@@ -29,7 +29,11 @@ impl Default for RecordManager {
 
 impl RecordManager {
     pub fn new() -> Self {
-        let db_path = PathBuf::from("./data/records.json");
+        Self::with_data_dir(crate::config::app_dir())
+    }
+
+    pub fn with_data_dir(data_dir: PathBuf) -> Self {
+        let db_path = data_dir.join("records.json");
         let mut manager = Self {
             records: HashMap::new(),
             static_db: HashMap::new(),

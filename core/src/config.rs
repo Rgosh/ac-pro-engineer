@@ -1,3 +1,17 @@
+use directories_next::ProjectDirs;
+
+pub fn app_dir() -> PathBuf {
+    if let Some(proj) = ProjectDirs::from("com", "RaceEngineer", "RaceEngineer") {
+        proj.config_dir().to_path_buf()
+    } else {
+        PathBuf::from("./data")
+    }
+}
+
+pub fn app_config_path() -> PathBuf {
+    app_dir().join("config.json")
+}
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -76,7 +90,7 @@ fn default_temp_unit() -> TempUnit { TempUnit::Celsius }
 fn default_shift_point_offset() -> u32 { 200 }
 fn default_fuel_safety_margin() -> f32 { 1.0 }
 fn default_target_tyre_pressure() -> f32 { 27.5 }
-fn default_data_path() -> PathBuf { PathBuf::from("./data") }
+fn default_data_path() -> PathBuf { app_dir() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertsConfig {
@@ -293,13 +307,22 @@ impl UnitFormatter {
 }
 
 impl AppConfig {
+    pub fn resolve_data_path(&self) -> PathBuf {
+        if self.data_path.as_os_str().is_empty() || self.data_path == PathBuf::from("./data") {
+            app_dir()
+        } else {
+            self.data_path.clone()
+        }
+    }
+
     pub fn formatter(&self) -> UnitFormatter {
         UnitFormatter::new(self.pressure_unit.clone(), self.temp_unit.clone())
     }
 
     /// Load config from disk with migration and backup support.
     pub fn load() -> Result<Self, anyhow::Error> {
-        let config_path = PathBuf::from("./config.json");
+        let config_path = app_config_path();
+        if let Some(parent) = config_path.parent() { fs::create_dir_all(parent).ok(); }
 
         if !config_path.exists() {
             let config = Self::default();
@@ -368,7 +391,8 @@ impl AppConfig {
 
     /// Save config atomically: write to .tmp then rename.
     pub fn save(&self) -> Result<(), anyhow::Error> {
-        let config_path = PathBuf::from("./config.json");
+        let config_path = app_config_path();
+        if let Some(parent) = config_path.parent() { fs::create_dir_all(parent).ok(); }
         let temp_path = config_path.with_extension("json.tmp");
 
         let content = serde_json::to_string_pretty(self)?;
