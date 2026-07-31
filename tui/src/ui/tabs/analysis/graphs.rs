@@ -37,14 +37,12 @@ pub fn render(
         && !lap.telemetry_trace.is_empty()
         && !bl.telemetry_trace.is_empty()
     {
-        let min_len = lap.telemetry_trace.len().min(bl.telemetry_trace.len());
-        for i in 0..min_len {
-            let p_curr = &lap.telemetry_trace[i];
-            let p_best = &bl.telemetry_trace[i];
-            let dt = (p_curr.time_ms as f64 - p_best.time_ms as f64) / 1000.0;
-            delta_data.push((p_curr.time_ms as f64 / 1000.0, dt));
-        }
-        has_delta = true;
+        delta_data = ac_core::analyzer::LapComparison::delta_by_distance(
+            &lap.telemetry_trace,
+            &bl.telemetry_trace,
+            0.002,
+        );
+        has_delta = !delta_data.is_empty();
     }
 
     if !has_delta {

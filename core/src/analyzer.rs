@@ -104,6 +104,105 @@ pub struct TelemetryPoint {
     pub y: f32,
 }
 
+pub struct TelemetryTrace;
+
+impl TelemetryTrace {
+    /// Resample a telemetry trace by normalized distance (0.0 to 1.0) with spatial step (e.g. 0.002 = 500 samples per lap).
+    pub fn resample_by_distance(points: &[TelemetryPoint], step: f32) -> Vec<TelemetryPoint> {
+        if points.is_empty() {
+            return Vec::new();
+        }
+        if points.len() == 1 || step <= 0.0 {
+            return points.to_vec();
+        }
+
+        let mut sorted = points.to_vec();
+        sorted.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut resampled = Vec::new();
+        let mut target_dist = 0.0f32;
+        let max_dist = sorted.last().map(|p| p.distance).unwrap_or(1.0).min(1.0);
+
+        let mut idx = 0;
+        while target_dist <= max_dist + 1e-4 && idx < sorted.len() - 1 {
+            while idx < sorted.len() - 2 && sorted[idx + 1].distance < target_dist {
+                idx += 1;
+            }
+
+            let p0 = &sorted[idx];
+            let p1 = &sorted[idx + 1];
+
+            let dist_diff = p1.distance - p0.distance;
+            let factor = if dist_diff > 1e-6 {
+                ((target_dist - p0.distance) / dist_diff).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+
+            resampled.push(TelemetryPoint {
+                distance: target_dist,
+                time_ms: (p0.time_ms as f32 + factor * (p1.time_ms - p0.time_ms) as f32) as i32,
+                speed: p0.speed + factor * (p1.speed - p0.speed),
+                gas: p0.gas + factor * (p1.gas - p0.gas),
+                brake: p0.brake + factor * (p1.brake - p0.brake),
+                gear: if factor < 0.5 { p0.gear } else { p1.gear },
+                steer: p0.steer + factor * (p1.steer - p0.steer),
+                lat_g: p0.lat_g + factor * (p1.lat_g - p0.lat_g),
+                lon_g: p0.lon_g + factor * (p1.lon_g - p0.lon_g),
+                slip_avg: p0.slip_avg + factor * (p1.slip_avg - p0.slip_avg),
+                x: p0.x + factor * (p1.x - p0.x),
+                y: p0.y + factor * (p1.y - p0.y),
+            });
+
+            target_dist += step;
+        }
+
+        if resampled.is_empty() {
+            sorted
+        } else {
+            resampled
+        }
+    }
+}
+
+pub struct LapComparison;
+
+impl LapComparison {
+    /// Calculate time delta series between `current` lap and `reference` lap by distance.
+    /// Returns vector of (current_time_seconds, delta_seconds).
+    /// Positive delta_seconds means current lap is behind reference lap.
+    pub fn delta_by_distance(
+        current: &[TelemetryPoint],
+        reference: &[TelemetryPoint],
+        step: f32,
+    ) -> Vec<(f64, f64)> {
+        if current.is_empty() || reference.is_empty() {
+            return Vec::new();
+        }
+
+        let resampled_curr = TelemetryTrace::resample_by_distance(current, step);
+        let resampled_ref = TelemetryTrace::resample_by_distance(reference, step);
+
+        if resampled_curr.is_empty() || resampled_ref.is_empty() {
+            return Vec::new();
+        }
+
+        let min_len = resampled_curr.len().min(resampled_ref.len());
+        let mut delta_series = Vec::with_capacity(min_len);
+
+        for i in 0..min_len {
+            let p_c = &resampled_curr[i];
+            let p_r = &resampled_ref[i];
+
+            let time_sec = p_c.time_ms as f64 / 1000.0;
+            let delta_sec = (p_c.time_ms as f64 - p_r.time_ms as f64) / 1000.0;
+            delta_series.push((time_sec, delta_sec));
+        }
+
+        delta_series
+    }
+}
+
 pub struct StandaloneAnalysis {
     pub is_perfect: bool,
     pub advices: Vec<Advice>,
@@ -817,5 +916,134 @@ mod tests {
         let lap = analyzer.laps.last().expect("lap should be recorded");
         assert!((lap.avg_pressure - 28.0).abs() < f32::EPSILON);
         assert!((lap.pressure_deviation - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_resample_empty_or_partial_trace() {
+        use super::*;
+        let empty: Vec<TelemetryPoint> = vec![];
+        let resampled_empty = TelemetryTrace::resample_by_distance(&empty, 0.1);
+        assert!(resampled_empty.is_empty());
+
+        let single = vec![TelemetryPoint {
+            distance: 0.5,
+            time_ms: 1000,
+            speed: 100.0,
+            gas: 1.0,
+            brake: 0.0,
+            gear: 3,
+            steer: 0.0,
+            lat_g: 0.0,
+            lon_g: 0.0,
+            slip_avg: 0.0,
+            x: 0.0,
+            y: 0.0,
+        }];
+        let resampled_single = TelemetryTrace::resample_by_distance(&single, 0.1);
+        assert_eq!(resampled_single.len(), 1);
+    }
+
+    #[test]
+    fn test_identical_laps_different_sampling_rates_produce_zero_delta() {
+        use super::*;
+        // Lap A: 10 samples (10 Hz)
+        let lap_a: Vec<TelemetryPoint> = (0..=10)
+            .map(|i| {
+                let dist = i as f32 / 10.0;
+                let time_ms = (dist * 60_000.0) as i32; // 60s lap
+                TelemetryPoint {
+                    distance: dist,
+                    time_ms,
+                    speed: 150.0,
+                    gas: 1.0,
+                    brake: 0.0,
+                    gear: 4,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                }
+            })
+            .collect();
+
+        // Lap B: 100 samples (100 Hz) for exact same speed profile
+        let lap_b: Vec<TelemetryPoint> = (0..=100)
+            .map(|i| {
+                let dist = i as f32 / 100.0;
+                let time_ms = (dist * 60_000.0) as i32; // 60s lap
+                TelemetryPoint {
+                    distance: dist,
+                    time_ms,
+                    speed: 150.0,
+                    gas: 1.0,
+                    brake: 0.0,
+                    gear: 4,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                }
+            })
+            .collect();
+
+        let delta = LapComparison::delta_by_distance(&lap_a, &lap_b, 0.05);
+        assert!(!delta.is_empty());
+        for (_time, dt) in delta {
+            assert!(dt.abs() < 0.05, "Delta should be ~0.0s for identical performance, got {}", dt);
+        }
+    }
+
+    #[test]
+    fn test_lap_comparison_slower_lap_has_positive_delta() {
+        use super::*;
+        // Lap Fast: 60s
+        let lap_fast: Vec<TelemetryPoint> = (0..=10)
+            .map(|i| {
+                let dist = i as f32 / 10.0;
+                TelemetryPoint {
+                    distance: dist,
+                    time_ms: (dist * 60_000.0) as i32,
+                    speed: 200.0,
+                    gas: 1.0,
+                    brake: 0.0,
+                    gear: 5,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                }
+            })
+            .collect();
+
+        // Lap Slow: 65s (5s slower)
+        let lap_slow: Vec<TelemetryPoint> = (0..=10)
+            .map(|i| {
+                let dist = i as f32 / 10.0;
+                TelemetryPoint {
+                    distance: dist,
+                    time_ms: (dist * 65_000.0) as i32,
+                    speed: 185.0,
+                    gas: 0.9,
+                    brake: 0.0,
+                    gear: 5,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                }
+            })
+            .collect();
+
+        let delta = LapComparison::delta_by_distance(&lap_slow, &lap_fast, 0.1);
+        let final_delta = delta.last().expect("should have points").1;
+        assert!((final_delta - 5.0).abs() < 0.2, "Expected ~+5.0s delta at finish, got {}", final_delta);
     }
 }
