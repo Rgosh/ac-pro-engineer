@@ -9,3 +9,6 @@ pub mod linux_tests;
 
 #[cfg(test)]
 pub mod overlay_tests;
+
+#[cfg(test)]
+pub mod fixtures;

@@ -124,6 +124,10 @@ impl CarCoordinates {
     pub fn get(&self, first: usize, second: usize) -> f32 {
         self.0[first][second]
     }
+
+    pub fn set(&mut self, first: usize, second: usize, val: f32) {
+        self.0[first][second] = val;
+    }
 }
 
 #[repr(C)]

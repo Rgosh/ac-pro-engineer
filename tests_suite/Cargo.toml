@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 ac_core = { path = "../core" }
+ac_tui = { path = "../tui" }
 tokio = { version = "1", features = ["full", "test-util"] }
