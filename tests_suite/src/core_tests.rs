@@ -633,3 +633,31 @@ fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
         assert_eq!(t2, 32.0);
     }
 }
+
+#[test]
+fn test_39_corrupted_records_file_and_atomic_save_safety() {
+    use ac_core::records::RecordManager;
+
+    let tmp_dir = std::env::temp_dir().join(format!("test_records_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp_dir);
+    let junk_file = tmp_dir.join("corrupted.json");
+
+    // Write binary garbage to file
+    let _ = std::fs::write(&junk_file, b"\xFF\xFE\x00\x01NOT_VALID_JSON_BINARY_TRASH");
+
+    // Loading corrupted file does not panic or crash
+    let res = RecordManager::load_from_path(&junk_file);
+    assert!(res.is_err());
+
+    let mut mgr = RecordManager::default();
+    mgr.db_path = junk_file;
+    mgr.load(); // handles error gracefully
+
+    // Atomic save to valid path
+    let valid_file = tmp_dir.join("valid_records.json");
+    mgr.db_path = valid_file.clone();
+    assert!(mgr.save_with_result().is_ok());
+    assert!(valid_file.exists());
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}

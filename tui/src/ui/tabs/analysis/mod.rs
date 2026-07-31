@@ -155,22 +155,29 @@ impl AnalysisState {
 
         if let Some(filename) = selected_file {
             let path = PathBuf::from("saved_laps").join(&filename);
-            match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<ac_core::analyzer::LapData>(&content) {
-                    Ok(mut lap) => {
-                        lap.from_file = true;
+            let res: Result<(), String> = (|| {
+                let metadata = fs::metadata(&path).map_err(|e| format!("Read Error: {}", e))?;
+                if metadata.len() > 10 * 1024 * 1024 {
+                    return Err("File too large (>10MB)".to_string());
+                }
+                let content = fs::read_to_string(&path).map_err(|e| format!("Read Error: {}", e))?;
+                let mut lap = serde_json::from_str::<ac_core::analyzer::LapData>(&content)
+                    .map_err(|e| format!("JSON Error: {}", e))?;
 
-                        analyzer.reference_lap = Some(lap.clone());
-                        analyzer.laps.push(lap);
+                lap.from_file = true;
+                analyzer.reference_lap = Some(lap.clone());
+                analyzer.laps.push(lap);
+                Ok(())
+            })();
 
-                        self.loaded_file_name = Some(filename.clone());
-                        self.compare_mode = true;
-                        self.set_status(format!("Loaded: {}", filename));
-                        self.load_menu.borrow_mut().active = false;
-                    }
-                    Err(e) => self.set_status(format!("JSON Error: {}", e)),
-                },
-                Err(e) => self.set_status(format!("Read Error: {}", e)),
+            match res {
+                Ok(()) => {
+                    self.loaded_file_name = Some(filename.clone());
+                    self.compare_mode = true;
+                    self.set_status(format!("Loaded: {}", filename));
+                    self.load_menu.borrow_mut().active = false;
+                }
+                Err(err_msg) => self.set_status(err_msg),
             }
         }
     }

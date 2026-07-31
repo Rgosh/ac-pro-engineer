@@ -136,26 +136,54 @@ impl RecordManager {
         self.static_db = db;
     }
 
+    pub fn load_from_path(path: &PathBuf) -> anyhow::Result<HashMap<String, TrackRecord>> {
+        if !path.exists() {
+            return Ok(HashMap::new());
+        }
+
+        let metadata = fs::metadata(path)?;
+        if metadata.len() > 10 * 1024 * 1024 {
+            anyhow::bail!("Record file too large: {} bytes (max 10MB)", metadata.len());
+        }
+
+        let content = fs::read_to_string(path)?;
+        let list: Vec<TrackRecord> = serde_json::from_str(&content)?;
+
+        let mut map = HashMap::new();
+        for rec in list {
+            if rec.time_ms > 0 && !rec.car_id.is_empty() && !rec.track_name.is_empty() {
+                let key = format!("{}|{}|{}", rec.car_id, rec.track_name, rec.track_config);
+                map.insert(key, rec);
+            }
+        }
+        Ok(map)
+    }
+
     pub fn load(&mut self) {
-        if self.db_path.exists()
-            && let Ok(content) = fs::read_to_string(&self.db_path)
-        {
-            if let Ok(list) = serde_json::from_str::<Vec<TrackRecord>>(&content) {
-                for rec in list {
-                    let key = format!("{}|{}|{}", rec.car_id, rec.track_name, rec.track_config);
-                    self.records.insert(key, rec);
-                }
+        match Self::load_from_path(&self.db_path) {
+            Ok(map) => self.records = map,
+            Err(e) => {
+                tracing::warn!("Failed to load track records from {}: {}", self.db_path.display(), e);
             }
         }
     }
 
-    pub fn save(&self) {
-        if let Some(parent) = self.db_path.parent() {
-            fs::create_dir_all(parent).ok();
-        }
+    pub fn save_with_result(&self) -> anyhow::Result<()> {
+        let parent = self.db_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        fs::create_dir_all(parent)?;
+
         let list: Vec<&TrackRecord> = self.records.values().collect();
-        if let Ok(content) = serde_json::to_string_pretty(&list) {
-            fs::write(&self.db_path, content).ok();
+        let content = serde_json::to_string_pretty(&list)?;
+
+        let temp_path = parent.join(format!(".records_{}.tmp", std::process::id()));
+        fs::write(&temp_path, &content)?;
+        fs::rename(&temp_path, &self.db_path)?;
+        Ok(())
+    }
+
+    pub fn save(&self) {
+        if let Err(e) = self.save_with_result() {
+            tracing::warn!("Failed to save track records to {}: {}", self.db_path.display(), e);
         }
     }
 
