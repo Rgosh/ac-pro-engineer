@@ -445,11 +445,6 @@ impl AppState {
         gfx.position = 2;
         gfx.fuel_x_lap = 2.85;
         self.mock_graphics = Some(gfx);
-
-        self.physics_history.push(phys);
-        if self.physics_history.len() > 300 {
-            self.physics_history.remove(0);
-        }
     }
 
     pub fn ac_graphics(&self) -> Option<&AcGraphics> {
@@ -476,6 +471,79 @@ impl AppState {
         }
     }
 
+        pub fn process_telemetry_sample(&mut self, phys: AcPhysics, gfx: AcGraphics) {
+        let stat_spline_length = self.ac_static().map(|s| s.track_spline_length).unwrap_or(0.0);
+
+        self.update_live_buffers(&phys, &gfx);
+        self.update_session_info(&gfx);
+        self.engineer.update_config(&self.config);
+        self.engineer.update(&phys, &gfx, &self.session_info);
+
+        self.overlay_manager.update(&self.session_info);
+        let s = &mut self.overlay_manager.state;
+        s.speed_kmh = phys.speed_kmh as i32;
+        s.gear = (phys.gear - 1).max(0);
+        s.rpm = phys.rpms;
+
+        let completed_laps = gfx.completed_laps;
+        if self.current_lap_number == -1 {
+            self.current_lap_number = completed_laps;
+        }
+
+        if completed_laps > self.current_lap_number {
+            let last_lap_time = gfx.i_last_time;
+            if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
+                self.analyzer.process_lap(
+                    self.current_lap_number,
+                    last_lap_time,
+                    &self.current_lap_physics,
+                    &self.current_lap_graphics,
+                    self.session_info.car_name.clone(),
+                    self.session_info.track_name.clone(),
+                );
+
+                if let Some(car_specs) = self
+                    .content_manager
+                    .get_car_specs(&self.session_info.car_name)
+                {
+                    let mut rec = self.record_manager.get_or_calculate_record(
+                        &self.session_info.car_name,
+                        &self.session_info.track_name,
+                        &self.session_info.track_config,
+                        Some(car_specs),
+                        stat_spline_length,
+                    );
+
+                    if last_lap_time < rec.time_ms {
+                        rec.time_ms = last_lap_time;
+                        rec.source = "User Best".to_string();
+                        self.record_manager.update_if_faster(rec.clone());
+                    }
+                    self.analyzer.set_world_record(rec);
+                }
+            }
+            self.current_lap_physics.clear();
+            self.current_lap_graphics.clear();
+            self.current_lap_number = completed_laps;
+        }
+
+        if (gfx.status != 0 || self.is_demo_mode) && (phys.speed_kmh > 1.0 || phys.rpms > 1000) {
+            self.current_lap_physics.push(phys);
+            self.current_lap_graphics.push(gfx);
+        }
+
+        if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
+            self.setup_manager
+                .set_context(&self.session_info.car_name, &self.session_info.track_name);
+            self.setup_manager.detect_current(
+                phys.fuel,
+                phys.brake_bias as f32 / 100.0,
+                &phys.wheels_pressure,
+                &phys.tyre_temp_m,
+            );
+        }
+    }
+
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
         let delta = self.engineer.stats.current_delta;
@@ -484,6 +552,9 @@ impl AppState {
 
         if self.is_demo_mode {
             self.update_demo_tick();
+            if let (Some(phys), Some(gfx)) = (self.mock_physics, self.mock_graphics) {
+                self.process_telemetry_sample(phys, gfx);
+            }
             return;
         }
 
@@ -705,5 +776,29 @@ impl From<AppLogLevel> for tracing::metadata::LevelFilter {
             AppLogLevel::Warn => Self::WARN,
             AppLogLevel::Error => Self::ERROR,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn demo_mode_executes_full_telemetry_pipeline() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.is_demo_mode = true;
+        app.stage = AppStage::Running;
+
+        assert_eq!(app.physics_history.len(), 0);
+
+        for _ in 0..10 {
+            app.tick();
+        }
+
+        assert_eq!(app.physics_history.len(), 10);
+        assert_eq!(app.graphics_history.len(), 10);
+        assert!(app.overlay_manager.state.speed_kmh > 0);
+        assert_ne!(app.session_info.car_name, "");
+        assert_ne!(app.session_info.track_name, "");
     }
 }
