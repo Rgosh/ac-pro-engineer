@@ -661,3 +661,12 @@ fn test_39_corrupted_records_file_and_atomic_save_safety() {
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }
+
+#[test]
+fn test_40_string_u16_formatting_has_no_side_effects() {
+    use ac_core::ac_structs::StringU16_33;
+
+    let s = StringU16_33::from("ks_ferrari_488_gt3");
+    let formatted = format!("{}", s);
+    assert_eq!(formatted, "ks_ferrari_488_gt3");
+}

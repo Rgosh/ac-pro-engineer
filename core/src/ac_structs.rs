@@ -88,7 +88,6 @@ impl Default for StringU16_33 {
 impl Display for StringU16_33 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let name = read_ac_string(&self.0);
-        info!("Format name: '{name}'");
         write!(f, "{}", name)
     }
 }
