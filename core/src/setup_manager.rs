@@ -8,6 +8,75 @@ use std::thread;
 use std::time::Duration;
 use walkdir::WalkDir;
 
+/// Sanitize a filename component: strip path separators, `..`, control chars,
+/// and Windows reserved names. Returns a safe alphanumeric+dash+underscore string.
+fn sanitize_filename_component(raw: &str) -> String {
+    // Strip path separators and null bytes
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
+        .collect();
+
+    // Collapse any ".." sequences
+    let cleaned = cleaned.replace("..", "");
+
+    // Replace non-alphanumeric/dash/underscore with underscore
+    let cleaned: String = cleaned
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    // Block Windows reserved device names
+    let upper = cleaned.to_uppercase();
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    let stem = upper.split('.').next().unwrap_or("");
+    if reserved.contains(&stem) {
+        return format!("_{}", cleaned);
+    }
+
+    if cleaned.is_empty() {
+        return "_unknown".to_string();
+    }
+
+    cleaned
+}
+
+/// Join a filename under a root directory and verify the canonical result
+/// stays inside the root. Returns None if the path would escape.
+fn safe_join_under(root: &std::path::Path, filename: &str) -> Option<PathBuf> {
+    let sanitized = sanitize_filename_component(filename);
+    let candidate = root.join(&sanitized);
+
+    // Canonicalize root; candidate may not exist yet so we check prefix
+    if let Ok(canon_root) = std::fs::canonicalize(root) {
+        // For a new file, canonicalize the parent
+        if let Some(parent) = candidate.parent() {
+            if let Ok(canon_parent) = std::fs::canonicalize(parent) {
+                if canon_parent.starts_with(&canon_root) {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    // Fallback: if root doesn't exist yet either, just check component-level
+    if !sanitized.contains("..") && !sanitized.starts_with('/') {
+        return Some(candidate);
+    }
+
+    None
+}
+
 const GITHUB_USER_REPO: &str = "Rgosh/ac-setups";
 const GITHUB_BRANCH: &str = "main";
 
@@ -365,17 +434,18 @@ impl SetupManager {
         if let Some(user_dirs) = UserDirs::new()
             && let Some(docs) = user_dirs.document_dir()
         {
-            let safe_name = setup
-                .name
-                .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
-            let file_name = format!("{}_{}.ini", setup.author, safe_name);
-            let path = docs
+            let safe_name = sanitize_filename_component(&setup.name);
+            let safe_author = sanitize_filename_component(&setup.author);
+            let file_name = format!("{}_{}.ini", safe_author, safe_name);
+            let target_dir = docs
                 .join("Assetto Corsa")
                 .join("setups")
-                .join(target_car)
-                .join("downloaded")
-                .join(file_name);
-            return path.exists();
+                .join(sanitize_filename_component(target_car))
+                .join("downloaded");
+            if let Some(path) = safe_join_under(&target_dir, &file_name) {
+                return path.exists();
+            }
+            return false;
         }
         false
     }
@@ -480,10 +550,11 @@ impl SetupManager {
                 }
             };
 
+            let safe_car = sanitize_filename_component(target_car);
             let target_dir = docs
                 .join("Assetto Corsa")
                 .join("setups")
-                .join(target_car)
+                .join(&safe_car)
                 .join("downloaded");
 
             if fs::create_dir_all(&target_dir).is_err() {
@@ -491,11 +562,16 @@ impl SetupManager {
                 return false;
             }
 
-            let safe_name = setup
-                .name
-                .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
-            let file_name = format!("{}_{}.ini", setup.author, safe_name);
-            let file_path = target_dir.join(file_name);
+            let safe_name = sanitize_filename_component(&setup.name);
+            let safe_author = sanitize_filename_component(&setup.author);
+            let file_name = format!("{}_{}.ini", safe_author, safe_name);
+            let file_path = match safe_join_under(&target_dir, &file_name) {
+                Some(p) => p,
+                None => {
+                    *status_lock = "Err: unsafe filename rejected".to_string();
+                    return false;
+                }
+            };
             let content = generate_ini_content(setup);
 
             match fs::write(&file_path, content) {
@@ -753,4 +829,94 @@ fn generate_ini_content(s: &CarSetup) -> String {
         out.push_str(&format!("[INTERNAL_GEAR_{}]\nVALUE={}\n", i + 2, g));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_strips_path_traversal() {
+        assert!(!sanitize_filename_component("../../etc/passwd").contains(".."));
+        assert!(!sanitize_filename_component("../hack").contains(".."));
+        assert!(!sanitize_filename_component("..\\..\\windows\\system32").contains(".."));
+    }
+
+    #[test]
+    fn sanitize_strips_path_separators() {
+        let result = sanitize_filename_component("some/path/name");
+        assert!(!result.contains('/'));
+        let result = sanitize_filename_component("some\\path\\name");
+        assert!(!result.contains('\\'));
+    }
+
+    #[test]
+    fn sanitize_handles_absolute_paths() {
+        let result = sanitize_filename_component("/etc/passwd");
+        assert!(!result.contains('/'));
+        assert!(!result.starts_with('/'));
+    }
+
+    #[test]
+    fn sanitize_handles_empty_string() {
+        let result = sanitize_filename_component("");
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn sanitize_handles_unicode() {
+        let result = sanitize_filename_component("Иванов_сетап");
+        assert!(!result.is_empty());
+        assert!(!result.contains('/'));
+    }
+
+    #[test]
+    fn sanitize_blocks_windows_reserved_names() {
+        let result = sanitize_filename_component("CON");
+        assert!(result.starts_with('_'), "CON should be prefixed: {}", result);
+        let result = sanitize_filename_component("NUL.txt");
+        assert!(result.starts_with('_'), "NUL.txt should be prefixed: {}", result);
+        let result = sanitize_filename_component("com1");
+        assert!(result.starts_with('_'), "com1 should be prefixed: {}", result);
+    }
+
+    #[test]
+    fn sanitize_handles_colon() {
+        let result = sanitize_filename_component("C:setup");
+        assert!(!result.contains(':'));
+    }
+
+    #[test]
+    fn sanitize_preserves_normal_names() {
+        assert_eq!(sanitize_filename_component("my_setup-v2"), "my_setup-v2");
+        assert_eq!(sanitize_filename_component("RaceSetup123"), "RaceSetup123");
+    }
+
+    #[test]
+    fn safe_join_rejects_traversal() {
+        let tmp = std::env::temp_dir().join("test_safe_join");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Even pre-sanitized, the function should stay inside root
+        let result = safe_join_under(&tmp, "../../etc/passwd");
+        if let Some(path) = &result {
+            // The path should be inside tmp (sanitize strips the ..)
+            assert!(!path.to_string_lossy().contains("etc/passwd"));
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn safe_join_works_for_normal_names() {
+        let tmp = std::env::temp_dir().join("test_safe_join_normal");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let result = safe_join_under(&tmp, "my_setup.ini");
+        assert!(result.is_some());
+        let path = result.expect("should succeed");
+        assert!(path.starts_with(&tmp));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
