@@ -178,10 +178,13 @@ impl Engineer {
     }
 
     fn update_stats(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
-        self.stats.total_frames += 1;
+        let dt_sec = (self.config.update_rate as f32 / 1000.0).clamp(0.001, 1.0);
+        let ticks_norm = (dt_sec * 60.0).round().max(1.0) as u32;
+
+        self.stats.total_frames += ticks_norm;
 
         if phys.final_ff.abs() > 0.98 {
-            self.stats.ffb_clip_frames += 1;
+            self.stats.ffb_clip_frames += ticks_norm;
         }
 
         if self.stats.total_frames.is_multiple_of(3) {
@@ -197,7 +200,7 @@ impl Engineer {
 
         for i in 0..4 {
             if phys.suspension_travel[i] < 0.005 {
-                self.stats.bottoming_frames[i] += 1;
+                self.stats.bottoming_frames[i] += ticks_norm;
             }
         }
 
@@ -243,28 +246,28 @@ impl Engineer {
             if (phys.wheel_slip[0].abs() > 0.2 || phys.wheel_slip[1].abs() > 0.2)
                 && phys.brake > 0.1
             {
-                self.stats.lockup_frames_front += 1;
+                self.stats.lockup_frames_front += ticks_norm;
             }
             if (phys.wheel_slip[2].abs() > 0.2 || phys.wheel_slip[3].abs() > 0.2)
                 && phys.brake > 0.1
             {
-                self.stats.lockup_frames_rear += 1;
+                self.stats.lockup_frames_rear += ticks_norm;
             }
         }
 
         for i in 0..4 {
             if phys.wheel_slip[i] > 0.15 && phys.gas > 0.3 && phys.speed_kmh < 120.0 {
-                self.stats.wheel_spin_frames += 1;
+                self.stats.wheel_spin_frames += ticks_norm;
             }
         }
 
         if phys.speed_kmh > 30.0 && phys.gas < 0.05 && phys.brake < 0.05 {
-            self.stats.coasting_frames += 1;
+            self.stats.coasting_frames += ticks_norm;
         }
 
         if phys.speed_kmh > 40.0 && phys.steer_angle.abs() > 0.15 {
             if phys.wheel_slip[0] > 0.15 || phys.wheel_slip[1] > 0.15 {
-                self.stats.scrubbing_frames += 1;
+                self.stats.scrubbing_frames += ticks_norm;
                 let excess = (phys.steer_angle.abs() - 0.15) * 57.2958;
                 if excess > self.stats.current_excess_steer {
                     self.stats.current_excess_steer = excess;

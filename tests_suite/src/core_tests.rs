@@ -543,3 +543,44 @@ fn test_35_config_resolve_data_path_and_autosave_semantics() {
     config.data_path = std::path::PathBuf::from("/custom/telemetry/path");
     assert_eq!(config.resolve_data_path(), std::path::PathBuf::from("/custom/telemetry/path"));
 }
+
+#[test]
+fn test_36_engineer_update_rate_independence() {
+    use ac_core::ac_structs::{AcGraphics, AcPhysics};
+    use ac_core::engineer::Engineer;
+    use ac_core::session_info::SessionInfo;
+
+    let mut cfg_fast = get_english_config();
+    cfg_fast.update_rate = 16; // 60 Hz (~16ms)
+
+    let mut cfg_slow = get_english_config();
+    cfg_slow.update_rate = 100; // 10 Hz (100ms)
+
+    let mut eng_fast = Engineer::new(&cfg_fast);
+    let mut eng_slow = Engineer::new(&cfg_slow);
+
+    let mut phys = AcPhysics::default();
+    phys.speed_kmh = 100.0;
+    phys.brake = 0.8;
+    phys.wheel_slip[0] = 0.4;
+    phys.wheel_slip[1] = 0.4;
+
+    let gfx = AcGraphics::default();
+    let session = SessionInfo::default();
+
+    // 1 second simulation at 60 Hz = 60 steps
+    for _ in 0..60 {
+        eng_fast.update(&phys, &gfx, &session);
+    }
+
+    // 1 second simulation at 10 Hz = 10 steps
+    for _ in 0..10 {
+        eng_slow.update(&phys, &gfx, &session);
+    }
+
+    // Both should accumulate approximately equal lockup frames (~60 normalized frames)
+    let fast_lockups = eng_fast.stats.lockup_frames_front;
+    let slow_lockups = eng_slow.stats.lockup_frames_front;
+
+    assert!((fast_lockups as i32 - slow_lockups as i32).abs() <= 2);
+}
