@@ -234,7 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (*gfx).i_current_time = lap_elapsed_ms;
             (*gfx).i_last_time = last_completed_lap_time_ms;
             (*gfx).i_best_time = best_lap_time_ms;
-            (*gfx).session_time_left = (3600.0 - total_elapsed).max(0.0);
+            (*gfx).session_time_left = ((3600.0 - total_elapsed) * 1000.0).max(0.0);
             (*gfx).distance_traveled = dist;
             (*gfx).surface_grip = 0.98;
             (*gfx).fuel_x_lap = if fuel_per_lap > 0.0 { fuel_per_lap } else { 1.8 };

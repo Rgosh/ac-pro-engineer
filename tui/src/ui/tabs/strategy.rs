@@ -150,26 +150,14 @@ fn render_fuel_calculator(
     let fuel_per_lap = gfx.fuel_x_lap;
     let current_fuel = phys.fuel;
 
-    let mut laps_remaining = 0.0;
-
-    if gfx.number_of_laps > 0 {
-        laps_remaining =
-            (gfx.number_of_laps as f32 - gfx.completed_laps as f32 - gfx.normalized_car_position)
-                .max(0.0);
-    } else if gfx.session_time_left > 0.0 {
-        let lap_time_ms = if gfx.i_best_time > 0 {
-            gfx.i_best_time
-        } else if gfx.i_last_time > 0 {
-            gfx.i_last_time
-        } else {
-            120000
-        };
-        let lap_time_sec = lap_time_ms as f32 / 1000.0;
-
-        if lap_time_sec > 0.0 {
-            laps_remaining = gfx.session_time_left / 1000.0 / lap_time_sec;
-        }
-    }
+    let mut laps_remaining = ac_core::session_info::SessionTiming::remaining_laps(
+        gfx.session_time_left,
+        gfx.i_best_time,
+        gfx.i_last_time,
+        gfx.number_of_laps,
+        gfx.completed_laps,
+        gfx.normalized_car_position,
+    );
 
     if laps_remaining == 0.0 && gfx.session < 3 {
         laps_remaining = 5.0;

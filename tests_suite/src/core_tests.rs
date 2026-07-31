@@ -415,3 +415,86 @@ fn test_24_theoretical_best_lap_calculation() {
     let theoretical = analyzer.theoretical_best_lap_ms();
     assert_eq!(theoretical, Some(24000 + 30000 + 29000));
 }
+
+// ========== P0-1: SessionTiming tests ==========
+
+#[test]
+fn test_25_session_timing_time_limited_30sec() {
+    use ac_core::session_info::SessionTiming;
+    // 30 seconds left, best lap 10 seconds => 3 laps remaining
+    let result = SessionTiming::remaining_laps(30_000.0, 10_000, 0, 0, 0, 0.0);
+    assert!((result - 3.0).abs() < 0.01, "Expected 3.0, got {}", result);
+}
+
+#[test]
+fn test_26_session_timing_time_limited_60sec() {
+    use ac_core::session_info::SessionTiming;
+    // 60 seconds left, best lap 20 seconds => 3 laps remaining
+    let result = SessionTiming::remaining_laps(60_000.0, 20_000, 0, 0, 0, 0.0);
+    assert!((result - 3.0).abs() < 0.01, "Expected 3.0, got {}", result);
+}
+
+#[test]
+fn test_27_session_timing_time_limited_1800sec() {
+    use ac_core::session_info::SessionTiming;
+    // 30 minutes left, best lap 90 seconds => 20 laps remaining
+    let result = SessionTiming::remaining_laps(1_800_000.0, 90_000, 0, 0, 0, 0.0);
+    assert!((result - 20.0).abs() < 0.01, "Expected 20.0, got {}", result);
+}
+
+#[test]
+fn test_28_session_timing_lap_limited_race() {
+    use ac_core::session_info::SessionTiming;
+    // 20-lap race, 15 completed, at position 0.5 => 4.5 remaining
+    let result = SessionTiming::remaining_laps(0.0, 80_000, 0, 20, 15, 0.5);
+    assert!((result - 4.5).abs() < 0.01, "Expected 4.5, got {}", result);
+}
+
+#[test]
+fn test_29_session_timing_fallback_lap_time() {
+    use ac_core::session_info::SessionTiming;
+    // No best time, uses last_time as fallback
+    let result = SessionTiming::remaining_laps(60_000.0, 0, 30_000, 0, 0, 0.0);
+    assert!((result - 2.0).abs() < 0.01, "Expected 2.0, got {}", result);
+}
+
+#[test]
+fn test_30_session_timing_no_lap_time_fallback_120s() {
+    use ac_core::session_info::SessionTiming;
+    // No best time, no last time => fallback 120 seconds
+    let result = SessionTiming::remaining_laps(240_000.0, 0, 0, 0, 0, 0.0);
+    assert!((result - 2.0).abs() < 0.01, "Expected 2.0, got {}", result);
+}
+
+#[test]
+fn test_31_session_timing_ui_and_engine_same_result() {
+    use ac_core::session_info::SessionTiming;
+    // Verify UI strategy and engineer engine produce identical results
+    let session_ms = 600_000.0;
+    let best_ms = 85_000;
+    let last_ms = 86_000;
+    let n_laps = 0;
+    let completed = 3;
+    let pos = 0.3;
+
+    let ui_result = SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
+    let engine_result = SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
+    assert!((ui_result - engine_result).abs() < f32::EPSILON);
+}
+
+#[test]
+fn test_32_session_timing_format_minutes() {
+    use ac_core::session_info::SessionTiming;
+    let formatted = SessionTiming::format_time_left_minutes(1_800_000.0);
+    assert_eq!(formatted, "30.0 min");
+}
+
+#[test]
+fn test_33_session_timing_format_mm_ss() {
+    use ac_core::session_info::SessionTiming;
+    let formatted = SessionTiming::format_time_left_ms(1_800_000.0);
+    assert_eq!(formatted, "30:00");
+
+    let formatted2 = SessionTiming::format_time_left_ms(65_500.0);
+    assert_eq!(formatted2, "1:05");
+}

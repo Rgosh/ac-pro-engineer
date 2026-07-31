@@ -1288,15 +1288,16 @@ impl Engineer {
         }
 
         if gfx.session_time_left > 0.0 && gfx.fuel_x_lap > 0.0 {
-            let time_left_sec = gfx.session_time_left / 1000.0;
-            let lap_time_sec = if self.stats.predicted_lap_time > 0.0 {
-                self.stats.predicted_lap_time
-            } else {
-                0.0
-            };
+            let laps_remaining_in_race = crate::session_info::SessionTiming::remaining_laps(
+                gfx.session_time_left,
+                gfx.i_best_time,
+                gfx.i_last_time,
+                0, // time-based only
+                0,
+                0.0,
+            );
 
-            if lap_time_sec > 30.0 {
-                let laps_remaining_in_race = time_left_sec / lap_time_sec;
+            if laps_remaining_in_race > 0.0 {
                 let fuel_needed = laps_remaining_in_race * gfx.fuel_x_lap;
                 let fuel_diff = phys.fuel - fuel_needed;
 

@@ -354,7 +354,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Line::from(vec![
             Span::styled("Time Left: ", Style::default().fg(Color::Gray)),
             Span::styled(
-                format!("{:.1} min", mem.ac_graphics.session_time_left / 60000.0),
+                ac_core::session_info::SessionTiming::format_time_left_minutes(mem.ac_graphics.session_time_left),
                 Style::default().fg(Color::Yellow),
             ),
         ]),

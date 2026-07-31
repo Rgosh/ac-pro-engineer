@@ -301,7 +301,7 @@ impl AppState {
         sess.player_name = "Pro Sim Racer".to_string();
         sess.session_type = "Practice".to_string();
         sess.lap_count = 6;
-        sess.session_time_left = 1800.0;
+        sess.session_time_left = 1_800_000.0;
         sess.max_rpm = 12500;
         sess.max_fuel = 110.0;
         self.session_info = sess;
