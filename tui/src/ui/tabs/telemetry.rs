@@ -174,10 +174,6 @@ fn render_steering_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let Some(mem) = app.mem.as_ref() else {
-        return;
-    };
-
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
 
@@ -186,59 +182,84 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
-    if let Some(best_idx) = app.analyzer.best_lap_index {
-        let lap = &app.analyzer.laps[best_idx];
-
-        let diff_x = (lap.bounds_max_x - lap.bounds_min_x).max(1.0);
-        let diff_y = (lap.bounds_max_y - lap.bounds_min_y).max(1.0);
-        let margin_x = diff_x * 0.1;
-        let margin_y = diff_y * 0.1;
-
-        let x_bounds = [
-            (lap.bounds_min_x - margin_x) as f64,
-            (lap.bounds_max_x + margin_x) as f64,
-        ];
-
-        let y_bounds = [
-            (lap.bounds_min_y - margin_y) as f64,
-            (lap.bounds_max_y + margin_y) as f64,
-        ];
-
-        let canvas = Canvas::default()
-            .block(block)
-            .x_bounds(x_bounds)
-            .y_bounds(y_bounds)
-            .paint(move |ctx| {
-                for p in &lap.telemetry_trace {
-                    ctx.draw(&Points {
-                        coords: &[(p.x as f64, p.y as f64)],
-                        color: Color::DarkGray,
-                    });
-                }
-
-                let g = mem.ac_graphics;
-
-                let car_x = g.car_coordinates.get(0, 0) as f64;
-                let car_y = g.car_coordinates.get(0, 2) as f64;
-
-                let scale = (x_bounds[1] - x_bounds[0]) / 50.0;
-
-                ctx.draw(&Circle {
-                    x: car_x,
-                    y: car_y,
-                    radius: scale,
-                    color: Color::Red,
-                });
-            });
-
-        f.render_widget(canvas, area);
+    let (trace_points, min_x, max_x, min_y, max_y) = if let Some(best_idx) = app.analyzer.best_lap_index
+        && let Some(lap) = app.analyzer.laps.get(best_idx)
+        && !lap.telemetry_trace.is_empty()
+    {
+        let min_x = if lap.bounds_min_x.is_finite() && lap.bounds_min_x.abs() < 1e6 { lap.bounds_min_x as f64 } else { -500.0 };
+        let max_x = if lap.bounds_max_x.is_finite() && lap.bounds_max_x.abs() < 1e6 { lap.bounds_max_x as f64 } else { 500.0 };
+        let min_y = if lap.bounds_min_y.is_finite() && lap.bounds_min_y.abs() < 1e6 { lap.bounds_min_y as f64 } else { -500.0 };
+        let max_y = if lap.bounds_max_y.is_finite() && lap.bounds_max_y.abs() < 1e6 { lap.bounds_max_y as f64 } else { 500.0 };
+        let points: Vec<(f64, f64)> = lap.telemetry_trace.iter().map(|p| (p.x as f64, p.y as f64)).collect();
+        (points, min_x, max_x, min_y, max_y)
+    } else if app.is_demo_mode || !app.physics_history.is_empty() {
+        let mut points = Vec::with_capacity(100);
+        for i in 0..100 {
+            let angle = (i as f64 / 100.0) * std::f64::consts::TAU;
+            let rx = 400.0 * angle.cos() + 50.0 * (2.0 * angle).cos();
+            let ry = 250.0 * angle.sin() + 30.0 * (3.0 * angle).sin();
+            points.push((rx, ry));
+        }
+        (points, -500.0, 500.0, -350.0, 350.0)
     } else {
         let p = Paragraph::new(tr("tele_map_waiting", lang))
             .block(block)
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
-    }
+        return;
+    };
+
+    let diff_x = (max_x - min_x).max(10.0);
+    let diff_y = (max_y - min_y).max(10.0);
+    let margin_x = diff_x * 0.1;
+    let margin_y = diff_y * 0.1;
+
+    let x_bounds = [min_x - margin_x, max_x + margin_x];
+    let y_bounds = [min_y - margin_y, max_y + margin_y];
+
+    let car_pos = if let Some(gfx) = app.ac_graphics() {
+        let cx = gfx.car_coordinates.get(0, 0) as f64;
+        let cy = gfx.car_coordinates.get(0, 2) as f64;
+        if cx.is_finite() && cy.is_finite() && (cx != 0.0 || cy != 0.0) {
+            Some((cx, cy))
+        } else if app.is_demo_mode {
+            let progress = gfx.normalized_car_position.clamp(0.0, 1.0) as f64;
+            let angle = progress * std::f64::consts::TAU;
+            let cx = 400.0 * angle.cos() + 50.0 * (2.0 * angle).cos();
+            let cy = 250.0 * angle.sin() + 30.0 * (3.0 * angle).sin();
+            Some((cx, cy))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let canvas = Canvas::default()
+        .block(block)
+        .x_bounds(x_bounds)
+        .y_bounds(y_bounds)
+        .paint(move |ctx| {
+            for &(px, py) in &trace_points {
+                ctx.draw(&Points {
+                    coords: &[(px, py)],
+                    color: Color::DarkGray,
+                });
+            }
+
+            if let Some((car_x, car_y)) = car_pos {
+                let scale = (x_bounds[1] - x_bounds[0]) / 50.0;
+                ctx.draw(&Circle {
+                    x: car_x,
+                    y: car_y,
+                    radius: scale,
+                    color: Color::Red,
+                });
+            }
+        });
+
+    f.render_widget(canvas, area);
 }
 
 fn render_friction_circle(f: &mut Frame<'_>, area: Rect, app: &AppState) {

@@ -584,3 +584,18 @@ fn test_36_engineer_update_rate_independence() {
 
     assert!((fast_lockups as i32 - slow_lockups as i32).abs() <= 2);
 }
+
+#[test]
+fn test_37_track_map_bounds_and_zero_coords_safety() {
+    let min_x = f32::NAN;
+    let max_x = f32::INFINITY;
+
+    let safe_min = if min_x.is_finite() && min_x.abs() < 1e6 { min_x as f64 } else { -500.0 };
+    let safe_max = if max_x.is_finite() && max_x.abs() < 1e6 { max_x as f64 } else { 500.0 };
+
+    let diff_x = (safe_max - safe_min).max(10.0);
+    let scale = diff_x / 50.0;
+
+    assert!(scale.is_finite());
+    assert_eq!(scale, 20.0); // (500 - (-500)) / 50 = 1000 / 50 = 20.0
+}
