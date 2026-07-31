@@ -433,13 +433,7 @@ fn get_pressure_color(press: f32) -> Color {
     }
 }
 fn get_wear_color(wear: f32) -> Color {
-    if wear > 96.0 {
-        Color::Green
-    } else if wear > 94.0 {
-        Color::Yellow
-    } else {
-        Color::Red
-    }
+    super::super::widgets::get_wear_color(wear)
 }
 fn get_fuel_color(laps: f32) -> Color {
     if laps < 2.0 {

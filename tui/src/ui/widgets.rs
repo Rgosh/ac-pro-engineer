@@ -30,12 +30,14 @@ pub fn get_brake_color(temp: f32) -> Color {
     }
 }
 
+/// Tyre wear color. AC convention: 100% = new tyre, 0% = fully worn.
 pub fn get_wear_color(wear: f32) -> Color {
     match wear {
-        w if w < 30.0 => Color::Green,
-        w if w < 60.0 => Color::Yellow,
-        w if w < 80.0 => Color::LightRed,
-        _ => Color::Red,
+        w if w >= 96.0 => Color::Green,       // Excellent condition
+        w if w >= 80.0 => Color::LightGreen,   // Good
+        w if w >= 60.0 => Color::Yellow,       // Monitor
+        w if w >= 40.0 => Color::LightRed,     // Worn — consider pitting
+        _ => Color::Red,                       // Critical — pit now
     }
 }
 
