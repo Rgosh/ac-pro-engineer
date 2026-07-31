@@ -94,8 +94,9 @@ pub fn render_tyre_widget(
             ])
             .split(inner);
 
+        let fmt = app.config.formatter();
         let pressure = data.wheels_pressure[index];
-        let pressure_text = format!("{:.1} psi", pressure);
+        let pressure_text = fmt.format_pressure(pressure);
         let pressure_widget = Paragraph::new(pressure_text)
             .style(Style::default().fg(get_pressure_color(pressure)))
             .alignment(Alignment::Center);
@@ -104,7 +105,12 @@ pub fn render_tyre_widget(
         let temp_m = data.tyre_temp_m[index];
         let temp_o = data.tyre_temp_o[index];
         let avg_temp = (temp_i + temp_m + temp_o) / 3.0;
-        let temp_text = format!("I{:.0} M{:.0} O{:.0}", temp_i, temp_m, temp_o);
+        let temp_text = format!(
+            "I{:.0} M{:.0} O{:.0}",
+            fmt.temp_val(temp_i),
+            fmt.temp_val(temp_m),
+            fmt.temp_val(temp_o)
+        );
         let temp_widget = Paragraph::new(temp_text)
             .style(Style::default().fg(get_tyre_color(avg_temp)))
             .alignment(Alignment::Center);
@@ -116,7 +122,7 @@ pub fn render_tyre_widget(
             .alignment(Alignment::Center);
 
         let brake_temp = data.brake_temp[index];
-        let brake_text = format!("B{:.0}°C", brake_temp);
+        let brake_text = format!("B{}", fmt.format_temp(brake_temp));
         let brake_widget = Paragraph::new(brake_text)
             .style(Style::default().fg(get_brake_color(brake_temp)))
             .alignment(Alignment::Center);

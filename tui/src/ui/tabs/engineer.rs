@@ -388,6 +388,7 @@ fn render_sector_advice(
             .split(inner_area);
 
         let alerts = &app.config.alerts;
+        let fmt = app.config.formatter();
         let target_psi = (alerts.tyre_pressure_min + alerts.tyre_pressure_max) / 2.0;
         let target_brake_temp = (alerts.brake_temp_max - 150.0).max(300.0);
 
@@ -467,12 +468,12 @@ fn render_sector_advice(
         let car_visual = vec![
             Line::from(vec![
                 Span::styled(
-                    format!(" [{:>4.1} psi] ", fl_psi),
+                    format!(" [{:>6}] ", fmt.format_pressure(fl_psi)),
                     Style::default().fg(fl_psi_c).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("                "),
+                Span::raw("              "),
                 Span::styled(
-                    format!(" [{:>4.1} psi] ", fr_psi),
+                    format!(" [{:>6}] ", fmt.format_pressure(fr_psi)),
                     Style::default().fg(fr_psi_c).add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -495,12 +496,12 @@ fn render_sector_advice(
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(" (B: {:>3.0}°C) ", fl_brake),
+                    format!(" (B: {:>5}) ", fmt.format_temp(fl_brake)),
                     Style::default().fg(fl_brake_c),
                 ),
-                Span::raw("                "),
+                Span::raw("              "),
                 Span::styled(
-                    format!(" (B: {:>3.0}°C) ", fr_brake),
+                    format!(" (B: {:>5}) ", fmt.format_temp(fr_brake)),
                     Style::default().fg(fr_brake_c),
                 ),
             ]),
@@ -561,12 +562,12 @@ fn render_sector_advice(
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(" (B: {:>3.0}°C) ", rl_brake),
+                    format!(" (B: {:>5}) ", fmt.format_temp(rl_brake)),
                     Style::default().fg(rl_brake_c),
                 ),
-                Span::raw("                "),
+                Span::raw("              "),
                 Span::styled(
-                    format!(" (B: {:>3.0}°C) ", rr_brake),
+                    format!(" (B: {:>5}) ", fmt.format_temp(rr_brake)),
                     Style::default().fg(rr_brake_c),
                 ),
             ]),
@@ -589,12 +590,12 @@ fn render_sector_advice(
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(" [{:>4.1} psi] ", rl_psi),
+                    format!(" [{:>6}] ", fmt.format_pressure(rl_psi)),
                     Style::default().fg(rl_psi_c).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("                "),
+                Span::raw("              "),
                 Span::styled(
-                    format!(" [{:>4.1} psi] ", rr_psi),
+                    format!(" [{:>6}] ", fmt.format_pressure(rr_psi)),
                     Style::default().fg(rr_psi_c).add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -860,13 +861,15 @@ fn render_sector_advice(
                 Span::styled(
                     if is_ru {
                         format!(
-                            " Давление не в окне (дельта: {:+.1} psi).",
-                            avg_psi - target_psi
+                            " Давление не в окне (дельта: {:+.1} {}).",
+                            fmt.pressure_val(avg_psi - target_psi),
+                            fmt.pressure_symbol()
                         )
                     } else {
                         format!(
-                            " Pressures out of window (delta: {:+.1} psi).",
-                            avg_psi - target_psi
+                            " Pressures out of window (delta: {:+.1} {}).",
+                            fmt.pressure_val(avg_psi - target_psi),
+                            fmt.pressure_symbol()
                         )
                     },
                     Style::default().fg(Color::Red),

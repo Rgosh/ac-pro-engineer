@@ -905,7 +905,7 @@ impl Engineer {
                         name: "Temp Spread".to_string(),
                         current: spread,
                         target: ideal_spread,
-                        unit: "°C".to_string(),
+                        unit: self.config.formatter().temp_symbol().to_string(),
                     }],
                     confidence: 0.7,
                 });
@@ -953,7 +953,7 @@ impl Engineer {
                         name: "Temp Spread".to_string(),
                         current: spread,
                         target: ideal_spread,
-                        unit: "°C".to_string(),
+                        unit: self.config.formatter().temp_symbol().to_string(),
                     }],
                     confidence: 0.8,
                 });
@@ -990,9 +990,9 @@ impl Engineer {
                         },
                         severity: Severity::Warning,
                         message: if ru {
-                            format!("{} ХОЛОДНАЯ: {:.0}°C", name, temp)
+                            format!("{} ХОЛОДНАЯ: {}", name, self.config.formatter().format_temp(temp))
                         } else {
-                            format!("{} COLD: {:.0}°C", name, temp)
+                            format!("{} COLD: {}", name, self.config.formatter().format_temp(temp))
                         },
                         action: if ru {
                             "Греть шины".to_string()
@@ -1023,9 +1023,9 @@ impl Engineer {
                         },
                         severity: Severity::Critical,
                         message: if ru {
-                            format!("{} ПЕРЕГРЕВ: {:.0}°C", name, temp)
+                            format!("{} ПЕРЕГРЕВ: {}", name, self.config.formatter().format_temp(temp))
                         } else {
-                            format!("{} OVERHEATING: {:.0}°C", name, temp)
+                            format!("{} OVERHEATING: {}", name, self.config.formatter().format_temp(temp))
                         },
                         action: if ru {
                             "Остудить шины".to_string()

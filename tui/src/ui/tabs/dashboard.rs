@@ -65,18 +65,19 @@ fn render_tyre_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         let avg_pressure: f32 = data.wheels_pressure.iter().sum::<f32>() / 4.0;
         let avg_temp: f32 = (0..4).map(|i| data.get_avg_tyre_temp(i)).sum::<f32>() / 4.0;
 
+        let fmt = app.config.formatter();
         let summary_text = vec![
             Line::from(vec![
                 Span::styled("Avg Press: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
-                    format!("{:.1} psi", avg_pressure),
+                    fmt.format_pressure(avg_pressure),
                     Style::default().fg(get_pressure_color(avg_pressure)),
                 ),
             ]),
             Line::from(vec![
                 Span::styled("Avg Temp:  ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
-                    format!("{:.0} °C", avg_temp),
+                    fmt.format_temp(avg_temp),
                     Style::default().fg(get_tyre_color(avg_temp)),
                 ),
             ]),
@@ -395,13 +396,14 @@ fn render_tyre_widget(f: &mut Frame<'_>, area: Rect, idx: usize, app: &AppState,
         let inner = block.inner(area);
         f.render_widget(block, area);
 
+        let fmt = app.config.formatter();
         let text = vec![
             Line::from(Span::styled(
-                format!("{:.0} C", temp),
+                fmt.format_temp(temp),
                 Style::default().fg(get_tyre_color(temp)),
             )),
             Line::from(Span::styled(
-                format!("{:.1} psi", press),
+                fmt.format_pressure(press),
                 Style::default().fg(get_pressure_color(press)),
             )),
             Line::from(Span::styled(

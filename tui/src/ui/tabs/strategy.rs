@@ -372,6 +372,7 @@ fn render_environment(
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let fmt = app.config.formatter();
     let rows = vec![
         Row::new(vec![
             Cell::from(tr("strat_grip", lang)),
@@ -385,11 +386,11 @@ fn render_environment(
         ]),
         Row::new(vec![
             Cell::from(tr("strat_air", lang)),
-            Cell::from(format!("{:.1}°C", phys.air_temp)).style(Style::default().fg(Color::Cyan)),
+            Cell::from(fmt.format_temp_prec(phys.air_temp, 1)).style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
             Cell::from(tr("strat_road", lang)),
-            Cell::from(format!("{:.1}°C", phys.road_temp))
+            Cell::from(fmt.format_temp_prec(phys.road_temp, 1))
                 .style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![

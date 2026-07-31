@@ -6,20 +6,20 @@ use tracing::{error, info, warn};
 /// Current config schema version. Increment when adding fields.
 const CONFIG_VERSION: u32 = 2;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Language {
     English,
     Russian,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum PressureUnit {
     Psi,
     Bar,
     Kpa,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum TempUnit {
     Celsius,
     Fahrenheit,
@@ -205,7 +205,98 @@ impl Default for AlertsConfig {
     }
 }
 
+/// Formatter for pressure and temperature units configured in AppConfig.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UnitFormatter {
+    pub pressure_unit: PressureUnit,
+    pub temp_unit: TempUnit,
+}
+
+impl UnitFormatter {
+    pub fn new(pressure_unit: PressureUnit, temp_unit: TempUnit) -> Self {
+        Self {
+            pressure_unit,
+            temp_unit,
+        }
+    }
+
+    /// Convert pressure from native AC unit (PSI) to configured unit value.
+    pub fn pressure_val(&self, psi: f32) -> f32 {
+        match self.pressure_unit {
+            PressureUnit::Psi => psi,
+            PressureUnit::Bar => psi * 0.0689476,
+            PressureUnit::Kpa => psi * 6.89476,
+        }
+    }
+
+    pub fn pressure_symbol(&self) -> &'static str {
+        match self.pressure_unit {
+            PressureUnit::Psi => "psi",
+            PressureUnit::Bar => "bar",
+            PressureUnit::Kpa => "kPa",
+        }
+    }
+
+    pub fn format_pressure(&self, psi: f32) -> String {
+        match self.pressure_unit {
+            PressureUnit::Psi => format!("{:.1} psi", psi),
+            PressureUnit::Bar => format!("{:.2} bar", self.pressure_val(psi)),
+            PressureUnit::Kpa => format!("{:.1} kPa", self.pressure_val(psi)),
+        }
+    }
+
+    /// Convert user input threshold in configured pressure unit back to native PSI.
+    pub fn pressure_to_psi(&self, val: f32) -> f32 {
+        match self.pressure_unit {
+            PressureUnit::Psi => val,
+            PressureUnit::Bar => val / 0.0689476,
+            PressureUnit::Kpa => val / 6.89476,
+        }
+    }
+
+    /// Convert temperature from native AC unit (Celsius) to configured unit value.
+    pub fn temp_val(&self, temp_c: f32) -> f32 {
+        match self.temp_unit {
+            TempUnit::Celsius => temp_c,
+            TempUnit::Fahrenheit => temp_c * 1.8 + 32.0,
+        }
+    }
+
+    pub fn temp_symbol(&self) -> &'static str {
+        match self.temp_unit {
+            TempUnit::Celsius => "°C",
+            TempUnit::Fahrenheit => "°F",
+        }
+    }
+
+    pub fn format_temp(&self, temp_c: f32) -> String {
+        match self.temp_unit {
+            TempUnit::Celsius => format!("{:.0}°C", temp_c),
+            TempUnit::Fahrenheit => format!("{:.0}°F", self.temp_val(temp_c)),
+        }
+    }
+
+    pub fn format_temp_prec(&self, temp_c: f32, precision: usize) -> String {
+        match self.temp_unit {
+            TempUnit::Celsius => format!("{:.1$}°C", temp_c, precision),
+            TempUnit::Fahrenheit => format!("{:.1$}°F", self.temp_val(temp_c), precision),
+        }
+    }
+
+    /// Convert user input threshold in configured temp unit back to native Celsius.
+    pub fn temp_to_celsius(&self, val: f32) -> f32 {
+        match self.temp_unit {
+            TempUnit::Celsius => val,
+            TempUnit::Fahrenheit => (val - 32.0) / 1.8,
+        }
+    }
+}
+
 impl AppConfig {
+    pub fn formatter(&self) -> UnitFormatter {
+        UnitFormatter::new(self.pressure_unit.clone(), self.temp_unit.clone())
+    }
+
     /// Load config from disk with migration and backup support.
     pub fn load() -> Result<Self, anyhow::Error> {
         let config_path = PathBuf::from("./config.json");
@@ -415,5 +506,61 @@ mod tests {
 
         assert_eq!(config.config_version, CONFIG_VERSION);
         assert!(config.alerts.tyre_pressure_min > 0.0);
+    }
+
+    #[test]
+    fn unit_formatter_pressure_conversions() {
+        let fmt_psi = UnitFormatter::new(PressureUnit::Psi, TempUnit::Celsius);
+        assert_eq!(fmt_psi.pressure_val(27.5), 27.5);
+        assert_eq!(fmt_psi.pressure_symbol(), "psi");
+        assert_eq!(fmt_psi.format_pressure(27.5), "27.5 psi");
+        assert_eq!(fmt_psi.pressure_to_psi(27.5), 27.5);
+
+        let fmt_bar = UnitFormatter::new(PressureUnit::Bar, TempUnit::Celsius);
+        let bar_val = fmt_bar.pressure_val(27.5);
+        assert!((bar_val - 1.896).abs() < 0.01, "Expected ~1.896 bar, got {}", bar_val);
+        assert_eq!(fmt_bar.pressure_symbol(), "bar");
+        assert_eq!(fmt_bar.format_pressure(27.5), "1.90 bar");
+        assert!((fmt_bar.pressure_to_psi(bar_val) - 27.5).abs() < 0.001);
+
+        let fmt_kpa = UnitFormatter::new(PressureUnit::Kpa, TempUnit::Celsius);
+        let kpa_val = fmt_kpa.pressure_val(27.5);
+        assert!((kpa_val - 189.6).abs() < 0.1, "Expected ~189.6 kPa, got {}", kpa_val);
+        assert_eq!(fmt_kpa.pressure_symbol(), "kPa");
+        assert_eq!(fmt_kpa.format_pressure(27.5), "189.6 kPa");
+        assert!((fmt_kpa.pressure_to_psi(kpa_val) - 27.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn unit_formatter_temp_conversions() {
+        let fmt_c = UnitFormatter::new(PressureUnit::Psi, TempUnit::Celsius);
+        assert_eq!(fmt_c.temp_val(100.0), 100.0);
+        assert_eq!(fmt_c.temp_symbol(), "°C");
+        assert_eq!(fmt_c.format_temp(100.0), "100°C");
+        assert_eq!(fmt_c.temp_to_celsius(100.0), 100.0);
+
+        let fmt_f = UnitFormatter::new(PressureUnit::Psi, TempUnit::Fahrenheit);
+        assert_eq!(fmt_f.temp_val(100.0), 212.0);
+        assert_eq!(fmt_f.temp_symbol(), "°F");
+        assert_eq!(fmt_f.format_temp(100.0), "212°F");
+        assert_eq!(fmt_f.format_temp_prec(100.0, 1), "212.0°F");
+        assert_eq!(fmt_f.temp_to_celsius(212.0), 100.0);
+    }
+
+    #[test]
+    fn config_unit_settings_roundtrip() {
+        let mut config = AppConfig::default();
+        config.pressure_unit = PressureUnit::Bar;
+        config.temp_unit = TempUnit::Fahrenheit;
+
+        let json = serde_json::to_string(&config).expect("serialize");
+        let restored: AppConfig = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(restored.pressure_unit, PressureUnit::Bar);
+        assert_eq!(restored.temp_unit, TempUnit::Fahrenheit);
+
+        let fmt = restored.formatter();
+        assert_eq!(fmt.format_pressure(27.5), "1.90 bar");
+        assert_eq!(fmt.format_temp(100.0), "212°F");
     }
 }
