@@ -21,6 +21,13 @@ pub enum AnalysisSubTab {
     Traction,
 }
 
+pub fn safe_truncate(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
 pub struct AnalysisState {
     pub current_tab: AnalysisSubTab,
     pub status_message: Option<String>,
@@ -28,6 +35,7 @@ pub struct AnalysisState {
     pub load_menu: RefCell<FileMenu>,
     pub loaded_file_name: Option<String>,
     pub compare_mode: bool,
+    pub selected_lap_index: usize,
 }
 
 impl AnalysisState {
@@ -39,6 +47,7 @@ impl AnalysisState {
             load_menu: RefCell::new(FileMenu::new()),
             loaded_file_name: None,
             compare_mode: false,
+            selected_lap_index: 0,
         }
     }
 
@@ -125,18 +134,20 @@ impl AnalysisState {
         self.load_menu.borrow_mut().toggle();
     }
 
-    pub fn menu_up(&mut self) {
-        if !self.load_menu.borrow().active {
-            return;
+    pub fn menu_up(&mut self, total_laps: usize) {
+        if self.load_menu.borrow().active {
+            self.load_menu.borrow_mut().previous();
+        } else if self.selected_lap_index > 0 {
+            self.selected_lap_index -= 1;
         }
-        self.load_menu.borrow_mut().previous();
     }
 
-    pub fn menu_down(&mut self) {
-        if !self.load_menu.borrow().active {
-            return;
+    pub fn menu_down(&mut self, total_laps: usize) {
+        if self.load_menu.borrow().active {
+            self.load_menu.borrow_mut().next();
+        } else if total_laps > 0 && self.selected_lap_index + 1 < total_laps {
+            self.selected_lap_index += 1;
         }
-        self.load_menu.borrow_mut().next();
     }
 
     pub fn load_selected_file(&mut self, analyzer: &mut ac_core::analyzer::Analyzer) {
@@ -351,10 +362,8 @@ fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             if lap.from_file {
                 style = style.fg(Color::Cyan);
 
-                let car_short = if lap.car_model.len() > 10 {
-                    &lap.car_model[0..10]
-                } else if !lap.car_model.is_empty() {
-                    &lap.car_model
+                let car_short = if !lap.car_model.is_empty() {
+                    safe_truncate(&lap.car_model, 10)
                 } else {
                     "File"
                 };
@@ -378,6 +387,52 @@ fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .bg(app.ui_state.get_color(&theme.highlight))
             .fg(Color::Black),
     );
-    let mut state = app.ui_state.setup_list_state.clone();
+    let mut state = ListState::default();
+    if !app.analyzer.laps.is_empty() {
+        let sel = app.ui_state.analysis.selected_lap_index.min(app.analyzer.laps.len() - 1);
+        state.select(Some(sel));
+    }
     f.render_stateful_widget(list, area, &mut state);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_safe_truncate_multibyte_utf8() {
+        let ru_str = "Привет, мир!"; // 12 characters, >12 bytes
+        assert_eq!(safe_truncate(ru_str, 6), "Привет");
+        assert_eq!(safe_truncate(ru_str, 20), "Привет, мир!");
+
+        let ascii_str = "ks_ferrari_sf70h";
+        assert_eq!(safe_truncate(ascii_str, 10), "ks_ferrari");
+    }
+
+    #[test]
+    fn test_analysis_lap_selection_navigation() {
+        let mut state = AnalysisState::new();
+        assert_eq!(state.selected_lap_index, 0);
+
+        // Down with 5 laps
+        state.menu_down(5);
+        assert_eq!(state.selected_lap_index, 1);
+        state.menu_down(5);
+        assert_eq!(state.selected_lap_index, 2);
+
+        // Up
+        state.menu_up(5);
+        assert_eq!(state.selected_lap_index, 1);
+
+        // Up at top bounds check
+        state.menu_up(5);
+        assert_eq!(state.selected_lap_index, 0);
+        state.menu_up(5);
+        assert_eq!(state.selected_lap_index, 0);
+
+        // Down to bottom bounds check
+        state.selected_lap_index = 4;
+        state.menu_down(5);
+        assert_eq!(state.selected_lap_index, 4);
+    }
 }

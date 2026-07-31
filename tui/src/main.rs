@@ -455,8 +455,14 @@ async fn main() -> Result<(), anyhow::Error> {
                                 }
                                 KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
                                 KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
-                                KeyCode::Up => app_lock.ui_state.analysis.menu_up(),
-                                KeyCode::Down => app_lock.ui_state.analysis.menu_down(),
+                                KeyCode::Up => {
+                                    let laps_len = app_lock.analyzer.laps.len();
+                                    app_lock.ui_state.analysis.menu_up(laps_len);
+                                }
+                                KeyCode::Down => {
+                                    let laps_len = app_lock.analyzer.laps.len();
+                                    app_lock.ui_state.analysis.menu_down(laps_len);
+                                }
                                 KeyCode::Enter => {
                                     let AppState { ui_state, analyzer, .. } = &mut *app_lock;
                                     ui_state.analysis.load_selected_file(analyzer);
