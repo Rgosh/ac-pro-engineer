@@ -6,7 +6,7 @@
 *.exe
 
 
-/data/
+
 /ac-setups/
 /server_setups/
 /saved_laps/
