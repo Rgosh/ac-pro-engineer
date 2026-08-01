@@ -35,10 +35,10 @@ pub struct RemoteVersion {
     pub is_latest: bool,
     #[serde(default)]
     pub expected_size: u64,
-    /// Set when the asset is an archive, so the download step unpacks the
-    /// application binary out of it instead of renaming the file into place.
+    /// How the chosen asset delivers the binary, which decides what the
+    /// download step does with it — rename into place, unpack, or refuse.
     #[serde(default)]
-    pub needs_extraction: bool,
+    pub delivery: AssetKind,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,13 +77,28 @@ const ARCHIVE_EXTS: &[&str] = &[
     ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".7z",
 ];
 
+/// The subset of [`ARCHIVE_EXTS`] this build has a decoder for. dist is
+/// configured to emit exactly these — `unix-archive = ".tar.gz"` in
+/// dist-workspace.toml, `.zip` on Windows — so anything else in a release is a
+/// format nothing here can open.
+#[cfg(not(target_os = "windows"))]
+const SUPPORTED_ARCHIVE_EXTS: &[&str] = &[".tar.gz", ".tgz"];
+#[cfg(target_os = "windows")]
+const SUPPORTED_ARCHIVE_EXTS: &[&str] = &[".zip"];
+
 /// How a release asset delivers the application.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AssetKind {
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+pub enum AssetKind {
     /// A bare executable that can replace the running binary directly.
+    #[default]
     Executable,
-    /// A `.zip` / `.tar.*` bundle that would have to be unpacked first.
+    /// A bundle this build can unpack the application out of.
     Archive,
+    /// A bundle in a format this build has no decoder for — an `.tar.xz` from
+    /// before dist-workspace.toml pinned gzip, say. Surfaced so a newer version
+    /// is still reported to the user, but refused before the download starts:
+    /// spending the bytes only to fail in the decoder helps nobody.
+    UnsupportedArchive,
 }
 
 /// Decide whether a release asset carries the application for the OS this build
@@ -144,7 +159,20 @@ fn classify_asset(name: &str) -> Option<AssetKind> {
         false
     };
 
-    is_for_this_os.then_some(AssetKind::Archive)
+    if !is_for_this_os {
+        return None;
+    }
+
+    Some(
+        if SUPPORTED_ARCHIVE_EXTS
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+        {
+            AssetKind::Archive
+        } else {
+            AssetKind::UnsupportedArchive
+        },
+    )
 }
 
 /// File name the application binary has inside a release archive.
@@ -218,7 +246,9 @@ fn extract_app_binary(
 /// Pick the best asset in a release for the running OS.
 ///
 /// A bare executable is preferred over an archive, since it needs no unpacking
-/// and older releases published one directly.
+/// and older releases published one directly. An archive in an unsupported
+/// format is the last resort: it cannot be installed, but returning it still
+/// lets the UI tell the user a newer version exists.
 fn select_asset(assets: &[GitHubAsset]) -> Option<(AssetKind, &GitHubAsset)> {
     assets
         .iter()
@@ -226,6 +256,7 @@ fn select_asset(assets: &[GitHubAsset]) -> Option<(AssetKind, &GitHubAsset)> {
         .min_by_key(|(kind, _)| match kind {
             AssetKind::Executable => 0,
             AssetKind::Archive => 1,
+            AssetKind::UnsupportedArchive => 2,
         })
 }
 
@@ -389,7 +420,7 @@ impl Updater {
                                         notes: release.body.clone().unwrap_or_default(),
                                         is_latest: i == 0 || parsed_versions.is_empty(),
                                         expected_size: asset.size,
-                                        needs_extraction: kind == AssetKind::Archive,
+                                        delivery: kind,
                                     });
                                 } else {
                                     info!(
@@ -448,6 +479,20 @@ impl Updater {
 
     fn download_update(&self, info: RemoteVersion) {
         let status = self.status.clone();
+
+        // Nothing here can open the asset, so say so instead of spending a
+        // download to fail in the decoder. The installer from the release page
+        // handles these.
+        if info.delivery == AssetKind::UnsupportedArchive {
+            error!(
+                "Release v{} is in an unsupported archive format",
+                info.version
+            );
+            let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+            *lock = UpdateStatus::Error("Unsupported archive - use installer".to_string());
+            return;
+        }
+
         thread::spawn(move || {
             {
                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -551,7 +596,7 @@ impl Updater {
                             // An archive holds the binary alongside LICENSE and
                             // README, so unpack it. A bare binary is already
                             // the finished article and only needs renaming.
-                            if info.needs_extraction {
+                            if info.delivery == AssetKind::Archive {
                                 if let Err(e) = extract_app_binary(&temp_path, &final_path) {
                                     error!("Failed to extract update archive: {}", e);
                                     let _ = std::fs::remove_file(&temp_path);
@@ -841,10 +886,33 @@ mod tests {
     fn linux_recognises_the_dist_archive_as_needing_extraction() {
         let assets = [
             asset("ac_tui-x86_64-pc-windows-gnu.zip"),
-            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
         ];
         let (kind, chosen) = select_asset(&assets).expect("a linux archive exists");
-        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.xz");
+        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// dist defaults to `.tar.xz` on unix; dist-workspace.toml overrides that to
+    /// gzip precisely because this build links no liblzma. A release from before
+    /// that pin is still reported — the version number is useful — but it is
+    /// marked unsupported, and `download_update` refuses it up front instead of
+    /// pulling the whole file down to fail in the decoder.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_reports_an_xz_archive_but_marks_it_unsupported() {
+        assert_eq!(
+            classify_asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            Some(AssetKind::UnsupportedArchive)
+        );
+
+        // The supported archive wins whenever a release carries both.
+        let assets = [
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.gz");
         assert_eq!(kind, AssetKind::Archive);
     }
 
@@ -869,12 +937,23 @@ mod tests {
     #[test]
     fn windows_recognises_the_dist_archive_as_needing_extraction() {
         let assets = [
-            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
             asset("ac_tui-x86_64-pc-windows-gnu.zip"),
         ];
         let (kind, chosen) = select_asset(&assets).expect("a windows archive exists");
         assert_eq!(chosen.name, "ac_tui-x86_64-pc-windows-gnu.zip");
         assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// Only `.zip` has a decoder on Windows; a tarball named for this platform
+    /// is reported but not installable.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_marks_a_tarball_unsupported() {
+        assert_eq!(
+            classify_asset("ac_tui-x86_64-pc-windows-gnu.tar.gz"),
+            Some(AssetKind::UnsupportedArchive)
+        );
     }
 
     /// Round-trip the real dist layout: the binary sits under a directory named
@@ -974,7 +1053,7 @@ mod tests {
         let archive = if cfg!(target_os = "windows") {
             "ac_tui-x86_64-pc-windows-gnu.zip"
         } else {
-            "ac_tui-x86_64-unknown-linux-gnu.tar.xz"
+            "ac_tui-x86_64-unknown-linux-gnu.tar.gz"
         };
 
         if cfg!(any(target_os = "windows", target_os = "linux")) {
