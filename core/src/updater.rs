@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
+// Only the non-Windows apply path logs at warn level.
+#[cfg(not(target_os = "windows"))]
+use tracing::warn;
 
 const GITHUB_OWNER: &str = "Rgosh";
 const GITHUB_REPO: &str = "ac-pro-engineer";
@@ -32,6 +35,11 @@ pub struct RemoteVersion {
     pub is_latest: bool,
     #[serde(default)]
     pub expected_size: u64,
+    /// Set when the asset is an archive this updater cannot unpack, so the
+    /// download is refused with an actionable message instead of writing a
+    /// tarball over the running executable.
+    #[serde(default)]
+    pub needs_extraction: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,17 +58,93 @@ struct GitHubAsset {
     size: u64,
 }
 
-/// Returns the expected asset suffix for the current platform.
-fn platform_asset_suffix() -> &'static str {
-    if cfg!(target_os = "windows") {
-        ".exe"
-    } else if cfg!(target_os = "linux") {
-        "-linux"
-    } else if cfg!(target_os = "macos") {
-        "-macos"
-    } else {
-        ""
+/// Cargo bin name of the end-user application as published in release assets.
+const APP_BIN_STEM: &str = "ac_pro_engineer";
+
+/// How a release asset delivers the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssetKind {
+    /// A bare executable that can replace the running binary directly.
+    Executable,
+    /// A `.zip` / `.tar.*` bundle that would have to be unpacked first.
+    Archive,
+}
+
+/// Decide whether a release asset carries the application for the OS this build
+/// is running on.
+///
+/// Selection is deliberately conservative: an asset is accepted only when its
+/// name positively identifies the running platform. `restart_and_apply` moves
+/// the downloaded file over the running executable, so picking up a build for
+/// another OS leaves the install with a binary that cannot start. An
+/// unrecognised name is skipped rather than guessed at.
+///
+/// Two naming schemes are recognised:
+///
+/// * bare binaries, as published through v0.2.2 —
+///   `ac_pro_engineer.exe` on Windows, `ac_pro_engineer` on Linux
+/// * dist archives, which embed the Rust target triple —
+///   `ac_tui-x86_64-pc-windows-gnu.zip`,
+///   `ac_tui-x86_64-unknown-linux-gnu.tar.xz`
+fn classify_asset(name: &str) -> Option<AssetKind> {
+    let lower = name.to_ascii_lowercase();
+
+    // Artifacts that are not the application: the Wine bridge, installer
+    // scripts, the standalone updater, checksums and source snapshots.
+    let is_other_artifact = lower.starts_with("shm-bridge")
+        || lower.contains("installer")
+        || lower.ends_with("-update")
+        || lower.ends_with(".sha256")
+        || lower.ends_with(".sum")
+        || lower.starts_with("source.");
+    if is_other_artifact {
+        return None;
     }
+
+    let kind = if [".zip", ".tar.gz", ".tar.xz", ".tgz", ".txz", ".7z"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+    {
+        AssetKind::Archive
+    } else {
+        AssetKind::Executable
+    };
+
+    // Which platform does the name claim to target?
+    let claims_windows = lower.ends_with(".exe") || lower.contains("windows");
+    let claims_linux = lower.contains("linux");
+    let claims_macos =
+        lower.contains("macos") || lower.contains("darwin") || lower.contains("apple");
+    let claims_nothing = !claims_windows && !claims_linux && !claims_macos;
+
+    if cfg!(target_os = "windows") {
+        // The Windows build has always been identifiable by its `.exe`
+        // extension, so an untagged name is never accepted here.
+        (claims_windows && !claims_linux && !claims_macos).then_some(kind)
+    } else if cfg!(target_os = "linux") {
+        // An untagged bare name is the legacy Linux build (see v0.2.2, which
+        // shipped `ac_pro_engineer` alongside `ac_pro_engineer.exe`).
+        (claims_linux || (claims_nothing && lower == APP_BIN_STEM)).then_some(kind)
+    } else {
+        // No macOS or other build is published. Refuse rather than install a
+        // binary for a foreign platform.
+        None
+    }
+}
+
+/// Pick the best asset in a release for the running OS.
+///
+/// A bare executable is preferred over an archive; an archive is still returned
+/// so the UI can report that a newer version exists even though this updater
+/// cannot unpack it.
+fn select_asset(assets: &[GitHubAsset]) -> Option<(AssetKind, &GitHubAsset)> {
+    assets
+        .iter()
+        .filter_map(|asset| classify_asset(&asset.name).map(|kind| (kind, asset)))
+        .min_by_key(|(kind, _)| match kind {
+            AssetKind::Executable => 0,
+            AssetKind::Archive => 1,
+        })
 }
 
 /// Compare two SemVer version strings.
@@ -193,7 +277,6 @@ impl Updater {
 
                     match resp.json::<Vec<GitHubRelease>>() {
                         Ok(gh_releases) => {
-                            let suffix = platform_asset_suffix();
                             let mut parsed_versions = Vec::new();
 
                             for (i, release) in gh_releases.iter().enumerate() {
@@ -216,22 +299,22 @@ impl Updater {
                                     continue;
                                 }
 
-                                // Find platform-appropriate asset
-                                let asset = if suffix.is_empty() {
-                                    // Unknown platform — take the first asset
-                                    release.assets.first()
-                                } else {
-                                    release.assets.iter().find(|a| a.name.contains(suffix))
-                                };
-
-                                if let Some(asset) = asset {
+                                // Find the asset built for the OS we are running on
+                                if let Some((kind, asset)) = select_asset(&release.assets) {
                                     parsed_versions.push(RemoteVersion {
                                         version: remote_ver_str.to_string(),
                                         url: asset.browser_download_url.clone(),
                                         notes: release.body.clone().unwrap_or_default(),
                                         is_latest: i == 0 || parsed_versions.is_empty(),
                                         expected_size: asset.size,
+                                        needs_extraction: kind == AssetKind::Archive,
                                     });
+                                } else {
+                                    info!(
+                                        "Release v{} has no asset for {}; skipping",
+                                        remote_ver_str,
+                                        std::env::consts::OS
+                                    );
                                 }
                             }
 
@@ -287,6 +370,19 @@ impl Updater {
             {
                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                 *lock = UpdateStatus::Downloading(0.0);
+            }
+
+            // The download path swaps the file straight over the running
+            // executable, so an archive cannot be applied here. Refuse before
+            // fetching anything rather than unpack nothing and exec a tarball.
+            if info.needs_extraction {
+                error!(
+                    "Update asset {} is an archive; in-app update cannot unpack it",
+                    info.url
+                );
+                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+                *lock = UpdateStatus::Error("Archive release — use the installer".to_string());
+                return;
             }
 
             let current_exe =
@@ -539,20 +635,110 @@ mod tests {
         assert!(!is_prerelease("v0.2.3"));
     }
 
+    fn asset(name: &str) -> GitHubAsset {
+        GitHubAsset {
+            name: name.to_string(),
+            browser_download_url: format!("https://example.invalid/{name}"),
+            size: 1234,
+        }
+    }
+
+    /// Artifacts that are never the application, on any platform.
     #[test]
-    fn platform_suffix_is_not_empty() {
-        let suffix = platform_asset_suffix();
-        // On test machines (Linux CI), should be "-linux"
-        // On Windows, should be ".exe"
-        assert!(
-            !suffix.is_empty()
-                || cfg!(not(any(
-                    target_os = "windows",
-                    target_os = "linux",
-                    target_os = "macos"
-                ))),
-            "suffix should not be empty on known platforms"
-        );
+    fn non_application_assets_are_rejected() {
+        for name in [
+            "shm-bridge.exe",
+            "shm-bridge-x86_64-pc-windows-gnu.zip",
+            "ac_tui-installer.sh",
+            "ac_tui-installer.ps1",
+            "ac_tui-x86_64-unknown-linux-gnu-update",
+            "sha256.sum",
+            "ac_pro_engineer.exe.sha256",
+            "source.tar.gz",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_selects_the_linux_binary_and_never_the_windows_one() {
+        // v0.2.2 shipped all three of these in one release.
+        let assets = [
+            asset("ac_pro_engineer"),
+            asset("ac_pro_engineer.exe"),
+            asset("shm-bridge.exe"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux asset exists");
+        assert_eq!(chosen.name, "ac_pro_engineer");
+        assert_eq!(kind, AssetKind::Executable);
+
+        // A Windows-only release must yield nothing rather than an .exe.
+        assert!(select_asset(&[asset("ac_pro_engineer.exe")]).is_none());
+        assert_eq!(classify_asset("ac_pro_engineer.exe"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_recognises_the_dist_archive_as_needing_extraction() {
+        let assets = [
+            asset("ac_tui-x86_64-pc-windows-gnu.zip"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.xz");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_selects_the_exe_and_never_the_bare_elf() {
+        let assets = [
+            asset("ac_pro_engineer"),
+            asset("ac_pro_engineer.exe"),
+            asset("shm-bridge.exe"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a windows asset exists");
+        assert_eq!(chosen.name, "ac_pro_engineer.exe");
+        assert_eq!(kind, AssetKind::Executable);
+
+        // The untagged bare binary is a Linux ELF; it must not be picked here.
+        assert_eq!(classify_asset("ac_pro_engineer"), None);
+        assert!(select_asset(&[asset("ac_pro_engineer")]).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_recognises_the_dist_archive_as_needing_extraction() {
+        let assets = [
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            asset("ac_tui-x86_64-pc-windows-gnu.zip"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a windows archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-pc-windows-gnu.zip");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// A bare executable is preferred when a release carries both forms.
+    #[test]
+    fn executable_is_preferred_over_archive() {
+        let bare = if cfg!(target_os = "windows") {
+            "ac_pro_engineer.exe"
+        } else {
+            "ac_pro_engineer"
+        };
+        let archive = if cfg!(target_os = "windows") {
+            "ac_tui-x86_64-pc-windows-gnu.zip"
+        } else {
+            "ac_tui-x86_64-unknown-linux-gnu.tar.xz"
+        };
+
+        if cfg!(any(target_os = "windows", target_os = "linux")) {
+            let assets = [asset(archive), asset(bare)];
+            let (kind, chosen) = select_asset(&assets).expect("an asset exists");
+            assert_eq!(chosen.name, bare);
+            assert_eq!(kind, AssetKind::Executable);
+        }
     }
 
     #[test]
