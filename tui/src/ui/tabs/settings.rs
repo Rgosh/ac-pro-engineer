@@ -97,9 +97,9 @@ impl SettingsState {
 
     fn get_item_count(&self) -> usize {
         match self.category {
-            SettingsCategory::System => 5,
+            SettingsCategory::System => 6,
             SettingsCategory::Display => 2,
-            SettingsCategory::RaceEngineer => 7,
+            SettingsCategory::RaceEngineer => 10,
         }
     }
 
@@ -129,6 +129,11 @@ impl SettingsState {
                 4 => {
                     if delta.abs() > 0.0 {
                         config.review_banner_hidden = !config.review_banner_hidden
+                    }
+                }
+                5 => {
+                    if delta.abs() > 0.0 {
+                        config.enable_sound_alerts = !config.enable_sound_alerts
                     }
                 }
                 _ => {}
@@ -180,7 +185,20 @@ impl SettingsState {
                 }
                 6 => {
                     config.alerts.wear_warning =
-                        (config.alerts.wear_warning + delta).clamp(0.0, 100.0)
+                        (config.alerts.wear_warning + delta * 0.5).clamp(0.0, 100.0)
+                }
+                7 => {
+                    config.target_hot_pressure_front =
+                        (config.target_hot_pressure_front + delta * 0.1).clamp(15.0, 45.0)
+                }
+                8 => {
+                    config.target_hot_pressure_rear =
+                        (config.target_hot_pressure_rear + delta * 0.1).clamp(15.0, 45.0)
+                }
+                9 => {
+                    if delta.abs() > 0.0 {
+                        config.show_ghost_delta = !config.show_ghost_delta
+                    }
                 }
                 _ => {}
             },
@@ -544,6 +562,21 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             .to_string(),
             true,
         ),
+        (
+            if is_ru {
+                "Звуковые оповещения"
+            } else {
+                "Audio Alerts"
+            }
+            .to_string(),
+            if config.enable_sound_alerts {
+                if is_ru { "ВКЛ" } else { "ON" }
+            } else {
+                if is_ru { "ВЫКЛ (по умолчанию)" } else { "OFF (default)" }
+            }
+            .to_string(),
+            true,
+        ),
     ];
 
     for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
@@ -582,7 +615,9 @@ fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
 
 fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let alerts = &app.config.alerts;
+    let config = &app.config;
     let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
 
     let items = vec![
         (
@@ -619,6 +654,26 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             tr("alert_wear", lang),
             format!("{:.0}%", alerts.wear_warning),
             false,
+        ),
+        (
+            if is_ru { "Цель горяч. давления (Перед)" } else { "Target Hot Pressure (Front)" }.to_string(),
+            format!("{:.1} PSI", config.target_hot_pressure_front),
+            false,
+        ),
+        (
+            if is_ru { "Цель горяч. давления (Зад)" } else { "Target Hot Pressure (Rear)" }.to_string(),
+            format!("{:.1} PSI", config.target_hot_pressure_rear),
+            false,
+        ),
+        (
+            if is_ru { "Виджет Ghost Delta" } else { "Ghost Delta Widget" }.to_string(),
+            if config.show_ghost_delta {
+                if is_ru { "ВКЛ" } else { "ON" }
+            } else {
+                if is_ru { "ВЫКЛ" } else { "OFF" }
+            }
+            .to_string(),
+            true,
         ),
     ];
 

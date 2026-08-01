@@ -480,6 +480,13 @@ impl AppState {
         self.engineer.update_config(&self.config);
         self.engineer.update(&phys, &gfx, &self.session_info);
 
+        if self.config.enable_sound_alerts {
+            let recs = self.engineer.analyze_live(&phys, &gfx, None);
+            if recs.iter().any(|r| r.severity == ac_core::engineer::Severity::Critical) {
+                print!("\x07");
+            }
+        }
+
         self.overlay_manager.update(&self.session_info);
         let s = &mut self.overlay_manager.state;
         s.speed_kmh = phys.speed_kmh as i32;

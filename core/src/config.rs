@@ -68,7 +68,13 @@ pub struct AppConfig {
     #[serde(default = "default_target_tyre_pressure")]
     pub target_tyre_pressure: f32,
     #[serde(default)]
-    pub enable_logging: bool,
+    pub enable_sound_alerts: bool,
+    #[serde(default = "default_target_hot_pressure_front")]
+    pub target_hot_pressure_front: f32,
+    #[serde(default = "default_target_hot_pressure_rear")]
+    pub target_hot_pressure_rear: f32,
+    #[serde(default = "default_true")]
+    pub show_ghost_delta: bool,
 
     #[serde(default)]
     pub review_banner_hidden: bool,
@@ -90,6 +96,8 @@ fn default_temp_unit() -> TempUnit { TempUnit::Celsius }
 fn default_shift_point_offset() -> u32 { 200 }
 fn default_fuel_safety_margin() -> f32 { 1.0 }
 fn default_target_tyre_pressure() -> f32 { 27.5 }
+fn default_target_hot_pressure_front() -> f32 { 27.5 }
+fn default_target_hot_pressure_rear() -> f32 { 27.0 }
 fn default_data_path() -> PathBuf { app_dir() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,7 +203,10 @@ impl Default for AppConfig {
             shift_point_offset: 200,
             fuel_safety_margin: 1.0,
             target_tyre_pressure: 27.5,
-            enable_logging: false,
+            enable_sound_alerts: false,
+            target_hot_pressure_front: 27.5,
+            target_hot_pressure_rear: 27.0,
+            show_ghost_delta: true,
 
             review_banner_hidden: false,
 

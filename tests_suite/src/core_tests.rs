@@ -667,6 +667,93 @@ fn test_40_string_u16_formatting_has_no_side_effects() {
     use ac_core::ac_structs::StringU16_33;
 
     let s = StringU16_33::from("ks_ferrari_488_gt3");
+    let s = StringU16_33::from("ks_ferrari_488_gt3");
     let formatted = format!("{}", s);
     assert_eq!(formatted, "ks_ferrari_488_gt3");
+}
+
+#[test]
+fn test_41_cold_tyre_pressure_calculator() {
+    use ac_core::engineer::ColdPressureCalculator;
+
+    let estimate = ColdPressureCalculator::calculate(27.5, 20.0, 0.98);
+    assert!(estimate.recommended_cold_psi < estimate.target_hot_psi);
+    assert_eq!(estimate.target_hot_psi, 27.5);
+}
+
+#[test]
+fn test_42_csv_export_format() {
+    use ac_core::analyzer::{export_lap_to_csv, LapData, TelemetryPoint};
+
+    let mut lap = LapData::default();
+    lap.lap_number = 1;
+    lap.telemetry_trace.push(TelemetryPoint {
+        distance: 100.0,
+        time_ms: 2500,
+        speed: 180.0,
+        gas: 1.0,
+        brake: 0.0,
+        gear: 4,
+        steer: 0.05,
+        lat_g: 0.2,
+        lon_g: 0.1,
+        slip_avg: 0.01,
+        x: 10.0,
+        y: 20.0,
+    });
+
+    let tmp_path = std::env::temp_dir().join("test_export.csv");
+    let res = export_lap_to_csv(&lap, &tmp_path);
+    assert!(res.is_ok());
+
+    let content = std::fs::read_to_string(&tmp_path).unwrap();
+    assert!(content.contains("\"Time\",\"Distance\",\"Speed\""));
+    assert!(content.contains("2.500,100.00,180.0"));
+
+    let _ = std::fs::remove_file(tmp_path);
+}
+
+#[test]
+fn test_43_ghost_delta_calculation() {
+    use ac_core::analyzer::{calculate_ghost_delta, LapData, TelemetryPoint};
+
+    let mut best_lap = LapData::default();
+    best_lap.telemetry_trace.push(TelemetryPoint {
+        distance: 0.0,
+        time_ms: 0,
+        speed: 100.0,
+        gas: 1.0,
+        brake: 0.0,
+        gear: 3,
+        steer: 0.0,
+        lat_g: 0.0,
+        lon_g: 0.0,
+        slip_avg: 0.0,
+        x: 0.0,
+        y: 0.0,
+    });
+    best_lap.telemetry_trace.push(TelemetryPoint {
+        distance: 1000.0,
+        time_ms: 30000, // 30.0s at finish
+        speed: 200.0,
+        gas: 1.0,
+        brake: 0.0,
+        gear: 5,
+        steer: 0.0,
+        lat_g: 0.0,
+        lon_g: 0.0,
+        slip_avg: 0.0,
+        x: 100.0,
+        y: 100.0,
+    });
+
+    let delta = calculate_ghost_delta(&best_lap, 1.0, 31.5);
+    assert!(delta.is_some());
+    assert!((delta.unwrap() - 1.5).abs() < 0.01);
+}
+
+#[test]
+fn test_44_sound_alerts_config_default_false() {
+    let cfg = ac_core::config::AppConfig::default();
+    assert!(!cfg.enable_sound_alerts);
 }
