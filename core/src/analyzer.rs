@@ -262,6 +262,12 @@ impl TelemetryAnalyzer {
         self.world_record = Some(record);
     }
 
+    // Ten parameters, all of them distinct lap facts the caller already holds.
+    // Bundling them into a struct would only move the argument list to the call
+    // site, so the lint is acknowledged rather than worked around. `expect`
+    // rather than `allow`: if the signature is ever trimmed, this goes stale
+    // loudly instead of lingering.
+    #[expect(clippy::too_many_arguments)]
     pub fn process_lap(
         &mut self,
         lap_number: i32,
@@ -283,7 +289,6 @@ impl TelemetryAnalyzer {
             lap_number, lap_time_ms, car_name
         );
 
-        let _last_gfx = graphics_log.last().unwrap();
         // sectors already computed by caller
         for (i, sector) in sectors.iter().enumerate() {
             if *sector > 1000 && *sector < self.best_sectors[i] {
@@ -421,14 +426,16 @@ impl TelemetryAnalyzer {
                     understeer_c += 1;
                 }
 
-                if p.speed_kmh > 40.0 && p.steer_angle.abs() > 0.15
-                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15) {
-                        scrubbing_c += 1;
-                        let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
-                        if excess > max_over_rotation {
-                            max_over_rotation = excess;
-                        }
+                if p.speed_kmh > 40.0
+                    && p.steer_angle.abs() > 0.15
+                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15)
+                {
+                    scrubbing_c += 1;
+                    let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
+                    if excess > max_over_rotation {
+                        max_over_rotation = excess;
                     }
+                }
             }
 
             for i in 0..4 {

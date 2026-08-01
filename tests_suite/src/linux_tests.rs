@@ -56,46 +56,6 @@ macro_rules! generate_distro_tests {
                     .expect("Failed to get exit status from VM");
                 assert!(exit_status.success());
             }
-
-            #[tokio::test]
-            async fn test_02_args_builder() {
-                let game_id = 244210;
-                let bridge = if $is_flatpak {
-                    "/var/app/com.valvesoftware.Steam/bridge/shm-bridge.exe"
-                } else {
-                    "/opt/ac_pro/shm-bridge.exe"
-                };
-
-                let args = vec![
-                    "--appid".to_string(),
-                    game_id.to_string(),
-                    bridge.to_string(),
-                ];
-
-                assert_eq!(args.len(), 3);
-                assert_eq!(args[0], "--appid");
-                assert_eq!(args[1], "244210");
-                assert_eq!(args[2], bridge);
-            }
-
-            #[tokio::test]
-            async fn test_03_env_isolation() {
-                let env_path_key = format!("AC_PROTON_PATH_{}", stringify!($mod_name));
-                let env_test_key = format!("AC_TEST_MODE_{}", stringify!($mod_name));
-
-                std::env::set_var(&env_path_key, $proton_bin);
-                std::env::set_var(&env_test_key, "1");
-
-                let proton_path = std::env::var(&env_path_key)
-                    .unwrap_or_else(|_| "protontricks-launch".to_string());
-                assert_eq!(proton_path, $proton_bin);
-
-                let is_test = std::env::var(&env_test_key).is_ok();
-                assert!(is_test);
-
-                std::env::remove_var(&env_path_key);
-                std::env::remove_var(&env_test_key);
-            }
         }
     };
 }

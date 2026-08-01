@@ -6,15 +6,17 @@ use ac_core::setup_manager::CarSetup;
 use std::cmp::Ordering;
 
 fn get_english_config() -> AppConfig {
-    let mut config = AppConfig::default();
-    config.language = Language::English;
-    config
+    AppConfig {
+        language: Language::English,
+        ..Default::default()
+    }
 }
 
 fn get_russian_config() -> AppConfig {
-    let mut config = AppConfig::default();
-    config.language = Language::Russian;
-    config
+    AppConfig {
+        language: Language::Russian,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -41,10 +43,10 @@ fn test_03_tyre_wear_mathematics() {
     stats.base_tyre_wear = [100.0, 100.0, 100.0, 100.0];
     stats.stint_laps = 10;
     let current_wear = [96.0, 95.0, 98.0, 97.0];
-    for i in 0..4 {
-        let wear_used = stats.base_tyre_wear[i] - current_wear[i];
+    for (i, &current) in current_wear.iter().enumerate() {
+        let wear_used = stats.base_tyre_wear[i] - current;
         let wear_per_lap = wear_used / stats.stint_laps as f32;
-        let remaining_wear = current_wear[i] - 94.0;
+        let remaining_wear = current - 94.0;
         if wear_per_lap > 0.001 {
             stats.tyre_laps_remaining[i] = (remaining_wear / wear_per_lap).max(0.0);
         }
@@ -61,14 +63,14 @@ fn test_04_tyre_wear_extreme_values() {
     stats.base_tyre_wear = [100.0, 100.0, 100.0, 100.0];
     stats.stint_laps = 0;
     let current_wear = [105.0, -50.0, 0.0, 94.0];
-    for i in 0..4 {
-        let wear_used = stats.base_tyre_wear[i] - current_wear[i];
+    for (i, &current) in current_wear.iter().enumerate() {
+        let wear_used = stats.base_tyre_wear[i] - current;
         let wear_per_lap = if stats.stint_laps > 0 {
             wear_used / stats.stint_laps as f32
         } else {
             0.0
         };
-        let remaining_wear = current_wear[i] - 94.0;
+        let remaining_wear = current - 94.0;
         if wear_per_lap > 0.001 {
             stats.tyre_laps_remaining[i] = (remaining_wear / wear_per_lap).max(0.0);
         } else {
@@ -243,7 +245,7 @@ fn test_18_engineer_history_buffer_bounds() {
 
 #[test]
 fn test_19_severity_ordering() {
-    let mut recs = vec![
+    let mut recs = [
         Recommendation {
             component: "A".into(),
             category: "1".into(),
@@ -324,10 +326,12 @@ fn test_22_tyre_pressure_optimizer() {
     use ac_core::ac_structs::AcPhysics;
     use ac_core::engineer::TyrePressureOptimizer;
 
-    let mut phys = AcPhysics::default();
-    phys.wheels_pressure = [26.0, 27.5, 27.5, 27.5];
-    phys.tyre_temp_i = [95.0, 85.0, 85.0, 85.0];
-    phys.tyre_temp_o = [80.0, 85.0, 85.0, 85.0];
+    let phys = AcPhysics {
+        wheels_pressure: [26.0, 27.5, 27.5, 27.5],
+        tyre_temp_i: [95.0, 85.0, 85.0, 85.0],
+        tyre_temp_o: [80.0, 85.0, 85.0, 85.0],
+        ..Default::default()
+    };
 
     let opt = TyrePressureOptimizer::calculate(&phys, 27.5);
     assert_eq!(opt.corners[0].corner_name, "FL");
@@ -568,11 +572,12 @@ fn test_36_engineer_update_rate_independence() {
     let mut eng_fast = Engineer::new(&cfg_fast);
     let mut eng_slow = Engineer::new(&cfg_slow);
 
-    let mut phys = AcPhysics::default();
-    phys.speed_kmh = 100.0;
-    phys.brake = 0.8;
-    phys.wheel_slip[0] = 0.4;
-    phys.wheel_slip[1] = 0.4;
+    let phys = AcPhysics {
+        speed_kmh: 100.0,
+        brake: 0.8,
+        wheel_slip: [0.4, 0.4, 0.0, 0.0],
+        ..Default::default()
+    };
 
     let gfx = AcGraphics::default();
     let session = SessionInfo::default();
@@ -631,9 +636,11 @@ fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
     cfg2.target_tyre_pressure = 32.0;
     let mut eng2 = Engineer::new(&cfg2);
 
-    let mut phys = AcPhysics::default();
-    phys.speed_kmh = 80.0;
-    phys.wheels_pressure = [25.0; 4]; // low pressure
+    let phys = AcPhysics {
+        speed_kmh: 80.0,
+        wheels_pressure: [25.0; 4], // low pressure
+        ..Default::default()
+    };
 
     let gfx = AcGraphics::default();
     let _session = SessionInfo::default();
@@ -645,12 +652,12 @@ fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
     let target1 = recs1
         .iter()
         .find(|r| r.category.contains("Tyre Pressure"))
-        .and_then(|r| r.parameters.get(0))
+        .and_then(|r| r.parameters.first())
         .map(|p| p.target);
     let target2 = recs2
         .iter()
         .find(|r| r.category.contains("Tyre Pressure"))
-        .and_then(|r| r.parameters.get(0))
+        .and_then(|r| r.parameters.first())
         .map(|p| p.target);
 
     if let (Some(t1), Some(t2)) = (target1, target2) {
@@ -674,8 +681,10 @@ fn test_39_corrupted_records_file_and_atomic_save_safety() {
     let res = RecordManager::load_from_path(&junk_file);
     assert!(res.is_err());
 
-    let mut mgr = RecordManager::default();
-    mgr.db_path = junk_file;
+    let mut mgr = RecordManager {
+        db_path: junk_file,
+        ..Default::default()
+    };
     mgr.load(); // handles error gracefully
 
     // Atomic save to valid path
@@ -710,8 +719,10 @@ fn test_41_cold_tyre_pressure_calculator() {
 fn test_42_csv_export_format() {
     use ac_core::analyzer::{export_lap_to_csv, LapData, TelemetryPoint};
 
-    let mut lap = LapData::default();
-    lap.lap_number = 1;
+    let mut lap = LapData {
+        lap_number: 1,
+        ..Default::default()
+    };
     lap.telemetry_trace.push(TelemetryPoint {
         distance: 100.0,
         time_ms: 2500,

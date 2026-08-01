@@ -1,0 +1,5 @@
+# Only the end-user application is shipped in release artifacts.
+# `simulator` and `tui_tester` are development tools: without this, dist
+# bundles every [[bin]] of the package into the zip/tarball and installers.
+[package]
+binaries = ["ac_pro_engineer"]

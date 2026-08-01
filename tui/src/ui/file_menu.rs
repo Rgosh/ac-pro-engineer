@@ -55,13 +55,14 @@ impl FileMenu {
         self.files.sort();
         self.files.reverse();
         if let Some(sel) = self.state.selected()
-            && sel >= self.files.len() {
-                if !self.files.is_empty() {
-                    self.state.select(Some(self.files.len() - 1));
-                } else {
-                    self.state.select(None);
-                }
+            && sel >= self.files.len()
+        {
+            if !self.files.is_empty() {
+                self.state.select(Some(self.files.len() - 1));
+            } else {
+                self.state.select(None);
             }
+        }
         Ok(())
     }
 

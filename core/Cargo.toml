@@ -22,7 +22,15 @@ discord-rich-presence = { workspace = true }
 tracing = { workspace = true }
 memmap2 = { workspace = true }
 
+# Release-archive extraction for the in-app updater. Only the format this
+# platform actually downloads is pulled in: dist ships .tar.gz for unix and
+# .zip for Windows.
+[target.'cfg(not(target_os="windows"))'.dependencies]
+tar = { workspace = true }
+flate2 = { workspace = true }
+
 [target.'cfg(target_os="windows")'.dependencies]
+zip = { workspace = true }
 windows = { workspace = true, features = [
     "Win32_System_Memory",
     "Win32_Foundation",
@@ -35,3 +43,12 @@ windows = { workspace = true, features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_Controls",
 ] }
+
+# Both archive readers are compiled under cfg(test) regardless of host, so the
+# Windows .zip path is covered by the Linux CI leg too — otherwise it would be
+# compiled only by the Windows leg and exercised by nothing. Writer support in
+# `zip` is unconditional, so the round-trip tests need no extra features.
+[dev-dependencies]
+tar = { workspace = true }
+flate2 = { workspace = true }
+zip = { workspace = true }

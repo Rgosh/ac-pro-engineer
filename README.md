@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/github/license/Rgosh/ac-pro-engineer)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/stargazers)
 [![Linux Badge](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)](#linux-section)
+[![Release](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml/badge.svg)](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml)
 
 **AC Pro Engineer** is a standalone high-performance telemetry analyzer and real-time race engineering suite for **Assetto Corsa** (AC / ACC). Written in Rust with Tokio async task scheduling, it operates with zero FPS drop as a resolution-independent **Terminal User Interface (TUI)** and native desktop overlay system.
 

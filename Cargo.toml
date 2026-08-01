@@ -32,6 +32,12 @@ tracing-appender = "0.2"
 windows = "0.52"
 walkdir = "2.4"
 tokio = "1.49.0"
+# Unpacking release archives in the in-app updater. All pure Rust: gzip/deflate
+# via flate2, so no C liblzma is linked in (see unix-archive in
+# dist-workspace.toml).
+tar = "0.4.46"
+flate2 = "1.1.9"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unused = { level = "warn", priority = -1 }
@@ -43,7 +49,14 @@ nonstandard-style = "warn"
 keyword-idents = "warn"
 future-incompatible = "warn"
 deprecated-safe = "warn"
-let-underscore = "warn"
+let-underscore = { level = "warn", priority = -1 }
+# `let _ = ...` is how this codebase deliberately discards a Result it has no
+# useful reaction to — best-effort cleanup of temp files, mostly. Upstream has
+# let_underscore_drop allow-by-default for exactly that reason; it is only on
+# here because the whole let-underscore group is. Keep the group (it still
+# catches `let _ = lock.lock()`, which drops a guard immediately) and turn off
+# the one member that fires on the intended idiom.
+let_underscore_drop = "allow"
 unknown-or-malformed-diagnostic-attributes = "warn"
 
 [workspace.lints.clippy]
@@ -55,3 +68,12 @@ complexity = { level = "warn", priority = -1 }
 perf = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 panic = "deny"
+
+[profile.release]
+lto = true
+opt-level = 3
+strip = "debuginfo"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"

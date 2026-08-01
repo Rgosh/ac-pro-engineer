@@ -333,22 +333,23 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             };
 
             if i == 5
-                && let UpdateStatus::UpdateAvailable = *update_status {
-                    if is_selected {
-                        return ListItem::new(format!("  {}", text)).style(
-                            Style::default()
-                                .fg(Color::Black)
-                                .bg(Color::LightGreen)
-                                .add_modifier(Modifier::BOLD),
-                        );
-                    } else {
-                        return ListItem::new(format!("  {}", text)).style(
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
-                        );
-                    }
+                && let UpdateStatus::UpdateAvailable = *update_status
+            {
+                if is_selected {
+                    return ListItem::new(format!("  {}", text)).style(
+                        Style::default()
+                            .fg(Color::Black)
+                            .bg(Color::LightGreen)
+                            .add_modifier(Modifier::BOLD),
+                    );
+                } else {
+                    return ListItem::new(format!("  {}", text)).style(
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    );
                 }
+            }
 
             let prefix = if is_selected { ">>" } else { "  " };
             ListItem::new(format!("{} {}", prefix, text)).style(style)

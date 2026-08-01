@@ -1,0 +1,6 @@
+# The bridge only ever runs inside Wine/Proton, so it is built for Windows only.
+[dist]
+targets = ["x86_64-pc-windows-gnu"]
+
+[package]
+binaries = ["shm-bridge"]

@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
+// Only the non-Windows apply path logs at warn level.
+#[cfg(not(target_os = "windows"))]
+use tracing::warn;
 
 const GITHUB_OWNER: &str = "Rgosh";
 const GITHUB_REPO: &str = "ac-pro-engineer";
@@ -32,6 +35,10 @@ pub struct RemoteVersion {
     pub is_latest: bool,
     #[serde(default)]
     pub expected_size: u64,
+    /// How the chosen asset delivers the binary, which decides what the
+    /// download step does with it — rename into place, unpack, or refuse.
+    #[serde(default)]
+    pub delivery: AssetKind,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,17 +57,237 @@ struct GitHubAsset {
     size: u64,
 }
 
-/// Returns the expected asset suffix for the current platform.
-fn platform_asset_suffix() -> &'static str {
-    if cfg!(target_os = "windows") {
-        ".exe"
-    } else if cfg!(target_os = "linux") {
-        "-linux"
-    } else if cfg!(target_os = "macos") {
-        "-macos"
-    } else {
-        ""
+/// Cargo bin name of the end-user application as published in release assets.
+const APP_BIN_STEM: &str = "ac_pro_engineer";
+/// The same binary as published for Windows.
+const APP_BIN_EXE: &str = "ac_pro_engineer.exe";
+
+/// Name prefixes a release *archive* of the application can carry. dist names
+/// archives after the Cargo package (`ac_tui`); older manual releases used the
+/// binary name.
+///
+/// Renaming the package means adding the new prefix here, or the updater stops
+/// offering updates. That is the safe direction to fail: a missed update is
+/// recoverable, installing another package's archive over the running
+/// executable is not.
+const APP_ARCHIVE_PREFIXES: &[&str] = &["ac_tui-", "ac_pro_engineer-", "ac-pro-engineer-"];
+
+/// Archive extensions a release might plausibly use.
+const ARCHIVE_EXTS: &[&str] = &[
+    ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".7z",
+];
+
+/// The subset of [`ARCHIVE_EXTS`] this build has a decoder for. dist is
+/// configured to emit exactly these — `unix-archive = ".tar.gz"` in
+/// dist-workspace.toml, `.zip` on Windows — so anything else in a release is a
+/// format nothing here can open.
+#[cfg(not(target_os = "windows"))]
+const SUPPORTED_ARCHIVE_EXTS: &[&str] = &[".tar.gz", ".tgz"];
+#[cfg(target_os = "windows")]
+const SUPPORTED_ARCHIVE_EXTS: &[&str] = &[".zip"];
+
+/// How a release asset delivers the application.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+pub enum AssetKind {
+    /// A bare executable that can replace the running binary directly.
+    #[default]
+    Executable,
+    /// A bundle this build can unpack the application out of.
+    Archive,
+    /// A bundle in a format this build has no decoder for — an `.tar.xz` from
+    /// before dist-workspace.toml pinned gzip, say. Surfaced so a newer version
+    /// is still reported to the user, but refused before the download starts:
+    /// spending the bytes only to fail in the decoder helps nobody.
+    UnsupportedArchive,
+}
+
+/// Decide whether a release asset carries the application for the OS this build
+/// is running on.
+///
+/// Selection is an allow-list, and deliberately so: `restart_and_apply` moves
+/// the chosen file over the running executable, so an asset is accepted only
+/// when its name positively identifies both the application and the running
+/// platform. Everything else is refused rather than guessed at — a `.deb`, an
+/// `.msi`, a detached signature and another workspace package's archive all
+/// name a platform, and none of them can be renamed over the running binary.
+///
+/// Two naming schemes are recognised:
+///
+/// * bare binaries, as published through v0.2.2 — exactly `ac_pro_engineer` on
+///   Linux, exactly `ac_pro_engineer.exe` on Windows
+/// * dist archives, which embed the Rust target triple —
+///   `ac_tui-x86_64-unknown-linux-gnu.tar.gz`,
+///   `ac_tui-x86_64-pc-windows-gnu.zip`
+fn classify_asset(name: &str) -> Option<AssetKind> {
+    let lower = name.to_ascii_lowercase();
+
+    // A bare binary is only ever the exact Cargo bin name. v0.2.2 shipped the
+    // untagged Linux build alongside the Windows one, so the `.exe` extension
+    // is what tells the two apart.
+    if lower == APP_BIN_STEM {
+        return cfg!(target_os = "linux").then_some(AssetKind::Executable);
     }
+    if lower == APP_BIN_EXE {
+        return cfg!(target_os = "windows").then_some(AssetKind::Executable);
+    }
+
+    // Past that point the asset has to be an archive of this application.
+    // Requiring a known archive extension is what keeps `.deb`/`.rpm`/`.msi` —
+    // names dist starts emitting the moment another installer is enabled —
+    // from being chmod +x'd and moved over the running binary. Requiring the
+    // package prefix keeps the Wine bridge, the source snapshot and any future
+    // workspace member out.
+    let is_app_archive = APP_ARCHIVE_PREFIXES.iter().any(|p| lower.starts_with(p))
+        && ARCHIVE_EXTS.iter().any(|ext| lower.ends_with(ext));
+    if !is_app_archive {
+        return None;
+    }
+
+    // dist embeds the Rust target triple, so the archive names its platform.
+    let claims_windows = lower.contains("windows");
+    let claims_linux = lower.contains("linux");
+    let claims_macos =
+        lower.contains("macos") || lower.contains("darwin") || lower.contains("apple");
+
+    let is_for_this_os = if cfg!(target_os = "windows") {
+        claims_windows && !claims_linux && !claims_macos
+    } else if cfg!(target_os = "linux") {
+        claims_linux && !claims_windows && !claims_macos
+    } else {
+        // No macOS or other build is published. Refuse rather than install a
+        // binary for a foreign platform.
+        false
+    };
+
+    if !is_for_this_os {
+        return None;
+    }
+
+    Some(
+        if SUPPORTED_ARCHIVE_EXTS
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+        {
+            AssetKind::Archive
+        } else {
+            AssetKind::UnsupportedArchive
+        },
+    )
+}
+
+/// File name the application binary has inside a release archive.
+fn app_binary_file_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "ac_pro_engineer.exe"
+    } else {
+        APP_BIN_STEM
+    }
+}
+
+/// Unpack the application binary out of a downloaded release archive.
+///
+/// Only the format this platform actually downloads is compiled into the
+/// binary — `.tar.gz` on unix, `.zip` on Windows — but both readers are built
+/// under `cfg(test)` so either can be exercised from any host. Without that,
+/// the Windows path would only ever be compiled by the Windows CI leg and only
+/// ever be tested by nobody.
+#[cfg(not(target_os = "windows"))]
+fn extract_app_binary(
+    archive: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    extract_named_entry_from_tar_gz(archive, app_binary_file_name(), dest)
+}
+
+#[cfg(target_os = "windows")]
+fn extract_app_binary(
+    archive: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    extract_named_entry_from_zip(archive, app_binary_file_name(), dest)
+}
+
+/// Copy the entry called `wanted` out of a gzipped tarball.
+///
+/// dist nests every file under a single directory named after the archive stem,
+/// e.g. `ac_tui-x86_64-unknown-linux-gnu/ac_pro_engineer`, and the archive also
+/// carries LICENSE, README and any other bundled binaries. The wanted entry is
+/// therefore located by file name at any depth rather than by a fixed path, so
+/// a change to the wrapping directory name does not break updates.
+#[cfg(any(not(target_os = "windows"), test))]
+fn extract_named_entry_from_tar_gz(
+    archive: &std::path::Path,
+    wanted: &str,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::open(archive)?;
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+        if path.file_name().and_then(|n| n.to_str()) != Some(wanted) {
+            continue;
+        }
+        let mut out = File::create(dest)?;
+        std::io::copy(&mut entry, &mut out)?;
+        return Ok(());
+    }
+
+    Err(format!("{wanted} not found in {}", archive.display()).into())
+}
+
+/// Windows counterpart: dist ships a `.zip` there.
+///
+/// The `zip` dependency is built with only the `deflate` feature, which covers
+/// what dist emits (Deflated) plus Stored, which needs no decoder. A release
+/// zipped with bzip2/zstd/lzma would fail here — the round-trip tests pin the
+/// two methods that are expected to work.
+#[cfg(any(target_os = "windows", test))]
+fn extract_named_entry_from_zip(
+    archive: &std::path::Path,
+    wanted: &str,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::open(archive)?;
+    let mut zip = zip::ZipArchive::new(file)?;
+
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        // `enclosed_name` rejects absolute paths and `..` traversal, so a
+        // hostile archive cannot steer the match outside the tree.
+        let is_match = entry
+            .enclosed_name()
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            == Some(wanted);
+        if !is_match {
+            continue;
+        }
+        let mut out = File::create(dest)?;
+        std::io::copy(&mut entry, &mut out)?;
+        return Ok(());
+    }
+
+    Err(format!("{wanted} not found in {}", archive.display()).into())
+}
+
+/// Pick the best asset in a release for the running OS.
+///
+/// A bare executable is preferred over an archive, since it needs no unpacking
+/// and older releases published one directly. An archive in an unsupported
+/// format is the last resort: it cannot be installed, but returning it still
+/// lets the UI tell the user a newer version exists.
+fn select_asset(assets: &[GitHubAsset]) -> Option<(AssetKind, &GitHubAsset)> {
+    assets
+        .iter()
+        .filter_map(|asset| classify_asset(&asset.name).map(|kind| (kind, asset)))
+        .min_by_key(|(kind, _)| match kind {
+            AssetKind::Executable => 0,
+            AssetKind::Archive => 1,
+            AssetKind::UnsupportedArchive => 2,
+        })
 }
 
 /// Compare two SemVer version strings.
@@ -193,7 +420,6 @@ impl Updater {
 
                     match resp.json::<Vec<GitHubRelease>>() {
                         Ok(gh_releases) => {
-                            let suffix = platform_asset_suffix();
                             let mut parsed_versions = Vec::new();
 
                             for (i, release) in gh_releases.iter().enumerate() {
@@ -216,22 +442,22 @@ impl Updater {
                                     continue;
                                 }
 
-                                // Find platform-appropriate asset
-                                let asset = if suffix.is_empty() {
-                                    // Unknown platform — take the first asset
-                                    release.assets.first()
-                                } else {
-                                    release.assets.iter().find(|a| a.name.contains(suffix))
-                                };
-
-                                if let Some(asset) = asset {
+                                // Find the asset built for the OS we are running on
+                                if let Some((kind, asset)) = select_asset(&release.assets) {
                                     parsed_versions.push(RemoteVersion {
                                         version: remote_ver_str.to_string(),
                                         url: asset.browser_download_url.clone(),
                                         notes: release.body.clone().unwrap_or_default(),
                                         is_latest: i == 0 || parsed_versions.is_empty(),
                                         expected_size: asset.size,
+                                        delivery: kind,
                                     });
+                                } else {
+                                    info!(
+                                        "Release v{} has no asset for {}; skipping",
+                                        remote_ver_str,
+                                        std::env::consts::OS
+                                    );
                                 }
                             }
 
@@ -283,6 +509,20 @@ impl Updater {
 
     fn download_update(&self, info: RemoteVersion) {
         let status = self.status.clone();
+
+        // Nothing here can open the asset, so say so instead of spending a
+        // download to fail in the decoder. The installer from the release page
+        // handles these.
+        if info.delivery == AssetKind::UnsupportedArchive {
+            error!(
+                "Release v{} is in an unsupported archive format",
+                info.version
+            );
+            let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+            *lock = UpdateStatus::Error("Unsupported archive - use installer".to_string());
+            return;
+        }
+
         thread::spawn(move || {
             {
                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -383,8 +623,21 @@ impl Updater {
                                 return;
                             }
 
-                            // Atomic rename from .tmp to final
-                            if let Err(e) = std::fs::rename(&temp_path, &final_path) {
+                            // An archive holds the binary alongside LICENSE and
+                            // README, so unpack it. A bare binary is already
+                            // the finished article and only needs renaming.
+                            if info.delivery == AssetKind::Archive {
+                                if let Err(e) = extract_app_binary(&temp_path, &final_path) {
+                                    error!("Failed to extract update archive: {}", e);
+                                    let _ = std::fs::remove_file(&temp_path);
+                                    let _ = std::fs::remove_file(&final_path);
+                                    let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+                                    *lock = UpdateStatus::Error("Extract failed".to_string());
+                                    return;
+                                }
+                                // The archive itself is no longer needed.
+                                let _ = std::fs::remove_file(&temp_path);
+                            } else if let Err(e) = std::fs::rename(&temp_path, &final_path) {
                                 error!("Failed to rename temp file: {}", e);
                                 let _ = std::fs::remove_file(&temp_path);
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -539,20 +792,369 @@ mod tests {
         assert!(!is_prerelease("v0.2.3"));
     }
 
+    fn asset(name: &str) -> GitHubAsset {
+        GitHubAsset {
+            name: name.to_string(),
+            browser_download_url: format!("https://example.invalid/{name}"),
+            size: 1234,
+        }
+    }
+
+    /// Every artifact `dist plan` emits for this workspace, verbatim. Exactly
+    /// one of them is installable on any given platform; if dist changes how it
+    /// names things, this list is where it shows up.
+    const REAL_RELEASE_ASSETS: &[&str] = &[
+        "ac_tui-installer.ps1",
+        "ac_tui-installer.sh",
+        "ac_tui-x86_64-pc-windows-gnu-update",
+        "ac_tui-x86_64-pc-windows-gnu.zip",
+        "ac_tui-x86_64-pc-windows-gnu.zip.sha256",
+        "ac_tui-x86_64-unknown-linux-gnu-update",
+        "ac_tui-x86_64-unknown-linux-gnu.tar.gz",
+        "ac_tui-x86_64-unknown-linux-gnu.tar.gz.sha256",
+        "dist-manifest.json",
+        "sha256.sum",
+        "shm-bridge-installer.ps1",
+        "shm-bridge-installer.sh",
+        "shm-bridge-x86_64-pc-windows-gnu-update",
+        "shm-bridge-x86_64-pc-windows-gnu.zip",
+        "shm-bridge-x86_64-pc-windows-gnu.zip.sha256",
+        "source.tar.gz",
+        "source.tar.gz.sha256",
+    ];
+
+    /// Artifacts that are never the application, on any platform.
     #[test]
-    fn platform_suffix_is_not_empty() {
-        let suffix = platform_asset_suffix();
-        // On test machines (Linux CI), should be "-linux"
-        // On Windows, should be ".exe"
-        assert!(
-            !suffix.is_empty()
-                || cfg!(not(any(
-                    target_os = "windows",
-                    target_os = "linux",
-                    target_os = "macos"
-                ))),
-            "suffix should not be empty on known platforms"
+    fn non_application_assets_are_rejected() {
+        for name in [
+            "shm-bridge.exe",
+            "shm-bridge-x86_64-pc-windows-gnu.zip",
+            "ac_tui-installer.sh",
+            "ac_tui-installer.ps1",
+            "ac_tui-x86_64-unknown-linux-gnu-update",
+            "sha256.sum",
+            "ac_pro_engineer.exe.sha256",
+            "source.tar.gz",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    /// The regression the allow-list exists for. Every one of these names a
+    /// platform and is not an archive, so the previous "anything without an
+    /// archive extension is a bare executable" rule would have picked it *in
+    /// preference to* the real archive, chmod +x'd it and moved it over the
+    /// running binary. Enabling one more dist installer is all it takes to put
+    /// these in a release.
+    #[test]
+    fn package_formats_are_never_treated_as_executables() {
+        for name in [
+            "ac_tui-x86_64-pc-windows-gnu.msi",
+            "ac_tui-x86_64-unknown-linux-gnu.deb",
+            "ac_tui-x86_64-unknown-linux-gnu.rpm",
+            "ac_tui-x86_64-unknown-linux-gnu.AppImage",
+            "ac_tui-x86_64-apple-darwin.pkg",
+            "ac_tui-x86_64-unknown-linux-gnu.tar.gz.sig",
+            "ac_tui-x86_64-pc-windows-gnu.zip.asc",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    /// Another workspace package's archive names a platform *and* ends in a
+    /// real archive extension — only the application prefix keeps it out.
+    #[test]
+    fn other_packages_archives_are_rejected() {
+        for name in [
+            "shm-bridge-x86_64-pc-windows-gnu.zip",
+            "shm-bridge-x86_64-unknown-linux-gnu.tar.gz",
+            "some-future-tool-x86_64-unknown-linux-gnu.tar.gz",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    #[test]
+    fn a_real_dist_release_yields_exactly_one_installable_asset() {
+        let accepted: Vec<&str> = REAL_RELEASE_ASSETS
+            .iter()
+            .copied()
+            .filter(|name| classify_asset(name).is_some())
+            .collect();
+
+        let expected: &[&str] = if cfg!(target_os = "windows") {
+            &["ac_tui-x86_64-pc-windows-gnu.zip"]
+        } else if cfg!(target_os = "linux") {
+            &["ac_tui-x86_64-unknown-linux-gnu.tar.gz"]
+        } else {
+            &[]
+        };
+
+        assert_eq!(accepted, expected);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_selects_the_linux_binary_and_never_the_windows_one() {
+        // v0.2.2 shipped all three of these in one release.
+        let assets = [
+            asset("ac_pro_engineer"),
+            asset("ac_pro_engineer.exe"),
+            asset("shm-bridge.exe"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux asset exists");
+        assert_eq!(chosen.name, "ac_pro_engineer");
+        assert_eq!(kind, AssetKind::Executable);
+
+        // A Windows-only release must yield nothing rather than an .exe.
+        assert!(select_asset(&[asset("ac_pro_engineer.exe")]).is_none());
+        assert_eq!(classify_asset("ac_pro_engineer.exe"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_recognises_the_dist_archive_as_needing_extraction() {
+        let assets = [
+            asset("ac_tui-x86_64-pc-windows-gnu.zip"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// dist defaults to `.tar.xz` on unix; dist-workspace.toml overrides that to
+    /// gzip precisely because this build links no liblzma. A release from before
+    /// that pin is still reported — the version number is useful — but it is
+    /// marked unsupported, and `download_update` refuses it up front instead of
+    /// pulling the whole file down to fail in the decoder.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_reports_an_xz_archive_but_marks_it_unsupported() {
+        assert_eq!(
+            classify_asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            Some(AssetKind::UnsupportedArchive)
         );
+
+        // The supported archive wins whenever a release carries both.
+        let assets = [
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.xz"),
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a linux archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_selects_the_exe_and_never_the_bare_elf() {
+        let assets = [
+            asset("ac_pro_engineer"),
+            asset("ac_pro_engineer.exe"),
+            asset("shm-bridge.exe"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a windows asset exists");
+        assert_eq!(chosen.name, "ac_pro_engineer.exe");
+        assert_eq!(kind, AssetKind::Executable);
+
+        // The untagged bare binary is a Linux ELF; it must not be picked here.
+        assert_eq!(classify_asset("ac_pro_engineer"), None);
+        assert!(select_asset(&[asset("ac_pro_engineer")]).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_recognises_the_dist_archive_as_needing_extraction() {
+        let assets = [
+            asset("ac_tui-x86_64-unknown-linux-gnu.tar.gz"),
+            asset("ac_tui-x86_64-pc-windows-gnu.zip"),
+        ];
+        let (kind, chosen) = select_asset(&assets).expect("a windows archive exists");
+        assert_eq!(chosen.name, "ac_tui-x86_64-pc-windows-gnu.zip");
+        assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// Only `.zip` has a decoder on Windows; a tarball named for this platform
+    /// is reported but not installable.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_marks_a_tarball_unsupported() {
+        assert_eq!(
+            classify_asset("ac_tui-x86_64-pc-windows-gnu.tar.gz"),
+            Some(AssetKind::UnsupportedArchive)
+        );
+    }
+
+    /// The payload every extraction round-trip looks for.
+    const PAYLOAD: &[u8] = b"#!/bin/sh\necho updated\n";
+
+    /// A scratch directory of its own per test, so the suite stays parallel.
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create tmp");
+        dir
+    }
+
+    /// Build a gzipped tarball laid out the way dist does: everything under a
+    /// directory named after the archive stem, alongside LICENSE, README and a
+    /// sibling binary that must not be mistaken for the application.
+    fn write_tar_gz(path: &std::path::Path, entries: &[(&str, &[u8])]) {
+        use std::io::Write;
+
+        let gz = flate2::write::GzEncoder::new(
+            File::create(path).expect("create archive"),
+            flate2::Compression::fast(),
+        );
+        let mut builder = tar::Builder::new(gz);
+
+        for (name, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, name, *bytes)
+                .expect("append");
+        }
+
+        let mut gz = builder.into_inner().expect("finish tar");
+        gz.flush().expect("flush");
+    }
+
+    /// Zip counterpart. `method` is what dist's compression choice maps to.
+    fn write_zip(
+        path: &std::path::Path,
+        entries: &[(&str, &[u8])],
+        method: zip::CompressionMethod,
+    ) {
+        use std::io::Write;
+
+        let mut writer = zip::ZipWriter::new(File::create(path).expect("create archive"));
+        let options = zip::write::SimpleFileOptions::default().compression_method(method);
+
+        for (name, bytes) in entries {
+            writer.start_file(*name, options).expect("start entry");
+            writer.write_all(bytes).expect("write entry");
+        }
+
+        writer.finish().expect("finish zip");
+    }
+
+    /// The real dist layout, in the format unix downloads.
+    #[test]
+    fn extracts_the_app_binary_from_a_nested_tar_gz() {
+        let tmp = scratch_dir("ac_updater_extract_tar_test");
+        let archive_path = tmp.join("ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        let root = "ac_tui-x86_64-unknown-linux-gnu";
+
+        write_tar_gz(
+            &archive_path,
+            &[
+                (&format!("{root}/LICENSE"), b"license"),
+                (&format!("{root}/README.md"), b"readme"),
+                // A sibling binary that must not be mistaken for the app.
+                (&format!("{root}/simulator"), b"not the app"),
+                (&format!("{root}/{APP_BIN_STEM}"), PAYLOAD),
+            ],
+        );
+
+        let dest = tmp.join("ac_pro_engineer_new");
+        extract_named_entry_from_tar_gz(&archive_path, APP_BIN_STEM, &dest)
+            .expect("extraction should succeed");
+
+        let got = std::fs::read(&dest).expect("read extracted binary");
+        assert_eq!(got, PAYLOAD, "extracted the wrong archive entry");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// The same layout in the format Windows downloads. Runs on every host —
+    /// gating this to Windows would leave the zip reader compiled only by the
+    /// Windows CI leg and verified by nothing.
+    ///
+    /// Both methods dist can realistically emit are covered: Deflated is what
+    /// it uses, Stored needs no decoder and would silently pass either way.
+    #[test]
+    fn extracts_the_app_binary_from_a_nested_zip() {
+        for (label, method) in [
+            ("deflated", zip::CompressionMethod::Deflated),
+            ("stored", zip::CompressionMethod::Stored),
+        ] {
+            let tmp = scratch_dir(&format!("ac_updater_extract_zip_{label}_test"));
+            let archive_path = tmp.join("ac_tui-x86_64-pc-windows-gnu.zip");
+            let root = "ac_tui-x86_64-pc-windows-gnu";
+            let wanted = "ac_pro_engineer.exe";
+
+            write_zip(
+                &archive_path,
+                &[
+                    (&format!("{root}/LICENSE"), b"license"),
+                    (&format!("{root}/README.txt"), b"readme"),
+                    (&format!("{root}/simulator.exe"), b"not the app"),
+                    (&format!("{root}/{wanted}"), PAYLOAD),
+                ],
+                method,
+            );
+
+            let dest = tmp.join("ac_pro_engineer_new.exe");
+            let extracted = extract_named_entry_from_zip(&archive_path, wanted, &dest);
+            assert!(
+                extracted.is_ok(),
+                "{label} extraction should succeed: {extracted:?}"
+            );
+
+            let got = std::fs::read(&dest).expect("read extracted binary");
+            assert_eq!(got, PAYLOAD, "{label}: extracted the wrong archive entry");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+    }
+
+    /// A release archive missing the application must fail loudly rather than
+    /// leave a truncated or wrong file where the binary is expected.
+    #[test]
+    fn extraction_fails_when_the_archive_has_no_app_binary() {
+        let tmp = scratch_dir("ac_updater_extract_missing_test");
+
+        let tar_path = tmp.join("bogus.tar.gz");
+        write_tar_gz(&tar_path, &[("some-dir/LICENSE", b"license")]);
+
+        let zip_path = tmp.join("bogus.zip");
+        write_zip(
+            &zip_path,
+            &[("some-dir/LICENSE", b"license")],
+            zip::CompressionMethod::Deflated,
+        );
+
+        let dest = tmp.join("ac_pro_engineer_new");
+        assert!(extract_named_entry_from_tar_gz(&tar_path, APP_BIN_STEM, &dest).is_err());
+        assert!(extract_named_entry_from_zip(&zip_path, "ac_pro_engineer.exe", &dest).is_err());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// A bare executable is preferred when a release carries both forms.
+    #[test]
+    fn executable_is_preferred_over_archive() {
+        let bare = if cfg!(target_os = "windows") {
+            "ac_pro_engineer.exe"
+        } else {
+            "ac_pro_engineer"
+        };
+        let archive = if cfg!(target_os = "windows") {
+            "ac_tui-x86_64-pc-windows-gnu.zip"
+        } else {
+            "ac_tui-x86_64-unknown-linux-gnu.tar.gz"
+        };
+
+        if cfg!(any(target_os = "windows", target_os = "linux")) {
+            let assets = [asset(archive), asset(bare)];
+            let (kind, chosen) = select_asset(&assets).expect("an asset exists");
+            assert_eq!(chosen.name, bare);
+            assert_eq!(kind, AssetKind::Executable);
+        }
     }
 
     #[test]

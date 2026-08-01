@@ -48,7 +48,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             };
             f.render_widget(spinner, spinner_area);
         }
-        ac_core::setup_manager::FetchState::Failed { error: _, .. } => {
+        ac_core::setup_manager::FetchState::Failed { .. } => {
             let err_text = " ⚠ Cloud Error ".to_string();
             let err_widget = Paragraph::new(err_text)
                 .style(Style::default().fg(Color::Red))

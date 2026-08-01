@@ -565,10 +565,12 @@ mod tests {
 
     #[test]
     fn config_validate_clamps_values() {
-        let mut config = AppConfig::default();
-        config.update_rate = 0;
-        config.history_size = 999999;
-        config.fuel_safety_margin = -5.0;
+        let mut config = AppConfig {
+            update_rate: 0,
+            history_size: 999999,
+            fuel_safety_margin: -5.0,
+            ..Default::default()
+        };
         config.alerts.fuel_warning_laps = 100.0;
 
         config.validate();
@@ -583,8 +585,10 @@ mod tests {
 
     #[test]
     fn config_migration_v1_to_v2() {
-        let mut config = AppConfig::default();
-        config.config_version = 1;
+        let mut config = AppConfig {
+            config_version: 1,
+            ..Default::default()
+        };
         config.alerts.tyre_pressure_min = 0.0;
 
         config.migrate();
@@ -642,9 +646,11 @@ mod tests {
 
     #[test]
     fn config_unit_settings_roundtrip() {
-        let mut config = AppConfig::default();
-        config.pressure_unit = PressureUnit::Bar;
-        config.temp_unit = TempUnit::Fahrenheit;
+        let config = AppConfig {
+            pressure_unit: PressureUnit::Bar,
+            temp_unit: TempUnit::Fahrenheit,
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&config).expect("serialize");
         let restored: AppConfig = serde_json::from_str(&json).expect("deserialize");
