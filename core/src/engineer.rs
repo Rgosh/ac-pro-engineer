@@ -2,7 +2,7 @@ use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -707,11 +707,14 @@ impl Engineer {
             .alerts
             .tyre_pressure_min
             .max(self.config.alerts.tyre_pressure_max);
-        let optimal_pressure = if self.config.target_tyre_pressure > 0.0 {
+        let base_optimal = if self.config.target_tyre_pressure > 0.0 {
             self.config.target_tyre_pressure
         } else {
             (pressure_min + pressure_max) / 2.0
         };
+
+        let grip_compensation = (1.0 - gfx.surface_grip.clamp(0.80, 1.0)) * 1.5;
+        let optimal_pressure = base_optimal + grip_compensation;
 
         for i in 0..4 {
             let pressure = phys.wheels_pressure[i];
@@ -1421,6 +1424,34 @@ impl TyrePressureOptimizer {
                 corners[2].clone(),
                 corners[3].clone(),
             ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColdPressureEstimate {
+    pub target_hot_psi: f32,
+    pub recommended_cold_psi: f32,
+    pub delta_temp_psi: f32,
+    pub delta_grip_psi: f32,
+}
+
+pub struct ColdPressureCalculator;
+
+impl ColdPressureCalculator {
+    pub fn calculate(target_hot_psi: f32, ambient_temp_c: f32, track_grip: f32) -> ColdPressureEstimate {
+        let temp_diff = (85.0 - ambient_temp_c.clamp(0.0, 50.0)).max(0.0);
+        let delta_temp_psi = temp_diff * 0.08;
+        let grip_norm = track_grip.clamp(0.80, 1.0);
+        let delta_grip_psi = (1.0 - grip_norm) * 1.2;
+
+        let recommended_cold_psi = (target_hot_psi - delta_temp_psi - delta_grip_psi).max(15.0);
+
+        ColdPressureEstimate {
+            target_hot_psi,
+            recommended_cold_psi: (recommended_cold_psi * 10.0).round() / 10.0,
+            delta_temp_psi: (delta_temp_psi * 10.0).round() / 10.0,
+            delta_grip_psi: (delta_grip_psi * 10.0).round() / 10.0,
         }
     }
 }
