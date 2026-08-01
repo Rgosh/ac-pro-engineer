@@ -283,7 +283,6 @@ impl TelemetryAnalyzer {
             lap_number, lap_time_ms, car_name
         );
 
-        let _last_gfx = graphics_log.last().unwrap();
         // sectors already computed by caller
         for (i, sector) in sectors.iter().enumerate() {
             if *sector > 1000 && *sector < self.best_sectors[i] {
