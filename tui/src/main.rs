@@ -421,19 +421,24 @@ async fn main() -> Result<(), anyhow::Error> {
                         AppTab::Engineer => match key.code {
                             KeyCode::Left => app_lock.ui_state.engineer.prev_tab(),
                             KeyCode::Right => app_lock.ui_state.engineer.next_tab(),
+                            KeyCode::Up => app_lock.ui_state.engineer.prev_lap(),
+                            KeyCode::Down => {
+                                let total = app_lock.analyzer.laps.len();
+                                app_lock.ui_state.engineer.next_lap(total);
+                            }
                             _ => {}
                         },
                         AppTab::Guide => match key.code {
                             KeyCode::Up => {
-                                let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                let current = app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
                                 if current > 0 {
-                                    app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                                    app_lock.ui_state.guide_list_state.select(Some(current - 1));
                                 }
                             }
                             KeyCode::Down => {
-                                let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                let current = app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
                                 if current < 15 {
-                                    app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                    app_lock.ui_state.guide_list_state.select(Some(current + 1));
                                 }
                             }
                             _ => {}
@@ -472,6 +477,19 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
                         AppTab::Setup => {
                             match key.code {
+                                KeyCode::Up => {
+                                    let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    if current > 0 {
+                                        app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                                    }
+                                }
+                                KeyCode::Down => {
+                                    let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let total = app_lock.setup_manager.setups.safe_lock().len();
+                                    if total > 0 && current + 1 < total {
+                                        app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                    }
+                                }
                                 KeyCode::Char('b') | KeyCode::Char('B') | KeyCode::Char('и') | KeyCode::Char('И') => {
                                     let mut active = app_lock.setup_manager.browser_active.safe_lock();
                                     *active = !*active;

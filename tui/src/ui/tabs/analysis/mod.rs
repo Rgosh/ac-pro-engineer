@@ -225,7 +225,11 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
         render_subtabs_header(f, right_layout[0], app);
 
-        let selected_idx = app.ui_state.setup_list_state.selected().unwrap_or(0);
+        let selected_idx = app
+            .ui_state
+            .analysis
+            .selected_lap_index
+            .min(app.analyzer.laps.len().saturating_sub(1));
 
         if let Some(selected_lap) = app.analyzer.laps.get(selected_idx) {
             let reference = if app.ui_state.analysis.compare_mode {

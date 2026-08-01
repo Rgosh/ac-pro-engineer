@@ -6,11 +6,21 @@ use ratatui::{prelude::*, widgets::*};
 
 pub struct EngineerState {
     pub active_sub_tab: usize,
+    pub selected_lap_index: usize,
+}
+
+impl Default for EngineerState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EngineerState {
     pub fn new() -> Self {
-        Self { active_sub_tab: 0 }
+        Self {
+            active_sub_tab: 0,
+            selected_lap_index: 0,
+        }
     }
 
     pub fn next_tab(&mut self) {
@@ -18,7 +28,19 @@ impl EngineerState {
     }
 
     pub fn prev_tab(&mut self) {
-        self.active_sub_tab = (self.active_sub_tab + 1) % 2;
+        self.active_sub_tab = if self.active_sub_tab == 0 { 1 } else { 0 };
+    }
+
+    pub fn next_lap(&mut self, total_laps: usize) {
+        if total_laps > 0 && self.selected_lap_index + 1 < total_laps {
+            self.selected_lap_index += 1;
+        }
+    }
+
+    pub fn prev_lap(&mut self) {
+        if self.selected_lap_index > 0 {
+            self.selected_lap_index -= 1;
+        }
     }
 }
 
@@ -268,9 +290,8 @@ fn render_debrief(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let default_idx = total_laps.saturating_sub(1);
     let selected_idx = app
         .ui_state
-        .setup_list_state
-        .selected()
-        .unwrap_or(default_idx)
+        .engineer
+        .selected_lap_index
         .min(default_idx);
     let lap = app.analyzer.laps.get(selected_idx);
 

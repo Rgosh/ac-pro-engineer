@@ -17,9 +17,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
         .split(inner);
 
-    let current_chapter = app.ui_state.setup_list_state.selected().unwrap_or(0);
+    let current_chapter = app.ui_state.guide_list_state.selected().unwrap_or(0);
 
-    render_toc(f, layout[0], &app.ui_state.setup_list_state);
+    render_toc(f, layout[0], &app.ui_state.guide_list_state);
     render_content(f, layout[1], current_chapter);
 }
 

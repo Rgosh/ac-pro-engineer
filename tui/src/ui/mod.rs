@@ -21,6 +21,7 @@ pub struct UIState {
     pub analysis: tabs::analysis::AnalysisState,
     pub engineer: tabs::engineer::EngineerState,
     pub setup_list_state: ListState,
+    pub guide_list_state: ListState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,10 +31,19 @@ pub enum LayoutMode {
     Auto,
 }
 
+impl Default for UIState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UIState {
     pub fn new() -> Self {
-        let mut list_state = ListState::default();
-        list_state.select(Some(0));
+        let mut setup_list_state = ListState::default();
+        setup_list_state.select(Some(0));
+
+        let mut guide_list_state = ListState::default();
+        guide_list_state.select(Some(0));
 
         Self {
             theme: ac_core::config::Theme::default(),
@@ -45,7 +55,8 @@ impl UIState {
             settings: tabs::settings::SettingsState::new(),
             analysis: tabs::analysis::AnalysisState::new(),
             engineer: tabs::engineer::EngineerState::new(),
-            setup_list_state: list_state,
+            setup_list_state,
+            guide_list_state,
         }
     }
 
