@@ -4,10 +4,47 @@ use zerocopy::TryFromBytes;
 
 /// Compile-time guarantee that these structs still match the Assetto Corsa
 /// shared-memory ABI. A mismatch is a build error, not a test failure.
+///
+/// These are the sizes of AC's `SPageFilePhysics` / `SPageFileGraphic` /
+/// `SPageFileStatic`, verified against a live `acpmf_*` mapping from AC 1.16.4
+/// (shared-memory version 1.7). Note that ACC's graphics page is a different,
+/// much larger struct — see the comment on [`AcGraphics`].
 const _: () = {
-    assert!(size_of::<AcGraphics>() == 1320);
-    assert!(size_of::<AcPhysics>() == 596);
-    assert!(size_of::<AcStatic>() == 688);
+    assert!(
+        size_of::<AcGraphics>() == 360,
+        "AcGraphics no longer matches AC's SPageFileGraphic"
+    );
+    assert!(
+        size_of::<AcPhysics>() == 596,
+        "AcPhysics no longer matches AC's SPageFilePhysics"
+    );
+    assert!(
+        size_of::<AcStatic>() == 688,
+        "AcStatic no longer matches AC's SPageFileStatic"
+    );
+};
+
+/// The graphics-page offsets that were read off a live mapping, pinned
+/// individually.
+///
+/// The size assertion above only catches a change that alters the total; it
+/// says nothing about a field inserted and another removed, which is exactly
+/// the shape of the ACC mix-up. These are the offsets a capture actually
+/// confirmed, so a reordering above any of them is a build error instead of a
+/// silent misread. Everything past 296 is deliberately absent — see the note
+/// on the tail fields of [`AcGraphics`].
+const _: () = {
+    use std::mem::offset_of;
+
+    assert!(offset_of!(AcGraphics, current_time) == 12);
+    assert!(offset_of!(AcGraphics, i_current_time) == 140);
+    assert!(offset_of!(AcGraphics, distance_traveled) == 156);
+    assert!(offset_of!(AcGraphics, tyre_compound) == 176);
+    assert!(offset_of!(AcGraphics, normalized_car_position) == 248);
+    assert!(offset_of!(AcGraphics, car_coordinates) == 252);
+    assert!(offset_of!(AcGraphics, surface_grip) == 280);
+    assert!(offset_of!(AcGraphics, wind_speed) == 288);
+    assert!(offset_of!(AcGraphics, is_setup_menu_visible) == 296);
 };
 
 #[repr(C)]
@@ -117,35 +154,16 @@ impl From<[u16; 33]> for StringU16_33 {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, TryFromBytes)]
-pub struct CarCoordinates([[f32; 3]; 60]);
-
-impl Default for CarCoordinates {
-    fn default() -> Self {
-        Self([[0f32; 3]; 60])
-    }
-}
-
-impl CarCoordinates {
-    pub fn get(&self, first: usize, second: usize) -> f32 {
-        self.0[first][second]
-    }
-
-    pub fn set(&mut self, first: usize, second: usize, val: f32) {
-        self.0[first][second] = val;
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, TryFromBytes)]
-pub struct CarId([i32; 60]);
-
-impl Default for CarId {
-    fn default() -> Self {
-        Self([0i32; 60])
-    }
-}
+/// Index of the world X axis in [`AcGraphics::car_coordinates`].
+pub const COORD_X: usize = 0;
+/// Index of the world Y axis — altitude — in [`AcGraphics::car_coordinates`].
+///
+/// A track map wants the ground plane, so it plots [`COORD_X`] against
+/// [`COORD_Z`] and leaves this one alone. Reading altitude as a ground
+/// coordinate is precisely what the old ACC layout did.
+pub const COORD_Y: usize = 1;
+/// Index of the world Z axis in [`AcGraphics::car_coordinates`].
+pub const COORD_Z: usize = 2;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, TryFromBytes)]
@@ -171,13 +189,18 @@ pub struct AcGraphics {
     pub tyre_compound: StringU16_33,
     pub replay_time_multiplier: f32,
     pub normalized_car_position: f32,
-    pub active_cars: i32,
-    pub car_coordinates: CarCoordinates,
-    pub car_id: CarId,
-    pub player_car_id: i32,
+    /// World position of the *player's* car, `[x, y, z]`, in metres.
+    ///
+    /// AC publishes only the player's car here. ACC is the title with
+    /// `activeCars` + `carCoordinates[60][3]` + `carID[60]` + `playerCarID` in
+    /// this position; those fields do not exist in AC's page, and assuming they
+    /// did shifted every subsequent field 964 bytes past where AC writes it.
+    pub car_coordinates: [f32; 3],
     pub penalty_time: f32,
     pub flag: i32,
-    pub penalty: i32,
+    // No `penalty` field here: that is ACC's `AC_PENALTY_TYPE penalty`. In AC,
+    // `idealLineOn` follows `flag` directly — confirmed by `surfaceGrip`
+    // landing on offset 280 in a live mapping, which it only does without it.
     pub ideal_line_on: i32,
     pub is_in_pit_lane: i32,
     pub surface_grip: f32,
@@ -185,6 +208,22 @@ pub struct AcGraphics {
     pub wind_speed: f32,
     pub wind_direction: f32,
     pub is_setup_menu_visible: i32,
+
+    // ── Unverified below this line. ──
+    //
+    // The capture these offsets were read from is zero from 300 to the end of
+    // the page, so it pins nothing here. It does prove AC writes *past* 296 —
+    // a fresh mapping is zero-filled and offset 296 read -1 — which is why
+    // `is_setup_menu_visible` above is trusted and these are not. The order
+    // below is still ACC's, i.e. the same assumption that put
+    // `car_coordinates` in the wrong place to begin with.
+    //
+    // `fuel_x_lap` is the one to be careful with: `engineer.rs` gates fuel
+    // strategy on `fuel_x_lap > 0.0`, so a wrong offset here trades a
+    // permanently dead feature for one that runs on a wrong number, which is
+    // the worse failure. Settling it needs a capture from lap 2 or later —
+    // AC leaves fuelXLap at 0.0 until it has a completed lap to measure, so
+    // the lap-1 capture used here could not have distinguished the two cases.
     pub main_display_index: i32,
     pub secondary_display_index: i32,
     pub tc: i32,

@@ -289,7 +289,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (*gfx).i_best_time = best_lap_time_ms;
             (*gfx).session_time_left = ((3600.0 - total_elapsed) * 1000.0).max(0.0);
             (*gfx).distance_traveled = dist;
+            (*gfx).normalized_car_position = scenario_phase;
             (*gfx).surface_grip = 0.98;
+
+            // Trace a closed loop so the track map has something to plot. AC
+            // publishes the player's world position here, x/z being the ground
+            // plane and y the altitude; the shape matches the one the TUI draws
+            // for demo mode so the two look alike side by side.
+            let angle = scenario_phase * std::f32::consts::TAU;
+            (*gfx).car_coordinates = [
+                400.0 * angle.cos() + 50.0 * (2.0 * angle).cos(),
+                0.0,
+                250.0 * angle.sin() + 30.0 * (3.0 * angle).sin(),
+            ];
             (*gfx).fuel_x_lap = if fuel_per_lap > 0.0 {
                 fuel_per_lap
             } else {

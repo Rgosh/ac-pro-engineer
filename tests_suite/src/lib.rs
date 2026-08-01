@@ -12,3 +12,6 @@ pub mod overlay_tests;
 
 #[cfg(test)]
 pub mod fixtures;
+
+#[cfg(test)]
+pub mod shm_layout_tests;

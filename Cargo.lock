@@ -1857,6 +1857,7 @@ dependencies = [
  "ac_core",
  "ac_tui",
  "tokio",
+ "zerocopy",
 ]
 
 [[package]]
