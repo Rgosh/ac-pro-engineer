@@ -24,6 +24,29 @@ const _: () = {
     );
 };
 
+/// The graphics-page offsets that were read off a live mapping, pinned
+/// individually.
+///
+/// The size assertion above only catches a change that alters the total; it
+/// says nothing about a field inserted and another removed, which is exactly
+/// the shape of the ACC mix-up. These are the offsets a capture actually
+/// confirmed, so a reordering above any of them is a build error instead of a
+/// silent misread. Everything past 296 is deliberately absent — see the note
+/// on the tail fields of [`AcGraphics`].
+const _: () = {
+    use std::mem::offset_of;
+
+    assert!(offset_of!(AcGraphics, current_time) == 12);
+    assert!(offset_of!(AcGraphics, i_current_time) == 140);
+    assert!(offset_of!(AcGraphics, distance_traveled) == 156);
+    assert!(offset_of!(AcGraphics, tyre_compound) == 176);
+    assert!(offset_of!(AcGraphics, normalized_car_position) == 248);
+    assert!(offset_of!(AcGraphics, car_coordinates) == 252);
+    assert!(offset_of!(AcGraphics, surface_grip) == 280);
+    assert!(offset_of!(AcGraphics, wind_speed) == 288);
+    assert!(offset_of!(AcGraphics, is_setup_menu_visible) == 296);
+};
+
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcPhysics {
