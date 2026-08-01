@@ -10,6 +10,14 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell"]
 install-updater = true
+# Keep the release workflow off pull requests entirely. By default dist adds a
+# `pull_request:` trigger that runs `dist plan` on every PR, under the
+# workflow-level `permissions: contents: write` the publish jobs need — so a PR
+# branch gets a write-scoped token to run a `curl | sh` installer, for no
+# result anyone reads. CI covers PRs; this workflow only has a job to do on a
+# tag. Set here rather than by editing release.yml, which `dist generate`
+# overwrites.
+pr-run-mode = "skip"
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 # gzip rather than the default xz: the in-app updater unpacks these itself, and
