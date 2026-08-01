@@ -790,3 +790,22 @@ fn test_43_ghost_delta_calculation() {
     assert!(delta.is_some());
     assert!((delta.unwrap() - 1.5).abs() < 0.01);
 }
+
+/// `updater::CURRENT_VERSION` is `ac_core`'s own `CARGO_PKG_VERSION`, and it is
+/// what the app displays, what Discord rich presence reports, and what release
+/// tags are compared against to decide whether an update is newer.
+///
+/// When `ac_core` carried a hardcoded version it silently fell behind the
+/// workspace: a build tagged v0.3.0 would have reported itself as 0.2.3, seen
+/// its own release as an upgrade, installed it, and offered it again forever.
+/// This pins the crate to the workspace version — `tests_suite` inherits it, so
+/// the two only agree while `core/Cargo.toml` says `version.workspace = true`.
+#[test]
+fn core_version_tracks_the_workspace_version() {
+    assert_eq!(
+        ac_core::updater::CURRENT_VERSION,
+        env!("CARGO_PKG_VERSION"),
+        "ac_core has drifted from the workspace version; \
+         core/Cargo.toml must use `version.workspace = true`"
+    );
+}
