@@ -3,13 +3,13 @@ use ac_core::overlay::OverlayMode;
 use ac_core::updater::UpdateStatus;
 use ac_tui::platform;
 use ac_tui::ui::{UIRenderer, UIState};
-use ac_tui::{setup_logging, AppLogLevel, AppStage, AppState, AppTab, SafeLock};
+use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetSize,
+        EnterAlternateScreen, LeaveAlternateScreen, SetSize, disable_raw_mode, enable_raw_mode,
     },
 };
 use ratatui::prelude::*;
@@ -21,13 +21,13 @@ use tracing::{error, info};
 
 #[cfg(target_os = "windows")]
 fn set_console_icon() {
-    use windows::core::PCWSTR;
     use windows::Win32::System::Console::GetConsoleWindow;
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
-        LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
+        HICON, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE, LoadImageW, SendMessageW,
         WM_SETICON,
     };
+    use windows::core::PCWSTR;
 
     unsafe {
         let hwnd = GetConsoleWindow();
@@ -72,19 +72,35 @@ struct AppArgs {
     #[arg(long, conflicts_with = "silent")]
     log: Option<PathBuf>,
 
-    #[arg(long = "overlay--test--d")]
+    #[arg(long = "overlay-test-d")]
     overlay_test_d: bool,
 
-    #[arg(long = "overlay--test-vr")]
+    #[arg(long = "overlay-test-vr")]
     overlay_test_vr: bool,
 
-    #[arg(short = 'd', long = "demo", help = "Run in live simulation mode with realistic telemetry data")]
+    #[arg(
+        short = 'd',
+        long = "demo",
+        help = "Run in live simulation mode with realistic telemetry data"
+    )]
     demo: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     ac_core::crash_logger::init_crash_handler();
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        crossterm::terminal::disable_raw_mode().ok();
+        crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture
+        )
+        .ok();
+        original_hook(panic_info);
+    }));
+
     let args = AppArgs::parse();
 
     let overlay_mode = if args.overlay_test_d {
@@ -92,7 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else if args.overlay_test_vr {
         OverlayMode::VR
     } else {
-        OverlayMode::External
+        OverlayMode::NativeDesktop
     };
 
     if !args.silent {
@@ -125,6 +141,20 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+
+    struct TerminalGuard;
+    impl Drop for TerminalGuard {
+        fn drop(&mut self) {
+            crossterm::terminal::disable_raw_mode().ok();
+            crossterm::execute!(
+                std::io::stdout(),
+                crossterm::terminal::LeaveAlternateScreen,
+                crossterm::event::DisableMouseCapture
+            )
+            .ok();
+        }
+    }
+    let _guard = TerminalGuard;
 
     let renderer = UIRenderer::new();
 
@@ -391,7 +421,9 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
                         continue;
                     }
-                    KeyCode::Char('l') | KeyCode::Char('L') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('l') | KeyCode::Char('L')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
                         app_lock.config.language = match app_lock.config.language {
                             Language::English => Language::Russian,
                             Language::Russian => Language::English,
@@ -415,7 +447,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
                     _ => match app_lock.active_tab {
                         AppTab::Settings => {
-                            let AppState { ui_state, config, .. } = &mut *app_lock;
+                            let AppState {
+                                ui_state, config, ..
+                            } = &mut *app_lock;
                             ui_state.settings.handle_input(key.code, config);
                         }
                         AppTab::Engineer => match key.code {
@@ -430,82 +464,110 @@ async fn main() -> Result<(), anyhow::Error> {
                         },
                         AppTab::Guide => match key.code {
                             KeyCode::Up => {
-                                let current = app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
+                                let current =
+                                    app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
                                 if current > 0 {
                                     app_lock.ui_state.guide_list_state.select(Some(current - 1));
                                 }
                             }
                             KeyCode::Down => {
-                                let current = app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
+                                let current =
+                                    app_lock.ui_state.guide_list_state.selected().unwrap_or(0);
                                 if current < 15 {
                                     app_lock.ui_state.guide_list_state.select(Some(current + 1));
                                 }
                             }
                             _ => {}
                         },
-                        AppTab::Analysis => {
-                            match key.code {
-                                KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char('ы') | KeyCode::Char('Ы') => {
-                                    if let Some(best) = app_lock.analyzer.best_lap_index
-                                        && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
+                        AppTab::Analysis => match key.code {
+                            KeyCode::Char('s')
+                            | KeyCode::Char('S')
+                            | KeyCode::Char('ы')
+                            | KeyCode::Char('Ы') => {
+                                if let Some(best) = app_lock.analyzer.best_lap_index
+                                    && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
+                                {
+                                    app_lock.ui_state.analysis.save_lap_data(&lap);
+                                }
+                            }
+                            KeyCode::Char('l')
+                            | KeyCode::Char('L')
+                            | KeyCode::Char('д')
+                            | KeyCode::Char('Д') => {
+                                app_lock.ui_state.analysis.toggle_load_menu();
+                            }
+                            KeyCode::Char('c')
+                            | KeyCode::Char('C')
+                            | KeyCode::Char('с')
+                            | KeyCode::Char('С') => {
+                                app_lock.ui_state.analysis.toggle_compare();
+                            }
+                            KeyCode::Char('e')
+                            | KeyCode::Char('E')
+                            | KeyCode::Char('у')
+                            | KeyCode::Char('У') => {
+                                let sel = app_lock
+                                    .ui_state
+                                    .analysis
+                                    .selected_lap_index
+                                    .min(app_lock.analyzer.laps.len().saturating_sub(1));
+                                if let Some(lap) = app_lock.analyzer.laps.get(sel) {
+                                    let export_path = app_lock.config.resolve_data_path().join(
+                                        format!("exports/lap_{}_export.csv", lap.lap_number + 1),
+                                    );
+                                    if let Ok(p) =
+                                        ac_core::analyzer::export_lap_to_csv(lap, &export_path)
                                     {
-                                        app_lock.ui_state.analysis.save_lap_data(&lap);
+                                        app_lock
+                                            .ui_state
+                                            .analysis
+                                            .set_status(format!("Exported CSV: {}", p.display()));
                                     }
                                 }
-                                KeyCode::Char('l') | KeyCode::Char('L') | KeyCode::Char('д') | KeyCode::Char('Д') => {
-                                    app_lock.ui_state.analysis.toggle_load_menu();
-                                }
-                                KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Char('с') | KeyCode::Char('С') => {
-                                    app_lock.ui_state.analysis.toggle_compare();
-                                }
-                                KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Char('у') | KeyCode::Char('У') => {
-                                    let sel = app_lock.ui_state.analysis.selected_lap_index.min(app_lock.analyzer.laps.len().saturating_sub(1));
-                                    if let Some(lap) = app_lock.analyzer.laps.get(sel) {
-                                        let export_path = app_lock.config.resolve_data_path().join(format!("exports/lap_{}_export.csv", lap.lap_number + 1));
-                                        if let Ok(p) = ac_core::analyzer::export_lap_to_csv(lap, &export_path) {
-                                            app_lock.ui_state.analysis.set_status(format!("Exported CSV: {}", p.display()));
-                                        }
-                                    }
-                                }
-                                KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
-                                KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
-                                KeyCode::Up => {
-                                    let laps_len = app_lock.analyzer.laps.len();
-                                    app_lock.ui_state.analysis.menu_up(laps_len);
-                                }
-                                KeyCode::Down => {
-                                    let laps_len = app_lock.analyzer.laps.len();
-                                    app_lock.ui_state.analysis.menu_down(laps_len);
-                                }
-                                KeyCode::Enter => {
-                                    let AppState { ui_state, analyzer, .. } = &mut *app_lock;
-                                    ui_state.analysis.load_selected_file(analyzer);
-                                }
-                                _ => {}
                             }
-                        }
-                        AppTab::Setup => {
-                            match key.code {
-                                KeyCode::Up => {
-                                    let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    if current > 0 {
-                                        app_lock.ui_state.setup_list_state.select(Some(current - 1));
-                                    }
-                                }
-                                KeyCode::Down => {
-                                    let current = app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                    let total = app_lock.setup_manager.setups.safe_lock().len();
-                                    if total > 0 && current + 1 < total {
-                                        app_lock.ui_state.setup_list_state.select(Some(current + 1));
-                                    }
-                                }
-                                KeyCode::Char('b') | KeyCode::Char('B') | KeyCode::Char('и') | KeyCode::Char('И') => {
-                                    let mut active = app_lock.setup_manager.browser_active.safe_lock();
-                                    *active = !*active;
-                                }
-                                _ => {}
+                            KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
+                            KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
+                            KeyCode::Up => {
+                                let laps_len = app_lock.analyzer.laps.len();
+                                app_lock.ui_state.analysis.menu_up(laps_len);
                             }
-                        }
+                            KeyCode::Down => {
+                                let laps_len = app_lock.analyzer.laps.len();
+                                app_lock.ui_state.analysis.menu_down(laps_len);
+                            }
+                            KeyCode::Enter => {
+                                let AppState {
+                                    ui_state, analyzer, ..
+                                } = &mut *app_lock;
+                                ui_state.analysis.load_selected_file(analyzer);
+                            }
+                            _ => {}
+                        },
+                        AppTab::Setup => match key.code {
+                            KeyCode::Up => {
+                                let current =
+                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                                }
+                            }
+                            KeyCode::Down => {
+                                let current =
+                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                let total = app_lock.setup_manager.setups.safe_lock().len();
+                                if total > 0 && current + 1 < total {
+                                    app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                }
+                            }
+                            KeyCode::Char('b')
+                            | KeyCode::Char('B')
+                            | KeyCode::Char('и')
+                            | KeyCode::Char('И') => {
+                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
+                                *active = !*active;
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     },
                 }
@@ -521,17 +583,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
         app = match Arc::try_unwrap(app_arc) {
             Ok(mutex) => mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
-            Err(arc) => std::mem::take(&mut *arc.safe_lock()),
+            Err(_) => return Err(anyhow::anyhow!("Failed to unwrap AppState Arc")),
         };
     }
 
-    disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )
-    .ok();
     app.record_manager.save();
 
     Ok(())

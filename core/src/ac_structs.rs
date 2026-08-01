@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
-use tracing::info;
 use zerocopy::TryFromBytes;
 
 #[repr(C)]

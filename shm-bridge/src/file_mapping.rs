@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::fs::File;
 use anyhow::{Result, anyhow};
+use std::fs::File;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::AsRawHandle;
@@ -82,6 +82,8 @@ pub struct FileMapping;
 #[cfg(not(target_os = "windows"))]
 impl FileMapping {
     pub fn new(_name: &str, _file: &File, _size: usize) -> Result<Self> {
-        Err(anyhow!("shm-bridge FileMapping is only supported on Windows/Wine environment"))
+        Err(anyhow!(
+            "shm-bridge FileMapping is only supported on Windows/Wine environment"
+        ))
     }
 }

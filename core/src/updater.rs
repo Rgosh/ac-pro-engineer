@@ -221,17 +221,7 @@ impl Updater {
                                     // Unknown platform — take the first asset
                                     release.assets.first()
                                 } else {
-                                    release
-                                        .assets
-                                        .iter()
-                                        .find(|a| a.name.contains(suffix))
-                                        .or_else(|| {
-                                            // Fallback: try .exe on any platform
-                                            release
-                                                .assets
-                                                .iter()
-                                                .find(|a| a.name.ends_with(".exe"))
-                                        })
+                                    release.assets.iter().find(|a| a.name.contains(suffix))
                                 };
 
                                 if let Some(asset) = asset {
@@ -239,8 +229,7 @@ impl Updater {
                                         version: remote_ver_str.to_string(),
                                         url: asset.browser_download_url.clone(),
                                         notes: release.body.clone().unwrap_or_default(),
-                                        is_latest: i == 0
-                                            || parsed_versions.is_empty(),
+                                        is_latest: i == 0 || parsed_versions.is_empty(),
                                         expected_size: asset.size,
                                     });
                                 }
@@ -255,10 +244,8 @@ impl Updater {
 
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
 
-                                if compare_semver(
-                                    &parsed_versions[0].version,
-                                    CURRENT_VERSION,
-                                ) == std::cmp::Ordering::Greater
+                                if compare_semver(&parsed_versions[0].version, CURRENT_VERSION)
+                                    == std::cmp::Ordering::Greater
                                 {
                                     info!("Update available: v{}", parsed_versions[0].version);
                                     *lock = UpdateStatus::UpdateAvailable;
@@ -316,10 +303,7 @@ impl Updater {
             };
             let temp_path = exe_dir.join(format!("{}.tmp", final_name));
             let final_path = exe_dir.join(final_name);
-            let final_path_str = final_path
-                .to_str()
-                .unwrap_or(final_name)
-                .to_string();
+            let final_path_str = final_path.to_str().unwrap_or(final_name).to_string();
 
             let client = reqwest::blocking::Client::builder()
                 .user_agent("AC-Pro-Engineer-Updater")
@@ -369,9 +353,8 @@ impl Updater {
                                         let _ = std::fs::remove_file(&temp_path);
                                         let mut lock =
                                             status.lock().unwrap_or_else(|e| e.into_inner());
-                                        *lock = UpdateStatus::Error(
-                                            "Download interrupted".to_string(),
-                                        );
+                                        *lock =
+                                            UpdateStatus::Error("Download interrupted".to_string());
                                         return;
                                     }
                                 }
@@ -384,8 +367,7 @@ impl Updater {
                                     info.expected_size, downloaded
                                 );
                                 let _ = std::fs::remove_file(&temp_path);
-                                let mut lock =
-                                    status.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                                 *lock = UpdateStatus::Error(format!(
                                     "Incomplete download ({}/{})",
                                     downloaded, info.expected_size
@@ -396,8 +378,7 @@ impl Updater {
                             if downloaded == 0 {
                                 error!("Downloaded 0 bytes — aborting");
                                 let _ = std::fs::remove_file(&temp_path);
-                                let mut lock =
-                                    status.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                                 *lock = UpdateStatus::Error("Empty download".to_string());
                                 return;
                             }
@@ -406,8 +387,7 @@ impl Updater {
                             if let Err(e) = std::fs::rename(&temp_path, &final_path) {
                                 error!("Failed to rename temp file: {}", e);
                                 let _ = std::fs::remove_file(&temp_path);
-                                let mut lock =
-                                    status.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                                 *lock = UpdateStatus::Error("Rename failed".to_string());
                                 return;
                             }
@@ -423,10 +403,7 @@ impl Updater {
                                 }
                             }
 
-                            info!(
-                                "Download completed and verified: {} bytes",
-                                downloaded
-                            );
+                            info!("Download completed and verified: {} bytes", downloaded);
                             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
                             *lock = UpdateStatus::Downloaded(final_path_str);
                         }
@@ -450,8 +427,7 @@ impl Updater {
         &self,
         _new_file_name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let current_exe =
-            env::current_exe().unwrap_or_else(|_| PathBuf::from("ac_pro_engineer"));
+        let current_exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("ac_pro_engineer"));
         let exe_dir = current_exe
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
@@ -494,6 +470,10 @@ impl Updater {
             use std::process::Command;
             let new_exe = exe_dir.join("ac_pro_engineer_new");
             let backup = exe_dir.join("ac_pro_engineer.bak");
+
+            if !new_exe.exists() {
+                return Err("Update binary not found".into());
+            }
 
             // Rename current → backup, new → current
             if current_exe.exists() {
@@ -565,11 +545,12 @@ mod tests {
         // On test machines (Linux CI), should be "-linux"
         // On Windows, should be ".exe"
         assert!(
-            !suffix.is_empty() || cfg!(not(any(
-                target_os = "windows",
-                target_os = "linux",
-                target_os = "macos"
-            ))),
+            !suffix.is_empty()
+                || cfg!(not(any(
+                    target_os = "windows",
+                    target_os = "linux",
+                    target_os = "macos"
+                ))),
             "suffix should not be empty on known platforms"
         );
     }

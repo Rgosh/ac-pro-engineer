@@ -58,7 +58,14 @@ pub fn is_process_running(target_name: &str) -> bool {
         entries.flatten().any(|entry| {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
-                cmdline.to_lowercase().contains(&target_lower)
+                let parts: Vec<&str> = cmdline.split('\0').collect();
+                if let Some(first) = parts.first() {
+                    let first_lower = first.to_lowercase();
+                    first_lower.ends_with(&target_lower)
+                        || first_lower.ends_with(&format!("/{}", target_lower))
+                } else {
+                    false
+                }
             } else {
                 false
             }
@@ -71,7 +78,7 @@ pub fn is_process_running(target_name: &str) -> bool {
         return false;
     }
 
-    std::path::Path::new("/dev/shm/acpmf_physics").exists() || is_proc_alive
+    std::path::Path::new("/dev/shm/acpmf_physics").exists() && is_proc_alive
 }
 
 #[cfg(target_os = "windows")]

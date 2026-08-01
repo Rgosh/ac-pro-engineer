@@ -163,13 +163,20 @@ impl RecordManager {
         match Self::load_from_path(&self.db_path) {
             Ok(map) => self.records = map,
             Err(e) => {
-                tracing::warn!("Failed to load track records from {}: {}", self.db_path.display(), e);
+                tracing::warn!(
+                    "Failed to load track records from {}: {}",
+                    self.db_path.display(),
+                    e
+                );
             }
         }
     }
 
     pub fn save_with_result(&self) -> anyhow::Result<()> {
-        let parent = self.db_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let parent = self
+            .db_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
         fs::create_dir_all(parent)?;
 
         let list: Vec<&TrackRecord> = self.records.values().collect();
@@ -183,7 +190,11 @@ impl RecordManager {
 
     pub fn save(&self) {
         if let Err(e) = self.save_with_result() {
-            tracing::warn!("Failed to save track records to {}: {}", self.db_path.display(), e);
+            tracing::warn!(
+                "Failed to save track records to {}: {}",
+                self.db_path.display(),
+                e
+            );
         }
     }
 

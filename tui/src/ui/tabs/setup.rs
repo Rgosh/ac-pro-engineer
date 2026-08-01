@@ -23,8 +23,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .unwrap_or(ac_core::setup_manager::FetchState::Idle);
 
     match fetch_state {
-        ac_core::setup_manager::FetchState::Loading
-        | ac_core::setup_manager::FetchState::Idle => {
+        ac_core::setup_manager::FetchState::Loading | ac_core::setup_manager::FetchState::Idle => {
             let tick = *app
                 .setup_manager
                 .loading_tick
@@ -452,7 +451,11 @@ fn render_header_block(
         if !selected.credits.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled(
-                    if is_ru { "Создатели: " } else { "Credits: " },
+                    if is_ru {
+                        "Создатели: "
+                    } else {
+                        "Credits: "
+                    },
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(

@@ -182,15 +182,36 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
-    let (trace_points, min_x, max_x, min_y, max_y) = if let Some(best_idx) = app.analyzer.best_lap_index
+    let (trace_points, min_x, max_x, min_y, max_y) = if let Some(best_idx) =
+        app.analyzer.best_lap_index
         && let Some(lap) = app.analyzer.laps.get(best_idx)
         && !lap.telemetry_trace.is_empty()
     {
-        let min_x = if lap.bounds_min_x.is_finite() && lap.bounds_min_x.abs() < 1e6 { lap.bounds_min_x as f64 } else { -500.0 };
-        let max_x = if lap.bounds_max_x.is_finite() && lap.bounds_max_x.abs() < 1e6 { lap.bounds_max_x as f64 } else { 500.0 };
-        let min_y = if lap.bounds_min_y.is_finite() && lap.bounds_min_y.abs() < 1e6 { lap.bounds_min_y as f64 } else { -500.0 };
-        let max_y = if lap.bounds_max_y.is_finite() && lap.bounds_max_y.abs() < 1e6 { lap.bounds_max_y as f64 } else { 500.0 };
-        let points: Vec<(f64, f64)> = lap.telemetry_trace.iter().map(|p| (p.x as f64, p.y as f64)).collect();
+        let min_x = if lap.bounds_min_x.is_finite() && lap.bounds_min_x.abs() < 1e6 {
+            lap.bounds_min_x as f64
+        } else {
+            -500.0
+        };
+        let max_x = if lap.bounds_max_x.is_finite() && lap.bounds_max_x.abs() < 1e6 {
+            lap.bounds_max_x as f64
+        } else {
+            500.0
+        };
+        let min_y = if lap.bounds_min_y.is_finite() && lap.bounds_min_y.abs() < 1e6 {
+            lap.bounds_min_y as f64
+        } else {
+            -500.0
+        };
+        let max_y = if lap.bounds_max_y.is_finite() && lap.bounds_max_y.abs() < 1e6 {
+            lap.bounds_max_y as f64
+        } else {
+            500.0
+        };
+        let points: Vec<(f64, f64)> = lap
+            .telemetry_trace
+            .iter()
+            .map(|p| (p.x as f64, p.y as f64))
+            .collect();
         (points, min_x, max_x, min_y, max_y)
     } else if app.is_demo_mode || !app.physics_history.is_empty() {
         let mut points = Vec::with_capacity(100);

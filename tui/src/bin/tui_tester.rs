@@ -6,8 +6,8 @@ use ac_core::overlay::OverlayMode;
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
 use ac_tui::{AppStage, AppState, AppTab, SafeLock};
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use std::fs;
 use std::path::Path;
 
@@ -66,7 +66,9 @@ fn buffer_to_svg(
     // Divider Line
     svg.push_str(&format!(
         r##"  <line x1="4" y1="{}" x2="{}" y2="{}" stroke="#21262d" stroke-width="1"/>"##,
-        header_h, total_w - 4, header_h
+        header_h,
+        total_w - 4,
+        header_h
     ));
     svg.push('\n');
 
@@ -214,6 +216,7 @@ fn create_populated_app_state() -> AppState {
         let px = (t * 0.8).cos() * 150.0;
         let py = (t * 0.8).sin() * 80.0;
         trace_points.push(TelemetryPoint {
+            rpms: 5000,
             time_ms: i * 50,
             distance: i as f32 * 10.0,
             speed: p.speed_kmh,
@@ -300,7 +303,8 @@ fn create_populated_app_state() -> AppState {
         component: "Tyres".to_string(),
         category: "Pressure".to_string(),
         severity: Severity::Info,
-        message: "Front Right pressure target optimal at 27.5 PSI (+0.2 PSI recommended)".to_string(),
+        message: "Front Right pressure target optimal at 27.5 PSI (+0.2 PSI recommended)"
+            .to_string(),
         action: "Adjust FR cold pressure +0.2 PSI".to_string(),
         parameters: Vec::new(),
         confidence: 0.95,

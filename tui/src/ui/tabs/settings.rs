@@ -636,17 +636,32 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             false,
         ),
         (
-            if is_ru { "Цель горяч. давления (Перед)" } else { "Target Hot Pressure (Front)" }.to_string(),
+            if is_ru {
+                "Цель горяч. давления (Перед)"
+            } else {
+                "Target Hot Pressure (Front)"
+            }
+            .to_string(),
             format!("{:.1} PSI", config.target_hot_pressure_front),
             false,
         ),
         (
-            if is_ru { "Цель горяч. давления (Зад)" } else { "Target Hot Pressure (Rear)" }.to_string(),
+            if is_ru {
+                "Цель горяч. давления (Зад)"
+            } else {
+                "Target Hot Pressure (Rear)"
+            }
+            .to_string(),
             format!("{:.1} PSI", config.target_hot_pressure_rear),
             false,
         ),
         (
-            if is_ru { "Виджет Ghost Delta" } else { "Ghost Delta Widget" }.to_string(),
+            if is_ru {
+                "Виджет Ghost Delta"
+            } else {
+                "Ghost Delta Widget"
+            }
+            .to_string(),
             if config.show_ghost_delta {
                 if is_ru { "ВКЛ" } else { "ON" }
             } else {

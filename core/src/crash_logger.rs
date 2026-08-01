@@ -39,7 +39,7 @@ pub fn init_crash_handler() {
             std::env::consts::OS,
             location,
             payload,
-            std::backtrace::Backtrace::capture()
+            std::backtrace::Backtrace::force_capture()
         );
 
         eprintln!("\nCRASH DETECTED! Writing report to disk...\n{}", report);

@@ -76,10 +76,11 @@ impl ContentManager {
         {
             if entry.file_type().is_dir() {
                 let car_id = entry.file_name().to_string_lossy().to_string();
-                let ui_path = entry.path().join("ui").join("ui_car.json");
+                let ui_dir = find_case_insensitive(entry.path(), "ui");
+                let ui_path = ui_dir.and_then(|d| find_case_insensitive(&d, "ui_car.json"));
 
-                if ui_path.exists()
-                    && let Ok(content) = fs::read_to_string(ui_path)
+                if let Some(p) = ui_path
+                    && let Ok(content) = fs::read_to_string(p)
                     && let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&content)
                 {
                     let name = json_val["name"].as_str().unwrap_or("Unknown").to_string();
@@ -129,4 +130,19 @@ fn extract_number(s: &str) -> Option<f32> {
         .filter(|c| c.is_ascii_digit() || *c == '.')
         .collect();
     num_str.parse().ok()
+}
+
+fn find_case_insensitive(base: &std::path::Path, name: &str) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(base) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(name)
+            {
+                return Some(entry.path());
+            }
+        }
+    }
+    None
 }

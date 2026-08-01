@@ -160,7 +160,8 @@ impl AnalysisState {
                 if metadata.len() > 10 * 1024 * 1024 {
                     return Err("File too large (>10MB)".to_string());
                 }
-                let content = fs::read_to_string(&path).map_err(|e| format!("Read Error: {}", e))?;
+                let content =
+                    fs::read_to_string(&path).map_err(|e| format!("Read Error: {}", e))?;
                 let mut lap = serde_json::from_str::<ac_core::analyzer::LapData>(&content)
                     .map_err(|e| format!("JSON Error: {}", e))?;
 
@@ -400,7 +401,11 @@ fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     );
     let mut state = ListState::default();
     if !app.analyzer.laps.is_empty() {
-        let sel = app.ui_state.analysis.selected_lap_index.min(app.analyzer.laps.len() - 1);
+        let sel = app
+            .ui_state
+            .analysis
+            .selected_lap_index
+            .min(app.analyzer.laps.len() - 1);
         state.select(Some(sel));
     }
     f.render_stateful_widget(list, area, &mut state);

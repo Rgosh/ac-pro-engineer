@@ -45,6 +45,7 @@ pub struct AppConfig {
     #[serde(default = "default_config_version")]
     pub config_version: u32,
 
+    #[serde(default = "default_language")]
     pub language: Language,
     #[serde(default = "default_update_rate")]
     pub update_rate: u64,
@@ -85,18 +86,42 @@ pub struct AppConfig {
 }
 
 // Serde default helpers
-fn default_config_version() -> u32 { 1 }
-fn default_update_rate() -> u64 { 16 }
-fn default_history_size() -> usize { 300 }
-fn default_true() -> bool { true }
-fn default_pressure_unit() -> PressureUnit { PressureUnit::Psi }
-fn default_temp_unit() -> TempUnit { TempUnit::Celsius }
-fn default_shift_point_offset() -> u32 { 200 }
-fn default_fuel_safety_margin() -> f32 { 1.0 }
-fn default_target_tyre_pressure() -> f32 { 27.5 }
-fn default_target_hot_pressure_front() -> f32 { 27.5 }
-fn default_target_hot_pressure_rear() -> f32 { 27.0 }
-fn default_data_path() -> PathBuf { app_dir() }
+fn default_config_version() -> u32 {
+    1
+}
+fn default_update_rate() -> u64 {
+    16
+}
+fn default_history_size() -> usize {
+    300
+}
+fn default_true() -> bool {
+    true
+}
+fn default_pressure_unit() -> PressureUnit {
+    PressureUnit::Psi
+}
+fn default_temp_unit() -> TempUnit {
+    TempUnit::Celsius
+}
+fn default_shift_point_offset() -> u32 {
+    200
+}
+fn default_fuel_safety_margin() -> f32 {
+    1.0
+}
+fn default_target_tyre_pressure() -> f32 {
+    27.5
+}
+fn default_target_hot_pressure_front() -> f32 {
+    27.5
+}
+fn default_target_hot_pressure_rear() -> f32 {
+    27.0
+}
+fn default_data_path() -> PathBuf {
+    app_dir()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertsConfig {
@@ -116,13 +141,30 @@ pub struct AlertsConfig {
     pub wear_warning: f32,
 }
 
-fn default_tyre_pressure_min() -> f32 { 26.0 }
-fn default_tyre_pressure_max() -> f32 { 28.5 }
-fn default_tyre_temp_min() -> f32 { 70.0 }
-fn default_tyre_temp_max() -> f32 { 105.0 }
-fn default_brake_temp_max() -> f32 { 800.0 }
-fn default_fuel_warning_laps() -> f32 { 3.0 }
-fn default_wear_warning() -> f32 { 96.0 }
+fn default_language() -> Language {
+    Language::English
+}
+fn default_tyre_pressure_min() -> f32 {
+    26.0
+}
+fn default_tyre_pressure_max() -> f32 {
+    28.5
+}
+fn default_tyre_temp_min() -> f32 {
+    70.0
+}
+fn default_tyre_temp_max() -> f32 {
+    105.0
+}
+fn default_brake_temp_max() -> f32 {
+    800.0
+}
+fn default_fuel_warning_laps() -> f32 {
+    3.0
+}
+fn default_wear_warning() -> f32 {
+    96.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
@@ -330,7 +372,9 @@ impl AppConfig {
     /// Load config from disk with migration and backup support.
     pub fn load() -> Result<Self, anyhow::Error> {
         let config_path = app_config_path();
-        if let Some(parent) = config_path.parent() { fs::create_dir_all(parent).ok(); }
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
 
         if !config_path.exists() {
             let config = Self::default();
@@ -382,7 +426,10 @@ impl AppConfig {
             if self.alerts.tyre_pressure_max <= 0.0 {
                 self.alerts.tyre_pressure_max = 28.5;
             }
-            info!("Config migrated from v{} to v{}", self.config_version, CONFIG_VERSION);
+            info!(
+                "Config migrated from v{} to v{}",
+                self.config_version, CONFIG_VERSION
+            );
         }
         self.config_version = CONFIG_VERSION;
     }
@@ -400,7 +447,9 @@ impl AppConfig {
     /// Save config atomically: write to .tmp then rename.
     pub fn save(&self) -> Result<(), anyhow::Error> {
         let config_path = app_config_path();
-        if let Some(parent) = config_path.parent() { fs::create_dir_all(parent).ok(); }
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
         let temp_path = config_path.with_extension("json.tmp");
 
         let content = serde_json::to_string_pretty(self)?;
@@ -489,7 +538,11 @@ mod tests {
 
         // serde by default ignores unknown fields — this should succeed
         let result: Result<AppConfig, _> = serde_json::from_str(json_with_extra);
-        assert!(result.is_ok(), "Should handle unknown fields: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should handle unknown fields: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -550,14 +603,22 @@ mod tests {
 
         let fmt_bar = UnitFormatter::new(PressureUnit::Bar, TempUnit::Celsius);
         let bar_val = fmt_bar.pressure_val(27.5);
-        assert!((bar_val - 1.896).abs() < 0.01, "Expected ~1.896 bar, got {}", bar_val);
+        assert!(
+            (bar_val - 1.896).abs() < 0.01,
+            "Expected ~1.896 bar, got {}",
+            bar_val
+        );
         assert_eq!(fmt_bar.pressure_symbol(), "bar");
         assert_eq!(fmt_bar.format_pressure(27.5), "1.90 bar");
         assert!((fmt_bar.pressure_to_psi(bar_val) - 27.5).abs() < 0.001);
 
         let fmt_kpa = UnitFormatter::new(PressureUnit::Kpa, TempUnit::Celsius);
         let kpa_val = fmt_kpa.pressure_val(27.5);
-        assert!((kpa_val - 189.6).abs() < 0.1, "Expected ~189.6 kPa, got {}", kpa_val);
+        assert!(
+            (kpa_val - 189.6).abs() < 0.1,
+            "Expected ~189.6 kPa, got {}",
+            kpa_val
+        );
         assert_eq!(fmt_kpa.pressure_symbol(), "kPa");
         assert_eq!(fmt_kpa.format_pressure(27.5), "189.6 kPa");
         assert!((fmt_kpa.pressure_to_psi(kpa_val) - 27.5).abs() < 0.001);

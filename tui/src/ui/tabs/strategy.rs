@@ -386,7 +386,8 @@ fn render_environment(
         ]),
         Row::new(vec![
             Cell::from(tr("strat_air", lang)),
-            Cell::from(fmt.format_temp_prec(phys.air_temp, 1)).style(Style::default().fg(Color::Cyan)),
+            Cell::from(fmt.format_temp_prec(phys.air_temp, 1))
+                .style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
             Cell::from(tr("strat_road", lang)),

@@ -288,11 +288,7 @@ fn render_debrief(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let total_laps = app.analyzer.laps.len();
     let default_idx = total_laps.saturating_sub(1);
-    let selected_idx = app
-        .ui_state
-        .engineer
-        .selected_lap_index
-        .min(default_idx);
+    let selected_idx = app.ui_state.engineer.selected_lap_index.min(default_idx);
     let lap = app.analyzer.laps.get(selected_idx);
 
     render_debrief_header(f, layout[0], app, lap, total_laps, selected_idx, is_ru);

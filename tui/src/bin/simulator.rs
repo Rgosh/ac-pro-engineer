@@ -45,10 +45,7 @@ fn create_shared_memory(
 }
 
 #[cfg(not(target_os = "windows"))]
-fn create_shared_memory(
-    name: &str,
-    size: usize,
-) -> Result<*mut u8, Box<dyn std::error::Error>> {
+fn create_shared_memory(name: &str, size: usize) -> Result<*mut u8, Box<dyn std::error::Error>> {
     use std::fs::OpenOptions;
 
     let path = format!("/dev/shm/{}", name.replace("Local\\", ""));
@@ -102,7 +99,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (*stat).player_nick = "Simulator_User".into();
     }
 
-    println!("Lap duration: {}s  |  Track: Monza  |  Car: Ferrari 488 GT3", LAP_DURATION_MS / 1000);
+    println!(
+        "Lap duration: {}s  |  Track: Monza  |  Car: Ferrari 488 GT3",
+        LAP_DURATION_MS / 1000
+    );
     println!("Simulation started. Press Ctrl+C to stop.\n");
 
     let start_time = Instant::now();
@@ -129,34 +129,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if scenario_phase < 0.27 {
                 // Sector 1: Full throttle down the main straight
                 let g = 4 + (speed / 50.0) as i32;
-                (1.0f32, 0.0f32, 0.0f32, g.min(7), 0.0f32, 0.6f32,
-                 [0.02, 0.02, 0.03, 0.03],
-                 "S1: FULL THROTTLE (MAIN STRAIGHT)")
+                (
+                    1.0f32,
+                    0.0f32,
+                    0.0f32,
+                    g.min(7),
+                    0.0f32,
+                    0.6f32,
+                    [0.02, 0.02, 0.03, 0.03],
+                    "S1: FULL THROTTLE (MAIN STRAIGHT)",
+                )
             } else if scenario_phase < 0.40 {
                 // Sector 1→2 transition: Heavy braking with FL lockup (driver error)
-                (0.0, 0.95, -0.35, 2, -1.4, -1.8,
-                 [0.45, 0.05, 0.04, 0.04],
-                 "S1: DRIVER ERROR — FL LOCKUP")
+                (
+                    0.0,
+                    0.95,
+                    -0.35,
+                    2,
+                    -1.4,
+                    -1.8,
+                    [0.45, 0.05, 0.04, 0.04],
+                    "S1: DRIVER ERROR — FL LOCKUP",
+                )
             } else if scenario_phase < 0.55 {
                 // Sector 2: Tight chicane cornering
-                (0.35, 0.0, 0.48, 3, 2.35, 0.1,
-                 [0.08, 0.09, 0.07, 0.07],
-                 "S2: CHICANE APEX (MAX LAT-G)")
+                (
+                    0.35,
+                    0.0,
+                    0.48,
+                    3,
+                    2.35,
+                    0.1,
+                    [0.08, 0.09, 0.07, 0.07],
+                    "S2: CHICANE APEX (MAX LAT-G)",
+                )
             } else if scenario_phase < 0.72 {
                 // Sector 2→3: Trail-braking into Ascari
-                (0.15, 0.40, 0.25, 3, 1.6, -0.8,
-                 [0.06, 0.07, 0.05, 0.06],
-                 "S2: TRAIL BRAKING INTO ASCARI")
+                (
+                    0.15,
+                    0.40,
+                    0.25,
+                    3,
+                    1.6,
+                    -0.8,
+                    [0.06, 0.07, 0.05, 0.06],
+                    "S2: TRAIL BRAKING INTO ASCARI",
+                )
             } else if scenario_phase < 0.82 {
                 // Sector 3: Snap oversteer on Parabolica exit (driver error)
-                (0.90, 0.0, -0.30, 4, -1.90, 0.4,
-                 [0.05, 0.05, 0.38, 0.35],
-                 "S3: DRIVER ERROR — SNAP OVERSTEER")
+                (
+                    0.90,
+                    0.0,
+                    -0.30,
+                    4,
+                    -1.90,
+                    0.4,
+                    [0.05, 0.05, 0.38, 0.35],
+                    "S3: DRIVER ERROR — SNAP OVERSTEER",
+                )
             } else {
                 // Sector 3: Recovery & full throttle exit
-                (0.95, 0.0, 0.05, 5, 0.3, 0.4,
-                 [0.03, 0.03, 0.04, 0.04],
-                 "S3: CORNER EXIT & FULL THROTTLE")
+                (
+                    0.95,
+                    0.0,
+                    0.05,
+                    5,
+                    0.3,
+                    0.4,
+                    [0.03, 0.03, 0.04, 0.04],
+                    "S3: CORNER EXIT & FULL THROTTLE",
+                )
             };
 
         // ── Physics model ──
@@ -168,7 +210,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             speed = (speed - 0.3).max(60.0);
         }
 
-        let rpm = (3200.0 + (speed / 300.0) * 5600.0 + (total_elapsed * 120.0).sin() * 150.0) as i32;
+        let rpm =
+            (3200.0 + (speed / 300.0) * 5600.0 + (total_elapsed * 120.0).sin() * 150.0) as i32;
         dist += (speed / 3.6) * 0.016;
         fuel = (fuel - 0.001f32).max(0.0f32);
 
@@ -220,9 +263,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (*phys).road_temp = 35.0;
 
             let temp_base = 82.0 + (speed / 280.0) * 14.0;
-            (*phys).tyre_temp_i = [temp_base + 4.0, temp_base + 3.0, temp_base + 2.0, temp_base + 2.0];
+            (*phys).tyre_temp_i = [
+                temp_base + 4.0,
+                temp_base + 3.0,
+                temp_base + 2.0,
+                temp_base + 2.0,
+            ];
             (*phys).tyre_temp_m = [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base];
-            (*phys).tyre_temp_o = [temp_base - 3.0, temp_base - 2.0, temp_base - 4.0, temp_base - 3.0];
+            (*phys).tyre_temp_o = [
+                temp_base - 3.0,
+                temp_base - 2.0,
+                temp_base - 4.0,
+                temp_base - 3.0,
+            ];
             (*phys).wheels_pressure = [27.4, 27.6, 27.2, 27.4];
             (*phys).brake_temp = [480.0, 490.0, 390.0, 400.0];
             (*phys).ride_height = [25.0, 55.0];
@@ -237,7 +290,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (*gfx).session_time_left = ((3600.0 - total_elapsed) * 1000.0).max(0.0);
             (*gfx).distance_traveled = dist;
             (*gfx).surface_grip = 0.98;
-            (*gfx).fuel_x_lap = if fuel_per_lap > 0.0 { fuel_per_lap } else { 1.8 };
+            (*gfx).fuel_x_lap = if fuel_per_lap > 0.0 {
+                fuel_per_lap
+            } else {
+                1.8
+            };
         }
 
         print!(

@@ -5,7 +5,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/stargazers)
 [![Linux Badge](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)](#linux-section)
 
-**AC Pro Engineer** is a standalone high-performance telemetry analyzer and real-time race engineering suite for **Assetto Corsa** (AC / ACC). Written in Rust with Tokio async task scheduling, it operates with zero FPS drop as a resolution-independent **Terminal User Interface (TUI)** and native DirectX/VR overlay system.
+**AC Pro Engineer** is a standalone high-performance telemetry analyzer and real-time race engineering suite for **Assetto Corsa** (AC / ACC). Written in Rust with Tokio async task scheduling, it operates with zero FPS drop as a resolution-independent **Terminal User Interface (TUI)** and native desktop overlay system.
 
 It features real-time telemetry processing, AI copilot driving advice, corner-by-corner tire pressure optimization, sector split analytics, and a **one-click Setup Cloud** ecosystem.
 
@@ -175,7 +175,7 @@ Built-in interactive documentation.
 ![Overlay Control Center](screenshots/Overlay_Control.svg)
 In-game overlay configuration menu.
 
-* **Mode Selection:** Toggle between Native Desktop, DirectX, VR, and Standalone Test modes.
+* **Mode Selection:** Support for Native Desktop overlay.
 * **Element Positioning:** Customize position and transparency of floating telemetry widgets.
 
 ---
@@ -239,7 +239,7 @@ chmod +x build_release.sh && ./build_release.sh
 
 ## ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black) Linux Setup Guide
 
-Reading Assetto Corsa shared memory on Linux under Wine/Proton uses the included [`shm-bridge`](file:///home/rgosh/projects/RaceEngineer/shm-bridge).
+Reading Assetto Corsa shared memory on Linux under Wine/Proton uses the included [`shm-bridge`](./shm-bridge).
 
 ### Building for Linux
 1. Build using the provided bash script:

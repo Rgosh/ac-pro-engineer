@@ -23,7 +23,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         .telemetry_trace
         .iter()
         .map(|p| {
-            let rpm_val = p.speed as f64 * 25.0 + 1000.0;
+            let rpm_val = p.rpms as f64;
             (p.time_ms as f64 / 1000.0, rpm_val)
         })
         .collect();

@@ -91,13 +91,17 @@ fn main() -> Result<()> {
     println!("All mappings were successfully created, enter 'exit' to close the app");
 
     let mut input = String::new();
-    while stdin().read_line(&mut input).is_ok() {
+    while let Ok(bytes) = stdin().read_line(&mut input) {
+        if bytes == 0 {
+            break;
+        }
         match input.trim() {
             "exit" => break,
             _ => {
-                println!("Incorrect command '{input}'");
+                println!("Incorrect command '{}'", input.trim());
             }
         }
+        input.clear();
     }
 
     println!("\nShutting down.");

@@ -24,43 +24,42 @@ impl SharedMemoryBridge {
             None => ".".to_string(),
         };
 
+        let proton_cmd =
+            std::env::var("AC_PROTON_PATH").unwrap_or_else(|_| "protontricks-launch".to_string());
+        let is_test = std::env::var("AC_TEST_MODE").is_ok();
+
+        let mut child = if is_test {
+            if cfg!(target_os = "windows") {
+                let mut c = Command::new("cmd");
+                c.args(["/C", "echo Simulated Proton Execution Started & more"]);
+                c
+            } else {
+                let mut c = Command::new("sh");
+                c.args(["-c", "echo Simulated Proton Execution Started; cat"]);
+                c
+            }
+        } else {
+            let mut c = Command::new(proton_cmd);
+            c.args([
+                "--appid",
+                &GAME_ID.to_string(),
+                &format!("{pwd}/shm-bridge.exe"),
+            ]);
+            c
+        };
+
+        let mut child = child
+            .envs(std::env::vars())
+            // These envs are required to fix 100% CPU usage by winedevice.exe
+            .env("DBUS_FATAL_WARNINGS", "0")
+            .env("WINEDLLOVERRIDES", "winebus.sys=d")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
         let process_handle = tokio::spawn(async move {
             info!("[shm-bridge] Starting bridge process from");
-
-            let proton_cmd = std::env::var("AC_PROTON_PATH")
-                .unwrap_or_else(|_| "protontricks-launch".to_string());
-            let is_test = std::env::var("AC_TEST_MODE").is_ok();
-
-            let mut child = if is_test {
-                if cfg!(target_os = "windows") {
-                    let mut c = Command::new("cmd");
-                    c.args(["/C", "echo Simulated Proton Execution Started & more"]);
-                    c
-                } else {
-                    let mut c = Command::new("sh");
-                    c.args(["-c", "echo Simulated Proton Execution Started; cat"]);
-                    c
-                }
-            } else {
-                let mut c = Command::new(proton_cmd);
-                c.args([
-                    "--appid",
-                    &GAME_ID.to_string(),
-                    &format!("{pwd}/shm-bridge.exe"),
-                ]);
-                c
-            };
-
-            let mut child = child
-                .envs(std::env::vars())
-                // These envs are required to fix 100% CPU usage by winedevice.exe
-                .env("DBUS_FATAL_WARNINGS", "0")
-                .env("WINEDLLOVERRIDES", "winebus.sys=d")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
-
             let stdout = child.stdout.take();
             if let Some(stdout) = stdout {
                 let mut reader = BufReader::new(stdout).lines();
