@@ -87,9 +87,15 @@ fn graphics_scalars_decode_to_live_session_values() {
 }
 
 /// `normalized_car_position` (0..1 around the lap) and `distance_traveled`
-/// (metres) are 92 bytes apart and independently written. Dividing one by the
-/// other has to land near a real track length — Imola is 4.9 km — which it
-/// cannot do if either field is misaligned.
+/// (metres) are 92 bytes apart and independently written, so dividing one by
+/// the other has to land in circuit territory — which it cannot do if either
+/// field is misaligned.
+///
+/// The quotient is an over-estimate, not the track length: `distanceTraveled`
+/// accumulates from the grid box while `normalizedCarPosition` is measured
+/// from the start/finish line, so the head start inflates it. This capture
+/// gives 822 m / 0.1548 = 5312 m at Imola, which is 4.9 km. Hence the wide
+/// band below — it is checking the order of magnitude, not the circuit.
 #[test]
 fn lap_fraction_and_distance_imply_a_real_track_length() {
     let g = parse();
