@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### 🛡️ Bug Fixes & Stability
 - **Shared-Memory Graphics Layout**: `AcGraphics` was using Assetto Corsa Competizione's `SPageFileGraphic` layout, which carries `activeCars`, `carCoordinates[60][3]`, `carID[60]`, `playerCarID` and `penalty` — 964 bytes that plain AC never writes. Every field from `car_coordinates` onward was therefore read from the wrong offset, past the end of the 360-byte page AC actually publishes. Track position was plotted from the car's altitude, and `surface_grip`, `fuel_x_lap`, `wind_speed`, `tc`, `abs`, `engine_map`, `flag` and the driver-stint timers all read a constant zero. Reported in [#2](https://github.com/Rgosh/ac-pro-engineer/issues/2).
-- **Shared-Memory Regression Tests**: Added layout tests that parse a page captured verbatim from a live AC 1.16.4 session through the same zerocopy call the app uses. Previously every test built an `Ac*` value in Rust and read it back, so no test could detect a mismatch with the game.
+- **Shared-Memory Regression Tests**: Added layout tests that parse graphics, physics and static pages captured verbatim from a live AC 1.16.4 session through the same zerocopy call the app uses. Previously every test built an `Ac*` value in Rust and read it back, so no test could detect a mismatch with the game.
+
+### ⚠️ Changed Behaviour
+- **Cold Tyre Pressure Targets Will Shift**: The pressure calculator scales its recommendation by `surface_grip`, which was previously stuck at `0.0` and clamped to a floor of `0.80` — so every recommendation carried the same fixed compensation. Now that real grip is read, a well-rubbered track (≈0.94) produces roughly a third of the previous adjustment. Recommendations will differ from v0.3.0 on the same car and track; this is the fix working, not a regression.
+- **Fuel Strategy Becomes Active**: `fuel_x_lap` was a constant `0.0`, and both the fuel-remaining estimate and the race-fuel target are gated on it being positive, so they never ran. They now do. Note that this field sits in the part of the graphics page not yet confirmed against a live capture — see the note on the tail fields in `core/src/ac_structs.rs`.
 
 ## [v0.3.0] - 2026-08-02
 
