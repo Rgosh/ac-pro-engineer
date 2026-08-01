@@ -1,4 +1,4 @@
-use crate::ac_structs::{AcGraphics, AcPhysics};
+use crate::ac_structs::{AcGraphics, AcPhysics, COORD_X, COORD_Z};
 use crate::config::Language;
 use crate::records::TrackRecord;
 use serde::{Deserialize, Serialize};
@@ -635,8 +635,8 @@ impl TelemetryAnalyzer {
                     }
                 };
 
-                let x = g.car_coordinates[crate::ac_structs::COORD_X];
-                let z = g.car_coordinates[crate::ac_structs::COORD_Z];
+                let x = g.car_coordinates[COORD_X];
+                let z = g.car_coordinates[COORD_Z];
 
                 if x.abs() > 0.1 || z.abs() > 0.1 {
                     if x < min_x {
