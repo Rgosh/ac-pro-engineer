@@ -1,11 +1,11 @@
 pub mod platform;
 pub mod ui;
 
-use crate::ui::{UIRenderer, UIState};
+use crate::ui::UIState;
 use ac_core::RingBuffer;
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
-use ac_core::config::{AppConfig, Language};
+use ac_core::config::AppConfig;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
@@ -15,13 +15,13 @@ use ac_core::process::is_process_running;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
 use ac_core::setup_manager::SetupManager;
-use ac_core::updater::{UpdateStatus, Updater};
+use ac_core::updater::Updater;
 
 use clap::ValueEnum;
 use std::fs::{self, File};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Mutex;
+use std::time::Instant;
 use tracing::metadata::LevelFilter;
 use tracing::{error, info};
 use tracing_subscriber::Layer;
@@ -546,19 +546,18 @@ impl AppState {
             self.current_lap_number = completed_laps;
         }
 
-        if (gfx.status != 0 || self.is_demo_mode) && (phys.speed_kmh > 1.0 || phys.rpms > 1000) {
-            if self.current_lap_physics.len() < 36000 {
+        if (gfx.status != 0 || self.is_demo_mode) && (phys.speed_kmh > 1.0 || phys.rpms > 1000)
+            && self.current_lap_physics.len() < 36000 {
                 self.current_lap_physics.push(phys);
                 self.current_lap_graphics.push(gfx);
             }
-        }
 
         if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
             self.setup_manager
                 .set_context(&self.session_info.car_name, &self.session_info.track_name);
             self.setup_manager.detect_current(
                 phys.fuel,
-                phys.brake_bias as f32 / 100.0,
+                phys.brake_bias / 100.0,
                 &phys.wheels_pressure,
                 &phys.tyre_temp_m,
             );

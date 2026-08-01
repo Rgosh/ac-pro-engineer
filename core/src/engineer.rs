@@ -360,11 +360,10 @@ impl Engineer {
             return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
         }
 
-        if let Some(&(first_seen, last_seen)) = self.alert_timers.get(key) {
-            if now.duration_since(last_seen) < Duration::from_secs_f32(2.0) {
+        if let Some(&(first_seen, last_seen)) = self.alert_timers.get(key)
+            && now.duration_since(last_seen) < Duration::from_secs_f32(2.0) {
                 return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
             }
-        }
 
         self.alert_timers.remove(key);
         false
@@ -1365,7 +1364,7 @@ impl Engineer {
                 gfx.session_time_left,
                 gfx.i_best_time,
                 gfx.i_last_time,
-                gfx.number_of_laps as i32,
+                gfx.number_of_laps,
                 gfx.completed_laps,
                 gfx.normalized_car_position,
             );

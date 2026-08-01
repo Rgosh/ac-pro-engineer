@@ -38,6 +38,12 @@ pub struct AnalysisState {
     pub selected_lap_index: usize,
 }
 
+impl Default for AnalysisState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnalysisState {
     pub fn new() -> Self {
         Self {
@@ -134,7 +140,7 @@ impl AnalysisState {
         self.load_menu.borrow_mut().toggle();
     }
 
-    pub fn menu_up(&mut self, total_laps: usize) {
+    pub fn menu_up(&mut self, _total_laps: usize) {
         if self.load_menu.borrow().active {
             self.load_menu.borrow_mut().previous();
         } else if self.selected_lap_index > 0 {

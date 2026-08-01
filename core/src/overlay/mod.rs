@@ -78,11 +78,10 @@ impl OverlayManager {
     }
 
     pub fn render_manual_state(&mut self) {
-        if self.is_active {
-            if let Some(provider) = &mut self.provider {
+        if self.is_active
+            && let Some(provider) = &mut self.provider {
                 provider.render(&self.state);
             }
-        }
     }
 
     pub fn get_state(&self) -> &OverlayState {

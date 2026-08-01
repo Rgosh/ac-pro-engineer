@@ -17,6 +17,12 @@ pub struct SettingsState {
     pub is_editing: bool,
 }
 
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SettingsState {
     pub fn new() -> Self {
         Self {
@@ -126,11 +132,10 @@ impl SettingsState {
                         config.auto_save = !config.auto_save
                     }
                 }
-                4 => {
-                    if delta.abs() > 0.0 {
+                4
+                    if delta.abs() > 0.0 => {
                         config.review_banner_hidden = !config.review_banner_hidden
                     }
-                }
                 _ => {}
             },
             SettingsCategory::Display => match self.selected_index {
@@ -149,14 +154,13 @@ impl SettingsState {
                         };
                     }
                 }
-                1 => {
-                    if delta.abs() > 0.0 {
+                1
+                    if delta.abs() > 0.0 => {
                         config.temp_unit = match config.temp_unit {
                             TempUnit::Celsius => TempUnit::Fahrenheit,
                             TempUnit::Fahrenheit => TempUnit::Celsius,
                         };
                     }
-                }
                 _ => {}
             },
             SettingsCategory::RaceEngineer => match self.selected_index {
@@ -190,11 +194,10 @@ impl SettingsState {
                     config.target_hot_pressure_rear =
                         (config.target_hot_pressure_rear + delta * 0.1).clamp(15.0, 45.0)
                 }
-                9 => {
-                    if delta.abs() > 0.0 {
+                9
+                    if delta.abs() > 0.0 => {
                         config.show_ghost_delta = !config.show_ghost_delta
                     }
-                }
                 _ => {}
             },
         }

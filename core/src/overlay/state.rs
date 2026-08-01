@@ -31,7 +31,7 @@ impl Default for OverlayState {
 impl OverlayState {
     pub fn update_from_session(&mut self, session: &SessionInfo) {
         if session.max_rpm > 0 {
-            self.max_rpm = session.max_rpm as i32;
+            self.max_rpm = session.max_rpm;
         }
     }
 }

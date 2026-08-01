@@ -332,8 +332,8 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(Color::Gray)
             };
 
-            if i == 5 {
-                if let UpdateStatus::UpdateAvailable = *update_status {
+            if i == 5
+                && let UpdateStatus::UpdateAvailable = *update_status {
                     if is_selected {
                         return ListItem::new(format!("  {}", text)).style(
                             Style::default()
@@ -349,7 +349,6 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                         );
                     }
                 }
-            }
 
             let prefix = if is_selected { ">>" } else { "  " };
             ListItem::new(format!("{} {}", prefix, text)).style(style)

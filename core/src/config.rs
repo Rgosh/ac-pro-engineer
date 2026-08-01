@@ -358,7 +358,7 @@ impl UnitFormatter {
 
 impl AppConfig {
     pub fn resolve_data_path(&self) -> PathBuf {
-        if self.data_path.as_os_str().is_empty() || self.data_path == PathBuf::from("./data") {
+        if self.data_path.as_os_str().is_empty() || self.data_path == *"./data" {
             app_dir()
         } else {
             self.data_path.clone()
@@ -366,7 +366,7 @@ impl AppConfig {
     }
 
     pub fn formatter(&self) -> UnitFormatter {
-        UnitFormatter::new(self.pressure_unit.clone(), self.temp_unit.clone())
+        UnitFormatter::new(self.pressure_unit, self.temp_unit)
     }
 
     /// Load config from disk with migration and backup support.

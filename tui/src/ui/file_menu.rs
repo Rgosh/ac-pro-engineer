@@ -9,6 +9,12 @@ pub struct FileMenu {
     pub state: ListState,
 }
 
+impl Default for FileMenu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileMenu {
     pub fn new() -> Self {
         Self {
@@ -48,15 +54,14 @@ impl FileMenu {
         }
         self.files.sort();
         self.files.reverse();
-        if let Some(sel) = self.state.selected() {
-            if sel >= self.files.len() {
+        if let Some(sel) = self.state.selected()
+            && sel >= self.files.len() {
                 if !self.files.is_empty() {
                     self.state.select(Some(self.files.len() - 1));
                 } else {
                     self.state.select(None);
                 }
             }
-        }
         Ok(())
     }
 

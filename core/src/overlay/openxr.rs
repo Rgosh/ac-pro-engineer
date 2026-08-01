@@ -3,6 +3,12 @@ use super::state::OverlayState;
 
 pub struct OpenXrProvider {}
 
+impl Default for OpenXrProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OpenXrProvider {
     pub fn new() -> Self {
         Self {}

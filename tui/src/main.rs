@@ -2,14 +2,14 @@ use ac_core::config::Language;
 use ac_core::overlay::OverlayMode;
 use ac_core::updater::UpdateStatus;
 use ac_tui::platform;
-use ac_tui::ui::{UIRenderer, UIState};
+use ac_tui::ui::UIRenderer;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, SetSize, disable_raw_mode, enable_raw_mode,
+        EnterAlternateScreen, SetSize, enable_raw_mode,
     },
 };
 use ratatui::prelude::*;

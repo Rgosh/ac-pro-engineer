@@ -74,6 +74,12 @@ impl UIState {
 
 pub struct UIRenderer;
 
+impl Default for UIRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UIRenderer {
     pub fn new() -> Self {
         Self
