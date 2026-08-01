@@ -2,10 +2,10 @@ pub mod platform;
 pub mod ui;
 
 use crate::ui::{UIRenderer, UIState};
+use ac_core::RingBuffer;
 use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
 use ac_core::config::{AppConfig, Language};
-use ac_core::RingBuffer;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
@@ -24,18 +24,19 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::metadata::LevelFilter;
 use tracing::{error, info};
+use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
 
 pub fn setup_logging(
     file: Option<&PathBuf>,
     level: AppLogLevel,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let default_path = PathBuf::from("logs").join("ac_engineer.log");
     let file = match file {
         Some(file) => file,
-        None => &PathBuf::from("logs").with_file_name("ac_engineer.log"),
+        None => &default_path,
     };
 
     if let Some(parent) = file.parent()
@@ -59,7 +60,10 @@ pub fn setup_logging(
         .with(debug_log.with_filter(LevelFilter::from(level)))
         .init();
 
-    info!("AC Pro Engineer v0.2.0 Logger Initialized");
+    info!(
+        "AC Pro Engineer v{} Logger Initialized",
+        ac_core::updater::CURRENT_VERSION
+    );
     Ok(())
 }
 
@@ -211,6 +215,8 @@ pub struct AppState {
     pub current_lap_physics: Vec<AcPhysics>,
     pub current_lap_graphics: Vec<AcGraphics>,
     pub current_lap_number: i32,
+    pub current_lap_sectors: [i32; 3],
+    pub last_sector_index: i32,
     pub recommendations: Vec<Recommendation>,
     pub analysis_results: Vec<AnalysisResult>,
     pub last_update: Instant,
@@ -226,12 +232,6 @@ pub struct AppState {
     pub show_help: bool,
     pub show_overlay_menu: bool,
     pub overlay_menu_selection: usize,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::new(OverlayMode::External)
-    }
 }
 
 impl AppState {
@@ -274,9 +274,11 @@ impl AppState {
             session_info: SessionInfo::default(),
             physics_history: RingBuffer::new(config.history_size),
             graphics_history: RingBuffer::new(config.history_size),
-            current_lap_physics: Vec::with_capacity(10000),
-            current_lap_graphics: Vec::with_capacity(10000),
+            current_lap_physics: Vec::with_capacity(36000),
+            current_lap_graphics: Vec::with_capacity(36000),
             current_lap_number: -1,
+            current_lap_sectors: [0; 3],
+            last_sector_index: 0,
             recommendations: Vec::new(),
             analysis_results: Vec::new(),
             last_update: Instant::now(),
@@ -322,6 +324,7 @@ impl AppState {
                 let px = (t * 0.8).cos() * 150.0;
                 let py = (t * 0.8).sin() * 80.0;
                 trace_points.push(ac_core::analyzer::TelemetryPoint {
+                    rpms: 4000,
                     time_ms: i * 50,
                     distance: i as f32 * 10.0,
                     speed: spd,
@@ -472,8 +475,8 @@ impl AppState {
         }
     }
 
-        pub fn process_telemetry_sample(&mut self, phys: AcPhysics, gfx: AcGraphics) {
-        let stat_spline_length = self.ac_static().map(|s| s.track_spline_length).unwrap_or(0.0);
+    pub fn process_tick_logic(&mut self, phys: AcPhysics, gfx: AcGraphics, stat: AcStatic) {
+        let stat_spline_length = stat.track_spline_length;
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
@@ -481,6 +484,15 @@ impl AppState {
         self.engineer.update(&phys, &gfx, &self.session_info);
 
         self.overlay_manager.update(&self.session_info);
+
+        let current_sector = gfx.current_sector_index;
+        if current_sector != self.last_sector_index {
+            if self.last_sector_index >= 0 && self.last_sector_index < 3 {
+                self.current_lap_sectors[self.last_sector_index as usize] = gfx.last_sector_time;
+            }
+            self.last_sector_index = current_sector;
+        }
+
         let s = &mut self.overlay_manager.state;
         s.speed_kmh = phys.speed_kmh as i32;
         s.gear = (phys.gear - 1).max(0);
@@ -491,46 +503,54 @@ impl AppState {
             self.current_lap_number = completed_laps;
         }
 
-        if completed_laps > self.current_lap_number {
-            let last_lap_time = gfx.i_last_time;
-            if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
-                self.analyzer.process_lap(
-                    self.current_lap_number,
-                    last_lap_time,
-                    &self.current_lap_physics,
-                    &self.current_lap_graphics,
-                    self.session_info.car_name.clone(),
-                    self.session_info.track_name.clone(),
-                );
-
-                if let Some(car_specs) = self
-                    .content_manager
-                    .get_car_specs(&self.session_info.car_name)
-                {
-                    let mut rec = self.record_manager.get_or_calculate_record(
-                        &self.session_info.car_name,
-                        &self.session_info.track_name,
-                        &self.session_info.track_config,
-                        Some(car_specs),
-                        stat_spline_length,
+        if completed_laps != self.current_lap_number {
+            if completed_laps == self.current_lap_number + 1 {
+                let last_lap_time = gfx.i_last_time;
+                if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
+                    self.analyzer.process_lap(
+                        self.current_lap_number,
+                        last_lap_time,
+                        &self.current_lap_physics,
+                        &self.current_lap_graphics,
+                        self.current_lap_sectors,
+                        self.session_info.car_name.clone(),
+                        self.session_info.track_name.clone(),
+                        self.config.target_tyre_pressure,
+                        self.config.update_rate,
                     );
 
-                    if last_lap_time < rec.time_ms {
-                        rec.time_ms = last_lap_time;
-                        rec.source = "User Best".to_string();
-                        self.record_manager.update_if_faster(rec.clone());
+                    if let Some(car_specs) = self
+                        .content_manager
+                        .get_car_specs(&self.session_info.car_name)
+                    {
+                        let mut rec = self.record_manager.get_or_calculate_record(
+                            &self.session_info.car_name,
+                            &self.session_info.track_name,
+                            &self.session_info.track_config,
+                            Some(car_specs),
+                            stat_spline_length,
+                        );
+
+                        if last_lap_time < rec.time_ms {
+                            rec.time_ms = last_lap_time;
+                            rec.source = "User Best".to_string();
+                            self.record_manager.update_if_faster(rec.clone());
+                        }
+                        self.analyzer.set_world_record(rec);
                     }
-                    self.analyzer.set_world_record(rec);
                 }
             }
             self.current_lap_physics.clear();
             self.current_lap_graphics.clear();
+            self.current_lap_sectors = [0; 3];
             self.current_lap_number = completed_laps;
         }
 
         if (gfx.status != 0 || self.is_demo_mode) && (phys.speed_kmh > 1.0 || phys.rpms > 1000) {
-            self.current_lap_physics.push(phys);
-            self.current_lap_graphics.push(gfx);
+            if self.current_lap_physics.len() < 36000 {
+                self.current_lap_physics.push(phys);
+                self.current_lap_graphics.push(gfx);
+            }
         }
 
         if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
@@ -543,6 +563,17 @@ impl AppState {
                 &phys.tyre_temp_m,
             );
         }
+
+        let active_setup = self.setup_manager.get_active_setup();
+        self.recommendations = self
+            .engineer
+            .analyze_live(&phys, &gfx, active_setup.as_ref());
+
+        self.overlay_manager.state.engineer_messages = self
+            .recommendations
+            .iter()
+            .map(|rec| rec.message.clone())
+            .collect();
     }
 
     pub fn tick(&mut self) {
@@ -553,8 +584,10 @@ impl AppState {
 
         if self.is_demo_mode {
             self.update_demo_tick();
-            if let (Some(phys), Some(gfx)) = (self.mock_physics, self.mock_graphics) {
-                self.process_telemetry_sample(phys, gfx);
+            if let (Some(phys), Some(gfx), Some(stat)) =
+                (self.mock_physics, self.mock_graphics, self.mock_static)
+            {
+                self.process_tick_logic(phys, gfx, stat);
             }
             return;
         }
@@ -609,79 +642,7 @@ impl AppState {
 
         let (phys, gfx, stat) = (mem.ac_physics, mem.ac_graphics, mem.ac_static);
 
-        self.update_live_buffers(&phys, &gfx);
-        self.update_session_info(&gfx);
-        self.engineer.update_config(&self.config);
-        self.engineer.update(&phys, &gfx, &self.session_info);
-
-        self.overlay_manager.update(&self.session_info);
-        let s = &mut self.overlay_manager.state;
-        s.speed_kmh = phys.speed_kmh as i32;
-        s.gear = phys.gear - 1;
-        s.rpm = phys.rpms;
-
-        let completed_laps = gfx.completed_laps;
-        if self.current_lap_number == -1 {
-            self.current_lap_number = completed_laps;
-        }
-
-        if completed_laps > self.current_lap_number {
-            let last_lap_time = gfx.i_last_time;
-            if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
-                self.analyzer.process_lap(
-                    self.current_lap_number,
-                    last_lap_time,
-                    &self.current_lap_physics,
-                    &self.current_lap_graphics,
-                    self.session_info.car_name.clone(),
-                    self.session_info.track_name.clone(),
-                );
-
-                if let Some(car_specs) = self
-                    .content_manager
-                    .get_car_specs(&self.session_info.car_name)
-                {
-                    let track_len = stat.track_spline_length;
-                    let mut rec = self.record_manager.get_or_calculate_record(
-                        &self.session_info.car_name,
-                        &self.session_info.track_name,
-                        &self.session_info.track_config,
-                        Some(car_specs),
-                        track_len,
-                    );
-
-                    if last_lap_time < rec.time_ms {
-                        rec.time_ms = last_lap_time;
-                        rec.source = "User Best".to_string();
-                        self.record_manager.update_if_faster(rec.clone());
-                    }
-                    self.analyzer.set_world_record(rec);
-                }
-            }
-            self.current_lap_physics.clear();
-            self.current_lap_graphics.clear();
-            self.current_lap_number = completed_laps;
-        }
-
-        if gfx.status != 0 && (phys.speed_kmh > 1.0 || phys.rpms > 1000) {
-            self.current_lap_physics.push(phys);
-            self.current_lap_graphics.push(gfx);
-        }
-
-        if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
-            self.setup_manager
-                .set_context(&self.session_info.car_name, &self.session_info.track_name);
-        }
-        let active_setup = self.setup_manager.get_active_setup();
-        self.recommendations = self
-            .engineer
-            .analyze_live(&phys, &gfx, active_setup.as_ref());
-
-        self.overlay_manager.state.engineer_messages = self
-            .recommendations
-            .iter()
-            .map(|rec| rec.message.clone())
-            .collect();
+        self.process_tick_logic(phys, gfx, stat);
     }
 
     pub fn disconnect(&mut self) {
@@ -789,6 +750,7 @@ mod tests {
     fn demo_mode_executes_full_telemetry_pipeline() {
         let mut app = AppState::new(OverlayMode::External);
         app.is_demo_mode = true;
+        app.mock_static = Some(ac_core::ac_structs::AcStatic::default());
         app.stage = AppStage::Running;
 
         assert_eq!(app.physics_history.len(), 0);
