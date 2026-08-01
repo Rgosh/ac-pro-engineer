@@ -15,6 +15,20 @@
 //! ACC's layout (`activeCars` + `carCoordinates[60][3]` + `carID[60]` +
 //! `playerCarID` + `penalty`), which is 964 bytes AC never writes, so every
 //! field from `car_coordinates` onward read from the wrong offset.
+//!
+//! # What this does not cover
+//!
+//! Two gaps, both wanting a live session to close rather than more code:
+//!
+//! - **Offsets past 296.** The capture is zero from 300 to the end of the
+//!   page, so the last fifteen fields are asserted by nothing. Reading these
+//!   tests as covering the whole page would be a mistake — see the note on the
+//!   tail fields of `AcGraphics`.
+//! - **`AcPhysics` and `AcStatic`.** Both were checked by hand against the
+//!   same session, but neither has a fixture here, so the round-trip blind
+//!   spot described above still applies to them in full. Capturing
+//!   `acpmf_physics` (596 bytes) and `acpmf_static` (688) alongside a
+//!   lap-2 graphics page would close both gaps in one sitting.
 
 use ac_core::ac_structs::{AcGraphics, COORD_X, COORD_Y, COORD_Z};
 use zerocopy::TryFromBytes;
@@ -158,6 +172,12 @@ fn car_coordinates_are_the_players_world_position() {
 /// off the end of the page, where they read a constant 0.0. `surface_grip`
 /// feeds the cold-pressure calculator and `wind_speed` the strategy tab, so a
 /// silent zero is worse than a crash.
+///
+/// `is_setup_menu_visible` is the last field this capture can speak for. It
+/// reads -1, and a fresh mapping is zero-filled, so AC demonstrably writes at
+/// least this far — which matters, because the published Kunos struct stops at
+/// `wind_direction` and would have the page end at 296. Everything after it is
+/// zero here and proves nothing either way.
 #[test]
 fn fields_after_the_coordinates_are_not_silently_zero() {
     let g = parse();
