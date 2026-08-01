@@ -22,7 +22,15 @@ discord-rich-presence = { workspace = true }
 tracing = { workspace = true }
 memmap2 = { workspace = true }
 
+# Release-archive extraction for the in-app updater. Only the format this
+# platform actually downloads is pulled in: dist ships .tar.gz for unix and
+# .zip for Windows.
+[target.'cfg(not(target_os="windows"))'.dependencies]
+tar = { workspace = true }
+flate2 = { workspace = true }
+
 [target.'cfg(target_os="windows")'.dependencies]
+zip = { workspace = true }
 windows = { workspace = true, features = [
     "Win32_System_Memory",
     "Win32_Foundation",

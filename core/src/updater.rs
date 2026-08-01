@@ -35,9 +35,8 @@ pub struct RemoteVersion {
     pub is_latest: bool,
     #[serde(default)]
     pub expected_size: u64,
-    /// Set when the asset is an archive this updater cannot unpack, so the
-    /// download is refused with an actionable message instead of writing a
-    /// tarball over the running executable.
+    /// Set when the asset is an archive, so the download step unpacks the
+    /// application binary out of it instead of renaming the file into place.
     #[serde(default)]
     pub needs_extraction: bool,
 }
@@ -85,7 +84,9 @@ enum AssetKind {
 ///   `ac_pro_engineer.exe` on Windows, `ac_pro_engineer` on Linux
 /// * dist archives, which embed the Rust target triple —
 ///   `ac_tui-x86_64-pc-windows-gnu.zip`,
-///   `ac_tui-x86_64-unknown-linux-gnu.tar.xz`
+///   `ac_tui-x86_64-unknown-linux-gnu.tar.gz`
+///   (`.tar.xz` is still matched so releases predating the switch to gzip are
+///   at least reported, even though this build cannot unpack xz)
 fn classify_asset(name: &str) -> Option<AssetKind> {
     let lower = name.to_ascii_lowercase();
 
@@ -132,11 +133,78 @@ fn classify_asset(name: &str) -> Option<AssetKind> {
     }
 }
 
+/// File name the application binary has inside a release archive.
+fn app_binary_file_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "ac_pro_engineer.exe"
+    } else {
+        APP_BIN_STEM
+    }
+}
+
+/// Unpack the application binary out of a downloaded release archive.
+///
+/// dist nests every file under a single directory named after the archive stem,
+/// e.g. `ac_tui-x86_64-unknown-linux-gnu/ac_pro_engineer`, and the archive also
+/// carries LICENSE, README and any other bundled binaries. The wanted entry is
+/// therefore located by file name at any depth rather than by a fixed path, so
+/// a change to the wrapping directory name does not break updates.
+#[cfg(not(target_os = "windows"))]
+fn extract_app_binary(
+    archive: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let wanted = app_binary_file_name();
+    let file = File::open(archive)?;
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+        if path.file_name().and_then(|n| n.to_str()) != Some(wanted) {
+            continue;
+        }
+        let mut out = File::create(dest)?;
+        std::io::copy(&mut entry, &mut out)?;
+        return Ok(());
+    }
+
+    Err(format!("{wanted} not found in {}", archive.display()).into())
+}
+
+/// Windows counterpart: dist ships a `.zip` there.
+#[cfg(target_os = "windows")]
+fn extract_app_binary(
+    archive: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let wanted = app_binary_file_name();
+    let file = File::open(archive)?;
+    let mut zip = zip::ZipArchive::new(file)?;
+
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        let is_match = entry
+            .enclosed_name()
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            == Some(wanted);
+        if !is_match {
+            continue;
+        }
+        let mut out = File::create(dest)?;
+        std::io::copy(&mut entry, &mut out)?;
+        return Ok(());
+    }
+
+    Err(format!("{wanted} not found in {}", archive.display()).into())
+}
+
 /// Pick the best asset in a release for the running OS.
 ///
-/// A bare executable is preferred over an archive; an archive is still returned
-/// so the UI can report that a newer version exists even though this updater
-/// cannot unpack it.
+/// A bare executable is preferred over an archive, since it needs no unpacking
+/// and older releases published one directly.
 fn select_asset(assets: &[GitHubAsset]) -> Option<(AssetKind, &GitHubAsset)> {
     assets
         .iter()
@@ -372,19 +440,6 @@ impl Updater {
                 *lock = UpdateStatus::Downloading(0.0);
             }
 
-            // The download path swaps the file straight over the running
-            // executable, so an archive cannot be applied here. Refuse before
-            // fetching anything rather than unpack nothing and exec a tarball.
-            if info.needs_extraction {
-                error!(
-                    "Update asset {} is an archive; in-app update cannot unpack it",
-                    info.url
-                );
-                let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                *lock = UpdateStatus::Error("Archive release — use the installer".to_string());
-                return;
-            }
-
             let current_exe =
                 env::current_exe().unwrap_or_else(|_| PathBuf::from("ac_pro_engineer"));
             let exe_dir = current_exe
@@ -479,8 +534,21 @@ impl Updater {
                                 return;
                             }
 
-                            // Atomic rename from .tmp to final
-                            if let Err(e) = std::fs::rename(&temp_path, &final_path) {
+                            // An archive holds the binary alongside LICENSE and
+                            // README, so unpack it. A bare binary is already
+                            // the finished article and only needs renaming.
+                            if info.needs_extraction {
+                                if let Err(e) = extract_app_binary(&temp_path, &final_path) {
+                                    error!("Failed to extract update archive: {}", e);
+                                    let _ = std::fs::remove_file(&temp_path);
+                                    let _ = std::fs::remove_file(&final_path);
+                                    let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
+                                    *lock = UpdateStatus::Error("Extract failed".to_string());
+                                    return;
+                                }
+                                // The archive itself is no longer needed.
+                                let _ = std::fs::remove_file(&temp_path);
+                            } else if let Err(e) = std::fs::rename(&temp_path, &final_path) {
                                 error!("Failed to rename temp file: {}", e);
                                 let _ = std::fs::remove_file(&temp_path);
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -717,6 +785,92 @@ mod tests {
         let (kind, chosen) = select_asset(&assets).expect("a windows archive exists");
         assert_eq!(chosen.name, "ac_tui-x86_64-pc-windows-gnu.zip");
         assert_eq!(kind, AssetKind::Archive);
+    }
+
+    /// Round-trip the real dist layout: the binary sits under a directory named
+    /// after the archive stem, next to LICENSE, README and a second binary.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn extracts_the_app_binary_from_a_nested_tar_gz() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join("ac_updater_extract_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create tmp");
+
+        let archive_path = tmp.join("ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        let payload = b"#!/bin/sh\necho updated\n";
+
+        {
+            let gz = flate2::write::GzEncoder::new(
+                File::create(&archive_path).expect("create archive"),
+                flate2::Compression::fast(),
+            );
+            let mut builder = tar::Builder::new(gz);
+            let root = "ac_tui-x86_64-unknown-linux-gnu";
+
+            for (name, bytes) in [
+                (format!("{root}/LICENSE"), &b"license"[..]),
+                (format!("{root}/README.md"), &b"readme"[..]),
+                // A sibling binary that must not be mistaken for the app.
+                (format!("{root}/simulator"), &b"not the app"[..]),
+                (format!("{root}/{APP_BIN_STEM}"), &payload[..]),
+            ] {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_mode(0o755);
+                header.set_cksum();
+                builder
+                    .append_data(&mut header, &name, bytes)
+                    .expect("append");
+            }
+            let mut gz = builder.into_inner().expect("finish tar");
+            gz.flush().expect("flush");
+        }
+
+        let dest = tmp.join("ac_pro_engineer_new");
+        extract_app_binary(&archive_path, &dest).expect("extraction should succeed");
+
+        let got = std::fs::read(&dest).expect("read extracted binary");
+        assert_eq!(got, payload, "extracted the wrong archive entry");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// A release archive missing the application must fail loudly rather than
+    /// leave a truncated or wrong file where the binary is expected.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn extraction_fails_when_the_archive_has_no_app_binary() {
+        use std::io::Write;
+
+        let tmp = std::env::temp_dir().join("ac_updater_extract_missing_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create tmp");
+
+        let archive_path = tmp.join("bogus.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(
+                File::create(&archive_path).expect("create archive"),
+                flate2::Compression::fast(),
+            );
+            let mut builder = tar::Builder::new(gz);
+            let mut header = tar::Header::new_gnu();
+            let bytes = &b"license"[..];
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "some-dir/LICENSE", bytes)
+                .expect("append");
+            let mut gz = builder.into_inner().expect("finish tar");
+            gz.flush().expect("flush");
+        }
+
+        let dest = tmp.join("ac_pro_engineer_new");
+        assert!(extract_app_binary(&archive_path, &dest).is_err());
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     /// A bare executable is preferred when a release carries both forms.

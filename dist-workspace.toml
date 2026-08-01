@@ -12,3 +12,7 @@ installers = ["shell", "powershell"]
 install-updater = true
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
+# gzip rather than the default xz: the in-app updater unpacks these itself, and
+# xz would mean linking a C liblzma into the app. Windows keeps .zip, which the
+# updater reads with the pure-Rust `zip` crate.
+unix-archive = ".tar.gz"

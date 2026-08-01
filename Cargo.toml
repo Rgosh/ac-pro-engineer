@@ -32,6 +32,12 @@ tracing-appender = "0.2"
 windows = "0.52"
 walkdir = "2.4"
 tokio = "1.49.0"
+# Unpacking release archives in the in-app updater. All pure Rust: gzip/deflate
+# via flate2, so no C liblzma is linked in (see unix-archive in
+# dist-workspace.toml).
+tar = "0.4.46"
+flate2 = "1.1.9"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unused = { level = "warn", priority = -1 }
