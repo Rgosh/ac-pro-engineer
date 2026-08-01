@@ -186,17 +186,40 @@ fn app_binary_file_name() -> &'static str {
 
 /// Unpack the application binary out of a downloaded release archive.
 ///
-/// dist nests every file under a single directory named after the archive stem,
-/// e.g. `ac_tui-x86_64-unknown-linux-gnu/ac_pro_engineer`, and the archive also
-/// carries LICENSE, README and any other bundled binaries. The wanted entry is
-/// therefore located by file name at any depth rather than by a fixed path, so
-/// a change to the wrapping directory name does not break updates.
+/// Only the format this platform actually downloads is compiled into the
+/// binary — `.tar.gz` on unix, `.zip` on Windows — but both readers are built
+/// under `cfg(test)` so either can be exercised from any host. Without that,
+/// the Windows path would only ever be compiled by the Windows CI leg and only
+/// ever be tested by nobody.
 #[cfg(not(target_os = "windows"))]
 fn extract_app_binary(
     archive: &std::path::Path,
     dest: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wanted = app_binary_file_name();
+    extract_named_entry_from_tar_gz(archive, app_binary_file_name(), dest)
+}
+
+#[cfg(target_os = "windows")]
+fn extract_app_binary(
+    archive: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    extract_named_entry_from_zip(archive, app_binary_file_name(), dest)
+}
+
+/// Copy the entry called `wanted` out of a gzipped tarball.
+///
+/// dist nests every file under a single directory named after the archive stem,
+/// e.g. `ac_tui-x86_64-unknown-linux-gnu/ac_pro_engineer`, and the archive also
+/// carries LICENSE, README and any other bundled binaries. The wanted entry is
+/// therefore located by file name at any depth rather than by a fixed path, so
+/// a change to the wrapping directory name does not break updates.
+#[cfg(any(not(target_os = "windows"), test))]
+fn extract_named_entry_from_tar_gz(
+    archive: &std::path::Path,
+    wanted: &str,
+    dest: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open(archive)?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
 
@@ -215,17 +238,24 @@ fn extract_app_binary(
 }
 
 /// Windows counterpart: dist ships a `.zip` there.
-#[cfg(target_os = "windows")]
-fn extract_app_binary(
+///
+/// The `zip` dependency is built with only the `deflate` feature, which covers
+/// what dist emits (Deflated) plus Stored, which needs no decoder. A release
+/// zipped with bzip2/zstd/lzma would fail here — the round-trip tests pin the
+/// two methods that are expected to work.
+#[cfg(any(target_os = "windows", test))]
+fn extract_named_entry_from_zip(
     archive: &std::path::Path,
+    wanted: &str,
     dest: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wanted = app_binary_file_name();
     let file = File::open(archive)?;
     let mut zip = zip::ZipArchive::new(file)?;
 
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
+        // `enclosed_name` rejects absolute paths and `..` traversal, so a
+        // hostile archive cannot steer the match outside the tree.
         let is_match = entry
             .enclosed_name()
             .as_deref()
@@ -956,88 +986,151 @@ mod tests {
         );
     }
 
-    /// Round-trip the real dist layout: the binary sits under a directory named
-    /// after the archive stem, next to LICENSE, README and a second binary.
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn extracts_the_app_binary_from_a_nested_tar_gz() {
+    /// The payload every extraction round-trip looks for.
+    const PAYLOAD: &[u8] = b"#!/bin/sh\necho updated\n";
+
+    /// A scratch directory of its own per test, so the suite stays parallel.
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create tmp");
+        dir
+    }
+
+    /// Build a gzipped tarball laid out the way dist does: everything under a
+    /// directory named after the archive stem, alongside LICENSE, README and a
+    /// sibling binary that must not be mistaken for the application.
+    fn write_tar_gz(path: &std::path::Path, entries: &[(&str, &[u8])]) {
         use std::io::Write;
 
-        let tmp = std::env::temp_dir().join("ac_updater_extract_test");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).expect("create tmp");
+        let gz = flate2::write::GzEncoder::new(
+            File::create(path).expect("create archive"),
+            flate2::Compression::fast(),
+        );
+        let mut builder = tar::Builder::new(gz);
 
-        let archive_path = tmp.join("ac_tui-x86_64-unknown-linux-gnu.tar.gz");
-        let payload = b"#!/bin/sh\necho updated\n";
-
-        {
-            let gz = flate2::write::GzEncoder::new(
-                File::create(&archive_path).expect("create archive"),
-                flate2::Compression::fast(),
-            );
-            let mut builder = tar::Builder::new(gz);
-            let root = "ac_tui-x86_64-unknown-linux-gnu";
-
-            for (name, bytes) in [
-                (format!("{root}/LICENSE"), &b"license"[..]),
-                (format!("{root}/README.md"), &b"readme"[..]),
-                // A sibling binary that must not be mistaken for the app.
-                (format!("{root}/simulator"), &b"not the app"[..]),
-                (format!("{root}/{APP_BIN_STEM}"), &payload[..]),
-            ] {
-                let mut header = tar::Header::new_gnu();
-                header.set_size(bytes.len() as u64);
-                header.set_mode(0o755);
-                header.set_cksum();
-                builder
-                    .append_data(&mut header, &name, bytes)
-                    .expect("append");
-            }
-            let mut gz = builder.into_inner().expect("finish tar");
-            gz.flush().expect("flush");
+        for (name, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, name, *bytes)
+                .expect("append");
         }
 
+        let mut gz = builder.into_inner().expect("finish tar");
+        gz.flush().expect("flush");
+    }
+
+    /// Zip counterpart. `method` is what dist's compression choice maps to.
+    fn write_zip(
+        path: &std::path::Path,
+        entries: &[(&str, &[u8])],
+        method: zip::CompressionMethod,
+    ) {
+        use std::io::Write;
+
+        let mut writer = zip::ZipWriter::new(File::create(path).expect("create archive"));
+        let options = zip::write::SimpleFileOptions::default().compression_method(method);
+
+        for (name, bytes) in entries {
+            writer.start_file(*name, options).expect("start entry");
+            writer.write_all(bytes).expect("write entry");
+        }
+
+        writer.finish().expect("finish zip");
+    }
+
+    /// The real dist layout, in the format unix downloads.
+    #[test]
+    fn extracts_the_app_binary_from_a_nested_tar_gz() {
+        let tmp = scratch_dir("ac_updater_extract_tar_test");
+        let archive_path = tmp.join("ac_tui-x86_64-unknown-linux-gnu.tar.gz");
+        let root = "ac_tui-x86_64-unknown-linux-gnu";
+
+        write_tar_gz(
+            &archive_path,
+            &[
+                (&format!("{root}/LICENSE"), b"license"),
+                (&format!("{root}/README.md"), b"readme"),
+                // A sibling binary that must not be mistaken for the app.
+                (&format!("{root}/simulator"), b"not the app"),
+                (&format!("{root}/{APP_BIN_STEM}"), PAYLOAD),
+            ],
+        );
+
         let dest = tmp.join("ac_pro_engineer_new");
-        extract_app_binary(&archive_path, &dest).expect("extraction should succeed");
+        extract_named_entry_from_tar_gz(&archive_path, APP_BIN_STEM, &dest)
+            .expect("extraction should succeed");
 
         let got = std::fs::read(&dest).expect("read extracted binary");
-        assert_eq!(got, payload, "extracted the wrong archive entry");
+        assert_eq!(got, PAYLOAD, "extracted the wrong archive entry");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// The same layout in the format Windows downloads. Runs on every host —
+    /// gating this to Windows would leave the zip reader compiled only by the
+    /// Windows CI leg and verified by nothing.
+    ///
+    /// Both methods dist can realistically emit are covered: Deflated is what
+    /// it uses, Stored needs no decoder and would silently pass either way.
+    #[test]
+    fn extracts_the_app_binary_from_a_nested_zip() {
+        for (label, method) in [
+            ("deflated", zip::CompressionMethod::Deflated),
+            ("stored", zip::CompressionMethod::Stored),
+        ] {
+            let tmp = scratch_dir(&format!("ac_updater_extract_zip_{label}_test"));
+            let archive_path = tmp.join("ac_tui-x86_64-pc-windows-gnu.zip");
+            let root = "ac_tui-x86_64-pc-windows-gnu";
+            let wanted = "ac_pro_engineer.exe";
+
+            write_zip(
+                &archive_path,
+                &[
+                    (&format!("{root}/LICENSE"), b"license"),
+                    (&format!("{root}/README.txt"), b"readme"),
+                    (&format!("{root}/simulator.exe"), b"not the app"),
+                    (&format!("{root}/{wanted}"), PAYLOAD),
+                ],
+                method,
+            );
+
+            let dest = tmp.join("ac_pro_engineer_new.exe");
+            let extracted = extract_named_entry_from_zip(&archive_path, wanted, &dest);
+            assert!(
+                extracted.is_ok(),
+                "{label} extraction should succeed: {extracted:?}"
+            );
+
+            let got = std::fs::read(&dest).expect("read extracted binary");
+            assert_eq!(got, PAYLOAD, "{label}: extracted the wrong archive entry");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+    }
+
     /// A release archive missing the application must fail loudly rather than
     /// leave a truncated or wrong file where the binary is expected.
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn extraction_fails_when_the_archive_has_no_app_binary() {
-        use std::io::Write;
+        let tmp = scratch_dir("ac_updater_extract_missing_test");
 
-        let tmp = std::env::temp_dir().join("ac_updater_extract_missing_test");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).expect("create tmp");
+        let tar_path = tmp.join("bogus.tar.gz");
+        write_tar_gz(&tar_path, &[("some-dir/LICENSE", b"license")]);
 
-        let archive_path = tmp.join("bogus.tar.gz");
-        {
-            let gz = flate2::write::GzEncoder::new(
-                File::create(&archive_path).expect("create archive"),
-                flate2::Compression::fast(),
-            );
-            let mut builder = tar::Builder::new(gz);
-            let mut header = tar::Header::new_gnu();
-            let bytes = &b"license"[..];
-            header.set_size(bytes.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            builder
-                .append_data(&mut header, "some-dir/LICENSE", bytes)
-                .expect("append");
-            let mut gz = builder.into_inner().expect("finish tar");
-            gz.flush().expect("flush");
-        }
+        let zip_path = tmp.join("bogus.zip");
+        write_zip(
+            &zip_path,
+            &[("some-dir/LICENSE", b"license")],
+            zip::CompressionMethod::Deflated,
+        );
 
         let dest = tmp.join("ac_pro_engineer_new");
-        assert!(extract_app_binary(&archive_path, &dest).is_err());
+        assert!(extract_named_entry_from_tar_gz(&tar_path, APP_BIN_STEM, &dest).is_err());
+        assert!(extract_named_entry_from_zip(&zip_path, "ac_pro_engineer.exe", &dest).is_err());
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

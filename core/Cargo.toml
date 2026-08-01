@@ -43,3 +43,12 @@ windows = { workspace = true, features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_Controls",
 ] }
+
+# Both archive readers are compiled under cfg(test) regardless of host, so the
+# Windows .zip path is covered by the Linux CI leg too — otherwise it would be
+# compiled only by the Windows leg and exercised by nothing. Writer support in
+# `zip` is unconditional, so the round-trip tests need no extra features.
+[dev-dependencies]
+tar = { workspace = true }
+flate2 = { workspace = true }
+zip = { workspace = true }
