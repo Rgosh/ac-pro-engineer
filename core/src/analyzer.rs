@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use tracing::{debug, info};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LapData {
     pub lap_number: i32,
     pub lap_time_ms: i32,
@@ -883,6 +883,44 @@ impl TelemetryAnalyzer {
             None
         }
     }
+}
+
+pub fn export_lap_to_csv(lap: &LapData, path: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut content = String::with_capacity(lap.telemetry_trace.len() * 100);
+    content.push_str("\"Time\",\"Distance\",\"Speed\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\"Pos_X\",\"Pos_Y\"\n");
+    content.push_str("\"s\",\"m\",\"km/h\",\"rad\",\"%\",\"%\",\"\",\"m\",\"m\"\n");
+
+    for p in &lap.telemetry_trace {
+        let time_sec = p.time_ms as f32 / 1000.0;
+        let line = format!(
+            "{:.3},{:.2},{:.1},{:.3},{:.2},{:.2},{},{:.2},{:.2}\n",
+            time_sec, p.distance, p.speed, p.steer, p.gas, p.brake, p.gear, p.x, p.y
+        );
+        content.push_str(&line);
+    }
+
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, &content)?;
+    std::fs::rename(&temp_path, path)?;
+    Ok(path.to_path_buf())
+}
+
+pub fn calculate_ghost_delta(best_lap: &LapData, progress: f32, current_lap_time_sec: f32) -> Option<f32> {
+    if best_lap.telemetry_trace.is_empty() {
+        return None;
+    }
+
+    let target_dist = progress * best_lap.telemetry_trace.last()?.distance;
+    let best_point = best_lap.telemetry_trace.iter().min_by(|a, b| {
+        (a.distance - target_dist).abs().partial_cmp(&(b.distance - target_dist).abs()).unwrap_or(std::cmp::Ordering::Equal)
+    })?;
+
+    let best_time_sec = best_point.time_ms as f32 / 1000.0;
+    Some(current_lap_time_sec - best_time_sec)
 }
 
 #[cfg(test)]

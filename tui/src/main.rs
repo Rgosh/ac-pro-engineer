@@ -458,6 +458,15 @@ async fn main() -> Result<(), anyhow::Error> {
                                 KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Char('с') | KeyCode::Char('С') => {
                                     app_lock.ui_state.analysis.toggle_compare();
                                 }
+                                KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Char('у') | KeyCode::Char('У') => {
+                                    let sel = app_lock.ui_state.analysis.selected_lap_index.min(app_lock.analyzer.laps.len().saturating_sub(1));
+                                    if let Some(lap) = app_lock.analyzer.laps.get(sel) {
+                                        let export_path = app_lock.config.resolve_data_path().join(format!("exports/lap_{}_export.csv", lap.lap_number + 1));
+                                        if let Ok(p) = ac_core::analyzer::export_lap_to_csv(lap, &export_path) {
+                                            app_lock.ui_state.analysis.set_status(format!("Exported CSV: {}", p.display()));
+                                        }
+                                    }
+                                }
                                 KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
                                 KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
                                 KeyCode::Up => {
