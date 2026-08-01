@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🛡️ Bug Fixes & Stability
+- **Shared-Memory Graphics Layout**: `AcGraphics` was using Assetto Corsa Competizione's `SPageFileGraphic` layout, which carries `activeCars`, `carCoordinates[60][3]`, `carID[60]`, `playerCarID` and `penalty` — 964 bytes that plain AC never writes. Every field from `car_coordinates` onward was therefore read from the wrong offset, past the end of the 360-byte page AC actually publishes. Track position was plotted from the car's altitude, and `surface_grip`, `fuel_x_lap`, `wind_speed`, `tc`, `abs`, `engine_map`, `flag` and the driver-stint timers all read a constant zero. Reported in [#2](https://github.com/Rgosh/ac-pro-engineer/issues/2).
+- **Shared-Memory Regression Tests**: Added layout tests that parse a page captured verbatim from a live AC 1.16.4 session through the same zerocopy call the app uses. Previously every test built an `Ac*` value in Rust and read it back, so no test could detect a mismatch with the game.
+
 ## [v0.3.0] - 2026-08-02
 
 ### 🚀 New Features & Enhancements

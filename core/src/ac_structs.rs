@@ -4,10 +4,24 @@ use zerocopy::TryFromBytes;
 
 /// Compile-time guarantee that these structs still match the Assetto Corsa
 /// shared-memory ABI. A mismatch is a build error, not a test failure.
+///
+/// These are the sizes of AC's `SPageFilePhysics` / `SPageFileGraphic` /
+/// `SPageFileStatic`, verified against a live `acpmf_*` mapping from AC 1.16.4
+/// (shared-memory version 1.7). Note that ACC's graphics page is a different,
+/// much larger struct — see the comment on [`AcGraphics`].
 const _: () = {
-    assert!(size_of::<AcGraphics>() == 1320);
-    assert!(size_of::<AcPhysics>() == 596);
-    assert!(size_of::<AcStatic>() == 688);
+    assert!(
+        size_of::<AcGraphics>() == 360,
+        "AcGraphics no longer matches AC's SPageFileGraphic"
+    );
+    assert!(
+        size_of::<AcPhysics>() == 596,
+        "AcPhysics no longer matches AC's SPageFilePhysics"
+    );
+    assert!(
+        size_of::<AcStatic>() == 688,
+        "AcStatic no longer matches AC's SPageFileStatic"
+    );
 };
 
 #[repr(C)]
@@ -117,35 +131,10 @@ impl From<[u16; 33]> for StringU16_33 {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, TryFromBytes)]
-pub struct CarCoordinates([[f32; 3]; 60]);
-
-impl Default for CarCoordinates {
-    fn default() -> Self {
-        Self([[0f32; 3]; 60])
-    }
-}
-
-impl CarCoordinates {
-    pub fn get(&self, first: usize, second: usize) -> f32 {
-        self.0[first][second]
-    }
-
-    pub fn set(&mut self, first: usize, second: usize, val: f32) {
-        self.0[first][second] = val;
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, TryFromBytes)]
-pub struct CarId([i32; 60]);
-
-impl Default for CarId {
-    fn default() -> Self {
-        Self([0i32; 60])
-    }
-}
+/// Index into [`AcGraphics::car_coordinates`].
+pub const COORD_X: usize = 0;
+pub const COORD_Y: usize = 1;
+pub const COORD_Z: usize = 2;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, TryFromBytes)]
@@ -171,13 +160,18 @@ pub struct AcGraphics {
     pub tyre_compound: StringU16_33,
     pub replay_time_multiplier: f32,
     pub normalized_car_position: f32,
-    pub active_cars: i32,
-    pub car_coordinates: CarCoordinates,
-    pub car_id: CarId,
-    pub player_car_id: i32,
+    /// World position of the *player's* car, `[x, y, z]`, in metres.
+    ///
+    /// AC publishes only the player's car here. ACC is the title with
+    /// `activeCars` + `carCoordinates[60][3]` + `carID[60]` + `playerCarID` in
+    /// this position; those fields do not exist in AC's page, and assuming they
+    /// did shifted every subsequent field 964 bytes past where AC writes it.
+    pub car_coordinates: [f32; 3],
     pub penalty_time: f32,
     pub flag: i32,
-    pub penalty: i32,
+    // No `penalty` field here: that is ACC's `AC_PENALTY_TYPE penalty`. In AC,
+    // `idealLineOn` follows `flag` directly — confirmed by `surfaceGrip`
+    // landing on offset 280 in a live mapping, which it only does without it.
     pub ideal_line_on: i32,
     pub is_in_pit_lane: i32,
     pub surface_grip: f32,

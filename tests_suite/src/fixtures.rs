@@ -60,7 +60,7 @@ impl TelemetrySessionFixture {
                     ..Default::default()
                 };
 
-                let mut gfx = AcGraphics {
+                let gfx = AcGraphics {
                     status: 1,
                     completed_laps: lap,
                     normalized_car_position: progress,
@@ -77,12 +77,13 @@ impl TelemetrySessionFixture {
                     },
                     session_time_left: (1800.0 - total_time) * 1000.0,
                     fuel_x_lap: 2.1,
+                    car_coordinates: [
+                        400.0 * (progress * std::f32::consts::TAU).cos(),
+                        0.0,
+                        250.0 * (progress * std::f32::consts::TAU).sin(),
+                    ],
                     ..Default::default()
                 };
-                gfx.car_coordinates
-                    .set(0, 0, 400.0 * (progress * std::f32::consts::TAU).cos());
-                gfx.car_coordinates
-                    .set(0, 2, 250.0 * (progress * std::f32::consts::TAU).sin());
 
                 let session = SessionInfo {
                     car_name: "ks_ferrari_488_gt3".to_string(),

@@ -635,8 +635,8 @@ impl TelemetryAnalyzer {
                     }
                 };
 
-                let x = g.car_coordinates.get(0, 0);
-                let z = g.car_coordinates.get(0, 2);
+                let x = g.car_coordinates[crate::ac_structs::COORD_X];
+                let z = g.car_coordinates[crate::ac_structs::COORD_Z];
 
                 if x.abs() > 0.1 || z.abs() > 0.1 {
                     if x < min_x {

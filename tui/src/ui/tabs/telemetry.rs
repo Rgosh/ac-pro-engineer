@@ -240,8 +240,8 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let y_bounds = [min_y - margin_y, max_y + margin_y];
 
     let car_pos = if let Some(gfx) = app.ac_graphics() {
-        let cx = gfx.car_coordinates.get(0, 0) as f64;
-        let cy = gfx.car_coordinates.get(0, 2) as f64;
+        let cx = gfx.car_coordinates[ac_core::ac_structs::COORD_X] as f64;
+        let cy = gfx.car_coordinates[ac_core::ac_structs::COORD_Z] as f64;
         if cx.is_finite() && cy.is_finite() && (cx != 0.0 || cy != 0.0) {
             Some((cx, cy))
         } else if app.is_demo_mode {
