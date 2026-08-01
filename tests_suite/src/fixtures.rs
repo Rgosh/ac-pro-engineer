@@ -45,7 +45,12 @@ impl TelemetrySessionFixture {
                 // Dynamic tyre state
                 let wear_factor = 1.0 - (total_time / 1000.0) * 0.05;
                 phys.tyre_wear = [wear_factor; 4];
-                phys.wheels_pressure = [27.2 + (lap as f32 * 0.3), 27.5 + (lap as f32 * 0.3), 26.8, 26.9];
+                phys.wheels_pressure = [
+                    27.2 + (lap as f32 * 0.3),
+                    27.5 + (lap as f32 * 0.3),
+                    26.8,
+                    26.9,
+                ];
                 phys.tyre_temp_i = [88.0 + lap as f32 * 2.0; 4];
 
                 // Fuel consumption
@@ -56,12 +61,28 @@ impl TelemetrySessionFixture {
                 gfx.completed_laps = completed_laps;
                 gfx.normalized_car_position = progress;
                 gfx.i_current_time = (progress * lap_time_sec * 1000.0) as i32;
-                gfx.i_last_time = if lap > 0 { (lap_time_sec * 1000.0) as i32 } else { 0 };
-                gfx.i_best_time = if lap > 1 { (lap_time_sec * 1000.0) as i32 } else { 0 };
+                gfx.i_last_time = if lap > 0 {
+                    (lap_time_sec * 1000.0) as i32
+                } else {
+                    0
+                };
+                gfx.i_best_time = if lap > 1 {
+                    (lap_time_sec * 1000.0) as i32
+                } else {
+                    0
+                };
                 gfx.session_time_left = (1800.0 - total_time) * 1000.0;
                 gfx.fuel_x_lap = 2.1;
-                gfx.car_coordinates.set(0, 0, (400.0 * (progress * std::f32::consts::TAU).cos()) as f32);
-                gfx.car_coordinates.set(0, 2, (250.0 * (progress * std::f32::consts::TAU).sin()) as f32);
+                gfx.car_coordinates.set(
+                    0,
+                    0,
+                    (400.0 * (progress * std::f32::consts::TAU).cos()) as f32,
+                );
+                gfx.car_coordinates.set(
+                    0,
+                    2,
+                    (250.0 * (progress * std::f32::consts::TAU).sin()) as f32,
+                );
 
                 let mut session = SessionInfo::default();
                 session.car_name = "ks_ferrari_488_gt3".to_string();
@@ -91,13 +112,17 @@ mod tests {
         let fixture = TelemetrySessionFixture::generate_3_lap_session();
         assert_eq!(fixture.samples.len(), 630);
 
-        let mut app = AppState::default();
+        let mut app = AppState::new(ac_core::overlay::OverlayMode::External);
         app.config.auto_save = false;
 
         // Process all 630 telemetry samples through the full application pipeline
         for sample in &fixture.samples {
             app.session_info = sample.session.clone();
-            app.process_telemetry_sample(sample.physics, sample.graphics);
+            app.process_tick_logic(
+                sample.physics,
+                sample.graphics,
+                ac_core::ac_structs::AcStatic::default(),
+            );
         }
 
         // 1. Verify telemetry history buffers aggregated correctly
@@ -113,7 +138,9 @@ mod tests {
 
         // 4. Verify Engineer engine generated advice for session
         let last_sample = fixture.samples.last().unwrap();
-        let recs = app.engineer.analyze_live(&last_sample.physics, &last_sample.graphics, None);
+        let recs = app
+            .engineer
+            .analyze_live(&last_sample.physics, &last_sample.graphics, None);
         assert!(!recs.is_empty());
     }
 }

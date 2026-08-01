@@ -102,6 +102,7 @@ pub struct TelemetryPoint {
     pub slip_avg: f32,
     pub x: f32,
     pub y: f32,
+    pub rpms: i32,
 }
 
 pub struct TelemetryTrace;
@@ -117,7 +118,11 @@ impl TelemetryTrace {
         }
 
         let mut sorted = points.to_vec();
-        sorted.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let mut resampled = Vec::new();
         let mut target_dist = 0.0f32;
@@ -152,6 +157,7 @@ impl TelemetryTrace {
                 slip_avg: p0.slip_avg + factor * (p1.slip_avg - p0.slip_avg),
                 x: p0.x + factor * (p1.x - p0.x),
                 y: p0.y + factor * (p1.y - p0.y),
+                rpms: if factor < 0.5 { p0.rpms } else { p1.rpms },
             });
 
             target_dist += step;
@@ -262,8 +268,11 @@ impl TelemetryAnalyzer {
         lap_time_ms: i32,
         physics_log: &[AcPhysics],
         graphics_log: &[AcGraphics],
+        sectors: [i32; 3],
         car_name: String,
         track_name: String,
+        target_pressure: f32,
+        update_rate_ms: u64,
     ) {
         if physics_log.is_empty() {
             return;
@@ -274,24 +283,8 @@ impl TelemetryAnalyzer {
             lap_number, lap_time_ms, car_name
         );
 
-        let last_gfx = match graphics_log.last() {
-            Some(gfx) => gfx,
-            None => return,
-        };
-
-        let raw_s1 = last_gfx.split[0] as i32;
-        let raw_s2 = last_gfx.split[1] as i32;
-
-        let s1 = if raw_s1 > 0 { raw_s1 } else { 0 };
-        let s2 = if raw_s2 > raw_s1 { raw_s2 - raw_s1 } else { 0 };
-        let s3 = if lap_time_ms > raw_s2 {
-            lap_time_ms - raw_s2
-        } else {
-            0
-        };
-
-        let sectors = [s1, s2, s3];
-
+        let last_gfx = graphics_log.last().unwrap();
+        // sectors already computed by caller
         for (i, sector) in sectors.iter().enumerate() {
             if *sector > 1000 && *sector < self.best_sectors[i] {
                 self.best_sectors[i] = *sector;
@@ -449,7 +442,7 @@ impl TelemetryAnalyzer {
 
                 if p.speed_kmh > 50.0 {
                     press_sum += p.wheels_pressure[i];
-                    press_dev_acc += (p.wheels_pressure[i] - 27.5).abs();
+                    press_dev_acc += (p.wheels_pressure[i] - target_pressure).abs();
                 }
 
                 sum_wheels_pressure[i] += p.wheels_pressure[i];
@@ -459,8 +452,8 @@ impl TelemetryAnalyzer {
                 sum_brake_temp_avg[i] += p.brake_temp[i];
 
                 let delta_travel = p.suspension_travel[i] - prev_susp_travel[i];
-
-                let vel_mm_s = (delta_travel / 0.003) * 1000.0;
+                let dt_sec = update_rate_ms as f32 / 1000.0;
+                let vel_mm_s = (delta_travel / dt_sec) * 1000.0;
 
                 if vel_mm_s.abs() > 2.0 {
                     damper_total_moves[i] += 1.0;
@@ -674,6 +667,7 @@ impl TelemetryAnalyzer {
                     slip_avg,
                     x,
                     y: z,
+                    rpms: p.rpms,
                 });
             }
         }
@@ -845,8 +839,15 @@ impl TelemetryAnalyzer {
         }
     }
 
-    pub fn predictive_lap_time_ms(&self, current_i_lap_time: i32, current_normalized_pos: f32) -> Option<i32> {
-        if current_normalized_pos > 0.05 && current_normalized_pos < 0.99 && current_i_lap_time > 1000 {
+    pub fn predictive_lap_time_ms(
+        &self,
+        current_i_lap_time: i32,
+        current_normalized_pos: f32,
+    ) -> Option<i32> {
+        if current_normalized_pos > 0.05
+            && current_normalized_pos < 0.99
+            && current_i_lap_time > 1000
+        {
             let estimated = (current_i_lap_time as f32 / current_normalized_pos) as i32;
             Some(estimated)
         } else {
@@ -885,20 +886,31 @@ impl TelemetryAnalyzer {
     }
 }
 
-pub fn export_lap_to_csv(lap: &LapData, path: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+pub fn export_lap_to_csv(
+    lap: &LapData,
+    path: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let mut content = String::with_capacity(lap.telemetry_trace.len() * 100);
     content.push_str("\"Time\",\"Distance\",\"Speed\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\"Pos_X\",\"Pos_Y\"\n");
-    content.push_str("\"s\",\"m\",\"km/h\",\"rad\",\"%\",\"%\",\"\",\"m\",\"m\"\n");
+    content.push_str("\"s\",\"fraction\",\"km/h\",\"rad\",\"%\",\"%\",\"\",\"m\",\"m\"\n");
 
     for p in &lap.telemetry_trace {
         let time_sec = p.time_ms as f32 / 1000.0;
         let line = format!(
-            "{:.3},{:.2},{:.1},{:.3},{:.2},{:.2},{},{:.2},{:.2}\n",
-            time_sec, p.distance, p.speed, p.steer, p.gas, p.brake, p.gear, p.x, p.y
+            "{:.3},{:.5},{:.1},{:.3},{:.2},{:.2},{},{:.2},{:.2}\n",
+            time_sec,
+            p.distance,
+            p.speed,
+            p.steer,
+            p.gas * 100.0,
+            p.brake * 100.0,
+            p.gear,
+            p.x,
+            p.y
         );
         content.push_str(&line);
     }
@@ -909,14 +921,21 @@ pub fn export_lap_to_csv(lap: &LapData, path: &std::path::Path) -> anyhow::Resul
     Ok(path.to_path_buf())
 }
 
-pub fn calculate_ghost_delta(best_lap: &LapData, progress: f32, current_lap_time_sec: f32) -> Option<f32> {
+pub fn calculate_ghost_delta(
+    best_lap: &LapData,
+    progress: f32,
+    current_lap_time_sec: f32,
+) -> Option<f32> {
     if best_lap.telemetry_trace.is_empty() {
         return None;
     }
 
     let target_dist = progress * best_lap.telemetry_trace.last()?.distance;
     let best_point = best_lap.telemetry_trace.iter().min_by(|a, b| {
-        (a.distance - target_dist).abs().partial_cmp(&(b.distance - target_dist).abs()).unwrap_or(std::cmp::Ordering::Equal)
+        (a.distance - target_dist)
+            .abs()
+            .partial_cmp(&(b.distance - target_dist).abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
     })?;
 
     let best_time_sec = best_point.time_ms as f32 / 1000.0;
@@ -947,8 +966,11 @@ mod tests {
             90_000,
             &[high_speed, low_speed],
             &[AcGraphics::default()],
+            [0, 0, 0],
             "test_car".to_string(),
             "test_track".to_string(),
+            27.5,
+            16,
         );
 
         let lap = analyzer.laps.last().expect("lap should be recorded");
@@ -967,6 +989,7 @@ mod tests {
             distance: 0.5,
             time_ms: 1000,
             speed: 100.0,
+            rpms: 0,
             gas: 1.0,
             brake: 0.0,
             gear: 3,
@@ -993,6 +1016,7 @@ mod tests {
                     distance: dist,
                     time_ms,
                     speed: 150.0,
+                    rpms: 0,
                     gas: 1.0,
                     brake: 0.0,
                     gear: 4,
@@ -1015,6 +1039,7 @@ mod tests {
                     distance: dist,
                     time_ms,
                     speed: 150.0,
+                    rpms: 0,
                     gas: 1.0,
                     brake: 0.0,
                     gear: 4,
@@ -1031,7 +1056,11 @@ mod tests {
         let delta = LapComparison::delta_by_distance(&lap_a, &lap_b, 0.05);
         assert!(!delta.is_empty());
         for (_time, dt) in delta {
-            assert!(dt.abs() < 0.05, "Delta should be ~0.0s for identical performance, got {}", dt);
+            assert!(
+                dt.abs() < 0.05,
+                "Delta should be ~0.0s for identical performance, got {}",
+                dt
+            );
         }
     }
 
@@ -1046,6 +1075,7 @@ mod tests {
                     distance: dist,
                     time_ms: (dist * 60_000.0) as i32,
                     speed: 200.0,
+                    rpms: 0,
                     gas: 1.0,
                     brake: 0.0,
                     gear: 5,
@@ -1067,6 +1097,7 @@ mod tests {
                     distance: dist,
                     time_ms: (dist * 65_000.0) as i32,
                     speed: 185.0,
+                    rpms: 0,
                     gas: 0.9,
                     brake: 0.0,
                     gear: 5,
@@ -1082,6 +1113,10 @@ mod tests {
 
         let delta = LapComparison::delta_by_distance(&lap_slow, &lap_fast, 0.1);
         let final_delta = delta.last().expect("should have points").1;
-        assert!((final_delta - 5.0).abs() < 0.2, "Expected ~+5.0s delta at finish, got {}", final_delta);
+        assert!(
+            (final_delta - 5.0).abs() < 0.2,
+            "Expected ~+5.0s delta at finish, got {}",
+            final_delta
+        );
     }
 }

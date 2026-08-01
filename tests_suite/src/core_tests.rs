@@ -347,7 +347,7 @@ fn test_24_theoretical_best_lap_calculation() {
     use ac_core::analyzer::{LapData, TelemetryAnalyzer};
     let mut analyzer = TelemetryAnalyzer::new();
 
-    let mut lap1 = LapData {
+    let lap1 = LapData {
         lap_number: 1,
         lap_time_ms: 85000,
         sectors: [25000, 30000, 30000],
@@ -439,7 +439,11 @@ fn test_27_session_timing_time_limited_1800sec() {
     use ac_core::session_info::SessionTiming;
     // 30 minutes left, best lap 90 seconds => 20 laps remaining
     let result = SessionTiming::remaining_laps(1_800_000.0, 90_000, 0, 0, 0, 0.0);
-    assert!((result - 20.0).abs() < 0.01, "Expected 20.0, got {}", result);
+    assert!(
+        (result - 20.0).abs() < 0.01,
+        "Expected 20.0, got {}",
+        result
+    );
 }
 
 #[test]
@@ -477,8 +481,10 @@ fn test_31_session_timing_ui_and_engine_same_result() {
     let completed = 3;
     let pos = 0.3;
 
-    let ui_result = SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
-    let engine_result = SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
+    let ui_result =
+        SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
+    let engine_result =
+        SessionTiming::remaining_laps(session_ms, best_ms, last_ms, n_laps, completed, pos);
     assert!((ui_result - engine_result).abs() < f32::EPSILON);
 }
 
@@ -541,7 +547,10 @@ fn test_35_config_resolve_data_path_and_autosave_semantics() {
     assert_ne!(resolved, std::path::PathBuf::from("./data"));
 
     config.data_path = std::path::PathBuf::from("/custom/telemetry/path");
-    assert_eq!(config.resolve_data_path(), std::path::PathBuf::from("/custom/telemetry/path"));
+    assert_eq!(
+        config.resolve_data_path(),
+        std::path::PathBuf::from("/custom/telemetry/path")
+    );
 }
 
 #[test]
@@ -590,8 +599,16 @@ fn test_37_track_map_bounds_and_zero_coords_safety() {
     let min_x = f32::NAN;
     let max_x = f32::INFINITY;
 
-    let safe_min = if min_x.is_finite() && min_x.abs() < 1e6 { min_x as f64 } else { -500.0 };
-    let safe_max = if max_x.is_finite() && max_x.abs() < 1e6 { max_x as f64 } else { 500.0 };
+    let safe_min = if min_x.is_finite() && min_x.abs() < 1e6 {
+        min_x as f64
+    } else {
+        -500.0
+    };
+    let safe_max = if max_x.is_finite() && max_x.abs() < 1e6 {
+        max_x as f64
+    } else {
+        500.0
+    };
 
     let diff_x = (safe_max - safe_min).max(10.0);
     let scale = diff_x / 50.0;
@@ -619,14 +636,22 @@ fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
     phys.wheels_pressure = [25.0; 4]; // low pressure
 
     let gfx = AcGraphics::default();
-    let session = SessionInfo::default();
+    let _session = SessionInfo::default();
 
     let recs1 = eng1.analyze_live(&phys, &gfx, None);
     let recs2 = eng2.analyze_live(&phys, &gfx, None);
 
     // Target tyre pressure in config dynamically shifts the engineer recommendations
-    let target1 = recs1.iter().find(|r| r.category.contains("Tyre Pressure")).and_then(|r| r.parameters.get(0)).map(|p| p.target);
-    let target2 = recs2.iter().find(|r| r.category.contains("Tyre Pressure")).and_then(|r| r.parameters.get(0)).map(|p| p.target);
+    let target1 = recs1
+        .iter()
+        .find(|r| r.category.contains("Tyre Pressure"))
+        .and_then(|r| r.parameters.get(0))
+        .map(|p| p.target);
+    let target2 = recs2
+        .iter()
+        .find(|r| r.category.contains("Tyre Pressure"))
+        .and_then(|r| r.parameters.get(0))
+        .map(|p| p.target);
 
     if let (Some(t1), Some(t2)) = (target1, target2) {
         assert_eq!(t1, 27.5);
@@ -666,7 +691,7 @@ fn test_39_corrupted_records_file_and_atomic_save_safety() {
 fn test_40_string_u16_formatting_has_no_side_effects() {
     use ac_core::ac_structs::StringU16_33;
 
-    let s = StringU16_33::from("ks_ferrari_488_gt3");
+    let _s = StringU16_33::from("ks_ferrari_488_gt3");
     let s = StringU16_33::from("ks_ferrari_488_gt3");
     let formatted = format!("{}", s);
     assert_eq!(formatted, "ks_ferrari_488_gt3");
@@ -691,6 +716,7 @@ fn test_42_csv_export_format() {
         distance: 100.0,
         time_ms: 2500,
         speed: 180.0,
+        rpms: 0,
         gas: 1.0,
         brake: 0.0,
         gear: 4,
@@ -708,7 +734,7 @@ fn test_42_csv_export_format() {
 
     let content = std::fs::read_to_string(&tmp_path).unwrap();
     assert!(content.contains("\"Time\",\"Distance\",\"Speed\""));
-    assert!(content.contains("2.500,100.00,180.0"));
+    assert!(content.contains("2.500,100.00000,180.0"));
 
     let _ = std::fs::remove_file(tmp_path);
 }
@@ -722,6 +748,7 @@ fn test_43_ghost_delta_calculation() {
         distance: 0.0,
         time_ms: 0,
         speed: 100.0,
+        rpms: 0,
         gas: 1.0,
         brake: 0.0,
         gear: 3,
@@ -736,6 +763,7 @@ fn test_43_ghost_delta_calculation() {
         distance: 1000.0,
         time_ms: 30000, // 30.0s at finish
         speed: 200.0,
+        rpms: 0,
         gas: 1.0,
         brake: 0.0,
         gear: 5,
