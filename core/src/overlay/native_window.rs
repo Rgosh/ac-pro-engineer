@@ -59,7 +59,7 @@ unsafe extern "system" fn window_proc(
 
             if y <= 40 {
                 let mut rect = RECT::default();
-                unsafe { GetClientRect(hwnd, &mut rect) };
+                let _ = unsafe { GetClientRect(hwnd, &mut rect) };
                 if x < rect.right / 2 {
                     CURRENT_TAB.store(0, Ordering::SeqCst);
                 } else {
@@ -73,7 +73,7 @@ unsafe extern "system" fn window_proc(
             if res.0 == HTCLIENT as isize {
                 let screen_y = (((lparam.0 as usize) >> 16) & 0xFFFF) as i16 as i32;
                 let mut rect = RECT::default();
-                unsafe { GetWindowRect(hwnd, &mut rect) };
+                let _ = unsafe { GetWindowRect(hwnd, &mut rect) };
 
                 let client_y = screen_y - rect.top;
 
@@ -93,9 +93,9 @@ impl OverlayProvider for NativeWindowProvider {
             let class_name = b"AcProOverlayClass\0";
 
             let window_name_ptr = if self.is_standalone {
-                b"AcProOverlay TEST MODE\0".as_ptr()
+                c"AcProOverlay TEST MODE".as_ptr().cast()
             } else {
-                b"AcProOverlay\0".as_ptr()
+                c"AcProOverlay".as_ptr().cast()
             };
 
             if !WINDOW_CREATED.load(Ordering::SeqCst) {
@@ -191,7 +191,7 @@ impl OverlayProvider for NativeWindowProvider {
 
             SetWindowLongA(self.hwnd, GWL_EXSTYLE, ex_style as i32);
             SetWindowLongA(self.hwnd, GWL_STYLE, style as i32);
-            SetWindowPos(
+            let _ = SetWindowPos(
                 self.hwnd,
                 HWND::default(),
                 0,
@@ -217,7 +217,7 @@ impl OverlayProvider for NativeWindowProvider {
             let hdc = BeginPaint(self.hwnd, &mut ps);
 
             let mut rect = RECT::default();
-            GetClientRect(self.hwnd, &mut rect);
+            let _ = GetClientRect(self.hwnd, &mut rect);
 
             let is_edit_mode = self.is_standalone || self.is_unlocked;
 
@@ -254,7 +254,7 @@ impl OverlayProvider for NativeWindowProvider {
                     CLIP_DEFAULT_PRECIS.0 as u32,
                     DEFAULT_QUALITY.0 as u32,
                     (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
-                    PCSTR::from_raw(b"Consolas\0".as_ptr()),
+                    PCSTR::from_raw(c"Consolas".as_ptr().cast()),
                 );
                 let old_font = SelectObject(hdc, tab_font);
 
@@ -336,7 +336,7 @@ impl OverlayProvider for NativeWindowProvider {
                         CLIP_DEFAULT_PRECIS.0 as u32,
                         DEFAULT_QUALITY.0 as u32,
                         (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
-                        PCSTR::from_raw(b"Consolas\0".as_ptr()),
+                        PCSTR::from_raw(c"Consolas".as_ptr().cast()),
                     );
                     let old_font = SelectObject(hdc, font);
 
@@ -358,52 +358,50 @@ impl OverlayProvider for NativeWindowProvider {
                     SelectObject(hdc, old_font);
                     windows::Win32::Graphics::Gdi::DeleteObject(font);
                 }
-            } else if current_tab == 1 {
-                if state.show_engineer {
-                    SetTextColor(hdc, COLORREF(0x0000FFFF));
-                    let font = CreateFontA(
-                        22,
-                        0,
-                        0,
-                        0,
-                        FW_BOLD.0 as i32,
-                        0,
-                        0,
-                        0,
-                        0,
-                        OUT_DEFAULT_PRECIS.0 as u32,
-                        CLIP_DEFAULT_PRECIS.0 as u32,
-                        DEFAULT_QUALITY.0 as u32,
-                        (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
-                        PCSTR::from_raw(b"Consolas\0".as_ptr()),
-                    );
-                    let old_font = SelectObject(hdc, font);
+            } else if current_tab == 1 && state.show_engineer {
+                SetTextColor(hdc, COLORREF(0x0000FFFF));
+                let font = CreateFontA(
+                    22,
+                    0,
+                    0,
+                    0,
+                    FW_BOLD.0 as i32,
+                    0,
+                    0,
+                    0,
+                    0,
+                    OUT_DEFAULT_PRECIS.0 as u32,
+                    CLIP_DEFAULT_PRECIS.0 as u32,
+                    DEFAULT_QUALITY.0 as u32,
+                    (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
+                    PCSTR::from_raw(c"Consolas".as_ptr().cast()),
+                );
+                let old_font = SelectObject(hdc, font);
 
-                    if state.engineer_messages.is_empty() {
-                        display_text = "SYSTEMS NOMINAL: No advice.\0".to_string();
-                    } else {
-                        display_text = String::from("ENGINEER ADVICE:\n");
-                        for (i, msg) in state.engineer_messages.iter().enumerate() {
-                            display_text.push_str(&format!("> {}\n", msg));
-                            if i >= 4 {
-                                break;
-                            }
+                if state.engineer_messages.is_empty() {
+                    display_text = "SYSTEMS NOMINAL: No advice.\0".to_string();
+                } else {
+                    display_text = String::from("ENGINEER ADVICE:\n");
+                    for (i, msg) in state.engineer_messages.iter().enumerate() {
+                        display_text.push_str(&format!("> {}\n", msg));
+                        if i >= 4 {
+                            break;
                         }
-                        display_text.push('\0');
                     }
-                    DrawTextA(
-                        hdc,
-                        &mut display_text.clone().into_bytes(),
-                        &mut content_rect,
-                        DT_WORDBREAK,
-                    );
-                    SelectObject(hdc, old_font);
-                    windows::Win32::Graphics::Gdi::DeleteObject(font);
+                    display_text.push('\0');
                 }
+                DrawTextA(
+                    hdc,
+                    &mut display_text.clone().into_bytes(),
+                    &mut content_rect,
+                    DT_WORDBREAK,
+                );
+                SelectObject(hdc, old_font);
+                windows::Win32::Graphics::Gdi::DeleteObject(font);
             }
 
             if display_text.is_empty() && is_edit_mode {
-                let mut fallback_text = String::from("CONTENT HIDDEN IN SETTINGS\0");
+                let fallback_text = String::from("CONTENT HIDDEN IN SETTINGS\0");
                 DrawTextA(
                     hdc,
                     &mut fallback_text.into_bytes(),
@@ -412,7 +410,7 @@ impl OverlayProvider for NativeWindowProvider {
                 );
             }
 
-            EndPaint(self.hwnd, &mut ps);
+            let _ = EndPaint(self.hwnd, &ps);
         }
     }
 

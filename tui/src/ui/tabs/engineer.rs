@@ -644,7 +644,8 @@ fn render_sector_advice(
             )
         };
 
-        let ok_tag = mk_tag(if is_ru { " OK " } else { " OK " }, Color::Green);
+        // "OK" reads the same in both locales.
+        let ok_tag = mk_tag(" OK ", Color::Green);
         let warn_tag = mk_tag(
             if is_ru {
                 " ВНИМАНИЕ "

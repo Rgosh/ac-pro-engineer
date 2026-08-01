@@ -49,7 +49,14 @@ nonstandard-style = "warn"
 keyword-idents = "warn"
 future-incompatible = "warn"
 deprecated-safe = "warn"
-let-underscore = "warn"
+let-underscore = { level = "warn", priority = -1 }
+# `let _ = ...` is how this codebase deliberately discards a Result it has no
+# useful reaction to — best-effort cleanup of temp files, mostly. Upstream has
+# let_underscore_drop allow-by-default for exactly that reason; it is only on
+# here because the whole let-underscore group is. Keep the group (it still
+# catches `let _ = lock.lock()`, which drops a guard immediately) and turn off
+# the one member that fires on the intended idiom.
+let_underscore_drop = "allow"
 unknown-or-malformed-diagnostic-attributes = "warn"
 
 [workspace.lints.clippy]

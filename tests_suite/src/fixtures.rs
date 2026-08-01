@@ -22,8 +22,10 @@ impl TelemetrySessionFixture {
         let dt = lap_time_sec / steps_per_lap as f32;
 
         let mut total_time = 0.0f32;
-        let mut completed_laps = 0i32;
 
+        // `lap` doubles as the completed-lap count: it is incremented only
+        // between iterations, so inside the body it is always the number of
+        // laps finished so far.
         for lap in 0..3 {
             let base_speed = match lap {
                 0 => 120.0, // Outlap
@@ -35,59 +37,59 @@ impl TelemetrySessionFixture {
                 total_time += dt;
                 let progress = step as f32 / steps_per_lap as f32;
 
-                let mut phys = AcPhysics::default();
-                phys.speed_kmh = base_speed + (progress * std::f32::consts::TAU).sin() * 40.0;
-                phys.rpms = (5000.0 + (phys.speed_kmh / 220.0) * 3500.0) as i32;
-                phys.gas = if step % 20 < 15 { 0.9 } else { 0.0 };
-                phys.brake = if step % 20 >= 15 { 0.7 } else { 0.0 };
-                phys.steer_angle = (progress * std::f32::consts::TAU * 4.0).sin() * 0.3;
-
+                let speed_kmh = base_speed + (progress * std::f32::consts::TAU).sin() * 40.0;
                 // Dynamic tyre state
                 let wear_factor = 1.0 - (total_time / 1000.0) * 0.05;
-                phys.tyre_wear = [wear_factor; 4];
-                phys.wheels_pressure = [
-                    27.2 + (lap as f32 * 0.3),
-                    27.5 + (lap as f32 * 0.3),
-                    26.8,
-                    26.9,
-                ];
-                phys.tyre_temp_i = [88.0 + lap as f32 * 2.0; 4];
 
-                // Fuel consumption
-                phys.fuel = (50.0 - total_time * 0.02).max(1.0);
-
-                let mut gfx = AcGraphics::default();
-                gfx.status = 1;
-                gfx.completed_laps = completed_laps;
-                gfx.normalized_car_position = progress;
-                gfx.i_current_time = (progress * lap_time_sec * 1000.0) as i32;
-                gfx.i_last_time = if lap > 0 {
-                    (lap_time_sec * 1000.0) as i32
-                } else {
-                    0
+                let phys = AcPhysics {
+                    speed_kmh,
+                    rpms: (5000.0 + (speed_kmh / 220.0) * 3500.0) as i32,
+                    gas: if step % 20 < 15 { 0.9 } else { 0.0 },
+                    brake: if step % 20 >= 15 { 0.7 } else { 0.0 },
+                    steer_angle: (progress * std::f32::consts::TAU * 4.0).sin() * 0.3,
+                    tyre_wear: [wear_factor; 4],
+                    wheels_pressure: [
+                        27.2 + (lap as f32 * 0.3),
+                        27.5 + (lap as f32 * 0.3),
+                        26.8,
+                        26.9,
+                    ],
+                    tyre_temp_i: [88.0 + lap as f32 * 2.0; 4],
+                    // Fuel consumption
+                    fuel: (50.0 - total_time * 0.02).max(1.0),
+                    ..Default::default()
                 };
-                gfx.i_best_time = if lap > 1 {
-                    (lap_time_sec * 1000.0) as i32
-                } else {
-                    0
-                };
-                gfx.session_time_left = (1800.0 - total_time) * 1000.0;
-                gfx.fuel_x_lap = 2.1;
-                gfx.car_coordinates.set(
-                    0,
-                    0,
-                    (400.0 * (progress * std::f32::consts::TAU).cos()) as f32,
-                );
-                gfx.car_coordinates.set(
-                    0,
-                    2,
-                    (250.0 * (progress * std::f32::consts::TAU).sin()) as f32,
-                );
 
-                let mut session = SessionInfo::default();
-                session.car_name = "ks_ferrari_488_gt3".to_string();
-                session.track_name = "monza".to_string();
-                session.max_rpm = 8500;
+                let mut gfx = AcGraphics {
+                    status: 1,
+                    completed_laps: lap,
+                    normalized_car_position: progress,
+                    i_current_time: (progress * lap_time_sec * 1000.0) as i32,
+                    i_last_time: if lap > 0 {
+                        (lap_time_sec * 1000.0) as i32
+                    } else {
+                        0
+                    },
+                    i_best_time: if lap > 1 {
+                        (lap_time_sec * 1000.0) as i32
+                    } else {
+                        0
+                    },
+                    session_time_left: (1800.0 - total_time) * 1000.0,
+                    fuel_x_lap: 2.1,
+                    ..Default::default()
+                };
+                gfx.car_coordinates
+                    .set(0, 0, 400.0 * (progress * std::f32::consts::TAU).cos());
+                gfx.car_coordinates
+                    .set(0, 2, 250.0 * (progress * std::f32::consts::TAU).sin());
+
+                let session = SessionInfo {
+                    car_name: "ks_ferrari_488_gt3".to_string(),
+                    track_name: "monza".to_string(),
+                    max_rpm: 8500,
+                    ..Default::default()
+                };
 
                 samples.push(TelemetrySampleFixture {
                     physics: phys,
@@ -95,8 +97,6 @@ impl TelemetrySessionFixture {
                     session,
                 });
             }
-
-            completed_laps += 1;
         }
 
         Self { samples }

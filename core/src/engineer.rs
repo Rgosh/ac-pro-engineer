@@ -1466,7 +1466,7 @@ impl TyrePressureOptimizer {
         let labels = ["FL", "FR", "RL", "RR"];
         let mut corners = Vec::with_capacity(4);
 
-        for i in 0..4 {
+        for (i, label) in labels.iter().enumerate() {
             let p_psi = phys.wheels_pressure[i];
             let t_i = phys.tyre_temp_i[i];
             let t_o = phys.tyre_temp_o[i];
@@ -1484,7 +1484,7 @@ impl TyrePressureOptimizer {
             };
 
             corners.push(TyreCornerAdjustment {
-                corner_name: labels[i].to_string(),
+                corner_name: (*label).to_string(),
                 current_psi: p_psi,
                 recommended_delta_psi: rec_delta,
                 temp_spread_c: spread,

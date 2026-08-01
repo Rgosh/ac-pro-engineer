@@ -21,6 +21,10 @@
 use anyhow::{Result, anyhow};
 use std::fs::File;
 
+// `Context::context` is only reached from the Windows FileMapping below.
+#[cfg(target_os = "windows")]
+use anyhow::Context;
+
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::AsRawHandle;
 #[cfg(target_os = "windows")]

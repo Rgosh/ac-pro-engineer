@@ -1,6 +1,8 @@
 use ac_core::config::Language;
 use ac_core::overlay::OverlayMode;
 use ac_core::updater::UpdateStatus;
+// Only the Linux startup path reaches into `platform`.
+#[cfg(target_os = "linux")]
 use ac_tui::platform;
 use ac_tui::ui::UIRenderer;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
@@ -29,31 +31,36 @@ fn set_console_icon() {
 
     unsafe {
         let hwnd = GetConsoleWindow();
-        if hwnd.0 != 0 {
-            if let Ok(hinstance) = GetModuleHandleW(None) {
-                if let Ok(hicon) = LoadImageW(
-                    hinstance,
-                    PCWSTR(1 as *const u16),
-                    IMAGE_ICON,
-                    0,
-                    0,
-                    LR_DEFAULTSIZE,
-                ) {
-                    let icon_handle = HICON(hicon.0);
-                    SendMessageW(
-                        hwnd,
-                        WM_SETICON,
-                        windows::Win32::Foundation::WPARAM(ICON_SMALL as usize),
-                        windows::Win32::Foundation::LPARAM(icon_handle.0),
-                    );
-                    SendMessageW(
-                        hwnd,
-                        WM_SETICON,
-                        windows::Win32::Foundation::WPARAM(ICON_BIG as usize),
-                        windows::Win32::Foundation::LPARAM(icon_handle.0),
-                    );
-                }
-            }
+        // MAKEINTRESOURCE(1): the icon's numeric resource id travels in the
+        // pointer's address, so it is an integer address with no provenance,
+        // not a pointer to anything. `without_provenance` says exactly that -
+        // note that clippy's `dangling` suggestion would silently change the
+        // id to align_of::<u16>() == 2.
+        let icon_resource_id = PCWSTR(std::ptr::without_provenance(1));
+        if hwnd.0 != 0
+            && let Ok(hinstance) = GetModuleHandleW(None)
+            && let Ok(hicon) = LoadImageW(
+                hinstance,
+                icon_resource_id,
+                IMAGE_ICON,
+                0,
+                0,
+                LR_DEFAULTSIZE,
+            )
+        {
+            let icon_handle = HICON(hicon.0);
+            SendMessageW(
+                hwnd,
+                WM_SETICON,
+                windows::Win32::Foundation::WPARAM(ICON_SMALL as usize),
+                windows::Win32::Foundation::LPARAM(icon_handle.0),
+            );
+            SendMessageW(
+                hwnd,
+                WM_SETICON,
+                windows::Win32::Foundation::WPARAM(ICON_BIG as usize),
+                windows::Win32::Foundation::LPARAM(icon_handle.0),
+            );
         }
     }
 }

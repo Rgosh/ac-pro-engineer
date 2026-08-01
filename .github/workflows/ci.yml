@@ -33,9 +33,9 @@ jobs:
   # check as part of its run, so clippy + test covers all three commands.
   #
   # No -D warnings here: the workspace pins its own policy in Cargo.toml
-  # ([workspace.lints], which denies unwrap_used and panic). Promoting every
-  # warning to an error would gate CI on lints the project has deliberately
-  # left at warn level.
+  # ([workspace.lints], which denies unwrap_used and panic) — `-D warnings`
+  # only decides whether the remaining warn-level lints stop the build.
+  # AGENTS.md requires them to, so they do.
   test:
     name: test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -60,7 +60,7 @@ jobs:
           key: ${{ matrix.name }}
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
         run: cargo test --workspace

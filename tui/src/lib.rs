@@ -297,24 +297,25 @@ impl AppState {
         self.is_connected = true;
         self.is_game_running = true;
 
-        let mut sess = SessionInfo::default();
-        sess.car_name = "Ferrari SF70H".to_string();
-        sess.track_name = "Autodromo Nazionale Monza".to_string();
-        sess.track_config = "GP".to_string();
-        sess.player_name = "Pro Sim Racer".to_string();
-        sess.session_type = "Practice".to_string();
-        sess.lap_count = 6;
-        sess.session_time_left = 1_800_000.0;
-        sess.max_rpm = 12500;
-        sess.max_fuel = 110.0;
-        self.session_info = sess;
+        self.session_info = SessionInfo {
+            car_name: "Ferrari SF70H".to_string(),
+            track_name: "Autodromo Nazionale Monza".to_string(),
+            track_config: "GP".to_string(),
+            player_name: "Pro Sim Racer".to_string(),
+            session_type: "Practice".to_string(),
+            lap_count: 6,
+            session_time_left: 1_800_000.0,
+            max_rpm: 12500,
+            max_fuel: 110.0,
+        };
 
-        let mut stat = AcStatic::default();
-        stat.max_rpm = 12500;
-        stat.max_fuel = 110.0;
-        stat.car_model = ac_core::ac_structs::StringU16_33::from("ks_ferrari_sf70h");
-        stat.track = ac_core::ac_structs::StringU16_33::from("monza");
-        self.mock_static = Some(stat);
+        self.mock_static = Some(AcStatic {
+            max_rpm: 12500,
+            max_fuel: 110.0,
+            car_model: ac_core::ac_structs::StringU16_33::from("ks_ferrari_sf70h"),
+            track: ac_core::ac_structs::StringU16_33::from("monza"),
+            ..Default::default()
+        });
 
         if self.analyzer.laps.is_empty() {
             let mut trace_points = Vec::with_capacity(300);
@@ -419,36 +420,38 @@ impl AppState {
         let lat_g = (t * 0.7).sin() * 1.6;
         let lon_g = (t * 1.2).cos() * 1.3;
 
-        let mut phys = AcPhysics::default();
-        phys.speed_kmh = speed;
-        phys.rpms = rpm;
-        phys.gear = gear;
-        phys.fuel = 34.2;
-        phys.gas = gas;
-        phys.brake = brake;
-        phys.clutch = 0.0;
-        phys.steer_angle = steer;
-        phys.acc_g = [lat_g, 0.0, lon_g];
-        phys.wheels_pressure = [27.4, 27.6, 27.5, 27.3];
-        phys.tyre_temp_i = [89.2 + (t.sin() * 2.0), 88.0, 92.1, 90.5];
-        phys.tyre_temp_m = [86.4 + (t.sin() * 2.0), 85.2, 89.0, 87.8];
-        phys.tyre_temp_o = [82.1 + (t.sin() * 2.0), 81.0, 85.2, 84.0];
-        phys.brake_temp = [450.0 + (t.cos() * 30.0), 442.0, 380.0, 375.0];
-        phys.air_temp = 22.5;
-        phys.road_temp = 34.0;
-        phys.tc = 3.0;
-        phys.abs = 2.0;
-        self.mock_physics = Some(phys);
+        self.mock_physics = Some(AcPhysics {
+            speed_kmh: speed,
+            rpms: rpm,
+            gear,
+            fuel: 34.2,
+            gas,
+            brake,
+            clutch: 0.0,
+            steer_angle: steer,
+            acc_g: [lat_g, 0.0, lon_g],
+            wheels_pressure: [27.4, 27.6, 27.5, 27.3],
+            tyre_temp_i: [89.2 + (t.sin() * 2.0), 88.0, 92.1, 90.5],
+            tyre_temp_m: [86.4 + (t.sin() * 2.0), 85.2, 89.0, 87.8],
+            tyre_temp_o: [82.1 + (t.sin() * 2.0), 81.0, 85.2, 84.0],
+            brake_temp: [450.0 + (t.cos() * 30.0), 442.0, 380.0, 375.0],
+            air_temp: 22.5,
+            road_temp: 34.0,
+            tc: 3.0,
+            abs: 2.0,
+            ..Default::default()
+        });
 
-        let mut gfx = AcGraphics::default();
-        gfx.surface_grip = 0.98;
-        gfx.completed_laps = 5;
-        gfx.i_current_time = ((t * 1000.0) as i32) % 81452;
-        gfx.i_last_time = 81452;
-        gfx.i_best_time = 81452;
-        gfx.position = 2;
-        gfx.fuel_x_lap = 2.85;
-        self.mock_graphics = Some(gfx);
+        self.mock_graphics = Some(AcGraphics {
+            surface_grip: 0.98,
+            completed_laps: 5,
+            i_current_time: ((t * 1000.0) as i32) % 81452,
+            i_last_time: 81452,
+            i_best_time: 81452,
+            position: 2,
+            fuel_x_lap: 2.85,
+            ..Default::default()
+        });
     }
 
     pub fn ac_graphics(&self) -> Option<&AcGraphics> {

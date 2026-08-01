@@ -145,59 +145,62 @@ fn create_populated_app_state() -> AppState {
     app.is_game_running = true;
 
     // Session Info
-    let mut sess = SessionInfo::default();
-    sess.car_name = "Ferrari SF70H".to_string();
-    sess.track_name = "Autodromo Nazionale Monza".to_string();
-    sess.track_config = "GP".to_string();
-    sess.player_name = "Pro Driver".to_string();
-    sess.session_type = "Practice".to_string();
-    sess.lap_count = 5;
-    sess.session_time_left = 1_800_000.0;
-    sess.max_rpm = 12500;
-    sess.max_fuel = 110.0;
-    app.session_info = sess;
+    app.session_info = SessionInfo {
+        car_name: "Ferrari SF70H".to_string(),
+        track_name: "Autodromo Nazionale Monza".to_string(),
+        track_config: "GP".to_string(),
+        player_name: "Pro Driver".to_string(),
+        session_type: "Practice".to_string(),
+        lap_count: 5,
+        session_time_left: 1_800_000.0,
+        max_rpm: 12500,
+        max_fuel: 110.0,
+    };
 
-    // Mock Physics
-    let mut phys = AcPhysics::default();
-    phys.speed_kmh = 248.5;
-    phys.rpms = 11450;
-    phys.gear = 6;
-    phys.fuel = 36.8;
-    phys.gas = 0.94;
-    phys.brake = 0.0;
-    phys.clutch = 0.0;
-    phys.steer_angle = -0.12;
-    phys.acc_g = [1.38, 0.0, 0.65];
-    phys.wheels_pressure = [27.4, 27.6, 27.5, 27.3];
-    phys.tyre_temp_i = [89.2, 88.0, 92.1, 90.5];
-    phys.tyre_temp_m = [86.4, 85.2, 89.0, 87.8];
-    phys.tyre_temp_o = [82.1, 81.0, 85.2, 84.0];
-    phys.brake_temp = [450.0, 442.0, 380.0, 375.0];
-    phys.air_temp = 22.5;
-    phys.road_temp = 34.0;
-    phys.tc = 3.0;
-    phys.abs = 2.0;
-
+    // Mock Physics — also the base each history sample is derived from below.
+    let phys = AcPhysics {
+        speed_kmh: 248.5,
+        rpms: 11450,
+        gear: 6,
+        fuel: 36.8,
+        gas: 0.94,
+        brake: 0.0,
+        clutch: 0.0,
+        steer_angle: -0.12,
+        acc_g: [1.38, 0.0, 0.65],
+        wheels_pressure: [27.4, 27.6, 27.5, 27.3],
+        tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
+        tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
+        tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
+        brake_temp: [450.0, 442.0, 380.0, 375.0],
+        air_temp: 22.5,
+        road_temp: 34.0,
+        tc: 3.0,
+        abs: 2.0,
+        ..Default::default()
+    };
     app.mock_physics = Some(phys);
 
     // Mock Graphics
-    let mut gfx = AcGraphics::default();
-    gfx.surface_grip = 0.98;
-    gfx.completed_laps = 5;
-    gfx.i_current_time = 42500;
-    gfx.i_last_time = 81452;
-    gfx.i_best_time = 81452;
-    gfx.position = 2;
-    gfx.fuel_x_lap = 2.85;
-    app.mock_graphics = Some(gfx);
+    app.mock_graphics = Some(AcGraphics {
+        surface_grip: 0.98,
+        completed_laps: 5,
+        i_current_time: 42500,
+        i_last_time: 81452,
+        i_best_time: 81452,
+        position: 2,
+        fuel_x_lap: 2.85,
+        ..Default::default()
+    });
 
     // Mock Static
-    let mut stat = AcStatic::default();
-    stat.max_rpm = 12500;
-    stat.max_fuel = 110.0;
-    stat.car_model = StringU16_33::from("ks_ferrari_sf70h");
-    stat.track = StringU16_33::from("monza");
-    app.mock_static = Some(stat);
+    app.mock_static = Some(AcStatic {
+        max_rpm: 12500,
+        max_fuel: 110.0,
+        car_model: StringU16_33::from("ks_ferrari_sf70h"),
+        track: StringU16_33::from("monza"),
+        ..Default::default()
+    });
 
     // Physics & Telemetry History
     let mut history = Vec::with_capacity(300);

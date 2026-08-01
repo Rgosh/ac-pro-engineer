@@ -262,6 +262,12 @@ impl TelemetryAnalyzer {
         self.world_record = Some(record);
     }
 
+    // Ten parameters, all of them distinct lap facts the caller already holds.
+    // Bundling them into a struct would only move the argument list to the call
+    // site, so the lint is acknowledged rather than worked around. `expect`
+    // rather than `allow`: if the signature is ever trimmed, this goes stale
+    // loudly instead of lingering.
+    #[expect(clippy::too_many_arguments)]
     pub fn process_lap(
         &mut self,
         lap_number: i32,
