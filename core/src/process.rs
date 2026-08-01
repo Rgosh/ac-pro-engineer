@@ -58,13 +58,7 @@ pub fn is_process_running(target_name: &str) -> bool {
         entries.flatten().any(|entry| {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
-                let lower = cmdline.to_lowercase();
-                lower.contains(&target_lower)
-                    || lower.contains("acs.exe")
-                    || lower.contains("assetto corsa")
-                    || lower.contains("shm-bridge")
-                    || lower.contains("shm_bridge")
-                    || lower.contains("simulator")
+                cmdline.to_lowercase().contains(&target_lower)
             } else {
                 false
             }

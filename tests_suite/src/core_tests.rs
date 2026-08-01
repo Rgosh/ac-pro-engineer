@@ -751,9 +751,3 @@ fn test_43_ghost_delta_calculation() {
     assert!(delta.is_some());
     assert!((delta.unwrap() - 1.5).abs() < 0.01);
 }
-
-#[test]
-fn test_44_sound_alerts_config_default_false() {
-    let cfg = ac_core::config::AppConfig::default();
-    assert!(!cfg.enable_sound_alerts);
-}

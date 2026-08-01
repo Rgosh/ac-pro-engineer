@@ -97,7 +97,7 @@ impl SettingsState {
 
     fn get_item_count(&self) -> usize {
         match self.category {
-            SettingsCategory::System => 6,
+            SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
         }
@@ -129,11 +129,6 @@ impl SettingsState {
                 4 => {
                     if delta.abs() > 0.0 {
                         config.review_banner_hidden = !config.review_banner_hidden
-                    }
-                }
-                5 => {
-                    if delta.abs() > 0.0 {
-                        config.enable_sound_alerts = !config.enable_sound_alerts
                     }
                 }
                 _ => {}
@@ -558,21 +553,6 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
                 if is_ru { "ПОКАЗАТЬ" } else { "SHOW" }
             } else {
                 if is_ru { "СКРЫТЬ" } else { "HIDE" }
-            }
-            .to_string(),
-            true,
-        ),
-        (
-            if is_ru {
-                "Звуковые оповещения"
-            } else {
-                "Audio Alerts"
-            }
-            .to_string(),
-            if config.enable_sound_alerts {
-                if is_ru { "ВКЛ" } else { "ON" }
-            } else {
-                if is_ru { "ВЫКЛ (по умолчанию)" } else { "OFF (default)" }
             }
             .to_string(),
             true,

@@ -67,8 +67,6 @@ pub struct AppConfig {
     pub fuel_safety_margin: f32,
     #[serde(default = "default_target_tyre_pressure")]
     pub target_tyre_pressure: f32,
-    #[serde(default)]
-    pub enable_sound_alerts: bool,
     #[serde(default = "default_target_hot_pressure_front")]
     pub target_hot_pressure_front: f32,
     #[serde(default = "default_target_hot_pressure_rear")]
@@ -203,7 +201,6 @@ impl Default for AppConfig {
             shift_point_offset: 200,
             fuel_safety_margin: 1.0,
             target_tyre_pressure: 27.5,
-            enable_sound_alerts: false,
             target_hot_pressure_front: 27.5,
             target_hot_pressure_rear: 27.0,
             show_ghost_delta: true,

@@ -103,13 +103,15 @@ Browse and sync setups directly from the cloud repository.
 
 ---
 
-### **F5: Analysis (Lap History & Ghost Comparison)** `[Added in v0.1.3]`
+### **F5: Analysis (Lap History, MoTeC CSV Export & Ghost Comparison)** `[Enhanced in v0.2.3]`
 
 ![Analysis Overview](screenshots/Analysis_Overview.svg)
 Comprehensive post-stint lap analysis and comparison.
 
 * **Save ('S') & Load ('L'):** Record laps to JSON files with full telemetry metadata.
+* **MoTeC-Compatible CSV Export ('E'):** Export lap telemetry traces directly to `.csv` format (`[New in v0.2.3]`).
 * **Ghost Comparison ('C'):** Load a ghost/reference lap to overlay speed traces and identify time loss locations.
+* **Lap Navigation (Up/Down):** Seamlessly switch between laps in the list to update all subtab metrics dynamically (`[New in v0.2.3]`).
 
 ---
 
@@ -123,11 +125,12 @@ Detailed driver skill evaluation and automated coaching report.
 
 ---
 
-### **F6: Strategy (Stint & Predictive Lap Engine)** `[Enhanced in v0.2.3]`
+### **F6: Strategy (Stint Planning & Cold Tyre Pressure Calculator)** `[Enhanced in v0.2.3]`
 
 ![Strategy & Stint Planning](screenshots/Strategy.svg)
-Pit strategy, stint planning, and predictive lap time analytics.
+Pit strategy, stint planning, cold tyre pressure calculator, and predictive lap analytics.
 
+* **Cold Tyre Pressure Calculator:** Computes target cold pressures based on ambient weather and track grip (`[New in v0.2.3]`).
 * **Predictive Lap Engine:** Estimates expected lap time dynamically based on sector splits (`[New in v0.2.3]`).
 * **Fuel Calculator:** Calculates average consumption per lap, laps remaining, and required refuel amounts.
 * **Environmental Monitor:** Live tracking of track grip level, air temperature, asphalt temperature, and wind speed.
@@ -150,16 +153,18 @@ Dedicated Force Feedback diagnostic tab.
 Application configuration panel.
 
 * **JSON Localization:** Dynamically loads translations from external `data/locales/en.json` and `data/locales/ru.json` files (`[New in v0.2.3]`).
+* **Target Hot Tyre Pressures:** Configure front and rear optimal tyre pressure targets (`[New in v0.2.3]`).
 * **Telemetry Units:** Toggle between Metric (°C, bar, km/h) and Imperial (°F, PSI, mph).
 * **Alert Thresholds:** Customize temperature, pressure, and fuel warning thresholds.
 
 ---
 
-### **F9: Guide (User Manual & Setup Reference)** `[Added in v0.2.0]`
+### **F9: Guide (User Manual & Setup Reference)** `[Enhanced in v0.2.3]`
 
 ![User Guide](screenshots/Guide.svg)
 Built-in interactive documentation.
 
+* **Decoupled Section Selection:** Navigate handbook chapters using **Up/Down** arrows independently of other tabs (`[New in v0.2.3]`).
 * **Keyboard Controls Reference:** Quick reference for all tab shortcuts and modal controls.
 * **Setup Tuning Guide:** Tips on how to fix understeer, oversteer, and tire overheating.
 
@@ -193,9 +198,12 @@ Quick help overlay available from any screen by pressing **'?'**.
 | **F10** | Global | Toggle Master In-Game Overlay |
 | **F11** | Global | Toggle Overlay Control Center menu |
 | **?** | Global | Toggle Interactive Help modal |
+| **Up / Down** | Engineer / Analysis / Guide / Setup | Navigate debriefing laps, analysis laps, guide chapters, or setups |
+| **Left / Right** | Engineer / Analysis | Switch subtabs (Live Feed vs Debriefing / Overview vs Graphs vs Dynamics...) |
 | **B** | Setup Tab | Open/Close Setup Cloud Browser |
 | **D** | Setup Tab | Download selected cloud setup |
 | **S** | Analysis Tab | Save current lap telemetry to file |
+| **E** | Analysis Tab | Export selected lap telemetry to MoTeC-compatible CSV (`[New in v0.2.3]`) |
 | **C** | Analysis Tab | Toggle Lap Comparison Mode |
 
 ---
