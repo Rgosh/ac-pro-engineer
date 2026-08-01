@@ -59,6 +59,23 @@ struct GitHubAsset {
 
 /// Cargo bin name of the end-user application as published in release assets.
 const APP_BIN_STEM: &str = "ac_pro_engineer";
+/// The same binary as published for Windows.
+const APP_BIN_EXE: &str = "ac_pro_engineer.exe";
+
+/// Name prefixes a release *archive* of the application can carry. dist names
+/// archives after the Cargo package (`ac_tui`); older manual releases used the
+/// binary name.
+///
+/// Renaming the package means adding the new prefix here, or the updater stops
+/// offering updates. That is the safe direction to fail: a missed update is
+/// recoverable, installing another package's archive over the running
+/// executable is not.
+const APP_ARCHIVE_PREFIXES: &[&str] = &["ac_tui-", "ac_pro_engineer-", "ac-pro-engineer-"];
+
+/// Archive extensions a release might plausibly use.
+const ARCHIVE_EXTS: &[&str] = &[
+    ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".7z",
+];
 
 /// How a release asset delivers the application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,65 +89,62 @@ enum AssetKind {
 /// Decide whether a release asset carries the application for the OS this build
 /// is running on.
 ///
-/// Selection is deliberately conservative: an asset is accepted only when its
-/// name positively identifies the running platform. `restart_and_apply` moves
-/// the downloaded file over the running executable, so picking up a build for
-/// another OS leaves the install with a binary that cannot start. An
-/// unrecognised name is skipped rather than guessed at.
+/// Selection is an allow-list, and deliberately so: `restart_and_apply` moves
+/// the chosen file over the running executable, so an asset is accepted only
+/// when its name positively identifies both the application and the running
+/// platform. Everything else is refused rather than guessed at — a `.deb`, an
+/// `.msi`, a detached signature and another workspace package's archive all
+/// name a platform, and none of them can be renamed over the running binary.
 ///
 /// Two naming schemes are recognised:
 ///
-/// * bare binaries, as published through v0.2.2 —
-///   `ac_pro_engineer.exe` on Windows, `ac_pro_engineer` on Linux
+/// * bare binaries, as published through v0.2.2 — exactly `ac_pro_engineer` on
+///   Linux, exactly `ac_pro_engineer.exe` on Windows
 /// * dist archives, which embed the Rust target triple —
-///   `ac_tui-x86_64-pc-windows-gnu.zip`,
-///   `ac_tui-x86_64-unknown-linux-gnu.tar.gz`
-///   (`.tar.xz` is still matched so releases predating the switch to gzip are
-///   at least reported, even though this build cannot unpack xz)
+///   `ac_tui-x86_64-unknown-linux-gnu.tar.gz`,
+///   `ac_tui-x86_64-pc-windows-gnu.zip`
 fn classify_asset(name: &str) -> Option<AssetKind> {
     let lower = name.to_ascii_lowercase();
 
-    // Artifacts that are not the application: the Wine bridge, installer
-    // scripts, the standalone updater, checksums and source snapshots.
-    let is_other_artifact = lower.starts_with("shm-bridge")
-        || lower.contains("installer")
-        || lower.ends_with("-update")
-        || lower.ends_with(".sha256")
-        || lower.ends_with(".sum")
-        || lower.starts_with("source.");
-    if is_other_artifact {
+    // A bare binary is only ever the exact Cargo bin name. v0.2.2 shipped the
+    // untagged Linux build alongside the Windows one, so the `.exe` extension
+    // is what tells the two apart.
+    if lower == APP_BIN_STEM {
+        return cfg!(target_os = "linux").then_some(AssetKind::Executable);
+    }
+    if lower == APP_BIN_EXE {
+        return cfg!(target_os = "windows").then_some(AssetKind::Executable);
+    }
+
+    // Past that point the asset has to be an archive of this application.
+    // Requiring a known archive extension is what keeps `.deb`/`.rpm`/`.msi` —
+    // names dist starts emitting the moment another installer is enabled —
+    // from being chmod +x'd and moved over the running binary. Requiring the
+    // package prefix keeps the Wine bridge, the source snapshot and any future
+    // workspace member out.
+    let is_app_archive = APP_ARCHIVE_PREFIXES.iter().any(|p| lower.starts_with(p))
+        && ARCHIVE_EXTS.iter().any(|ext| lower.ends_with(ext));
+    if !is_app_archive {
         return None;
     }
 
-    let kind = if [".zip", ".tar.gz", ".tar.xz", ".tgz", ".txz", ".7z"]
-        .iter()
-        .any(|ext| lower.ends_with(ext))
-    {
-        AssetKind::Archive
-    } else {
-        AssetKind::Executable
-    };
-
-    // Which platform does the name claim to target?
-    let claims_windows = lower.ends_with(".exe") || lower.contains("windows");
+    // dist embeds the Rust target triple, so the archive names its platform.
+    let claims_windows = lower.contains("windows");
     let claims_linux = lower.contains("linux");
     let claims_macos =
         lower.contains("macos") || lower.contains("darwin") || lower.contains("apple");
-    let claims_nothing = !claims_windows && !claims_linux && !claims_macos;
 
-    if cfg!(target_os = "windows") {
-        // The Windows build has always been identifiable by its `.exe`
-        // extension, so an untagged name is never accepted here.
-        (claims_windows && !claims_linux && !claims_macos).then_some(kind)
+    let is_for_this_os = if cfg!(target_os = "windows") {
+        claims_windows && !claims_linux && !claims_macos
     } else if cfg!(target_os = "linux") {
-        // An untagged bare name is the legacy Linux build (see v0.2.2, which
-        // shipped `ac_pro_engineer` alongside `ac_pro_engineer.exe`).
-        (claims_linux || (claims_nothing && lower == APP_BIN_STEM)).then_some(kind)
+        claims_linux && !claims_windows && !claims_macos
     } else {
         // No macOS or other build is published. Refuse rather than install a
         // binary for a foreign platform.
-        None
-    }
+        false
+    };
+
+    is_for_this_os.then_some(AssetKind::Archive)
 }
 
 /// File name the application binary has inside a release archive.
@@ -711,6 +725,29 @@ mod tests {
         }
     }
 
+    /// Every artifact `dist plan` emits for this workspace, verbatim. Exactly
+    /// one of them is installable on any given platform; if dist changes how it
+    /// names things, this list is where it shows up.
+    const REAL_RELEASE_ASSETS: &[&str] = &[
+        "ac_tui-installer.ps1",
+        "ac_tui-installer.sh",
+        "ac_tui-x86_64-pc-windows-gnu-update",
+        "ac_tui-x86_64-pc-windows-gnu.zip",
+        "ac_tui-x86_64-pc-windows-gnu.zip.sha256",
+        "ac_tui-x86_64-unknown-linux-gnu-update",
+        "ac_tui-x86_64-unknown-linux-gnu.tar.gz",
+        "ac_tui-x86_64-unknown-linux-gnu.tar.gz.sha256",
+        "dist-manifest.json",
+        "sha256.sum",
+        "shm-bridge-installer.ps1",
+        "shm-bridge-installer.sh",
+        "shm-bridge-x86_64-pc-windows-gnu-update",
+        "shm-bridge-x86_64-pc-windows-gnu.zip",
+        "shm-bridge-x86_64-pc-windows-gnu.zip.sha256",
+        "source.tar.gz",
+        "source.tar.gz.sha256",
+    ];
+
     /// Artifacts that are never the application, on any platform.
     #[test]
     fn non_application_assets_are_rejected() {
@@ -726,6 +763,59 @@ mod tests {
         ] {
             assert_eq!(classify_asset(name), None, "{name} should be rejected");
         }
+    }
+
+    /// The regression the allow-list exists for. Every one of these names a
+    /// platform and is not an archive, so the previous "anything without an
+    /// archive extension is a bare executable" rule would have picked it *in
+    /// preference to* the real archive, chmod +x'd it and moved it over the
+    /// running binary. Enabling one more dist installer is all it takes to put
+    /// these in a release.
+    #[test]
+    fn package_formats_are_never_treated_as_executables() {
+        for name in [
+            "ac_tui-x86_64-pc-windows-gnu.msi",
+            "ac_tui-x86_64-unknown-linux-gnu.deb",
+            "ac_tui-x86_64-unknown-linux-gnu.rpm",
+            "ac_tui-x86_64-unknown-linux-gnu.AppImage",
+            "ac_tui-x86_64-apple-darwin.pkg",
+            "ac_tui-x86_64-unknown-linux-gnu.tar.gz.sig",
+            "ac_tui-x86_64-pc-windows-gnu.zip.asc",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    /// Another workspace package's archive names a platform *and* ends in a
+    /// real archive extension — only the application prefix keeps it out.
+    #[test]
+    fn other_packages_archives_are_rejected() {
+        for name in [
+            "shm-bridge-x86_64-pc-windows-gnu.zip",
+            "shm-bridge-x86_64-unknown-linux-gnu.tar.gz",
+            "some-future-tool-x86_64-unknown-linux-gnu.tar.gz",
+        ] {
+            assert_eq!(classify_asset(name), None, "{name} should be rejected");
+        }
+    }
+
+    #[test]
+    fn a_real_dist_release_yields_exactly_one_installable_asset() {
+        let accepted: Vec<&str> = REAL_RELEASE_ASSETS
+            .iter()
+            .copied()
+            .filter(|name| classify_asset(name).is_some())
+            .collect();
+
+        let expected: &[&str] = if cfg!(target_os = "windows") {
+            &["ac_tui-x86_64-pc-windows-gnu.zip"]
+        } else if cfg!(target_os = "linux") {
+            &["ac_tui-x86_64-unknown-linux-gnu.tar.gz"]
+        } else {
+            &[]
+        };
+
+        assert_eq!(accepted, expected);
     }
 
     #[cfg(target_os = "linux")]
