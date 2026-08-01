@@ -208,6 +208,22 @@ pub struct AcGraphics {
     pub wind_speed: f32,
     pub wind_direction: f32,
     pub is_setup_menu_visible: i32,
+
+    // ── Unverified below this line. ──
+    //
+    // The capture these offsets were read from is zero from 300 to the end of
+    // the page, so it pins nothing here. It does prove AC writes *past* 296 —
+    // a fresh mapping is zero-filled and offset 296 read -1 — which is why
+    // `is_setup_menu_visible` above is trusted and these are not. The order
+    // below is still ACC's, i.e. the same assumption that put
+    // `car_coordinates` in the wrong place to begin with.
+    //
+    // `fuel_x_lap` is the one to be careful with: `engineer.rs` gates fuel
+    // strategy on `fuel_x_lap > 0.0`, so a wrong offset here trades a
+    // permanently dead feature for one that runs on a wrong number, which is
+    // the worse failure. Settling it needs a capture from lap 2 or later —
+    // AC leaves fuelXLap at 0.0 until it has a completed lap to measure, so
+    // the lap-1 capture used here could not have distinguished the two cases.
     pub main_display_index: i32,
     pub secondary_display_index: i32,
     pub tc: i32,
