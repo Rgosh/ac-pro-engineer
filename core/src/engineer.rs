@@ -41,6 +41,9 @@ pub struct DrivingStyle {
     pub consistency: f32,
     pub trail_braking: f32,
     pub throttle_control: f32,
+    pub prev_gas: f32,
+    pub prev_brake: f32,
+    pub prev_steer: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +67,7 @@ pub struct Engineer {
     pub driving_style: DrivingStyle,
     pub wizard_phase: WizardPhase,
     pub wizard_problem: WizardProblem,
-    alert_timers: HashMap<String, Instant>,
+    alert_timers: HashMap<String, (Instant, Instant)>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +147,9 @@ impl DrivingStyle {
             consistency: 50.0,
             trail_braking: 0.0,
             throttle_control: 50.0,
+            prev_gas: 0.0,
+            prev_brake: 0.0,
+            prev_steer: 0.0,
         }
     }
 }
@@ -229,7 +235,8 @@ impl Engineer {
                     let wear_used = self.stats.base_tyre_wear[i] - phys.tyre_wear[i];
                     if wear_used > 0.0 && self.stats.stint_laps > 0 {
                         let wear_per_lap = wear_used / self.stats.stint_laps as f32;
-                        let replacement_threshold = (self.config.alerts.wear_warning - 2.0).max(0.0);
+                        let replacement_threshold =
+                            (self.config.alerts.wear_warning - 2.0).max(0.0);
                         let remaining_wear = phys.tyre_wear[i] - replacement_threshold;
                         if wear_per_lap > 0.001 {
                             let laps = (remaining_wear / wear_per_lap).max(0.0);
@@ -265,13 +272,19 @@ impl Engineer {
             self.stats.coasting_frames += ticks_norm;
         }
 
-        if phys.speed_kmh > 40.0 && phys.steer_angle.abs() > 0.15 {
-            if phys.wheel_slip[0] > 0.15 || phys.wheel_slip[1] > 0.15 {
+        if phys.speed_kmh > 40.0 {
+            let front_slip = phys.wheel_slip[0].max(phys.wheel_slip[1]);
+            let rear_slip = phys.wheel_slip[2].max(phys.wheel_slip[3]);
+
+            if front_slip > 0.15 && front_slip > rear_slip + 0.05 && phys.steer_angle.abs() > 0.15 {
+                self.stats.understeer_frames += ticks_norm;
                 self.stats.scrubbing_frames += ticks_norm;
                 let excess = (phys.steer_angle.abs() - 0.15) * 57.2958;
                 if excess > self.stats.current_excess_steer {
                     self.stats.current_excess_steer = excess;
                 }
+            } else if rear_slip > 0.15 && rear_slip > front_slip + 0.05 {
+                self.stats.oversteer_frames += ticks_norm;
             }
         } else if self.stats.scrubbing_frames > 0 && self.stats.scrubbing_frames < 45 {
             self.stats.scrubbing_frames = 0;
@@ -293,11 +306,20 @@ impl Engineer {
     }
 
     fn analyze_driving_style(&mut self, phys: &AcPhysics) {
-        let throttle_smoothness = 100.0 - (phys.gas * 100.0).abs();
-        let brake_smoothness = 100.0 - (phys.brake * 100.0).abs();
+        let gas_diff = (phys.gas - self.driving_style.prev_gas).abs();
+        let brake_diff = (phys.brake - self.driving_style.prev_brake).abs();
+        let steer_diff = (phys.steer_angle - self.driving_style.prev_steer).abs();
 
-        self.driving_style.smoothness = 0.7 * self.driving_style.smoothness
-            + 0.3 * (throttle_smoothness + brake_smoothness) / 2.0;
+        let throttle_smoothness = (100.0 - (gas_diff * 1000.0)).clamp(0.0, 100.0);
+        let brake_smoothness = (100.0 - (brake_diff * 1000.0)).clamp(0.0, 100.0);
+        let steer_smoothness = (100.0 - (steer_diff * 500.0)).clamp(0.0, 100.0);
+
+        self.driving_style.smoothness = 0.95 * self.driving_style.smoothness
+            + 0.05 * (throttle_smoothness + brake_smoothness + steer_smoothness) / 3.0;
+
+        self.driving_style.prev_gas = phys.gas;
+        self.driving_style.prev_brake = phys.brake;
+        self.driving_style.prev_steer = phys.steer_angle;
 
         let lateral_g = (phys.acc_g[0].powi(2) + phys.acc_g[1].powi(2)).sqrt();
         self.driving_style.aggression =
@@ -329,15 +351,22 @@ impl Engineer {
     fn check_hysteresis(&mut self, key: &str, active: bool) -> bool {
         let now = Instant::now();
         if active {
-            self.alert_timers.insert(key.to_string(), now);
-            return true;
+            let first_seen = if let Some(&(first, _)) = self.alert_timers.get(key) {
+                first
+            } else {
+                now
+            };
+            self.alert_timers.insert(key.to_string(), (first_seen, now));
+            return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
         }
 
-        if let Some(last_seen) = self.alert_timers.get(key)
-            && now.duration_since(*last_seen) < Duration::from_secs_f32(2.0)
-        {
-            return true;
+        if let Some(&(first_seen, last_seen)) = self.alert_timers.get(key) {
+            if now.duration_since(last_seen) < Duration::from_secs_f32(2.0) {
+                return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
+            }
         }
+
+        self.alert_timers.remove(key);
         false
     }
 
@@ -868,7 +897,13 @@ impl Engineer {
 
             if spread < 2.0 {
                 let action_text = if let Some(s) = setup {
-                    let current_camber = if i < 2 { s.camber_lf } else { s.camber_lr };
+                    let current_camber = match i {
+                        0 => s.camber_lf,
+                        1 => s.camber_rf,
+                        2 => s.camber_lr,
+                        3 => s.camber_rr,
+                        _ => 0,
+                    };
                     if ru {
                         format!(
                             "Увеличить развал (сейчас: {}). Если предел -> смягчите ARB",
@@ -919,7 +954,13 @@ impl Engineer {
                 });
             } else if spread > 15.0 {
                 let action_text = if let Some(s) = setup {
-                    let current_camber = if i < 2 { s.camber_lf } else { s.camber_lr };
+                    let current_camber = match i {
+                        0 => s.camber_lf,
+                        1 => s.camber_rf,
+                        2 => s.camber_lr,
+                        3 => s.camber_rr,
+                        _ => 0,
+                    };
                     if ru {
                         format!(
                             "Уменьшить развал (сейчас: {}). Если предел -> зажмите ARB",
@@ -970,8 +1011,16 @@ impl Engineer {
     }
 
     fn analyze_tyre_temperature(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
-        let min_temp = self.config.alerts.tyre_temp_min.min(self.config.alerts.tyre_temp_max);
-        let max_temp = self.config.alerts.tyre_temp_min.max(self.config.alerts.tyre_temp_max);
+        let min_temp = self
+            .config
+            .alerts
+            .tyre_temp_min
+            .min(self.config.alerts.tyre_temp_max);
+        let max_temp = self
+            .config
+            .alerts
+            .tyre_temp_min
+            .max(self.config.alerts.tyre_temp_max);
         let ru = self.is_ru();
 
         if phys.speed_kmh > 100.0 {
@@ -998,9 +1047,17 @@ impl Engineer {
                         },
                         severity: Severity::Warning,
                         message: if ru {
-                            format!("{} ХОЛОДНАЯ: {}", name, self.config.formatter().format_temp(temp))
+                            format!(
+                                "{} ХОЛОДНАЯ: {}",
+                                name,
+                                self.config.formatter().format_temp(temp)
+                            )
                         } else {
-                            format!("{} COLD: {}", name, self.config.formatter().format_temp(temp))
+                            format!(
+                                "{} COLD: {}",
+                                name,
+                                self.config.formatter().format_temp(temp)
+                            )
                         },
                         action: if ru {
                             "Греть шины".to_string()
@@ -1031,9 +1088,17 @@ impl Engineer {
                         },
                         severity: Severity::Critical,
                         message: if ru {
-                            format!("{} ПЕРЕГРЕВ: {}", name, self.config.formatter().format_temp(temp))
+                            format!(
+                                "{} ПЕРЕГРЕВ: {}",
+                                name,
+                                self.config.formatter().format_temp(temp)
+                            )
                         } else {
-                            format!("{} OVERHEATING: {}", name, self.config.formatter().format_temp(temp))
+                            format!(
+                                "{} OVERHEATING: {}",
+                                name,
+                                self.config.formatter().format_temp(temp)
+                            )
                         },
                         action: if ru {
                             "Остудить шины".to_string()
@@ -1295,18 +1360,19 @@ impl Engineer {
             });
         }
 
-        if gfx.session_time_left > 0.0 && gfx.fuel_x_lap > 0.0 {
+        if (gfx.session_time_left > 0.0 || gfx.number_of_laps > 0) && gfx.fuel_x_lap > 0.0 {
             let laps_remaining_in_race = crate::session_info::SessionTiming::remaining_laps(
                 gfx.session_time_left,
                 gfx.i_best_time,
                 gfx.i_last_time,
-                0, // time-based only
-                0,
-                0.0,
+                gfx.number_of_laps as i32,
+                gfx.completed_laps,
+                gfx.normalized_car_position,
             );
 
             if laps_remaining_in_race > 0.0 {
-                let fuel_needed = (laps_remaining_in_race * gfx.fuel_x_lap) + self.config.fuel_safety_margin;
+                let fuel_needed =
+                    (laps_remaining_in_race * gfx.fuel_x_lap) + self.config.fuel_safety_margin;
                 let fuel_diff = phys.fuel - fuel_needed;
 
                 if fuel_diff < -1.0 {
@@ -1369,6 +1435,14 @@ mod tests {
 
         config.alerts.tyre_pressure_max = 29.0;
         engineer.update_config(&config);
+
+        let past = std::time::Instant::now() - std::time::Duration::from_secs(2);
+        for i in 0..4 {
+            engineer
+                .alert_timers
+                .insert(format!("pres_{}", i), (past, past));
+        }
+
         let recommendations = engineer.analyze_live(&physics, &graphics, None);
         assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
     }
@@ -1439,7 +1513,11 @@ pub struct ColdPressureEstimate {
 pub struct ColdPressureCalculator;
 
 impl ColdPressureCalculator {
-    pub fn calculate(target_hot_psi: f32, ambient_temp_c: f32, track_grip: f32) -> ColdPressureEstimate {
+    pub fn calculate(
+        target_hot_psi: f32,
+        ambient_temp_c: f32,
+        track_grip: f32,
+    ) -> ColdPressureEstimate {
         let temp_diff = (85.0 - ambient_temp_c.clamp(0.0, 50.0)).max(0.0);
         let delta_temp_psi = temp_diff * 0.08;
         let grip_norm = track_grip.clamp(0.80, 1.0);
