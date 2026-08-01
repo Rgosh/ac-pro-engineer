@@ -8,9 +8,7 @@ use clap::Parser;
 use crossterm::{
     event::{self, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{
-        EnterAlternateScreen, SetSize, enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, SetSize, enable_raw_mode},
 };
 use ratatui::prelude::*;
 use std::io;

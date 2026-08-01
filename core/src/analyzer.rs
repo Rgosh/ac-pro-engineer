@@ -420,14 +420,16 @@ impl TelemetryAnalyzer {
                     understeer_c += 1;
                 }
 
-                if p.speed_kmh > 40.0 && p.steer_angle.abs() > 0.15
-                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15) {
-                        scrubbing_c += 1;
-                        let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
-                        if excess > max_over_rotation {
-                            max_over_rotation = excess;
-                        }
+                if p.speed_kmh > 40.0
+                    && p.steer_angle.abs() > 0.15
+                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15)
+                {
+                    scrubbing_c += 1;
+                    let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
+                    if excess > max_over_rotation {
+                        max_over_rotation = excess;
                     }
+                }
             }
 
             for i in 0..4 {

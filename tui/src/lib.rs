@@ -546,11 +546,13 @@ impl AppState {
             self.current_lap_number = completed_laps;
         }
 
-        if (gfx.status != 0 || self.is_demo_mode) && (phys.speed_kmh > 1.0 || phys.rpms > 1000)
-            && self.current_lap_physics.len() < 36000 {
-                self.current_lap_physics.push(phys);
-                self.current_lap_graphics.push(gfx);
-            }
+        if (gfx.status != 0 || self.is_demo_mode)
+            && (phys.speed_kmh > 1.0 || phys.rpms > 1000)
+            && self.current_lap_physics.len() < 36000
+        {
+            self.current_lap_physics.push(phys);
+            self.current_lap_graphics.push(gfx);
+        }
 
         if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
             self.setup_manager

@@ -361,9 +361,10 @@ impl Engineer {
         }
 
         if let Some(&(first_seen, last_seen)) = self.alert_timers.get(key)
-            && now.duration_since(last_seen) < Duration::from_secs_f32(2.0) {
-                return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
-            }
+            && now.duration_since(last_seen) < Duration::from_secs_f32(2.0)
+        {
+            return now.duration_since(first_seen) >= Duration::from_secs_f32(1.0);
+        }
 
         self.alert_timers.remove(key);
         false

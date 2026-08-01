@@ -61,9 +61,10 @@ fn safe_join_under(root: &std::path::Path, filename: &str) -> Option<PathBuf> {
         // For a new file, canonicalize the parent
         if let Some(parent) = candidate.parent()
             && let Ok(canon_parent) = std::fs::canonicalize(parent)
-                && canon_parent.starts_with(&canon_root) {
-                    return Some(candidate);
-                }
+            && canon_parent.starts_with(&canon_root)
+        {
+            return Some(candidate);
+        }
     }
 
     // Fallback: if root doesn't exist yet either, just check component-level
@@ -341,9 +342,10 @@ impl SetupManager {
         self.shutdown_flag
             .store(true, std::sync::atomic::Ordering::SeqCst);
         if let Ok(mut lock) = self.bg_thread.lock()
-            && let Some(handle) = lock.take() {
-                let _ = handle.join();
-            }
+            && let Some(handle) = lock.take()
+        {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -403,10 +405,9 @@ impl SetupManager {
                 }
 
                 let is_empty = manifest_clone.safe_lock().is_empty();
-                if is_empty
-                    && let Ok(m) = fetch_manifest() {
-                        *manifest_clone.safe_lock() = m;
-                    }
+                if is_empty && let Ok(m) = fetch_manifest() {
+                    *manifest_clone.safe_lock() = m;
+                }
 
                 let car = car_clone.safe_lock().clone();
                 let track = track_clone.safe_lock().clone();
