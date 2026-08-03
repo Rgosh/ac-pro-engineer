@@ -219,8 +219,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
             if event::poll(target_frame_time.saturating_sub(start.elapsed()))?
                 && let Event::Key(key) = event::read()?
-                && key.kind == event::KeyEventKind::Press
+                && is_key_action(key.kind)
             {
+                // Checked before the modal below. It used to sit after it, so
+                // the first-run prompt every new user sees could not be
+                // escaped: Ctrl+C, q and Esc all fell into the modal's
+                // `_ => {}` and did nothing.
+                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                    break 'outer;
+                }
+
                 if app.show_first_run_prompt {
                     match key.code {
                         KeyCode::Left => app.first_run_selection = 0,
@@ -232,13 +240,12 @@ async fn main() -> Result<(), anyhow::Error> {
                                 app.active_tab = AppTab::Guide;
                             }
                         }
+                        // Dismiss without opening the guide, which is what
+                        // Esc means everywhere else in the app.
+                        KeyCode::Esc => app.show_first_run_prompt = false,
                         _ => {}
                     }
                     continue;
-                }
-
-                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-                    break 'outer;
                 }
 
                 match key.code {
@@ -386,7 +393,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
             if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?
                 && let Event::Key(key) = event::read()?
-                && key.kind == event::KeyEventKind::Press
+                && is_key_action(key.kind)
             {
                 let mut app_lock = app_arc.safe_lock();
 
@@ -439,14 +446,33 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 if app_lock.show_help {
                     match key.code {
+                        // F1 included because the modal itself says
+                        // "PRESS ESC, ?, Q, OR F1 TO CLOSE" in nine places,
+                        // and F1 was the one key of the four that did nothing
+                        // -- which reads as the modal being stuck.
                         KeyCode::Esc
                         | KeyCode::Char('?')
                         | KeyCode::Char('q')
-                        | KeyCode::Char('Q') => {
+                        | KeyCode::Char('Q')
+                        | KeyCode::Char('й')
+                        | KeyCode::Char('Й')
+                        | KeyCode::F(1) => {
                             app_lock.show_help = false;
                         }
                         _ => {}
                     }
+                    continue;
+                }
+
+                // The analysis load menu owns Esc while it is open. Without
+                // this the global Esc below fired first and dropped the whole
+                // session back to the launcher, disconnecting on the way --
+                // while the menu's own footer promised "ESC: Close".
+                if app_lock.active_tab == AppTab::Analysis
+                    && app_lock.ui_state.analysis.load_menu.borrow().active
+                    && key.code == KeyCode::Esc
+                {
+                    app_lock.ui_state.analysis.load_menu.borrow_mut().active = false;
                     continue;
                 }
 
@@ -542,10 +568,21 @@ async fn main() -> Result<(), anyhow::Error> {
                             | KeyCode::Char('S')
                             | KeyCode::Char('ы')
                             | KeyCode::Char('Ы') => {
-                                if let Some(best) = app_lock.analyzer.best_lap_index
-                                    && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
-                                {
-                                    app_lock.ui_state.analysis.save_lap_data(&lap);
+                                // The lap the user has selected, not the
+                                // fastest one. This used to read
+                                // `best_lap_index`, so selecting lap 3 and
+                                // pressing S silently wrote lap 5 — while the
+                                // export handler two arms down correctly used
+                                // the selection.
+                                let selected = app_lock.ui_state.analysis.selected_lap_index;
+                                match app_lock.analyzer.laps.get(selected).cloned() {
+                                    Some(lap) => app_lock.ui_state.analysis.save_lap_data(&lap),
+                                    // Previously a silent no-op with nothing
+                                    // on screen to say why.
+                                    None => app_lock
+                                        .ui_state
+                                        .analysis
+                                        .set_status("No lap to save".to_string()),
                                 }
                             }
                             KeyCode::Char('l')
@@ -673,6 +710,18 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+
+/// Whether a key event should act, as opposed to being a key release.
+///
+/// Windows reports a held key as `Repeat` rather than a stream of `Press`
+/// events, and only `Press` was accepted — so holding an arrow in the guide
+/// or a lap list moved exactly one row and then stopped.
+fn is_key_action(kind: event::KeyEventKind) -> bool {
+    matches!(
+        kind,
+        event::KeyEventKind::Press | event::KeyEventKind::Repeat
+    )
 }
 
 /// Keys for the Setup Cloud browser.
