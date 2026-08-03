@@ -128,8 +128,22 @@ async fn main() -> Result<(), anyhow::Error> {
 
     info!("Starting application and connecting to telemetry...");
 
+    // Not fatal. `Command::spawn` returns NotFound when protontricks-launch
+    // is not installed, and `?` here killed the app before the TUI existed —
+    // so anyone running AC natively, through a different launcher, or just
+    // wanting to review saved laps offline could not start it at all. The
+    // launcher already has a "WAITING FOR SIMULATOR..." state for exactly
+    // this situation.
     #[cfg(target_os = "linux")]
-    let _mem_bridge = platform::linux::SharedMemoryBridge::start().await?;
+    let _mem_bridge = match platform::linux::SharedMemoryBridge::start().await {
+        Ok(bridge) => Some(bridge),
+        Err(error) => {
+            eprintln!(
+                "Could not start the shared-memory bridge: {error}\n                 Live telemetry will be unavailable; everything else still works."
+            );
+            None
+        }
+    };
 
     #[cfg(target_os = "windows")]
     set_console_icon();
