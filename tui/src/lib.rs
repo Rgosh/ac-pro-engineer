@@ -577,25 +577,36 @@ impl AppState {
                         self.config.update_rate,
                     );
 
-                    if let Some(car_specs) = self
+                    // Car specs sharpen the *estimated* reference time, but
+                    // they are an enrichment, not a precondition. This whole
+                    // block used to be nested inside `if let Some(car_specs)`,
+                    // so on any machine where the AC install could not be
+                    // found — every Linux machine, before ac_paths — no
+                    // record was ever created, compared or saved, and the
+                    // analyzer's world record stayed None, silently disabling
+                    // the off-pace advice as well.
+                    let car_specs = self
                         .content_manager
-                        .get_car_specs(&self.session_info.car_name)
-                    {
-                        let mut rec = self.record_manager.get_or_calculate_record(
-                            &self.session_info.car_name,
-                            &self.session_info.track_name,
-                            &self.session_info.track_config,
-                            Some(car_specs),
-                            stat_spline_length,
-                        );
+                        .get_car_specs(&self.session_info.car_name);
+                    let reference = self.record_manager.get_or_calculate_record(
+                        &self.session_info.car_name,
+                        &self.session_info.track_name,
+                        &self.session_info.track_config,
+                        car_specs,
+                        stat_spline_length,
+                    );
 
-                        if last_lap_time < rec.time_ms {
-                            rec.time_ms = last_lap_time;
-                            rec.source = "User Best".to_string();
-                            self.record_manager.update_if_faster(rec.clone());
-                        }
-                        self.analyzer.set_world_record(rec);
-                    }
+                    // The driver's own best is tracked against their own
+                    // history, not against the world record. Comparing to the
+                    // WR meant `records.json` only ever gained an entry from
+                    // someone who had beaten it, so for every normal driver
+                    // the personal best was never saved at all.
+                    let mut personal = reference.clone();
+                    personal.time_ms = last_lap_time;
+                    personal.source = "User Best".to_string();
+                    self.record_manager.update_if_faster(personal);
+
+                    self.analyzer.set_world_record(reference);
                 }
             }
             self.current_lap_physics.clear();

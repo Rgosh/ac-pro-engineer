@@ -3,6 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use tracing::warn;
+
+/// Shortest time accepted as a real lap, matching the gate the lap pipeline
+/// already applies before a lap is processed at all.
+pub const MIN_PLAUSIBLE_LAP_MS: i32 = 10_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackRecord {
@@ -345,7 +350,29 @@ impl RecordManager {
         (time_sec * 1000.0) as i32
     }
 
+    /// Record a lap if it beats the stored one.
+    ///
+    /// Validates the same way `load_from_path` does on read. It did not
+    /// before, so a zero or negative `time_ms` — a session reset, or a lap
+    /// read while AC's timer was stale — became the record, was written to
+    /// disk, and then silently vanished on the next load because the read
+    /// path rejected it. From the driver's side that reads as "my personal
+    /// best disappeared".
+    ///
+    /// The floor is the same 10 second threshold the lap pipeline already
+    /// uses to decide a lap is real.
     pub fn update_if_faster(&mut self, record: TrackRecord) {
+        if record.time_ms < MIN_PLAUSIBLE_LAP_MS
+            || record.car_id.is_empty()
+            || record.track_name.is_empty()
+        {
+            warn!(
+                "Refusing to store an implausible record: {}ms for {}/{}",
+                record.time_ms, record.car_id, record.track_name
+            );
+            return;
+        }
+
         let key = format!(
             "{}|{}|{}",
             record.car_id, record.track_name, record.track_config
@@ -361,5 +388,92 @@ impl RecordManager {
             self.records.insert(key, record);
             self.save();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A manager writing to its own scratch file, so the tests never touch
+    /// the real records.json.
+    fn manager(name: &str) -> RecordManager {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create tmp");
+        RecordManager {
+            records: HashMap::new(),
+            static_db: HashMap::new(),
+            db_path: dir.join("records.json"),
+        }
+    }
+
+    fn record(time_ms: i32) -> TrackRecord {
+        TrackRecord {
+            car_id: "ks_ferrari_sf70h".to_string(),
+            track_name: "monza".to_string(),
+            track_config: String::new(),
+            time_ms,
+            driver_name: "Driver".to_string(),
+            date: "2026-08-03".to_string(),
+            source: "User Best".to_string(),
+        }
+    }
+
+    fn stored_time(manager: &RecordManager) -> i32 {
+        manager
+            .records
+            .values()
+            .next()
+            .expect("a record was stored")
+            .time_ms
+    }
+
+    #[test]
+    fn a_faster_lap_replaces_the_stored_one() {
+        let mut m = manager("records_faster");
+        m.update_if_faster(record(95_000));
+        m.update_if_faster(record(93_500));
+        assert_eq!(stored_time(&m), 93_500);
+    }
+
+    #[test]
+    fn a_slower_lap_is_ignored() {
+        let mut m = manager("records_slower");
+        m.update_if_faster(record(93_500));
+        m.update_if_faster(record(95_000));
+        assert_eq!(stored_time(&m), 93_500);
+    }
+
+    /// A zero or negative time used to be accepted, written to disk, and then
+    /// dropped by the read path on next load — which reads to the driver as
+    /// their personal best vanishing between sessions.
+    #[test]
+    fn an_implausible_time_is_refused() {
+        let mut m = manager("records_implausible");
+        m.update_if_faster(record(0));
+        m.update_if_faster(record(-1));
+        m.update_if_faster(record(500));
+        assert!(m.records.is_empty(), "nothing implausible is stored");
+
+        // And it cannot displace a real record either.
+        m.update_if_faster(record(93_500));
+        m.update_if_faster(record(0));
+        assert_eq!(stored_time(&m), 93_500);
+    }
+
+    #[test]
+    fn a_record_without_a_car_or_track_is_refused() {
+        let mut m = manager("records_incomplete");
+
+        let mut no_car = record(93_500);
+        no_car.car_id.clear();
+        m.update_if_faster(no_car);
+
+        let mut no_track = record(93_500);
+        no_track.track_name.clear();
+        m.update_if_faster(no_track);
+
+        assert!(m.records.is_empty());
     }
 }
