@@ -520,8 +520,12 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     },
                     Style::default().fg(Color::Cyan),
                 )));
-                let filled = (pct / 5.0) as usize;
-                let bar = "█".repeat(filled) + &"░".repeat(20 - filled);
+                // The bar is 20 cells wide, so `filled` has to be capped
+                // whatever the percentage says: `20 - filled` is an unsigned
+                // subtraction and would panic on anything over 100%.
+                const BAR_CELLS: usize = 20;
+                let filled = ((pct / 5.0) as usize).min(BAR_CELLS);
+                let bar = "█".repeat(filled) + &"░".repeat(BAR_CELLS - filled);
                 lines.push(Line::from(Span::styled(
                     format!("{} {:.1}%", bar, pct),
                     Style::default().fg(Color::Cyan),

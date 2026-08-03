@@ -646,8 +646,14 @@ impl Updater {
                                         }
                                         downloaded += n as u64;
                                         if total_size > 0 {
-                                            let pct =
-                                                (downloaded as f32 / total_size as f32) * 100.0;
+                                            // Clamped because a body longer
+                                            // than its Content-Length would
+                                            // otherwise report over 100%, and
+                                            // the launcher sizes its progress
+                                            // bar from this number.
+                                            let pct = ((downloaded as f32 / total_size as f32)
+                                                * 100.0)
+                                                .clamp(0.0, 100.0);
                                             let mut lock =
                                                 status.lock().unwrap_or_else(|e| e.into_inner());
                                             *lock = UpdateStatus::Downloading(pct);
