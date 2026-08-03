@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 ac_core = { path = "../core" }
+# Timestamps CSV export filenames.
+chrono = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 crossterm = { workspace = true }
 ratatui = { workspace = true }

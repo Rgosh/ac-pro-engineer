@@ -968,21 +968,35 @@ pub fn export_lap_to_csv(
         std::fs::create_dir_all(parent)?;
     }
 
-    let mut content = String::with_capacity(lap.telemetry_trace.len() * 100);
-    content.push_str("\"Time\",\"Distance\",\"Speed\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\"Pos_X\",\"Pos_Y\"\n");
-    content.push_str("\"s\",\"fraction\",\"km/h\",\"rad\",\"%\",\"%\",\"\",\"m\",\"m\"\n");
+    // RPM, both G axes and average slip were dropped on the way out, even
+    // though TelemetryPoint carries all four — so an exported lap could not
+    // be used to look at engine usage, the friction circle or wheelspin, the
+    // three things an external analysis tool is most often opened for.
+    let mut content = String::with_capacity(lap.telemetry_trace.len() * 128);
+    content.push_str(
+        "\"Time\",\"Distance\",\"Speed\",\"RPM\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\
+         \"Lat_G\",\"Lon_G\",\"Slip\",\"Pos_X\",\"Pos_Y\"\n",
+    );
+    content.push_str(
+        "\"s\",\"fraction\",\"km/h\",\"rpm\",\"rad\",\"%\",\"%\",\"\",\
+         \"g\",\"g\",\"\",\"m\",\"m\"\n",
+    );
 
     for p in &lap.telemetry_trace {
         let time_sec = p.time_ms as f32 / 1000.0;
         let line = format!(
-            "{:.3},{:.5},{:.1},{:.3},{:.2},{:.2},{},{:.2},{:.2}\n",
+            "{:.3},{:.5},{:.1},{},{:.3},{:.2},{:.2},{},{:.3},{:.3},{:.3},{:.2},{:.2}\n",
             time_sec,
             p.distance,
             p.speed,
+            p.rpms,
             p.steer,
             p.gas * 100.0,
             p.brake * 100.0,
             p.gear,
+            p.lat_g,
+            p.lon_g,
+            p.slip_avg,
             p.x,
             p.y
         );

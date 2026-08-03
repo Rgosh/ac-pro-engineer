@@ -30,6 +30,7 @@ version = "0.3.1"
 dependencies = [
  "ac_core",
  "anyhow",
+ "chrono",
  "clap",
  "crossterm 0.29.0",
  "image",

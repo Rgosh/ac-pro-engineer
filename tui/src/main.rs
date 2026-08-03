@@ -606,18 +606,45 @@ async fn main() -> Result<(), anyhow::Error> {
                                     .analysis
                                     .selected_lap_index
                                     .min(app_lock.analyzer.laps.len().saturating_sub(1));
-                                if let Some(lap) = app_lock.analyzer.laps.get(sel) {
-                                    let export_path = app_lock.config.resolve_data_path().join(
-                                        format!("exports/lap_{}_export.csv", lap.lap_number + 1),
-                                    );
-                                    if let Ok(p) =
-                                        ac_core::analyzer::export_lap_to_csv(lap, &export_path)
-                                    {
-                                        app_lock
-                                            .ui_state
-                                            .analysis
-                                            .set_status(format!("Exported CSV: {}", p.display()));
+                                match app_lock.analyzer.laps.get(sel).cloned() {
+                                    Some(lap) => {
+                                        // Named after the car, track and lap
+                                        // rather than "lap_3_export.csv",
+                                        // which collided with itself across
+                                        // every session at every circuit.
+                                        let file_name = format!(
+                                            "{}_{}_lap{}_{}.csv",
+                                            sanitise_for_file_name(&lap.car_model),
+                                            sanitise_for_file_name(&lap.track_name),
+                                            lap.lap_number + 1,
+                                            chrono::Local::now().format("%Y%m%d-%H%M%S"),
+                                        );
+                                        let export_path = app_lock
+                                            .config
+                                            .resolve_data_path()
+                                            .join("exports")
+                                            .join(file_name);
+
+                                        let status = match ac_core::analyzer::export_lap_to_csv(
+                                            &lap,
+                                            &export_path,
+                                        ) {
+                                            Ok(p) => format!("Exported CSV: {}", p.display()),
+                                            // Previously `if let Ok(..)`, so a
+                                            // failed export was silent and
+                                            // indistinguishable from a
+                                            // successful one.
+                                            Err(error) => {
+                                                error!(error = ?error, "CSV export failed");
+                                                format!("Export failed: {error}")
+                                            }
+                                        };
+                                        app_lock.ui_state.analysis.set_status(status);
                                     }
+                                    None => app_lock
+                                        .ui_state
+                                        .analysis
+                                        .set_status("No lap to export".to_string()),
                                 }
                             }
                             KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
@@ -710,6 +737,25 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+
+/// Reduce a car or track name to something safe in a file name.
+fn sanitise_for_file_name(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "unknown".to_string()
+    } else {
+        cleaned
+    }
 }
 
 /// Whether a key event should act, as opposed to being a key release.
