@@ -464,7 +464,7 @@ impl UIRenderer {
             ),
             Span::raw(" "),
             Span::styled(
-                " [F10: Mini] [H: Help] ",
+                " [F10: Overlay] [?: Help] ",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
         ];
