@@ -1342,7 +1342,11 @@ mod tests {
         assert_eq!(selected(), "1.0.0");
 
         updater.next_version();
-        assert_eq!(selected(), "0.9.0", "right should walk back through history");
+        assert_eq!(
+            selected(),
+            "0.9.0",
+            "right should walk back through history"
+        );
         updater.next_version();
         assert_eq!(selected(), "0.2.3");
 

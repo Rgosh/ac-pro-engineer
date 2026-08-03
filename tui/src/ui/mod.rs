@@ -104,7 +104,11 @@ fn render_too_small(f: &mut Frame<'_>, app: &AppState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            if is_ru { "Увеличьте окно" } else { "Resize to continue" },
+            if is_ru {
+                "Увеличьте окно"
+            } else {
+                "Resize to continue"
+            },
             Style::default().fg(Color::Yellow),
         )),
     ];

@@ -347,7 +347,7 @@ fn render_tyres_strategy(
 
         let gauge = Gauge::default()
             .gauge_style(Style::default().fg(color).bg(Color::DarkGray))
-            .ratio(health_pct as f64 / 100.0)
+            .ratio(crate::ui::widgets::safe_ratio(health_pct as f64 / 100.0))
             .label(label);
 
         f.render_widget(gauge, layout[i]);

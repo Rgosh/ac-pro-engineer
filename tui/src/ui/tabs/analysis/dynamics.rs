@@ -60,7 +60,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         };
         f.render_widget(
             Gauge::default()
-                .ratio((t_tyre / 150.0).clamp(0.0, 1.0) as f64)
+                .ratio(crate::ui::widgets::safe_ratio(t_tyre as f64 / 150.0))
                 .gauge_style(Style::default().fg(t_color))
                 .label(format!("T:{:.0}", t_tyre)),
             row[1],
@@ -73,7 +73,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         };
         f.render_widget(
             Gauge::default()
-                .ratio((t_brake / 1000.0).clamp(0.0, 1.0) as f64)
+                .ratio(crate::ui::widgets::safe_ratio(t_brake as f64 / 1000.0))
                 .gauge_style(Style::default().fg(b_color))
                 .label(format!("B:{:.0}", t_brake)),
             row[2],

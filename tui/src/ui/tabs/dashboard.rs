@@ -145,7 +145,7 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     f.render_widget(
         LineGauge::default()
-            .ratio(rpm_ratio as f64)
+            .ratio(crate::ui::widgets::safe_ratio(rpm_ratio as f64))
             .label(label_text)
             .gauge_style(gauge_style),
         layout[0],
@@ -310,7 +310,7 @@ fn render_mini_bar(f: &mut Frame<'_>, area: Rect, label: &str, val: f32, color: 
     let gauge = LineGauge::default()
         .block(Block::default().padding(Padding::new(1, 1, 0, 0)))
         .gauge_style(Style::default().fg(color))
-        .ratio(val.clamp(0.0, 1.0) as f64)
+        .ratio(crate::ui::widgets::safe_ratio(val as f64))
         .label(label);
     f.render_widget(gauge, area);
 }

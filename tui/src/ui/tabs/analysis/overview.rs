@@ -220,7 +220,7 @@ pub fn render(
         Gauge::default()
             .block(Block::default())
             .gauge_style(Style::default().fg(color))
-            .ratio(val / 100.0)
+            .ratio(crate::ui::widgets::safe_ratio(val / 100.0))
             .label(format!("{}: {:.0}/100", label, val))
     };
 

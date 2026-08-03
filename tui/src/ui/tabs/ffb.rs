@@ -220,7 +220,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
 
     f.render_widget(
         Gauge::default()
-            .ratio(last_gas.clamp(0.0, 1.0))
+            .ratio(crate::ui::widgets::safe_ratio(last_gas))
             .gauge_style(Style::default().fg(Color::Green))
             .label(format!("GAS {:.0}%", last_gas * 100.0)),
         bars_area[1],
@@ -228,7 +228,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
 
     f.render_widget(
         Gauge::default()
-            .ratio(last_brake.clamp(0.0, 1.0))
+            .ratio(crate::ui::widgets::safe_ratio(last_brake))
             .gauge_style(Style::default().fg(Color::Red))
             .label(format!("BRK {:.0}%", last_brake * 100.0)),
         bars_area[2],
@@ -241,7 +241,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
     };
     f.render_widget(
         Gauge::default()
-            .ratio(last_ffb.abs().clamp(0.0, 1.0))
+            .ratio(crate::ui::widgets::safe_ratio(last_ffb.abs()))
             .gauge_style(Style::default().fg(ffb_bar_color))
             .label(format!("FFB {:.0}%", last_ffb.abs() * 100.0)),
         bars_area[3],
