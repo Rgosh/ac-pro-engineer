@@ -104,88 +104,76 @@ pub fn render(
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(chunks[1]);
 
-    let best_s1 = app
-        .analyzer
-        .laps
-        .iter()
-        .filter(|l| l.valid)
-        .map(|l| l.sectors[0])
-        .min()
-        .unwrap_or(0);
-    let best_s2 = app
-        .analyzer
-        .laps
-        .iter()
-        .filter(|l| l.valid)
-        .map(|l| l.sectors[1])
-        .min()
-        .unwrap_or(0);
-    let best_s3 = app
-        .analyzer
-        .laps
-        .iter()
-        .filter(|l| l.valid)
-        .map(|l| l.sectors[2])
-        .min()
-        .unwrap_or(0);
-    let theoretical_best = best_s1 + best_s2 + best_s3;
+    // Taken from the analyzer rather than recomputed here. The local version
+    // was a plain `.min()` over the raw sector values, which includes the
+    // zeroes left by a lap whose split was never captured and by the unused
+    // third slot of a two-sector track — so a single such lap pinned that
+    // best sector to 0.000 and made the theoretical best a number no car
+    // could set.
+    let best = app.analyzer.best_sectors_ms();
+    let theoretical_best = app.analyzer.theoretical_best_lap_ms();
 
-    let sec_rows = vec![
-        Row::new(vec![
-            Cell::from("S1"),
-            Cell::from(format!("{:.3}", lap.sectors[0] as f64 / 1000.0)),
-            Cell::from(format!("{:.3}", best_s1 as f64 / 1000.0))
-                .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!("{:.3}", (lap.sectors[0] - best_s1) as f64 / 1000.0)).style(
-                Style::default().fg(if lap.sectors[0] <= best_s1 {
-                    Color::Green
+    // A sector with no recorded best, and the lap-vs-best columns that depend
+    // on one, render as a dash. Printing 0.000 there would read as a sector
+    // time rather than as an absence.
+    const NO_TIME: &str = "  ---";
+    let secs = |ms: i32| format!("{:.3}", ms as f64 / 1000.0);
+
+    let mut sec_rows: Vec<Row<'_>> = (0..3)
+        .map(|i| {
+            let driven = lap.sectors[i];
+            let (best_cell, diff_cell) = match best[i] {
+                Some(best_ms) => (
+                    Cell::from(secs(best_ms)).style(Style::default().fg(Color::Cyan)),
+                    Cell::from(secs(driven - best_ms)).style(Style::default().fg(
+                        if driven <= best_ms {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        },
+                    )),
+                ),
+                None => (
+                    Cell::from(NO_TIME).style(Style::default().fg(Color::DarkGray)),
+                    Cell::from(NO_TIME).style(Style::default().fg(Color::DarkGray)),
+                ),
+            };
+
+            Row::new(vec![
+                Cell::from(format!("S{}", i + 1)),
+                Cell::from(if driven > 0 {
+                    secs(driven)
                 } else {
-                    Color::Red
+                    NO_TIME.to_string()
                 }),
-            ),
-        ]),
-        Row::new(vec![
-            Cell::from("S2"),
-            Cell::from(format!("{:.3}", lap.sectors[1] as f64 / 1000.0)),
-            Cell::from(format!("{:.3}", best_s2 as f64 / 1000.0))
-                .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!("{:.3}", (lap.sectors[1] - best_s2) as f64 / 1000.0)).style(
-                Style::default().fg(if lap.sectors[1] <= best_s2 {
-                    Color::Green
-                } else {
-                    Color::Red
-                }),
-            ),
-        ]),
-        Row::new(vec![
-            Cell::from("S3"),
-            Cell::from(format!("{:.3}", lap.sectors[2] as f64 / 1000.0)),
-            Cell::from(format!("{:.3}", best_s3 as f64 / 1000.0))
-                .style(Style::default().fg(Color::Cyan)),
-            Cell::from(format!("{:.3}", (lap.sectors[2] - best_s3) as f64 / 1000.0)).style(
-                Style::default().fg(if lap.sectors[2] <= best_s3 {
-                    Color::Green
-                } else {
-                    Color::Red
-                }),
-            ),
-        ]),
-        Row::new(vec![
-            Cell::from(if is_ru {
-                "Теор. Оптим."
-            } else {
-                "Optimal"
-            }),
-            Cell::from("----"),
-            Cell::from(format!("{:.3}", theoretical_best as f64 / 1000.0))
-                .style(Style::default().fg(Color::Magenta)),
-            Cell::from(format!(
-                "{:.3}",
-                (lap.lap_time_ms - theoretical_best) as f64 / 1000.0
-            ))
-            .style(Style::default().fg(Color::Yellow)),
-        ]),
-    ];
+                best_cell,
+                diff_cell,
+            ])
+        })
+        .collect();
+
+    let (optimal_cell, optimal_diff) = match theoretical_best {
+        Some(best_ms) => (
+            Cell::from(secs(best_ms)).style(Style::default().fg(Color::Magenta)),
+            Cell::from(secs(lap.lap_time_ms - best_ms)).style(Style::default().fg(Color::Yellow)),
+        ),
+        // Every sector needs a time before the sum means anything.
+        None => (
+            Cell::from(NO_TIME).style(Style::default().fg(Color::DarkGray)),
+            Cell::from(NO_TIME).style(Style::default().fg(Color::DarkGray)),
+        ),
+    };
+
+    sec_rows.push(Row::new(vec![
+        Cell::from(if is_ru {
+            "Теор. Оптим."
+        } else {
+            "Optimal"
+        }),
+        Cell::from("----"),
+        optimal_cell,
+        optimal_diff,
+    ]));
 
     let sec_table = Table::new(sec_rows, [Constraint::Ratio(1, 4); 4])
         .header(
