@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{error, info};
 // Only the non-Windows apply path logs at warn level.
 #[cfg(not(target_os = "windows"))]
@@ -374,6 +374,9 @@ pub struct Updater {
     pub status: Arc<Mutex<UpdateStatus>>,
     pub releases: Arc<Mutex<Vec<RemoteVersion>>>,
     pub selected_index: Arc<Mutex<usize>>,
+    /// When the last check was started, so a retry cannot be triggered on
+    /// every frame the user sits on the UPDATE item.
+    last_check: Arc<Mutex<Instant>>,
 }
 
 impl Default for Updater {
@@ -382,16 +385,50 @@ impl Default for Updater {
     }
 }
 
+/// How long a failed or empty check has to be left alone before the launcher
+/// is allowed to ask GitHub again.
+const RECHECK_INTERVAL: Duration = Duration::from_secs(60);
+
 impl Updater {
     pub fn new() -> Self {
         let updater = Self {
             status: Arc::new(Mutex::new(UpdateStatus::Idle)),
             releases: Arc::new(Mutex::new(Vec::new())),
             selected_index: Arc::new(Mutex::new(0)),
+            last_check: Arc::new(Mutex::new(Instant::now())),
         };
 
         updater.check_for_updates();
         updater
+    }
+
+    /// Ask GitHub again if the last attempt left us with nothing usable.
+    ///
+    /// The only check ran from `new()`, so a machine that was offline at
+    /// startup — or behind a captive portal, which is the common case on a
+    /// laptop — kept `Error` and an empty carousel for the rest of the
+    /// session, with no way to retry short of restarting the app.
+    ///
+    /// A check that succeeded is left alone: re-polling the API while the user
+    /// scrolls a menu buys nothing and burns their rate limit.
+    pub fn recheck_if_stale(&self) {
+        let needs_retry = {
+            let status = self.status.lock().unwrap_or_else(|e| e.into_inner());
+            matches!(*status, UpdateStatus::Error(_) | UpdateStatus::Idle)
+        };
+        if !needs_retry {
+            return;
+        }
+
+        {
+            let mut last = self.last_check.lock().unwrap_or_else(|e| e.into_inner());
+            if last.elapsed() < RECHECK_INTERVAL {
+                return;
+            }
+            *last = Instant::now();
+        }
+
+        self.check_for_updates();
     }
 
     fn safe_lock<T, F>(&self, mutex: &Mutex<T>, f: F)
@@ -1286,6 +1323,7 @@ mod tests {
                 release("v0.2.3", false),
             ]))),
             selected_index: Arc::new(Mutex::new(0)),
+            last_check: Arc::new(Mutex::new(Instant::now())),
         };
 
         let selected = || {

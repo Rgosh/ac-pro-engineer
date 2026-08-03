@@ -174,6 +174,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
             app.tick();
 
+            // Sitting on the UPDATE item is the one moment the release list
+            // matters, so it is where a check that failed at startup gets
+            // another go. Debounced inside the updater, so holding the
+            // selection here does not hammer the API.
+            if app.launcher_selection == 5 {
+                app.updater.recheck_if_stale();
+            }
+
             app.overlay_manager.render_manual_state();
 
             terminal.draw(|f| renderer.render(f, &app))?;
