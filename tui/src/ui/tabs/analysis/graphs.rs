@@ -29,7 +29,11 @@ pub fn render(
         ])
         .split(area);
 
-    let mut delta_data = vec![];
+    // Cached on the pair of lap numbers. Both laps are finished, so the series
+    // cannot change between frames — and computing it resamples two traces of
+    // up to 7200 points, cloning and sorting each.
+    let mut cache = app.ui_state.analysis.delta_cache.borrow_mut();
+    let mut delta_data: Vec<(f64, f64)> = Vec::new();
     let mut has_delta = false;
 
     if let Some(bl) = best_lap
@@ -37,12 +41,17 @@ pub fn render(
         && !lap.telemetry_trace.is_empty()
         && !bl.telemetry_trace.is_empty()
     {
-        delta_data = ac_core::analyzer::LapComparison::delta_by_distance(
-            &lap.telemetry_trace,
-            &bl.telemetry_trace,
-            0.002,
-        );
-        has_delta = !delta_data.is_empty();
+        let series = cache.get_or_compute(lap.lap_number, bl.lap_number, || {
+            ac_core::analyzer::LapComparison::delta_by_distance(
+                &lap.telemetry_trace,
+                &bl.telemetry_trace,
+                0.002,
+            )
+        });
+        has_delta = !series.is_empty();
+        if has_delta {
+            delta_data = series.to_vec();
+        }
     }
 
     if !has_delta {
@@ -52,6 +61,7 @@ pub fn render(
             .map(|p| (p.time_ms as f64 / 1000.0, 0.0))
             .collect();
     }
+    drop(cache);
 
     let delta_chart = Chart::new(vec![
         Dataset::default()
