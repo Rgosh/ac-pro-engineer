@@ -263,6 +263,10 @@ pub struct AppState {
     pub analyzer: TelemetryAnalyzer,
     pub ui_state: UIState,
     pub overlay_manager: OverlayManager,
+    /// Publishes frames to the in-game Lua overlay, when the shared block
+    /// could be opened. `None` is not worth stopping for — the overlay simply
+    /// never appears, and everything else works.
+    pub overlay_writer: Option<ac_core::overlay::shared_writer::OverlayWriter>,
     pub stage: AppStage,
     pub launcher_selection: usize,
     pub is_game_running: bool,
@@ -344,6 +348,13 @@ impl AppState {
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
             overlay_manager,
+            overlay_writer: match ac_core::overlay::shared_writer::OverlayWriter::open() {
+                Ok(writer) => Some(writer),
+                Err(error) => {
+                    info!(error = ?error, "In-game overlay unavailable");
+                    None
+                }
+            },
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
@@ -594,6 +605,7 @@ impl AppState {
         }
 
         self.overlay_manager.update(&self.session_info);
+        self.publish_overlay_frame(&phys, &gfx);
 
         // Sector splits are captured on the transition *out* of a sector,
         // when AC publishes the one just finished in `last_sector_time`. The
@@ -816,6 +828,78 @@ impl AppState {
         let remainder = lap_time_ms - earlier;
         if remainder > ac_core::analyzer::MIN_VALID_SECTOR_MS && remainder < lap_time_ms {
             self.current_lap_sectors[final_idx] = remainder;
+        }
+    }
+
+    /// Pack the current state into an overlay frame and publish it.
+    ///
+    /// Everything here is a copy of an already-computed value: the overlay
+    /// draws on AC's render thread, so no work that can be done on this side
+    /// belongs on that one.
+    fn publish_overlay_frame(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
+        use ac_core::overlay::frame::{OverlayFrame, flags};
+
+        let Some(writer) = self.overlay_writer.as_mut() else {
+            return;
+        };
+
+        let mut frame = OverlayFrame::empty();
+
+        frame.speed_kmh = phys.speed_kmh;
+        frame.rpm = phys.rpms;
+        // AC encodes reverse as 0 and neutral as 1. Translated here so the
+        // overlay does not have to know that.
+        frame.gear = phys.gear - 1;
+        frame.fuel_litres = phys.fuel;
+        frame.air_temp_c = phys.air_temp;
+        frame.road_temp_c = phys.road_temp;
+        frame.surface_grip = gfx.surface_grip;
+
+        frame.tyre_pressure_psi = phys.wheels_pressure;
+        frame.tyre_wear_percent = phys.tyre_wear;
+        frame.brake_temp_c = phys.brake_temp;
+        for i in 0..4 {
+            frame.tyre_temp_c[i] =
+                (phys.tyre_temp_i[i] + phys.tyre_temp_m[i] + phys.tyre_temp_o[i]) / 3.0;
+        }
+
+        frame.last_lap_ms = gfx.i_last_time;
+        frame.best_lap_ms = gfx.i_best_time;
+        frame.current_lap_ms = gfx.i_current_time;
+        frame.position = gfx.position;
+
+        frame.fuel_laps_remaining = self.engineer.stats.fuel_laps_remaining;
+        frame.fuel_per_lap = self.engineer.stats.fuel_consumption_rate;
+        frame.delta_seconds = self.engineer.stats.current_delta;
+
+        frame.apply_session(&self.session_info);
+
+        frame.set_flag(flags::PIT_LIMITER, phys.pit_limiter_on != 0);
+        frame.set_flag(flags::CONNECTED, self.is_connected);
+        frame.set_flag(
+            flags::SHOW_TELEMETRY,
+            self.overlay_manager.state.show_telemetry,
+        );
+        frame.set_flag(
+            flags::SHOW_ENGINEER,
+            self.overlay_manager.state.show_engineer,
+        );
+        frame.set_flag(
+            flags::FUEL_WARNING,
+            self.engineer.stats.fuel_laps_remaining > 0.0
+                && self.engineer.stats.fuel_laps_remaining < self.config.alerts.fuel_warning_laps,
+        );
+
+        frame.set_messages(&self.recommendations);
+
+        writer.publish(&frame);
+    }
+
+    /// Tell the overlay we are going away, so it hides at once rather than
+    /// holding the last frame until its liveness timeout expires.
+    pub fn shutdown_overlay(&mut self) {
+        if let Some(writer) = self.overlay_writer.as_mut() {
+            writer.publish_shutdown();
         }
     }
 

@@ -783,6 +783,11 @@ async fn main() -> Result<(), anyhow::Error> {
         };
     }
 
+    // Before anything else on the way out: the in-game overlay watches for
+    // this and hides, rather than leaving the last frame on screen looking
+    // live.
+    app.shutdown_overlay();
+
     app.record_manager.save();
 
     // The Settings tab describes this toggle as "save settings on exit", and
