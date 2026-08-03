@@ -319,3 +319,15 @@ impl AcPhysics {
         }
     }
 }
+
+impl crate::memory::Versioned for AcPhysics {
+    fn packet_id(&self) -> i32 {
+        self.packet_id
+    }
+}
+
+impl crate::memory::Versioned for AcGraphics {
+    fn packet_id(&self) -> i32 {
+        self.packet_id
+    }
+}

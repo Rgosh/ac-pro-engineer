@@ -161,13 +161,16 @@ impl Memory {
     }
 
     pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // These two are rewritten by the game while we read them, so they go
+        // through the tear-checking read. The static page is written once at
+        // session load and does not need it.
         self.ac_physics = self
             .physics_mem
-            .get()
+            .get_stable()
             .map_err(|e| anyhow::format_err!("Cannot read physics: {e:?}"))?;
         self.ac_graphics = self
             .graphics_mem
-            .get()
+            .get_stable()
             .map_err(|e| anyhow::format_err!("Cannot read graphics: {e:?}"))?;
         self.ac_static = self
             .static_mem
