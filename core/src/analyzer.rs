@@ -25,7 +25,9 @@ pub struct LapData {
 
     pub max_speed: f32,
     pub avg_speed: f32,
-    pub avg_pressure: f32,
+    /// Mean tyre pressure over the samples above the speed gate. `None`
+    /// when the lap never got up to speed, so nothing was measured.
+    pub avg_pressure: Option<f32>,
     pub min_corner_speed_avg: f32,
     pub fuel_used: f32,
     pub gear_shifts: i32,
@@ -34,7 +36,9 @@ pub struct LapData {
 
     pub avg_tyre_temp: [f32; 4],
     pub max_brake_temp: [f32; 4],
-    pub pressure_deviation: f32,
+    /// Mean absolute deviation from the target pressure, over the same
+    /// samples as [`LapData::avg_pressure`]. `None` for the same reason.
+    pub pressure_deviation: Option<f32>,
     pub suspension_travel_hist: [f32; 4],
 
     #[serde(default)]
@@ -551,9 +555,17 @@ impl TelemetryAnalyzer {
             sum_susp_travel[3] / safe_div_len,
         ];
 
+        // Pressure metrics only count samples above the speed gate, so a lap
+        // that never got up to speed — an out-lap, a wet crawl, a spin and
+        // recovery — has no samples at all. Dividing by a floor of 1 in that
+        // case gave 0.0 psi and a deviation of 0.0, which then scored a
+        // *perfect* 100 on tyre management: an out-lap rated better than a
+        // hot lap. `None` means "not measured" and is rendered as a dash.
+        let has_pressure_samples = pressure_sample_frames > 0;
         let pressure_sample_count = (pressure_sample_frames as f32 * 4.0).max(1.0);
-        let pressure_deviation = press_dev_acc / pressure_sample_count;
-        let avg_pressure = press_sum / pressure_sample_count;
+        let pressure_deviation =
+            has_pressure_samples.then(|| press_dev_acc / pressure_sample_count);
+        let avg_pressure = has_pressure_samples.then(|| press_sum / pressure_sample_count);
 
         let avg_wheels_pressure = [
             sum_wheels_pressure[0] / safe_div_len,
@@ -605,7 +617,12 @@ impl TelemetryAnalyzer {
             100.0
         };
 
-        let tyre_score = (100.0 - pressure_deviation * 20.0).clamp(0.0, 100.0);
+        // With nothing measured, sit at the neutral middle rather than claim a
+        // perfect score.
+        let tyre_score = match pressure_deviation {
+            Some(dev) => (100.0 - dev * 20.0).clamp(0.0, 100.0),
+            None => 50.0,
+        };
 
         let radar = RadarStats {
             smoothness: (throttle_smoothness + steering_smoothness) / 2.0 / 100.0,
@@ -767,21 +784,23 @@ impl TelemetryAnalyzer {
     pub fn analyze_standalone(&self, lap: &LapData, _lang: &Language) -> StandaloneAnalysis {
         let mut advices = Vec::new();
 
-        if lap.pressure_deviation > 0.5 {
+        if lap.pressure_deviation.is_some_and(|dev| dev > 0.5)
+            && let Some(avg_pressure) = lap.avg_pressure
+        {
             let target = 27.5;
-            let diff = lap.avg_pressure - target;
+            let diff = avg_pressure - target;
 
             if diff > 0.5 {
                 advices.push(Advice {
                     zone: "Tyres".into(),
-                    problem: format!("Pressure High: {:.1} psi", lap.avg_pressure),
+                    problem: format!("Pressure High: {:.1} psi", avg_pressure),
                     solution: format!("Deflate tyres by {:.1} psi.", diff),
                     severity: 3,
                 });
             } else if diff < -0.5 {
                 advices.push(Advice {
                     zone: "Tyres".into(),
-                    problem: format!("Pressure Low: {:.1} psi", lap.avg_pressure),
+                    problem: format!("Pressure Low: {:.1} psi", avg_pressure),
                     solution: format!("Inflate tyres by {:.1} psi.", diff.abs()),
                     severity: 3,
                 });
@@ -980,8 +999,47 @@ mod tests {
         );
 
         let lap = analyzer.laps.last().expect("lap should be recorded");
-        assert!((lap.avg_pressure - 28.0).abs() < f32::EPSILON);
-        assert!((lap.pressure_deviation - 0.5).abs() < f32::EPSILON);
+        let avg = lap.avg_pressure.expect("a high-speed sample was measured");
+        let dev = lap
+            .pressure_deviation
+            .expect("a high-speed sample was measured");
+        assert!((avg - 28.0).abs() < f32::EPSILON);
+        assert!((dev - 0.5).abs() < f32::EPSILON);
+    }
+
+    /// A lap that never got above the speed gate has nothing to measure. It
+    /// used to report 0.0 psi and, because the deviation was also 0.0, a
+    /// *perfect* tyre-management score — so an out-lap rated better than a
+    /// hot lap.
+    #[test]
+    fn a_lap_with_no_high_speed_samples_reports_no_pressure() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let crawling = AcPhysics {
+            speed_kmh: 30.0,
+            wheels_pressure: [20.0; 4],
+            ..Default::default()
+        };
+
+        analyzer.process_lap(
+            1,
+            90_000,
+            &[crawling, crawling],
+            &[AcGraphics::default()],
+            [0, 0, 0],
+            "test_car".to_string(),
+            "test_track".to_string(),
+            27.5,
+            16,
+        );
+
+        let lap = analyzer.laps.last().expect("lap should be recorded");
+        assert_eq!(lap.avg_pressure, None);
+        assert_eq!(lap.pressure_deviation, None);
+        assert!(
+            (lap.radar_stats.tyre_mgmt - 0.5).abs() < f32::EPSILON,
+            "unmeasured should sit at neutral, not perfect: {}",
+            lap.radar_stats.tyre_mgmt
+        );
     }
 
     #[test]
