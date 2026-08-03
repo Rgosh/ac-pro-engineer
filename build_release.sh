@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION="v0.2.3"
+# Read from the workspace manifest rather than duplicated here. This was
+# hardcoded and two releases out of date, so every bundle it produced was
+# named after the wrong version.
+VERSION="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
 RELEASE_DIR="releases"
 BUNDLE_NAME="ac_pro_engineer_${VERSION}"
 BUNDLE_DIR="${RELEASE_DIR}/${BUNDLE_NAME}"

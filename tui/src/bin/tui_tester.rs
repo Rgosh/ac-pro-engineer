@@ -58,8 +58,11 @@ fn buffer_to_svg(
 
     // Window Title Text
     svg.push_str(&format!(
-        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.2.3 — High-Performance Sim Telemetry Suite</text>"##,
-        total_w / 2
+        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v{} — High-Performance Sim Telemetry Suite</text>"##,
+        total_w / 2,
+        // Was hardcoded to v0.2.3, so every screenshot in the README claimed
+        // a version two releases old.
+        ac_core::updater::CURRENT_VERSION
     ));
     svg.push('\n');
 
@@ -405,7 +408,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  [OK] Rendered Analysis_Radar.svg");
 
     // 5. Help_Modal.svg
-    app.ui_state.show_help = true;
+    // AppState::show_help, not UIState::show_help. The renderer checks the
+    // former; the latter was read by nothing, which is why every generated
+    // Help_Modal.svg was byte-identical to the screenshot before it.
+    app.show_help = true;
     terminal.draw(|f| renderer.render(f, &app))?;
     buffer_to_svg(
         terminal.backend().buffer(),
@@ -413,7 +419,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         height,
         &screenshot_dir.join("Help_Modal.svg"),
     )?;
-    app.ui_state.show_help = false;
+    app.show_help = false;
     println!("  [OK] Rendered Help_Modal.svg");
 
     // 6. Overlay_Control.svg

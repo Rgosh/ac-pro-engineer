@@ -60,10 +60,10 @@ jobs:
           key: ${{ matrix.name }}
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   # The release profile enables LTO and is only otherwise exercised when a tag
   # is pushed. Prove it links before release day. Kept off pull requests so
@@ -87,4 +87,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.name }}
-      - run: cargo build --workspace --release
+      - run: cargo build --workspace --release --locked

@@ -13,7 +13,6 @@ pub mod widgets;
 pub struct UIState {
     pub theme: ac_core::config::Theme,
     pub layout_mode: LayoutMode,
-    pub show_help: bool,
     pub blink_state: bool,
     pub overlay_mode: bool,
     pub last_blink: std::time::Instant,
@@ -48,7 +47,6 @@ impl UIState {
         Self {
             theme: ac_core::config::Theme::default(),
             layout_mode: LayoutMode::Auto,
-            show_help: false,
             blink_state: false,
             overlay_mode: false,
             last_blink: std::time::Instant::now(),
