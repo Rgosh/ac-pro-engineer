@@ -72,6 +72,61 @@ impl UIState {
     }
 }
 
+/// Below this the tabs have no room to lay out. Every panel in the app sizes
+/// itself off the frame, and several position widgets by subtracting a
+/// constant from the width — arithmetic that has nowhere to go once the
+/// terminal is smaller than the constant. Refusing to draw is the one
+/// behaviour that cannot be wrong at any size.
+pub const MIN_TERMINAL_WIDTH: u16 = 80;
+pub const MIN_TERMINAL_HEIGHT: u16 = 20;
+
+/// What to show instead. Deliberately built from nothing but `Paragraph` and
+/// centring arithmetic that saturates, because this is the path that has to
+/// survive the sizes the rest of the UI cannot.
+fn render_too_small(f: &mut Frame<'_>, app: &AppState) {
+    let size = f.size();
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+
+    let lines = vec![
+        Line::from(Span::styled(
+            if is_ru {
+                "ОКНО СЛИШКОМ МАЛЕНЬКОЕ"
+            } else {
+                "TERMINAL TOO SMALL"
+            },
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(format!("{} x {}", size.width, size.height)),
+        Line::from(Span::styled(
+            format!("min {} x {}", MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            if is_ru { "Увеличьте окно" } else { "Resize to continue" },
+            Style::default().fg(Color::Yellow),
+        )),
+    ];
+
+    // Centre vertically without ever producing a y past the frame.
+    let text_height = lines.len() as u16;
+    let y = size.y + size.height.saturating_sub(text_height) / 2;
+    let area = Rect {
+        x: size.x,
+        y,
+        width: size.width,
+        height: size.height.saturating_sub(y.saturating_sub(size.y)),
+    };
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
 pub struct UIRenderer;
 
 impl Default for UIRenderer {
@@ -86,6 +141,11 @@ impl UIRenderer {
     }
 
     pub fn render(&self, f: &mut Frame<'_>, app: &AppState) {
+        if f.size().width < MIN_TERMINAL_WIDTH || f.size().height < MIN_TERMINAL_HEIGHT {
+            render_too_small(f, app);
+            return;
+        }
+
         match app.stage {
             AppStage::Launcher => launcher::render(f, f.size(), app),
             AppStage::Running => {

@@ -137,12 +137,24 @@ async fn main() -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        SetSize(140, 40)
-    )?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    // Ask for more room only when the terminal has less than the UI needs.
+    // This used to be an unconditional SetSize(140, 40), which shrank the
+    // window of anyone running maximised and never put it back on exit.
+    // Terminals are free to ignore the request either way, which is why the
+    // renderer has its own too-small guard rather than relying on this.
+    const PREFERRED_COLS: u16 = 140;
+    const PREFERRED_ROWS: u16 = 40;
+    if let Ok((cols, rows)) = crossterm::terminal::size()
+        && (cols < PREFERRED_COLS || rows < PREFERRED_ROWS)
+    {
+        execute!(
+            stdout,
+            SetSize(cols.max(PREFERRED_COLS), rows.max(PREFERRED_ROWS))
+        )
+        .ok();
+    }
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
