@@ -779,11 +779,14 @@ fn render_sector_advice(
                 Span::styled(
                     if is_ru {
                         format!(
-                            " Сильный градиент температуры ({:.0}°C).",
-                            front_camber_diff
+                            " Сильный градиент температуры ({}).",
+                            fmt.format_temp_delta(front_camber_diff)
                         )
                     } else {
-                        format!(" High tyre temp gradient ({:.0}°C).", front_camber_diff)
+                        format!(
+                            " High tyre temp gradient ({}).",
+                            fmt.format_temp_delta(front_camber_diff)
+                        )
                     },
                     Style::default().fg(Color::Yellow),
                 ),

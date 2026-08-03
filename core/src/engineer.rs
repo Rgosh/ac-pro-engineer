@@ -961,6 +961,7 @@ impl Engineer {
         if phys.speed_kmh < 50.0 {
             return;
         }
+        let fmt = self.config.formatter();
         let ideal_spread = 8.0;
 
         for i in 0..4 {
@@ -1016,20 +1017,30 @@ impl Engineer {
                         "Camber".to_string()
                     },
                     severity: Severity::Info,
+                    // The message hardcoded "C" while the parameter beside it
+                    // was labelled with the configured symbol, so with
+                    // Fahrenheit selected the user saw a Celsius number
+                    // labelled °F. A spread is a difference, so it converts
+                    // by scale only -- `format_temp` would add 32.
                     message: if ru {
                         format!(
-                            "{} Пятно контакта не эффективно (I-O: {:.1}C)",
-                            name, spread
+                            "{} Пятно контакта не эффективно (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
                         )
                     } else {
-                        format!("{} Contact patch inefficient (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Contact patch inefficient (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     },
                     action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
-                        current: spread,
-                        target: ideal_spread,
-                        unit: self.config.formatter().temp_symbol().to_string(),
+                        current: fmt.temp_delta_val(spread),
+                        target: fmt.temp_delta_val(ideal_spread),
+                        unit: fmt.temp_symbol().to_string(),
                     }],
                     confidence: 0.7,
                 });
@@ -1074,16 +1085,24 @@ impl Engineer {
                     },
                     severity: Severity::Warning,
                     message: if ru {
-                        format!("{} Перегрев внутренней части (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Перегрев внутренней части (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     } else {
-                        format!("{} Inner edge overheating (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Inner edge overheating (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     },
                     action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
-                        current: spread,
-                        target: ideal_spread,
-                        unit: self.config.formatter().temp_symbol().to_string(),
+                        current: fmt.temp_delta_val(spread),
+                        target: fmt.temp_delta_val(ideal_spread),
+                        unit: fmt.temp_symbol().to_string(),
                     }],
                     confidence: 0.8,
                 });
@@ -1211,10 +1230,23 @@ impl Engineer {
                         "Overheat".to_string()
                     },
                     severity: Severity::Critical,
-                    message: if ru {
-                        format!("Тормоз {} горит!", i + 1)
-                    } else {
-                        format!("Brake {} cooking!", i + 1)
+                    // FL/FR/RL/RR, matching every neighbouring alert. This
+                    // said "Brake 1" through "Brake 4", which is the only
+                    // place in the app that numbers the corners and leaves
+                    // the driver to work out which wheel that is.
+                    message: {
+                        let corner = match i {
+                            0 => "FL",
+                            1 => "FR",
+                            2 => "RL",
+                            3 => "RR",
+                            _ => "",
+                        };
+                        if ru {
+                            format!("Тормоз {} горит!", corner)
+                        } else {
+                            format!("Brake {} cooking!", corner)
+                        }
                     },
                     action: if ru {
                         "Сместить баланс / Охладить".to_string()

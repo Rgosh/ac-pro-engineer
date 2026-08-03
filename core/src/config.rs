@@ -363,6 +363,24 @@ impl UnitFormatter {
         }
     }
 
+    /// Convert a temperature *difference*.
+    ///
+    /// A delta is not a temperature: only the scale factor applies, never the
+    /// +32 offset. A 10 °C spread is an 18 °F spread, not a 50 °F one. Passing
+    /// a difference through [`Self::temp_val`] would be wrong by 32 degrees
+    /// every time.
+    pub fn temp_delta_val(&self, delta_c: f32) -> f32 {
+        match self.temp_unit {
+            TempUnit::Celsius => delta_c,
+            TempUnit::Fahrenheit => delta_c * 1.8,
+        }
+    }
+
+    /// Format a temperature difference in the configured unit.
+    pub fn format_temp_delta(&self, delta_c: f32) -> String {
+        format!("{:.0}{}", self.temp_delta_val(delta_c), self.temp_symbol())
+    }
+
     /// Convert user input threshold in configured temp unit back to native Celsius.
     pub fn temp_to_celsius(&self, val: f32) -> f32 {
         match self.temp_unit {
@@ -657,6 +675,21 @@ mod tests {
         assert_eq!(config.history_size, 10000);
         assert_eq!(config.fuel_safety_margin, 0.0);
         assert_eq!(config.alerts.fuel_warning_laps, 20.0);
+    }
+
+    /// A temperature difference converts by scale only. Passing it through
+    /// `temp_val` would add 32 and report a 10 degree spread as 50.
+    #[test]
+    fn a_temperature_delta_converts_without_the_offset() {
+        let fahrenheit = UnitFormatter::new(PressureUnit::Psi, TempUnit::Fahrenheit);
+        assert_eq!(fahrenheit.temp_delta_val(10.0), 18.0);
+        assert_eq!(fahrenheit.format_temp_delta(10.0), "18°F");
+        // For contrast, the same number read as an absolute temperature.
+        assert_eq!(fahrenheit.temp_val(10.0), 50.0);
+
+        let celsius = UnitFormatter::new(PressureUnit::Psi, TempUnit::Celsius);
+        assert_eq!(celsius.temp_delta_val(10.0), 10.0);
+        assert_eq!(celsius.format_temp_delta(10.0), "10°C");
     }
 
     #[test]
