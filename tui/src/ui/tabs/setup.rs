@@ -3,7 +3,18 @@ use crate::ui::localization::tr;
 use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
 
+/// Narrowest area this tab can lay out. Below it the status corner, the hint
+/// line and the two columns all overlap, and the arithmetic that positions
+/// them starts subtracting past zero.
+const MIN_WIDTH: u16 = 24;
+/// The block borders take two rows and the hint line a third.
+const MIN_HEIGHT: u16 = 4;
+
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+        return;
+    }
+
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
 
@@ -41,7 +52,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 .alignment(Alignment::Right);
 
             let spinner_area = Rect {
-                x: area.x + area.width - 15,
+                x: area.x + area.width.saturating_sub(15),
                 y: area.y,
                 width: 14,
                 height: 1,
@@ -54,7 +65,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 .style(Style::default().fg(Color::Red))
                 .alignment(Alignment::Right);
             let err_area = Rect {
-                x: area.x + area.width - 20,
+                x: area.x + area.width.saturating_sub(20),
                 y: area.y,
                 width: 19,
                 height: 1,
@@ -90,8 +101,8 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let hint_area = Rect {
         x: area.x + 2,
-        y: area.y + area.height - 1,
-        width: area.width - 4,
+        y: area.y + area.height.saturating_sub(1),
+        width: area.width.saturating_sub(4),
         height: 1,
     };
     f.render_widget(
@@ -103,7 +114,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         x: inner.x,
         y: inner.y,
         width: inner.width,
-        height: inner.height - 1,
+        height: inner.height.saturating_sub(1),
     };
 
     if is_browser {
