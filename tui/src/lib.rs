@@ -750,6 +750,9 @@ impl AppState {
         self.current_lap_sectors = [0; 3];
         self.last_sector_index = -1;
         self.track_sector_count = DEFAULT_SECTOR_COUNT;
+        // Fuel burn measured in the previous session says nothing about the
+        // next one.
+        self.engineer.reset_fuel_tracking();
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
