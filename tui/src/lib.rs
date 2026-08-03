@@ -29,23 +29,41 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+/// Create a log file, making its directory first.
+fn open_log_file(path: &PathBuf) -> Result<File, std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    File::create(path)
+}
+
 pub fn setup_logging(
     file: Option<&PathBuf>,
     level: AppLogLevel,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let default_path = PathBuf::from("logs").join("ac_engineer.log");
+    // The app data directory first: "logs" relative to the working directory
+    // is not writable when the app is launched from a shortcut or installed
+    // under Program Files, and a failure here used to abort startup before
+    // the TUI was ever drawn.
+    let default_path = ac_core::config::app_dir()
+        .join("logs")
+        .join("ac_engineer.log");
+    let fallback_path = PathBuf::from("logs").join("ac_engineer.log");
+
     let file = match file {
-        Some(file) => file,
-        None => &default_path,
+        Some(explicit) => open_log_file(explicit)?,
+        None => match open_log_file(&default_path) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!(
+                    "Could not open {}: {error}. Falling back to {}.",
+                    default_path.display(),
+                    fallback_path.display()
+                );
+                open_log_file(&fallback_path)?
+            }
+        },
     };
-
-    if let Some(parent) = file.parent()
-        && let Err(error) = fs::create_dir_all(parent)
-    {
-        error!(error = ?error, "Cannot create log directory");
-    }
-
-    let file = File::create(file)?;
 
     let debug_log = tracing_subscriber::fmt::layer()
         .with_writer(file)

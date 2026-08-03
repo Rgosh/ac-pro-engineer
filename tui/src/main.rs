@@ -116,9 +116,14 @@ async fn main() -> Result<(), anyhow::Error> {
         OverlayMode::NativeDesktop
     };
 
-    if !args.silent {
-        setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if !args.silent
+        && let Err(error) = setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
+    {
+        // Not being able to write a log is a reason to run without one, not a
+        // reason to refuse to start. This used to abort before the TUI was
+        // drawn, so a read-only working directory looked like the app being
+        // broken.
+        eprintln!("Continuing without a log file: {error}");
     }
 
     info!("Starting application and connecting to telemetry...");
