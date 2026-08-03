@@ -1,11 +1,20 @@
 [package]
 name = "tests_suite"
 version.workspace = true
-edition = "2021"
+# Was pinned to 2021 while the rest of the workspace is on 2024, so the tests
+# compiled under different language rules than the code they exercise.
+edition.workspace = true
+# Never published; this crate exists only to hold tests.
+publish = false
 
 [dependencies]
 ac_core = { path = "../core" }
 ac_tui = { path = "../tui" }
-tokio = { version = "1", features = ["full", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # Parses captured shared-memory pages through the same call the app uses.
 zerocopy = { workspace = true }
+
+# Without this the workspace lints did not apply here, so `unwrap_used = "deny"`
+# and `panic = "deny"` were silently unenforced across the whole test suite.
+[lints]
+workspace = true
