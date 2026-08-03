@@ -185,6 +185,19 @@ pub struct CarSetup {
 }
 
 impl CarSetup {
+    /// Score needed before a local setup file is claimed to be the one loaded
+    /// in the car.
+    ///
+    /// `match_score` awards 30 for fuel, 25 for brake bias and 20 for
+    /// pressures, so the only reachable totals are 0, 20, 25, 30, 45, 50, 55
+    /// and 75. The old threshold of `> 60` therefore admitted nothing but a
+    /// perfect 3/3 — one lap's worth of burnt fuel dropped the score to 55 and
+    /// the match silently disappeared, taking the "(NOW: x%)" hints in the
+    /// brake-bias and camber advice with it.
+    ///
+    /// 45 is the first total that requires two of the three to agree.
+    pub const MIN_MATCH_SCORE: u32 = 45;
+
     pub fn match_score(
         &self,
         current_fuel: f32,
@@ -726,7 +739,7 @@ impl SetupManager {
                 continue;
             }
             let score = setup.match_score(fuel, bias, pressures);
-            if score > best_score && score > 60 {
+            if score > best_score && score >= CarSetup::MIN_MATCH_SCORE {
                 best_score = score;
                 best_idx = Some(i);
             }
@@ -1164,6 +1177,39 @@ mod tests {
             1,
             "the whole injected string stays on the single notes line"
         );
+    }
+
+    /// The reasoning behind MIN_MATCH_SCORE, pinned so a change to the
+    /// weights cannot quietly make the threshold unreachable again.
+    #[test]
+    fn match_score_totals_stay_reachable_below_a_perfect_match() {
+        let setup = CarSetup {
+            fuel: 50,
+            brake_bias: 6500,
+            pressure_lf: 27,
+            pressure_rf: 27,
+            pressure_lr: 27,
+            pressure_rr: 27,
+            ..CarSetup::default()
+        };
+
+        let perfect = setup.match_score(50.0, 65.0, &[27.0; 4]);
+        assert_eq!(perfect, 75, "all three components agree");
+
+        // Ten laps in, the fuel no longer matches but nothing about the setup
+        // has changed. This is the everyday case the old `> 60` threshold
+        // rejected.
+        let fuel_burnt = setup.match_score(20.0, 65.0, &[27.0; 4]);
+        assert_eq!(fuel_burnt, 45);
+        assert!(
+            fuel_burnt >= CarSetup::MIN_MATCH_SCORE,
+            "a setup with burnt fuel must still be recognised"
+        );
+
+        // One component alone is not enough to claim a match.
+        let only_fuel = setup.match_score(50.0, 20.0, &[10.0; 4]);
+        assert_eq!(only_fuel, 30);
+        assert!(only_fuel < CarSetup::MIN_MATCH_SCORE);
     }
 
     #[test]
