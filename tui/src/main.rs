@@ -491,6 +491,31 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
                         continue;
                     }
+                    // Ctrl+S dumps the frame that was just drawn. Handled
+                    // here rather than in a tab arm because the buffer belongs
+                    // to the terminal, not to any one screen.
+                    KeyCode::Char('s')
+                    | KeyCode::Char('S')
+                    | KeyCode::Char('ы')
+                    | KeyCode::Char('Ы')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        let size = terminal.size().unwrap_or_default();
+                        let result = save_screenshot(
+                            terminal.current_buffer_mut(),
+                            size.width,
+                            size.height,
+                            &app_lock.config.resolve_data_path(),
+                        );
+                        let message = match result {
+                            Ok(path) => format!("Screenshot: {}", path.display()),
+                            Err(error) => {
+                                error!(error = ?error, "Could not write screenshot");
+                                format!("Screenshot failed: {}", error)
+                            }
+                        };
+                        app_lock.ui_state.analysis.set_status(message);
+                    }
                     KeyCode::Char('l') | KeyCode::Char('L')
                         if key.modifiers.contains(KeyModifiers::CONTROL) =>
                     {
@@ -843,4 +868,28 @@ fn step(current: usize, total: usize, forward: bool) -> usize {
     } else {
         current.saturating_sub(1)
     }
+}
+
+/// Write the current frame to `<data>/screenshots/<timestamp>.svg`.
+///
+/// Named by timestamp so repeated presses accumulate rather than overwrite —
+/// the point is usually to capture a sequence, or something that just
+/// happened and may not happen again.
+fn save_screenshot(
+    buffer: &ratatui::buffer::Buffer,
+    width: u16,
+    height: u16,
+    data_dir: &std::path::Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = data_dir.join("screenshots");
+    std::fs::create_dir_all(&dir)?;
+
+    let name = format!(
+        "ac_pro_engineer_{}.svg",
+        chrono::Local::now().format("%Y%m%d_%H%M%S%.3f")
+    );
+    let path = dir.join(name);
+
+    ac_tui::ui::screenshot::buffer_to_svg(buffer, width, height, &path)?;
+    Ok(path)
 }

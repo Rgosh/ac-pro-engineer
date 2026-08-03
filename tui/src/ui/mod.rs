@@ -7,6 +7,7 @@ pub mod help_overlay;
 pub mod launcher;
 pub mod localization;
 pub mod overlay;
+pub mod screenshot;
 pub mod tabs;
 pub mod widgets;
 
