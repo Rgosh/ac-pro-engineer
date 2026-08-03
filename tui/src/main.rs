@@ -8,7 +8,7 @@ use ac_tui::ui::UIRenderer;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
-    event::{self, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, SetSize, enable_raw_mode},
 };
@@ -156,7 +156,11 @@ async fn main() -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // Mouse capture is deliberately not enabled. It was, and nothing ever
+    // handled an `Event::Mouse` — the only effect was to take selection and
+    // copy away from the user's terminal, which is how anyone gets a log line
+    // or a lap time out of a TUI. Enabling it again means handling the events.
+    execute!(stdout, EnterAlternateScreen)?;
 
     // Ask for more room only when the terminal has less than the UI needs.
     // This used to be an unconditional SetSize(140, 40), which shrank the
@@ -367,7 +371,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     app_lock.config.update_rate
                 };
                 std::thread::sleep(Duration::from_millis(rate));
-                bg_app.safe_lock().tick();
+                let mut app_lock = bg_app.safe_lock();
+                app_lock.tick();
+                app_lock.perf.last_tick = Instant::now();
             }
         });
 
@@ -389,6 +395,10 @@ async fn main() -> Result<(), anyhow::Error> {
                         ac_tui::ui::overlay::render(f, f.size(), &app_lock);
                     }
                 })?;
+
+                // Measured around the draw only, so it reports the cost of
+                // rendering rather than the frame budget the loop sleeps out.
+                app_lock.perf.frame_time = start.elapsed();
             }
 
             if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?
@@ -490,6 +500,31 @@ async fn main() -> Result<(), anyhow::Error> {
                             app_lock.disconnect();
                         }
                         continue;
+                    }
+                    // Ctrl+S dumps the frame that was just drawn. Handled
+                    // here rather than in a tab arm because the buffer belongs
+                    // to the terminal, not to any one screen.
+                    KeyCode::Char('s')
+                    | KeyCode::Char('S')
+                    | KeyCode::Char('ы')
+                    | KeyCode::Char('Ы')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        let size = terminal.size().unwrap_or_default();
+                        let result = save_screenshot(
+                            terminal.current_buffer_mut(),
+                            size.width,
+                            size.height,
+                            &app_lock.config.resolve_data_path(),
+                        );
+                        let message = match result {
+                            Ok(path) => format!("Screenshot: {}", path.display()),
+                            Err(error) => {
+                                error!(error = ?error, "Could not write screenshot");
+                                format!("Screenshot failed: {}", error)
+                            }
+                        };
+                        app_lock.ui_state.analysis.set_status(message);
                     }
                     KeyCode::Char('l') | KeyCode::Char('L')
                         if key.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -843,4 +878,28 @@ fn step(current: usize, total: usize, forward: bool) -> usize {
     } else {
         current.saturating_sub(1)
     }
+}
+
+/// Write the current frame to `<data>/screenshots/<timestamp>.svg`.
+///
+/// Named by timestamp so repeated presses accumulate rather than overwrite —
+/// the point is usually to capture a sequence, or something that just
+/// happened and may not happen again.
+fn save_screenshot(
+    buffer: &ratatui::buffer::Buffer,
+    width: u16,
+    height: u16,
+    data_dir: &std::path::Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = data_dir.join("screenshots");
+    std::fs::create_dir_all(&dir)?;
+
+    let name = format!(
+        "ac_pro_engineer_{}.svg",
+        chrono::Local::now().format("%Y%m%d_%H%M%S%.3f")
+    );
+    let path = dir.join(name);
+
+    ac_tui::ui::screenshot::buffer_to_svg(buffer, width, height, &path)?;
+    Ok(path)
 }

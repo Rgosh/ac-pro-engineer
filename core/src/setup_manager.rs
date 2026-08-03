@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::error;
 use walkdir::WalkDir;
 
@@ -74,6 +74,13 @@ fn safe_join_under(root: &std::path::Path, filename: &str) -> Option<PathBuf> {
 
     None
 }
+
+/// How often the local setup folders are rescanned when nothing has changed.
+///
+/// Setups appear when the user saves one from inside the game, so the folder
+/// changes on a scale of minutes. This only has to be fast enough that a
+/// setup saved mid-session shows up without a restart.
+const RESCAN_INTERVAL: Duration = Duration::from_secs(10);
 
 const GITHUB_USER_REPO: &str = "Rgosh/ac-setups";
 const GITHUB_BRANCH: &str = "main";
@@ -413,6 +420,7 @@ impl SetupManager {
 
         let handle = thread::spawn(move || {
             let mut last_car = String::new();
+            let mut last_scan: Option<Instant> = None;
             let mut last_track = String::new();
 
             if let Ok(m) = fetch_manifest() {
@@ -433,12 +441,33 @@ impl SetupManager {
                 let track = track_clone.safe_lock().clone();
 
                 if !car.is_empty() {
-                    if car != last_car || track != last_track {
+                    let context_changed = car != last_car || track != last_track;
+                    if context_changed {
                         *fetch_state_clone.safe_lock() = FetchState::Idle;
                         last_car = car.clone();
                         last_track = track.clone();
                         setups_clone.safe_lock().clear();
                     }
+
+                    // `scan_folders` walks three directory trees and parses
+                    // every setup file it finds. Doing that twice a second for
+                    // a directory that changes when the user saves a setup in
+                    // the game — minutes apart at best — is pure waste. Rescan
+                    // when the car or track changes, and otherwise on a slow
+                    // heartbeat so a setup saved mid-session still appears.
+                    let due_for_rescan = context_changed
+                        || last_scan.is_none_or(|at: Instant| at.elapsed() >= RESCAN_INTERVAL);
+
+                    if !due_for_rescan {
+                        for _ in 0..10 {
+                            if shutdown_loop.load(std::sync::atomic::Ordering::SeqCst) {
+                                return;
+                            }
+                            thread::sleep(Duration::from_millis(50));
+                        }
+                        continue;
+                    }
+                    last_scan = Some(Instant::now());
 
                     let configured_docs = documents_clone.safe_lock().clone();
                     let mut all_setups = scan_folders(&car, &track, &configured_docs);

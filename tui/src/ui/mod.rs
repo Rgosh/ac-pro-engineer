@@ -7,6 +7,7 @@ pub mod help_overlay;
 pub mod launcher;
 pub mod localization;
 pub mod overlay;
+pub mod screenshot;
 pub mod tabs;
 pub mod widgets;
 
@@ -456,6 +457,31 @@ impl UIRenderer {
             Span::styled(
                 format!(" 🌡️ A:{:.0}° R:{:.0}° ", air, road),
                 Style::default().bg(Color::Yellow).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            // Frame cost and the age of the last background tick. The two
+            // contend for the same state mutex, so a stalled UI and a stalled
+            // telemetry read look identical from the outside without this.
+            //
+            // Blank until a frame has actually been timed — printing "0fps"
+            // before the first measurement states a number nothing produced.
+            Span::styled(
+                if app.perf.frame_time.is_zero() {
+                    String::new()
+                } else {
+                    format!(
+                        " {:.0}fps {}ms ",
+                        app.perf.fps(),
+                        app.perf.tick_age().as_millis().min(9999)
+                    )
+                },
+                Style::default().bg(Color::DarkGray).fg(
+                    if app.perf.tick_age() > std::time::Duration::from_millis(500) {
+                        Color::Red
+                    } else {
+                        Color::Gray
+                    },
+                ),
             ),
             Span::raw(" "),
             Span::styled(

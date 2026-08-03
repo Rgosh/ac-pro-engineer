@@ -925,38 +925,40 @@ impl TelemetryAnalyzer {
         }
     }
 
-    pub fn theoretical_best_lap_ms(&self) -> Option<i32> {
-        if self.laps.is_empty() {
-            return None;
-        }
+    /// Fastest time set in each sector across every valid lap.
+    ///
+    /// `None` for a sector nothing usable has been recorded in — a lap whose
+    /// split was never captured, or a slot a two-sector track never fills.
+    /// That distinction is the point: a caller taking a plain minimum over the
+    /// raw values picks up those zeroes and reports a best sector of 0.000.
+    ///
+    /// `> MIN_VALID_SECTOR_MS`, matching `process_lap`, so the two agree on
+    /// what counts as a sector.
+    pub fn best_sectors_ms(&self) -> [Option<i32>; 3] {
+        let mut best = [None; 3];
 
-        let mut best_s1 = i32::MAX;
-        let mut best_s2 = i32::MAX;
-        let mut best_s3 = i32::MAX;
-
-        // `> MIN_VALID_SECTOR_MS`, matching `process_lap`. This used to
-        // test `> 0`, so the two disagreed about what counted as a sector and
-        // a stray sub-second split could become the theoretical best here
-        // while being rejected as a best sector there.
-        for lap in &self.laps {
-            if lap.valid {
-                if lap.sectors[0] > MIN_VALID_SECTOR_MS && lap.sectors[0] < best_s1 {
-                    best_s1 = lap.sectors[0];
-                }
-                if lap.sectors[1] > MIN_VALID_SECTOR_MS && lap.sectors[1] < best_s2 {
-                    best_s2 = lap.sectors[1];
-                }
-                if lap.sectors[2] > MIN_VALID_SECTOR_MS && lap.sectors[2] < best_s3 {
-                    best_s3 = lap.sectors[2];
+        for lap in self.laps.iter().filter(|l| l.valid) {
+            for (slot, sector) in best.iter_mut().zip(lap.sectors.iter()) {
+                if *sector > MIN_VALID_SECTOR_MS && slot.is_none_or(|current| *sector < current) {
+                    *slot = Some(*sector);
                 }
             }
         }
 
-        if best_s1 != i32::MAX && best_s2 != i32::MAX && best_s3 != i32::MAX {
-            Some(best_s1 + best_s2 + best_s3)
-        } else {
-            None
+        best
+    }
+
+    /// The lap that would result from stringing every best sector together.
+    ///
+    /// `None` until every sector has been set at least once, because a sum
+    /// missing a term is not a lap time — it is a smaller number that looks
+    /// like one.
+    pub fn theoretical_best_lap_ms(&self) -> Option<i32> {
+        let best = self.best_sectors_ms();
+        if best.iter().any(Option::is_none) {
+            return None;
         }
+        Some(best.iter().flatten().sum())
     }
 }
 
@@ -1030,7 +1032,7 @@ pub fn calculate_ghost_delta(
 
 #[cfg(test)]
 mod tests {
-    use super::{TelemetryAnalyzer, samples_per_incident};
+    use super::{LapData, TelemetryAnalyzer, samples_per_incident};
     use crate::ac_structs::{AcGraphics, AcPhysics};
 
     #[test]
@@ -1151,6 +1153,70 @@ mod tests {
         assert_eq!(lap.bounds_max_x, 0.0);
         assert_eq!(lap.bounds_min_y, 0.0);
         assert_eq!(lap.bounds_max_y, 0.0);
+    }
+
+    /// A lap whose split was never captured leaves a zero in the array, and
+    /// a two-sector track never fills the third slot at all. A plain minimum
+    /// over the raw values picks those up and reports a best sector of 0.000,
+    /// which is what the analysis tab used to show.
+    #[test]
+    fn best_sectors_ignore_uncaptured_splits() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.laps.push(LapData {
+            valid: true,
+            sectors: [30_000, 35_000, 30_500],
+            ..Default::default()
+        });
+        // Second lap: S2 was never captured.
+        analyzer.laps.push(LapData {
+            valid: true,
+            sectors: [29_000, 0, 31_000],
+            ..Default::default()
+        });
+
+        let best = analyzer.best_sectors_ms();
+        assert_eq!(best[0], Some(29_000), "the faster S1 of the two");
+        assert_eq!(
+            best[1],
+            Some(35_000),
+            "the zero is not a sector time, so S2 stays at the only real one"
+        );
+        assert_eq!(best[2], Some(30_500));
+
+        assert_eq!(analyzer.theoretical_best_lap_ms(), Some(94_500));
+    }
+
+    /// A sum missing a term is not a lap time, it is a smaller number that
+    /// looks like one.
+    #[test]
+    fn theoretical_best_needs_every_sector() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.laps.push(LapData {
+            valid: true,
+            sectors: [30_000, 35_000, 0],
+            ..Default::default()
+        });
+
+        assert_eq!(analyzer.best_sectors_ms()[2], None);
+        assert_eq!(analyzer.theoretical_best_lap_ms(), None);
+    }
+
+    /// Invalid laps do not contribute a best sector.
+    #[test]
+    fn best_sectors_skip_invalid_laps() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.laps.push(LapData {
+            valid: true,
+            sectors: [30_000, 35_000, 30_500],
+            ..Default::default()
+        });
+        analyzer.laps.push(LapData {
+            valid: false,
+            sectors: [1_000_000, 2_000, 2_000],
+            ..Default::default()
+        });
+
+        assert_eq!(analyzer.best_sectors_ms()[1], Some(35_000));
     }
 
     #[test]

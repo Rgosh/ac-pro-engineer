@@ -33,8 +33,44 @@ pub fn safe_truncate(s: &str, max_chars: usize) -> &str {
 /// next message is obviously new.
 const STATUS_TICKS: u16 = 200;
 
+/// Cached delta-versus-best series, keyed by the pair of laps it was computed
+/// from.
+///
+/// `delta_by_distance` resamples both traces, and resampling clones and fully
+/// sorts up to 7200 points each. Doing that on every frame is a lot of work
+/// to arrive at the same answer sixty times a second — the laps are finished
+/// and their traces cannot change.
+#[derive(Default)]
+pub struct DeltaCache {
+    key: Option<(i32, i32)>,
+    series: Vec<(f64, f64)>,
+}
+
+impl DeltaCache {
+    /// Return the series for this pair of laps, computing it only if the pair
+    /// has changed since last time.
+    pub fn get_or_compute<F>(&mut self, lap: i32, reference: i32, compute: F) -> &[(f64, f64)]
+    where
+        F: FnOnce() -> Vec<(f64, f64)>,
+    {
+        if self.key != Some((lap, reference)) {
+            self.series = compute();
+            self.key = Some((lap, reference));
+        }
+        &self.series
+    }
+
+    /// Drop the cached series. Called when the lap list changes underneath it,
+    /// since lap numbers are reused across sessions.
+    pub fn clear(&mut self) {
+        self.key = None;
+        self.series.clear();
+    }
+}
+
 pub struct AnalysisState {
     pub current_tab: AnalysisSubTab,
+    pub delta_cache: RefCell<DeltaCache>,
     pub status_message: Option<String>,
     pub status_timer: u16,
     pub load_menu: RefCell<FileMenu>,
@@ -53,6 +89,7 @@ impl AnalysisState {
     pub fn new() -> Self {
         Self {
             current_tab: AnalysisSubTab::Overview,
+            delta_cache: RefCell::new(DeltaCache::default()),
             status_message: None,
             status_timer: 0,
             load_menu: RefCell::new(FileMenu::new()),
@@ -200,6 +237,9 @@ impl AnalysisState {
 
             match res {
                 Ok(()) => {
+                    // A loaded lap joins the list and can carry a lap number
+                    // already in it, so anything keyed on that number is stale.
+                    self.delta_cache.borrow_mut().clear();
                     self.loaded_file_name = Some(filename.clone());
                     self.compare_mode = true;
                     self.set_status(format!("Loaded: {}", filename));
@@ -499,5 +539,54 @@ mod tests {
         // And stays cleared rather than underflowing the counter.
         state.tick_status();
         assert_eq!(state.status_timer, 0);
+    }
+
+    #[test]
+    fn delta_cache_computes_once_per_lap_pair() {
+        let mut cache = DeltaCache::default();
+        let mut computations = 0;
+
+        for _ in 0..60 {
+            let series = cache.get_or_compute(3, 1, || {
+                computations += 1;
+                vec![(0.0, 0.1), (1.0, 0.2)]
+            });
+            assert_eq!(series.len(), 2);
+        }
+        assert_eq!(computations, 1, "sixty frames, one computation");
+
+        // A different reference lap is a different series.
+        cache.get_or_compute(3, 2, || {
+            computations += 1;
+            vec![(0.0, 0.5)]
+        });
+        assert_eq!(computations, 2);
+
+        // ...and going back recomputes, since only the last pair is held.
+        cache.get_or_compute(3, 1, || {
+            computations += 1;
+            vec![(0.0, 0.1), (1.0, 0.2)]
+        });
+        assert_eq!(computations, 3);
+    }
+
+    #[test]
+    fn delta_cache_clear_forces_recompute() {
+        let mut cache = DeltaCache::default();
+        let mut computations = 0;
+        let compute = |cache: &mut DeltaCache, n: &mut i32| {
+            cache.get_or_compute(1, 2, || {
+                *n += 1;
+                vec![(0.0, 0.0)]
+            });
+        };
+
+        compute(&mut cache, &mut computations);
+        compute(&mut cache, &mut computations);
+        assert_eq!(computations, 1);
+
+        cache.clear();
+        compute(&mut cache, &mut computations);
+        assert_eq!(computations, 2, "a cleared cache recomputes");
     }
 }

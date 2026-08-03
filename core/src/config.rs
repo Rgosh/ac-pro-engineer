@@ -416,6 +416,22 @@ impl AppConfig {
         }
     }
 
+    /// Whether two configs would behave identically.
+    ///
+    /// `AppConfig` cannot derive `PartialEq` usefully — it is mostly floats,
+    /// and the question here is not bit equality but whether a rewrite would
+    /// change anything. Serialising both and comparing the text answers that
+    /// without listing thirty fields by hand, and without caring how the file
+    /// on disk happened to be formatted.
+    fn matches(&self, other: &Self) -> bool {
+        match (serde_json::to_string(self), serde_json::to_string(other)) {
+            (Ok(a), Ok(b)) => a == b,
+            // If either will not serialise, do not claim they match: the
+            // safe direction is to rewrite.
+            _ => false,
+        }
+    }
+
     /// The configured AC install path, or `None` when it is unset.
     pub fn ac_install_override(&self) -> Option<&std::path::Path> {
         (!self.ac_install_path.as_os_str().is_empty()).then_some(self.ac_install_path.as_path())
@@ -467,10 +483,23 @@ impl AppConfig {
         // on.
         config.validate();
 
-        // Save if migration bumped the version
-        if config.config_version != CONFIG_VERSION
-            || content != serde_json::to_string_pretty(&config).unwrap_or_default()
-        {
+        // Write back only when this load actually changed something.
+        //
+        // The old test compared the file text against a re-serialisation and
+        // rewrote on any difference — including whitespace, key order, and the
+        // `unwrap_or_default()` empty string a serialisation failure produces,
+        // which never equals the file. So the user's settings were rewritten
+        // on essentially every launch, each one a fresh opportunity for a
+        // half-written file.
+        //
+        // Comparing the parsed value against a re-parse of the file ignores
+        // formatting and asks the only question that matters: would loading
+        // this file again produce something different from what we hold?
+        let needs_write = config.config_version != CONFIG_VERSION
+            || serde_json::from_str::<AppConfig>(&content)
+                .is_ok_and(|on_disk| !config.matches(&on_disk));
+
+        if needs_write {
             config.config_version = CONFIG_VERSION;
             config.save()?;
         }
@@ -657,6 +686,63 @@ mod tests {
         let bad_json = r#"{ this is not json }"#;
         let result: Result<AppConfig, _> = serde_json::from_str(bad_json);
         assert!(result.is_err());
+    }
+
+    /// The old test compared the file text against a re-serialisation, so any
+    /// difference in whitespace or key order rewrote the user's settings at
+    /// every launch.
+    #[test]
+    fn a_reformatted_config_is_not_rewritten() {
+        let config = AppConfig::default();
+        let pretty = serde_json::to_string_pretty(&config).expect("serialise");
+
+        // Same values, different formatting: compact instead of pretty.
+        let compact = serde_json::to_string(&config).expect("serialise");
+        assert_ne!(pretty, compact, "the two encodings do differ textually");
+
+        let from_pretty: AppConfig = serde_json::from_str(&pretty).expect("parse");
+        let from_compact: AppConfig = serde_json::from_str(&compact).expect("parse");
+        assert!(
+            from_pretty.matches(&from_compact),
+            "but they describe the same config, so no rewrite is needed"
+        );
+    }
+
+    #[test]
+    fn a_config_with_different_values_does_not_match() {
+        let config = AppConfig::default();
+        let changed = AppConfig {
+            update_rate: 33,
+            ..AppConfig::default()
+        };
+        assert!(!config.matches(&changed));
+    }
+
+    /// The case that *must* still write: a file whose values `validate`
+    /// changed. Leaving that unwritten means clamping the same bad value on
+    /// every launch and never telling the user their setting was rejected.
+    #[test]
+    fn a_config_that_validation_changed_is_rewritten() {
+        let on_disk: AppConfig = serde_json::from_str(r#"{"update_rate": 0}"#).expect("parse");
+        let mut validated = on_disk.clone();
+        validated.validate();
+
+        assert_eq!(validated.update_rate, 5, "clamped up from zero");
+        assert!(
+            !validated.matches(&on_disk),
+            "so it differs from the file and gets written back"
+        );
+    }
+
+    /// ...and the case that must not: a file already within range parses,
+    /// validates to itself, and needs no write.
+    #[test]
+    fn a_valid_config_needs_no_write() {
+        let on_disk: AppConfig = serde_json::from_str(r#"{"update_rate": 20}"#).expect("parse");
+        let mut validated = on_disk.clone();
+        validated.validate();
+
+        assert!(validated.matches(&on_disk));
     }
 
     #[test]
