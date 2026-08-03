@@ -312,6 +312,63 @@ fn is_prerelease(version: &str) -> bool {
     v.contains('-')
 }
 
+/// Turn the GitHub release feed into the list the launcher's version carousel
+/// walks with the arrow keys.
+///
+/// Every stable release that ships an asset for the running OS goes in,
+/// *including releases older than the one running* — the carousel exists to
+/// roll back to them, and `launcher.rs` renders a "you won't be able to switch
+/// back" warning for exactly that case. Filtering them out left the list
+/// holding a single entry whenever the newest release was already installed,
+/// which is what made the arrows look dead.
+///
+/// The result is sorted newest-first, so index 0 is the latest release and
+/// moving right walks backwards through history. GitHub returns releases in
+/// creation order, which is *usually* the same thing but is not guaranteed —
+/// a re-published or backported tag lands out of order.
+fn build_version_list(gh_releases: &[GitHubRelease]) -> Vec<RemoteVersion> {
+    let mut versions: Vec<RemoteVersion> = Vec::new();
+
+    for release in gh_releases {
+        if release.prerelease {
+            continue;
+        }
+
+        let remote_ver_str = release.tag_name.trim_start_matches('v');
+
+        // Skip prerelease version strings (e.g. "0.3.0-beta.1")
+        if is_prerelease(remote_ver_str) {
+            continue;
+        }
+
+        // Find the asset built for the OS we are running on
+        if let Some((kind, asset)) = select_asset(&release.assets) {
+            versions.push(RemoteVersion {
+                version: remote_ver_str.to_string(),
+                url: asset.browser_download_url.clone(),
+                notes: release.body.clone().unwrap_or_default(),
+                // Filled in below, once the list is in version order.
+                is_latest: false,
+                expected_size: asset.size,
+                delivery: kind,
+            });
+        } else {
+            info!(
+                "Release v{} has no asset for {}; skipping",
+                remote_ver_str,
+                std::env::consts::OS
+            );
+        }
+    }
+
+    versions.sort_by(|a, b| compare_semver(&b.version, &a.version));
+    if let Some(newest) = versions.first_mut() {
+        newest.is_latest = true;
+    }
+
+    versions
+}
+
 #[derive(Clone)]
 pub struct Updater {
     pub status: Arc<Mutex<UpdateStatus>>,
@@ -389,6 +446,7 @@ impl Updater {
     pub fn check_for_updates(&self) {
         let status = self.status.clone();
         let releases_store = self.releases.clone();
+        let selected = self.selected_index.clone();
 
         {
             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -420,60 +478,30 @@ impl Updater {
 
                     match resp.json::<Vec<GitHubRelease>>() {
                         Ok(gh_releases) => {
-                            let mut parsed_versions = Vec::new();
+                            let parsed_versions = build_version_list(&gh_releases);
 
-                            for (i, release) in gh_releases.iter().enumerate() {
-                                // Skip prereleases by default
-                                if release.prerelease {
-                                    continue;
-                                }
-
-                                let remote_ver_str = release.tag_name.trim_start_matches('v');
-
-                                // Skip prerelease version strings (e.g. "0.3.0-beta.1")
-                                if is_prerelease(remote_ver_str) {
-                                    continue;
-                                }
-
-                                // Skip versions older than current (no downgrade)
-                                if compare_semver(remote_ver_str, CURRENT_VERSION)
-                                    == std::cmp::Ordering::Less
-                                {
-                                    continue;
-                                }
-
-                                // Find the asset built for the OS we are running on
-                                if let Some((kind, asset)) = select_asset(&release.assets) {
-                                    parsed_versions.push(RemoteVersion {
-                                        version: remote_ver_str.to_string(),
-                                        url: asset.browser_download_url.clone(),
-                                        notes: release.body.clone().unwrap_or_default(),
-                                        is_latest: i == 0 || parsed_versions.is_empty(),
-                                        expected_size: asset.size,
-                                        delivery: kind,
-                                    });
-                                } else {
-                                    info!(
-                                        "Release v{} has no asset for {}; skipping",
-                                        remote_ver_str,
-                                        std::env::consts::OS
-                                    );
-                                }
-                            }
-
-                            if !parsed_versions.is_empty() {
+                            if let Some(newest) = parsed_versions.first() {
+                                let newest_version = newest.version.clone();
                                 {
                                     let mut r_lock =
                                         releases_store.lock().unwrap_or_else(|e| e.into_inner());
-                                    *r_lock = parsed_versions.clone();
+                                    *r_lock = parsed_versions;
+                                }
+                                // The list was just replaced, so an index left
+                                // over from a previous check can be past its
+                                // end. Point at the newest release again.
+                                {
+                                    let mut i_lock =
+                                        selected.lock().unwrap_or_else(|e| e.into_inner());
+                                    *i_lock = 0;
                                 }
 
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
 
-                                if compare_semver(&parsed_versions[0].version, CURRENT_VERSION)
+                                if compare_semver(&newest_version, CURRENT_VERSION)
                                     == std::cmp::Ordering::Greater
                                 {
-                                    info!("Update available: v{}", parsed_versions[0].version);
+                                    info!("Update available: v{}", newest_version);
                                     *lock = UpdateStatus::UpdateAvailable;
                                 } else {
                                     info!("App is up to date.");
