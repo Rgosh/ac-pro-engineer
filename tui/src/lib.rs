@@ -193,6 +193,10 @@ impl Memory {
     }
 }
 
+/// Sector count to assume until AcStatic says otherwise. AC's own tracks are
+/// almost all three-sector.
+pub const DEFAULT_SECTOR_COUNT: i32 = 3;
+
 pub struct AppState {
     pub mem: Option<Memory>,
     pub setup_manager: SetupManager,
@@ -217,6 +221,11 @@ pub struct AppState {
     pub current_lap_number: i32,
     pub current_lap_sectors: [i32; 3],
     pub last_sector_index: i32,
+    /// How many sectors this track publishes, from AcStatic. Not every track
+    /// runs three — mods use two or four — and assuming three left the extra
+    /// slots permanently zero, which `theoretical_best_lap_ms` reads as "no
+    /// data" and so never produced a result on those tracks.
+    pub track_sector_count: i32,
     pub recommendations: Vec<Recommendation>,
     pub analysis_results: Vec<AnalysisResult>,
     pub last_update: Instant,
@@ -279,6 +288,7 @@ impl AppState {
             current_lap_number: -1,
             current_lap_sectors: [0; 3],
             last_sector_index: 0,
+            track_sector_count: DEFAULT_SECTOR_COUNT,
             recommendations: Vec::new(),
             analysis_results: Vec::new(),
             last_update: Instant::now(),
@@ -480,6 +490,11 @@ impl AppState {
 
     pub fn process_tick_logic(&mut self, phys: AcPhysics, gfx: AcGraphics, stat: AcStatic) {
         let stat_spline_length = stat.track_spline_length;
+        // AcStatic::sector_count was read by nothing, so every track was
+        // treated as three-sector.
+        if stat.sector_count > 0 && stat.sector_count as usize <= self.current_lap_sectors.len() {
+            self.track_sector_count = stat.sector_count;
+        }
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
@@ -508,10 +523,22 @@ impl AppState {
 
         self.overlay_manager.update(&self.session_info);
 
+        // Sector splits are captured on the transition *out* of a sector,
+        // when AC publishes the one just finished in `last_sector_time`. The
+        // final sector is the exception: its transition is the lap rollover,
+        // which races the `completed_laps` increment handled below. Whichever
+        // AC publishes first decides whether the last split lands in this lap
+        // or the next one, so it is derived from the lap time at lap close
+        // instead — see `close_current_lap_sectors`.
         let current_sector = gfx.current_sector_index;
         if current_sector != self.last_sector_index {
-            if self.last_sector_index >= 0 && self.last_sector_index < 3 {
-                self.current_lap_sectors[self.last_sector_index as usize] = gfx.last_sector_time;
+            let finished = self.last_sector_index;
+            let is_final_sector = finished == self.track_sector_count - 1;
+            if finished >= 0
+                && (finished as usize) < self.current_lap_sectors.len()
+                && !is_final_sector
+            {
+                self.current_lap_sectors[finished as usize] = gfx.last_sector_time;
             }
             self.last_sector_index = current_sector;
         }
@@ -530,6 +557,7 @@ impl AppState {
             if completed_laps == self.current_lap_number + 1 {
                 let last_lap_time = gfx.i_last_time;
                 if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
+                    self.close_current_lap_sectors(last_lap_time);
                     self.analyzer.process_lap(
                         self.current_lap_number,
                         last_lap_time,
@@ -670,6 +698,42 @@ impl AppState {
         self.process_tick_logic(phys, gfx, stat);
     }
 
+    /// Fill in the final sector split from the lap time.
+    ///
+    /// The earlier splits come from AC's `last_sector_time` on each sector
+    /// transition, but the final one's transition *is* the lap rollover — the
+    /// same tick that increments `completed_laps`. Which of the two AC
+    /// publishes first is not guaranteed, and when the lap count won the race
+    /// the split was written after this lap had already been processed and
+    /// its array cleared, so it landed in the *next* lap instead. The symptom
+    /// was an occasional lap with a zero final sector and a following lap
+    /// whose splits did not add up.
+    ///
+    /// The lap time minus the sectors already known is not subject to that
+    /// ordering at all, so it is used instead. Left at zero if the earlier
+    /// splits are missing or do not leave a plausible remainder — a wrong
+    /// split is worse than a missing one, since `theoretical_best_lap_ms`
+    /// would take it as a personal best.
+    fn close_current_lap_sectors(&mut self, lap_time_ms: i32) {
+        let final_idx = (self.track_sector_count - 1).max(0) as usize;
+        if final_idx == 0 || final_idx >= self.current_lap_sectors.len() {
+            return;
+        }
+
+        let earlier: i32 = self.current_lap_sectors[..final_idx].iter().sum();
+        if self.current_lap_sectors[..final_idx]
+            .iter()
+            .any(|s| *s <= 0)
+        {
+            return;
+        }
+
+        let remainder = lap_time_ms - earlier;
+        if remainder > ac_core::analyzer::MIN_VALID_SECTOR_MS && remainder < lap_time_ms {
+            self.current_lap_sectors[final_idx] = remainder;
+        }
+    }
+
     pub fn disconnect(&mut self) {
         self.mem = None;
         self.is_connected = false;
@@ -680,6 +744,12 @@ impl AppState {
         self.current_lap_physics.clear();
         self.current_lap_graphics.clear();
         self.current_lap_number = -1;
+        // These were left behind on disconnect, so the first sector
+        // transition after reconnecting was measured against the previous
+        // session's state.
+        self.current_lap_sectors = [0; 3];
+        self.last_sector_index = -1;
+        self.track_sector_count = DEFAULT_SECTOR_COUNT;
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -789,5 +859,67 @@ mod tests {
         assert!(app.overlay_manager.state.speed_kmh > 0);
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
+    }
+
+    /// The final split is derived from the lap time rather than read off the
+    /// sector transition, because that transition races the lap-count
+    /// increment and could land the split in the following lap.
+    #[test]
+    fn final_sector_is_derived_from_the_lap_time() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        app.current_lap_sectors = [30_000, 35_000, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(
+            app.current_lap_sectors[2], 30_500,
+            "the remainder of the lap time is the final sector"
+        );
+        assert_eq!(
+            app.current_lap_sectors.iter().sum::<i32>(),
+            95_500,
+            "the splits add up to the lap time"
+        );
+    }
+
+    /// A wrong split is worse than a missing one: theoretical_best_lap_ms
+    /// would take it as a personal best and never let go of it.
+    #[test]
+    fn final_sector_stays_empty_when_earlier_splits_are_missing() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        app.current_lap_sectors = [30_000, 0, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[2], 0);
+    }
+
+    /// An implausible remainder means the earlier splits came from a
+    /// different lap, so it is discarded rather than recorded.
+    #[test]
+    fn final_sector_rejects_an_implausible_remainder() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        // The two known splits already exceed the lap time.
+        app.current_lap_sectors = [60_000, 50_000, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[2], 0);
+    }
+
+    /// Two-sector mod tracks exist, and AcStatic says so.
+    #[test]
+    fn final_sector_honours_a_two_sector_track() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 2;
+        app.current_lap_sectors = [45_000, 0, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[1], 50_500);
+        assert_eq!(app.current_lap_sectors[2], 0, "the third slot is unused");
     }
 }

@@ -109,6 +109,10 @@ pub struct TelemetryPoint {
     pub rpms: i32,
 }
 
+/// Shortest split treated as a real sector. Anything under a second is AC
+/// reporting a partial or reset timer rather than a driven sector.
+pub const MIN_VALID_SECTOR_MS: i32 = 1000;
+
 /// How many samples make up one incident at the configured update rate.
 ///
 /// The mistake counters are incremented once per sample, so the number of
@@ -325,7 +329,7 @@ impl TelemetryAnalyzer {
 
         // sectors already computed by caller
         for (i, sector) in sectors.iter().enumerate() {
-            if *sector > 1000 && *sector < self.best_sectors[i] {
+            if *sector > MIN_VALID_SECTOR_MS && *sector < self.best_sectors[i] {
                 self.best_sectors[i] = *sector;
             }
         }
@@ -930,15 +934,19 @@ impl TelemetryAnalyzer {
         let mut best_s2 = i32::MAX;
         let mut best_s3 = i32::MAX;
 
+        // `> MIN_VALID_SECTOR_MS`, matching `process_lap`. This used to
+        // test `> 0`, so the two disagreed about what counted as a sector and
+        // a stray sub-second split could become the theoretical best here
+        // while being rejected as a best sector there.
         for lap in &self.laps {
             if lap.valid {
-                if lap.sectors[0] > 0 && lap.sectors[0] < best_s1 {
+                if lap.sectors[0] > MIN_VALID_SECTOR_MS && lap.sectors[0] < best_s1 {
                     best_s1 = lap.sectors[0];
                 }
-                if lap.sectors[1] > 0 && lap.sectors[1] < best_s2 {
+                if lap.sectors[1] > MIN_VALID_SECTOR_MS && lap.sectors[1] < best_s2 {
                     best_s2 = lap.sectors[1];
                 }
-                if lap.sectors[2] > 0 && lap.sectors[2] < best_s3 {
+                if lap.sectors[2] > MIN_VALID_SECTOR_MS && lap.sectors[2] < best_s3 {
                     best_s3 = lap.sectors[2];
                 }
             }
