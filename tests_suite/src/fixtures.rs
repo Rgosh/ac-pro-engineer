@@ -138,7 +138,7 @@ mod tests {
         assert!(app.analyzer.laps.len() >= 2);
 
         // 4. Verify Engineer engine generated advice for session
-        let last_sample = fixture.samples.last().unwrap();
+        let last_sample = fixture.samples.last().expect("the fixture is not empty");
         let recs = app
             .engineer
             .analyze_live(&last_sample.physics, &last_sample.graphics, None);

@@ -58,7 +58,10 @@ impl SettingsState {
         self.is_editing = false;
     }
 
-    pub fn handle_input(&mut self, key: KeyCode, config: &mut AppConfig) {
+    /// Returns whether this keypress changed `config`, so the caller knows to
+    /// persist it. Navigating between items and categories does not; only the
+    /// editing branch below touches the config.
+    pub fn handle_input(&mut self, key: KeyCode, config: &mut AppConfig) -> bool {
         if !self.is_editing {
             match key {
                 KeyCode::Down => self.selected_index += 1,
@@ -89,14 +92,30 @@ impl SettingsState {
             if self.selected_index >= max_items {
                 self.selected_index = max_items.saturating_sub(1);
             }
+            false
         } else {
             match key {
-                KeyCode::Enter | KeyCode::Esc => self.is_editing = false,
-                KeyCode::Left => self.modify_value(config, -1.0),
-                KeyCode::Right => self.modify_value(config, 1.0),
-                KeyCode::Up => self.modify_value(config, 10.0),
-                KeyCode::Down => self.modify_value(config, -10.0),
-                _ => {}
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.is_editing = false;
+                    false
+                }
+                KeyCode::Left => {
+                    self.modify_value(config, -1.0);
+                    true
+                }
+                KeyCode::Right => {
+                    self.modify_value(config, 1.0);
+                    true
+                }
+                KeyCode::Up => {
+                    self.modify_value(config, 10.0);
+                    true
+                }
+                KeyCode::Down => {
+                    self.modify_value(config, -10.0);
+                    true
+                }
+                _ => false,
             }
         }
     }
@@ -594,33 +613,37 @@ fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
 fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let alerts = &app.config.alerts;
     let config = &app.config;
+    // Every value on this tab was rendered either with a hardcoded "PSI" or
+    // with no unit at all, while the Display category two keys away offers
+    // Bar, kPa and Fahrenheit.
+    let fmt = config.formatter();
     let lang = &app.config.language;
     let is_ru = *lang == Language::Russian;
 
     let items = vec![
         (
             tr("alert_p_min", lang),
-            format!("{:.1}", alerts.tyre_pressure_min),
+            fmt.format_pressure(alerts.tyre_pressure_min),
             false,
         ),
         (
             tr("alert_p_max", lang),
-            format!("{:.1}", alerts.tyre_pressure_max),
+            fmt.format_pressure(alerts.tyre_pressure_max),
             false,
         ),
         (
             tr("alert_t_min", lang),
-            format!("{:.0}", alerts.tyre_temp_min),
+            fmt.format_temp(alerts.tyre_temp_min),
             false,
         ),
         (
             tr("alert_t_max", lang),
-            format!("{:.0}", alerts.tyre_temp_max),
+            fmt.format_temp(alerts.tyre_temp_max),
             false,
         ),
         (
             tr("alert_b_max", lang),
-            format!("{:.0}", alerts.brake_temp_max),
+            fmt.format_temp(alerts.brake_temp_max),
             false,
         ),
         (
@@ -640,7 +663,7 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
                 "Target Hot Pressure (Front)"
             }
             .to_string(),
-            format!("{:.1} PSI", config.target_hot_pressure_front),
+            fmt.format_pressure(config.target_hot_pressure_front),
             false,
         ),
         (
@@ -650,7 +673,7 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
                 "Target Hot Pressure (Rear)"
             }
             .to_string(),
-            format!("{:.1} PSI", config.target_hot_pressure_rear),
+            fmt.format_pressure(config.target_hot_pressure_rear),
             false,
         ),
         (

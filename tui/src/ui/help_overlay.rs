@@ -55,7 +55,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
 
     match tab_index {
         0 => (
-            "DASHBOARD (F1)",
+            "DASHBOARD (1)",
             vec![
                 head("DASHBOARD: TIMING & ENGINE MANAGEMENT"),
                 Line::from(""),
@@ -80,7 +80,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         1 => (
-            "TELEMETRY (F2)",
+            "TELEMETRY (2)",
             vec![
                 head("LIVE TELEMETRY: RAW DATA FEED"),
                 Line::from(""),
@@ -100,7 +100,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         2 => (
-            "ENGINEER (F3)",
+            "ENGINEER (3)",
             vec![
                 head("ENGINEER: AERO, TYRE THERMODYNAMICS & SUSPENSION"),
                 Line::from(""),
@@ -131,7 +131,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         3 => (
-            "SETUP BROWSER (F4)",
+            "SETUP BROWSER (4)",
             vec![
                 head("SETUP CLOUD: COMMUNITY DATABASE"),
                 Line::from(""),
@@ -144,7 +144,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         4 => (
-            "ANALYSIS (F5)",
+            "ANALYSIS (5)",
             vec![
                 head("MOTEC GRAPHICS: TRACE ANALYSIS"),
                 Line::from(""),
@@ -167,7 +167,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         5 => (
-            "STRATEGY (F6)",
+            "STRATEGY (6)",
             vec![
                 head("PIT WALL: FUEL LOAD CALCULATOR"),
                 Line::from(""),
@@ -186,7 +186,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         6 => (
-            "FFB & INPUTS (F7)",
+            "FFB & INPUTS (7)",
             vec![
                 head("HARDWARE: SIGNAL CLIPPING & LINEARITY"),
                 Line::from(""),
@@ -214,7 +214,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         7 => (
-            "SETTINGS (F8)",
+            "SETTINGS (8)",
             vec![
                 head("APPLICATION SETTINGS"),
                 Line::from(""),
@@ -228,13 +228,13 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             ],
         ),
         8 => (
-            "USER GUIDE (F9)",
+            "USER GUIDE (9)",
             vec![
                 head("AC PRO ENGINEER MANUAL"),
                 Line::from(""),
                 t("You are viewing the comprehensive setup and telemetry guide."),
                 t("Use UP/DOWN ARROWS to scroll through the different physics chapters."),
-                t("Press any F-key (F1-F8) to return to live data."),
+                t("Press any number key (1-9) to return to live data."),
                 Line::from(""),
                 t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],
@@ -244,10 +244,18 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             vec![
                 head("NAVIGATION & OVERLAYS"),
                 Line::from(""),
-                warn("F1 - F9: Module Switching"),
-                warn("F10: Enable Compact Overlay (shrinks UI for single monitors)"),
-                warn("H: Show/Hide this Engineering Assistant"),
+                warn("1 - 9: Module Switching"),
+                warn("TAB / SHIFT+TAB: Next / previous module"),
+                warn("? or F1: Show/Hide this Engineering Assistant"),
+                warn("CTRL+L: Switch language"),
+                warn("F10: Toggle the in-game overlay"),
+                warn("F11: Overlay Control Center"),
                 warn("Q / ESC: Exit safely"),
+                Line::from(""),
+                head("PER-MODULE KEYS"),
+                warn("ANALYSIS: S save lap, E export CSV, L load, C compare"),
+                warn("SETUP: B browser, D download, PGUP/PGDN scroll details"),
+                warn("SETTINGS: A / S / D switch category, ENTER edit"),
                 Line::from(""),
                 t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
             ],

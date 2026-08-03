@@ -2,6 +2,29 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use zerocopy::TryFromBytes;
 
+/// A shared-memory page that stamps each write with a counter.
+///
+/// AC rewrites the physics page at 333 Hz while we copy ~600 bytes out of it,
+/// so a read can straddle a write and come back holding two different frames
+/// spliced together. The counter is how a reader detects that: identical
+/// before and after the copy means no write landed in between.
+///
+/// This matters more than the raw frequency suggests, because the values most
+/// sensitive to it are differences and maxima — the jerk accumulators behind
+/// the smoothness scores, and the peak-G tracking. A single spliced frame
+/// shows up there as a phantom lockup or an impossible G reading that the
+/// rest of the lap then carries.
+pub trait Versioned {
+    fn packet_id(&self) -> i32;
+}
+
+/// How many times to re-read before giving up and taking what we have.
+///
+/// A torn read needs the writer to land inside our copy, so two in a row is
+/// already unlikely and three is vanishingly so. Retrying forever would be
+/// worse than one bad frame.
+const MAX_TEAR_RETRIES: usize = 3;
+
 #[cfg(not(target_os = "windows"))]
 pub struct SharedMemory<T> {
     mmap: memmap2::Mmap,
@@ -48,6 +71,26 @@ impl<T> SharedMemory<T> {
         let bytes = &bytes[..size];
         T::try_read_from_bytes(bytes)
             .map_err(|err| anyhow::format_err!("Error converting type: {err:?}").into())
+    }
+
+    /// Read a page, retrying while the write counter moves under us.
+    ///
+    /// See [`Versioned`] for why. Falls through to the last read after
+    /// [`MAX_TEAR_RETRIES`]: a stale frame beats spinning on a game that is
+    /// writing faster than we can read.
+    pub fn get_stable(&self) -> Result<T, Box<dyn std::error::Error>>
+    where
+        T: TryFromBytes + Debug + Versioned,
+    {
+        let mut value = self.get()?;
+        for _ in 0..MAX_TEAR_RETRIES {
+            let again = self.get()?;
+            if again.packet_id() == value.packet_id() {
+                return Ok(value);
+            }
+            value = again;
+        }
+        Ok(value)
     }
 }
 
@@ -102,6 +145,23 @@ impl<T> SharedMemory<T> {
         let bytes = unsafe { std::slice::from_raw_parts(self.ptr, size) };
         T::try_read_from_bytes(bytes)
             .map_err(|err| anyhow::format_err!("Error converting type: {err:?}").into())
+    }
+
+    /// Read a page, retrying while the write counter moves under us.
+    /// See the non-Windows implementation for the reasoning.
+    pub fn get_stable(&self) -> Result<T, Box<dyn std::error::Error>>
+    where
+        T: TryFromBytes + Debug + Versioned,
+    {
+        let mut value = self.get()?;
+        for _ in 0..MAX_TEAR_RETRIES {
+            let again = self.get()?;
+            if again.packet_id() == value.packet_id() {
+                return Ok(value);
+            }
+            value = again;
+        }
+        Ok(value)
     }
 }
 

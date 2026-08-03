@@ -1,4 +1,3 @@
-use directories_next::UserDirs;
 use ini::Ini;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -6,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use tracing::error;
 use walkdir::WalkDir;
 
 /// Sanitize a filename component: strip path separators, `..`, control chars,
@@ -184,6 +184,19 @@ pub struct CarSetup {
 }
 
 impl CarSetup {
+    /// Score needed before a local setup file is claimed to be the one loaded
+    /// in the car.
+    ///
+    /// `match_score` awards 30 for fuel, 25 for brake bias and 20 for
+    /// pressures, so the only reachable totals are 0, 20, 25, 30, 45, 50, 55
+    /// and 75. The old threshold of `> 60` therefore admitted nothing but a
+    /// perfect 3/3 — one lap's worth of burnt fuel dropped the score to 55 and
+    /// the match silently disappeared, taking the "(NOW: x%)" hints in the
+    /// brake-bias and camber advice with it.
+    ///
+    /// 45 is the first total that requires two of the three to agree.
+    pub const MIN_MATCH_SCORE: u32 = 45;
+
     pub fn match_score(
         &self,
         current_fuel: f32,
@@ -315,6 +328,10 @@ pub struct SetupManager {
     pub details_scroll: Arc<Mutex<usize>>,
     pub loading_tick: Arc<Mutex<usize>>,
 
+    /// Configured AC Documents folder, empty when auto-detecting. Shared so
+    /// the background scan thread resolves the same directory the UI does.
+    pub documents_override: Arc<Mutex<PathBuf>>,
+
     pub fetch_state: Arc<Mutex<FetchState>>,
     pub last_status: Arc<Mutex<String>>,
     pub shutdown_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -376,6 +393,8 @@ impl SetupManager {
             details_scroll: Arc::new(Mutex::new(0)),
             loading_tick: Arc::new(Mutex::new(0)),
 
+            documents_override: Arc::new(Mutex::new(PathBuf::new())),
+
             fetch_state: Arc::new(Mutex::new(FetchState::Idle)),
             last_status: Arc::new(Mutex::new(String::new())),
 
@@ -387,6 +406,7 @@ impl SetupManager {
         let car_clone = manager.current_car.clone();
         let track_clone = manager.current_track.clone();
         let fetch_state_clone = manager.fetch_state.clone();
+        let documents_clone = manager.documents_override.clone();
         let manifest_clone = manager.manifest.clone();
 
         let shutdown_loop = shutdown.clone();
@@ -420,7 +440,8 @@ impl SetupManager {
                         setups_clone.safe_lock().clear();
                     }
 
-                    let mut all_setups = scan_folders(&car, &track);
+                    let configured_docs = documents_clone.safe_lock().clone();
+                    let mut all_setups = scan_folders(&car, &track, &configured_docs);
                     let current_state = fetch_state_clone.safe_lock().clone();
 
                     match current_state {
@@ -517,6 +538,24 @@ impl SetupManager {
         manager
     }
 
+    /// Where AC keeps its setups, honouring the configured override.
+    ///
+    /// Under Proton this is inside the game's prefix, not the host's
+    /// ~/Documents — which is why `UserDirs::document_dir()` found nothing on
+    /// Linux and local setups were never discovered there.
+    fn documents_dir(&self) -> Option<PathBuf> {
+        let configured = self.documents_override.safe_lock().clone();
+        crate::ac_paths::ac_documents_dir(
+            (!configured.as_os_str().is_empty()).then_some(configured.as_path()),
+        )
+    }
+
+    /// Point the manager at a specific AC Documents folder. Empty resumes
+    /// auto-detection.
+    pub fn set_documents_override(&self, path: &std::path::Path) {
+        *self.documents_override.safe_lock() = path.to_path_buf();
+    }
+
     pub fn scroll_details(&self, delta: i32) {
         let mut scroll = self.details_scroll.safe_lock();
         if delta < 0 {
@@ -529,9 +568,7 @@ impl SetupManager {
     }
 
     pub fn is_installed(&self, setup: &CarSetup, target_car: &str) -> bool {
-        if let Some(user_dirs) = UserDirs::new()
-            && let Some(docs) = user_dirs.document_dir()
-        {
+        if let Some(docs) = self.documents_dir() {
             let safe_name = sanitize_filename_component(&setup.name);
             let safe_author = sanitize_filename_component(&setup.author);
             let file_name = format!("{}_{}.ini", safe_author, safe_name);
@@ -556,24 +593,47 @@ impl SetupManager {
         self.browser_setups.safe_lock().clone()
     }
 
+    /// Fetch the setup list for the car the browser is pointing at.
+    ///
+    /// Runs on its own thread: `fetch_server_setups` is a blocking HTTP call
+    /// with a five second timeout, and this is driven straight off a keypress.
+    /// Doing it inline would freeze the whole TUI — including the loading
+    /// spinner meant to show that something is happening.
     pub fn load_browser_car(&self) {
         let idx = *self.browser_car_idx.safe_lock();
         let manifest = self.manifest.safe_lock();
-        if idx < manifest.len() {
-            let car_id = &manifest[idx].id;
+        let Some(car_id) = manifest.get(idx).map(|m| m.id.clone()) else {
+            return;
+        };
+        drop(manifest);
 
-            let car_id_clone = car_id.clone();
-            drop(manifest);
+        // Clear immediately so the pane does not keep showing the previous
+        // car's setups while the new ones are in flight.
+        self.browser_setups.safe_lock().clear();
+        *self.browser_setup_idx.safe_lock() = 0;
+        *self.details_scroll.safe_lock() = 0;
 
-            if let Ok(mut setups) = fetch_server_setups(&car_id_clone) {
+        let browser_setups = Arc::clone(&self.browser_setups);
+        let browser_car_idx = Arc::clone(&self.browser_car_idx);
+        let last_status = Arc::clone(&self.last_status);
+        let requested_idx = idx;
+
+        std::thread::spawn(move || match fetch_server_setups(&car_id) {
+            Ok(mut setups) => {
                 for s in &mut setups {
-                    s.car_id = car_id_clone.clone();
+                    s.car_id = car_id.clone();
                 }
-                *self.browser_setups.safe_lock() = setups;
-                *self.browser_setup_idx.safe_lock() = 0;
-                *self.details_scroll.safe_lock() = 0;
+                // The user may have moved on while this was in flight. Only
+                // publish if the selection is still the one we fetched for.
+                if *browser_car_idx.safe_lock() == requested_idx {
+                    *browser_setups.safe_lock() = setups;
+                }
             }
-        }
+            Err(e) => {
+                error!("Could not fetch setups for {}: {}", car_id, e);
+                *last_status.safe_lock() = format!("Fetch failed: {}", car_id);
+            }
+        });
     }
 
     pub fn get_browser_selected_setup(&self) -> Option<CarSetup> {
@@ -639,11 +699,11 @@ impl SetupManager {
             return false;
         }
 
-        if let Some(user_dirs) = UserDirs::new() {
-            let docs = match user_dirs.document_dir() {
+        {
+            let docs = match self.documents_dir() {
                 Some(d) => d,
                 None => {
-                    *status_lock = "Err: No document directory found".to_string();
+                    *status_lock = "Err: No Assetto Corsa documents folder found".to_string();
                     return false;
                 }
             };
@@ -683,8 +743,6 @@ impl SetupManager {
                     *status_lock = format!("Err: {}", e);
                 }
             }
-        } else {
-            *status_lock = "Err: Could not determine user dirs".to_string();
         }
         false
     }
@@ -702,7 +760,7 @@ impl SetupManager {
                 continue;
             }
             let score = setup.match_score(fuel, bias, pressures);
-            if score > best_score && score > 60 {
+            if score > best_score && score >= CarSetup::MIN_MATCH_SCORE {
                 best_score = score;
                 best_idx = Some(i);
             }
@@ -780,11 +838,15 @@ fn fetch_server_setups(car: &str) -> Result<Vec<CarSetup>, String> {
     Ok(setups)
 }
 
-fn scan_folders(car_model: &str, track_name: &str) -> Vec<CarSetup> {
+fn scan_folders(
+    car_model: &str,
+    track_name: &str,
+    configured_docs: &std::path::Path,
+) -> Vec<CarSetup> {
     let mut found = Vec::new();
-    if let Some(user_dirs) = UserDirs::new()
-        && let Some(docs) = user_dirs.document_dir()
-    {
+    if let Some(docs) = crate::ac_paths::ac_documents_dir(
+        (!configured_docs.as_os_str().is_empty()).then_some(configured_docs),
+    ) {
         let base_path = docs.join("Assetto Corsa").join("setups").join(car_model);
         if !track_name.is_empty() && track_name != "-" {
             scan_single_folder(
@@ -913,10 +975,28 @@ fn scan_single_folder(
     }
 }
 
+/// Flatten a value so it cannot break out of the `KEY=value` line it is
+/// written on.
+///
+/// Every other field of a `CarSetup` is a `u32` or `i32` and cannot express
+/// anything but a number. `notes` is a free-form string that arrives from the
+/// setup JSON fetched over the network, and a newline in it would start a new
+/// INI line — `[SPRING_RATE_LF]\nVALUE=...` in a notes field is a section AC
+/// would parse and apply as part of the setup.
+fn sanitize_ini_value(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| if c == '\r' || c == '\n' { ' ' } else { c })
+        .collect()
+}
+
 fn generate_ini_content(s: &CarSetup) -> String {
     let mut out = String::new();
     if !s.notes.is_empty() {
-        out.push_str(&format!("[NOTES]\nVALUE={}\n\n", s.notes));
+        out.push_str(&format!(
+            "[NOTES]\nVALUE={}\n\n",
+            sanitize_ini_value(&s.notes)
+        ));
     }
     out.push_str(&format!(
         "[FUEL]\nVALUE={}\n\n[FRONT_BIAS]\nVALUE={}\n\n[ENGINE_LIMITER]\nVALUE={}\n\n",
@@ -1085,5 +1165,81 @@ mod tests {
 
         assert!(mgr.shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
         assert!(mgr.bg_thread.safe_lock().is_none());
+    }
+
+    /// `notes` is the one free-form string in a setup, and it arrives from
+    /// the network. A newline in it would open a new INI line, and AC parses
+    /// whatever section that line names as part of the setup.
+    #[test]
+    fn ini_notes_cannot_inject_extra_sections() {
+        let setup = CarSetup {
+            notes: "nice setup\n\n[SPRING_RATE_LF]\nVALUE=99999".to_string(),
+            ..CarSetup::default()
+        };
+
+        let ini = generate_ini_content(&setup);
+        let notes_line = ini
+            .lines()
+            .find(|l| l.starts_with("VALUE="))
+            .expect("the notes value is written");
+
+        assert!(
+            notes_line.contains("99999"),
+            "the text is kept, just flattened onto one line: {notes_line}"
+        );
+        // What matters is that it is no longer a *section header*: an INI
+        // parser only recognises `[NAME]` at the start of a line. Inside a
+        // value it is just text.
+        assert_eq!(
+            ini.lines()
+                .filter(|l| l.starts_with("[SPRING_RATE_LF]"))
+                .count(),
+            1,
+            "only the real spring rate section, not one smuggled in via notes"
+        );
+        assert_eq!(
+            ini.lines().filter(|l| l.contains("99999")).count(),
+            1,
+            "the whole injected string stays on the single notes line"
+        );
+    }
+
+    /// The reasoning behind MIN_MATCH_SCORE, pinned so a change to the
+    /// weights cannot quietly make the threshold unreachable again.
+    #[test]
+    fn match_score_totals_stay_reachable_below_a_perfect_match() {
+        let setup = CarSetup {
+            fuel: 50,
+            brake_bias: 6500,
+            pressure_lf: 27,
+            pressure_rf: 27,
+            pressure_lr: 27,
+            pressure_rr: 27,
+            ..CarSetup::default()
+        };
+
+        let perfect = setup.match_score(50.0, 65.0, &[27.0; 4]);
+        assert_eq!(perfect, 75, "all three components agree");
+
+        // Ten laps in, the fuel no longer matches but nothing about the setup
+        // has changed. This is the everyday case the old `> 60` threshold
+        // rejected.
+        let fuel_burnt = setup.match_score(20.0, 65.0, &[27.0; 4]);
+        assert_eq!(fuel_burnt, 45);
+        assert!(
+            fuel_burnt >= CarSetup::MIN_MATCH_SCORE,
+            "a setup with burnt fuel must still be recognised"
+        );
+
+        // One component alone is not enough to claim a match.
+        let only_fuel = setup.match_score(50.0, 20.0, &[10.0; 4]);
+        assert_eq!(only_fuel, 30);
+        assert!(only_fuel < CarSetup::MIN_MATCH_SCORE);
+    }
+
+    #[test]
+    fn sanitize_ini_value_flattens_line_breaks() {
+        assert_eq!(sanitize_ini_value("a\r\nb\nc"), "a  b c");
+        assert_eq!(sanitize_ini_value("plain text"), "plain text");
     }
 }

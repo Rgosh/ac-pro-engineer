@@ -28,6 +28,11 @@ pub fn safe_truncate(s: &str, max_chars: usize) -> &str {
     }
 }
 
+/// How many ticks a status message stays up. At the default 16 ms update rate
+/// that is roughly three seconds — long enough to read, short enough that the
+/// next message is obviously new.
+const STATUS_TICKS: u16 = 200;
+
 pub struct AnalysisState {
     pub current_tab: AnalysisSubTab,
     pub status_message: Option<String>,
@@ -85,7 +90,23 @@ impl AnalysisState {
 
     pub fn set_status(&mut self, msg: String) {
         self.status_message = Some(msg);
-        self.status_timer = 200;
+        self.status_timer = STATUS_TICKS;
+    }
+
+    /// Age the current status message by one tick, clearing it when it
+    /// expires.
+    ///
+    /// `status_timer` was set and never read by anything, so "Exported CSV:
+    /// ..." and "Comparison Mode: ON" stayed pinned to the footer for the rest
+    /// of the session — including after the user moved to another tab and
+    /// back, which made stale messages look like fresh ones.
+    pub fn tick_status(&mut self) {
+        if self.status_timer > 0 {
+            self.status_timer -= 1;
+            if self.status_timer == 0 {
+                self.status_message = None;
+            }
+        }
     }
 
     pub fn toggle_compare(&mut self) {
@@ -456,5 +477,27 @@ mod tests {
         state.selected_lap_index = 4;
         state.menu_down(5);
         assert_eq!(state.selected_lap_index, 4);
+    }
+
+    #[test]
+    fn status_message_expires() {
+        let mut state = AnalysisState::new();
+        state.set_status("Exported CSV: lap3.csv".to_string());
+        assert!(state.status_message.is_some());
+
+        for _ in 0..STATUS_TICKS - 1 {
+            state.tick_status();
+        }
+        assert!(
+            state.status_message.is_some(),
+            "still up one tick before expiry"
+        );
+
+        state.tick_status();
+        assert!(state.status_message.is_none(), "cleared on the last tick");
+
+        // And stays cleared rather than underflowing the counter.
+        state.tick_status();
+        assert_eq!(state.status_timer, 0);
     }
 }

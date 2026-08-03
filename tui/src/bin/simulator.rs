@@ -278,7 +278,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ];
             (*phys).wheels_pressure = [27.4, 27.6, 27.2, 27.4];
             (*phys).brake_temp = [480.0, 490.0, 390.0, 400.0];
-            (*phys).ride_height = [25.0, 55.0];
+            // Metres, which is what AC publishes — the UI multiplies by
+            // 1000 to show millimetres. Writing 25.0 here meant the demo
+            // displayed a 25000mm ride height.
+            (*phys).ride_height = [0.025, 0.055];
 
             (*gfx).packet_id = (*gfx).packet_id.wrapping_add(1);
             (*gfx).status = 2; // AC_LIVE

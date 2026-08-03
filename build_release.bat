@@ -1,7 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set VERSION=v0.2.3
+REM Read from the workspace manifest rather than duplicated here. This was
+REM hardcoded and two releases out of date, so every bundle it produced was
+REM named after the wrong version.
+for /f "tokens=2 delims==" %%a in ('findstr /b "version" Cargo.toml') do (
+    set RAW_VERSION=%%a
+    goto :got_version
+)
+:got_version
+set RAW_VERSION=!RAW_VERSION: =!
+set RAW_VERSION=!RAW_VERSION:"=!
+set VERSION=v!RAW_VERSION!
 set RELEASE_DIR=releases
 set BUNDLE_NAME=ac_pro_engineer_%VERSION%
 set BUNDLE_DIR=%RELEASE_DIR%\%BUNDLE_NAME%

@@ -11,7 +11,7 @@ use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
 use ac_core::memory::SharedMemory;
 use ac_core::overlay::{OverlayManager, OverlayMode};
-use ac_core::process::is_process_running;
+use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
 use ac_core::setup_manager::SetupManager;
@@ -29,23 +29,41 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+/// Create a log file, making its directory first.
+fn open_log_file(path: &PathBuf) -> Result<File, std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    File::create(path)
+}
+
 pub fn setup_logging(
     file: Option<&PathBuf>,
     level: AppLogLevel,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let default_path = PathBuf::from("logs").join("ac_engineer.log");
+    // The app data directory first: "logs" relative to the working directory
+    // is not writable when the app is launched from a shortcut or installed
+    // under Program Files, and a failure here used to abort startup before
+    // the TUI was ever drawn.
+    let default_path = ac_core::config::app_dir()
+        .join("logs")
+        .join("ac_engineer.log");
+    let fallback_path = PathBuf::from("logs").join("ac_engineer.log");
+
     let file = match file {
-        Some(file) => file,
-        None => &default_path,
+        Some(explicit) => open_log_file(explicit)?,
+        None => match open_log_file(&default_path) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!(
+                    "Could not open {}: {error}. Falling back to {}.",
+                    default_path.display(),
+                    fallback_path.display()
+                );
+                open_log_file(&fallback_path)?
+            }
+        },
     };
-
-    if let Some(parent) = file.parent()
-        && let Err(error) = fs::create_dir_all(parent)
-    {
-        error!(error = ?error, "Cannot create log directory");
-    }
-
-    let file = File::create(file)?;
 
     let debug_log = tracing_subscriber::fmt::layer()
         .with_writer(file)
@@ -161,13 +179,16 @@ impl Memory {
     }
 
     pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // These two are rewritten by the game while we read them, so they go
+        // through the tear-checking read. The static page is written once at
+        // session load and does not need it.
         self.ac_physics = self
             .physics_mem
-            .get()
+            .get_stable()
             .map_err(|e| anyhow::format_err!("Cannot read physics: {e:?}"))?;
         self.ac_graphics = self
             .graphics_mem
-            .get()
+            .get_stable()
             .map_err(|e| anyhow::format_err!("Cannot read graphics: {e:?}"))?;
         self.ac_static = self
             .static_mem
@@ -193,6 +214,10 @@ impl Memory {
     }
 }
 
+/// Sector count to assume until AcStatic says otherwise. AC's own tracks are
+/// almost all three-sector.
+pub const DEFAULT_SECTOR_COUNT: i32 = 3;
+
 pub struct AppState {
     pub mem: Option<Memory>,
     pub setup_manager: SetupManager,
@@ -207,6 +232,10 @@ pub struct AppState {
     pub stage: AppStage,
     pub launcher_selection: usize,
     pub is_game_running: bool,
+    /// Cached "is AC (or the simulator) running" check. The uncached scan
+    /// reads every process on the system, and the launcher used to ask twice
+    /// per frame.
+    pub game_watcher: ProcessWatcher,
     pub is_connected: bool,
     pub active_tab: AppTab,
     pub session_info: SessionInfo,
@@ -217,6 +246,11 @@ pub struct AppState {
     pub current_lap_number: i32,
     pub current_lap_sectors: [i32; 3],
     pub last_sector_index: i32,
+    /// How many sectors this track publishes, from AcStatic. Not every track
+    /// runs three — mods use two or four — and assuming three left the extra
+    /// slots permanently zero, which `theoretical_best_lap_ms` reads as "no
+    /// data" and so never produced a result on those tracks.
+    pub track_sector_count: i32,
     pub recommendations: Vec<Recommendation>,
     pub analysis_results: Vec<AnalysisResult>,
     pub last_update: Instant,
@@ -250,6 +284,9 @@ impl AppState {
 
         let overlay_manager = OverlayManager::new(overlay_mode);
 
+        let setup_manager = SetupManager::new();
+        setup_manager.set_documents_override(&config.ac_documents_path);
+
         Self {
             mem: None,
             mock_physics: None,
@@ -257,8 +294,8 @@ impl AppState {
             mock_static: None,
             is_demo_mode: false,
             demo_tick_counter: 0,
-            setup_manager: SetupManager::new(),
-            content_manager: ContentManager::new(),
+            setup_manager,
+            content_manager: ContentManager::with_root_override(config.ac_install_override()),
             record_manager: RecordManager::new(),
             updater: Updater::new(),
             discord: DiscordClient::new(),
@@ -269,6 +306,7 @@ impl AppState {
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
+            game_watcher: ProcessWatcher::new(&["acs.exe", "simulator.exe"]),
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
@@ -279,6 +317,7 @@ impl AppState {
             current_lap_number: -1,
             current_lap_sectors: [0; 3],
             last_sector_index: 0,
+            track_sector_count: DEFAULT_SECTOR_COUNT,
             recommendations: Vec::new(),
             analysis_results: Vec::new(),
             last_update: Instant::now(),
@@ -356,7 +395,7 @@ impl AppState {
                 timestamp: "14:32:05".to_string(),
                 max_speed: 342.5,
                 avg_speed: 254.2,
-                avg_pressure: 27.4,
+                avg_pressure: Some(27.4),
                 min_corner_speed_avg: 78.5,
                 fuel_used: 2.85,
                 gear_shifts: 42,
@@ -364,14 +403,15 @@ impl AppState {
                 peak_brake_g: 4.85,
                 avg_tyre_temp: [88.5, 87.2, 91.0, 89.4],
                 max_brake_temp: [580.0, 565.0, 490.0, 485.0],
-                pressure_deviation: 0.15,
+                pressure_deviation: Some(0.15),
                 suspension_travel_hist: [12.4, 11.8, 14.2, 13.9],
                 avg_wheels_pressure: [27.4, 27.6, 27.5, 27.3],
                 avg_tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
                 avg_tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
                 avg_tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
                 avg_brake_temp: [450.0, 442.0, 380.0, 375.0],
-                avg_ride_height: [25.0, 55.0],
+                // Metres, as AC publishes them. The renderer scales to mm.
+                avg_ride_height: [0.025, 0.055],
                 damper_histograms: [[25.0, 35.0, 20.0, 20.0]; 4],
                 throttle_smoothness: 94.2,
                 steering_smoothness: 91.8,
@@ -480,18 +520,55 @@ impl AppState {
 
     pub fn process_tick_logic(&mut self, phys: AcPhysics, gfx: AcGraphics, stat: AcStatic) {
         let stat_spline_length = stat.track_spline_length;
+        // AcStatic::sector_count was read by nothing, so every track was
+        // treated as three-sector.
+        if stat.sector_count > 0 && stat.sector_count as usize <= self.current_lap_sectors.len() {
+            self.track_sector_count = stat.sector_count;
+        }
 
         self.update_live_buffers(&phys, &gfx);
         self.update_session_info(&gfx);
         self.engineer.update_config(&self.config);
         self.engineer.update(&phys, &gfx, &self.session_info);
 
+        // The engineer sets `current_delta` from AC's own performance meter,
+        // which is measured against whatever reference the game picked. With
+        // the ghost delta enabled, compare against our own recorded best lap
+        // instead — `calculate_ghost_delta` existed for this and had no caller
+        // outside its unit test, which is also why the Settings toggle did
+        // nothing at all.
+        if self.config.show_ghost_delta
+            && let Some(best) = self
+                .analyzer
+                .best_lap_index
+                .and_then(|i| self.analyzer.laps.get(i))
+            && let Some(delta) = ac_core::analyzer::calculate_ghost_delta(
+                best,
+                gfx.normalized_car_position,
+                gfx.i_current_time as f32 / 1000.0,
+            )
+        {
+            self.engineer.stats.current_delta = delta;
+        }
+
         self.overlay_manager.update(&self.session_info);
 
+        // Sector splits are captured on the transition *out* of a sector,
+        // when AC publishes the one just finished in `last_sector_time`. The
+        // final sector is the exception: its transition is the lap rollover,
+        // which races the `completed_laps` increment handled below. Whichever
+        // AC publishes first decides whether the last split lands in this lap
+        // or the next one, so it is derived from the lap time at lap close
+        // instead — see `close_current_lap_sectors`.
         let current_sector = gfx.current_sector_index;
         if current_sector != self.last_sector_index {
-            if self.last_sector_index >= 0 && self.last_sector_index < 3 {
-                self.current_lap_sectors[self.last_sector_index as usize] = gfx.last_sector_time;
+            let finished = self.last_sector_index;
+            let is_final_sector = finished == self.track_sector_count - 1;
+            if finished >= 0
+                && (finished as usize) < self.current_lap_sectors.len()
+                && !is_final_sector
+            {
+                self.current_lap_sectors[finished as usize] = gfx.last_sector_time;
             }
             self.last_sector_index = current_sector;
         }
@@ -510,6 +587,7 @@ impl AppState {
             if completed_laps == self.current_lap_number + 1 {
                 let last_lap_time = gfx.i_last_time;
                 if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
+                    self.close_current_lap_sectors(last_lap_time);
                     self.analyzer.process_lap(
                         self.current_lap_number,
                         last_lap_time,
@@ -522,25 +600,36 @@ impl AppState {
                         self.config.update_rate,
                     );
 
-                    if let Some(car_specs) = self
+                    // Car specs sharpen the *estimated* reference time, but
+                    // they are an enrichment, not a precondition. This whole
+                    // block used to be nested inside `if let Some(car_specs)`,
+                    // so on any machine where the AC install could not be
+                    // found — every Linux machine, before ac_paths — no
+                    // record was ever created, compared or saved, and the
+                    // analyzer's world record stayed None, silently disabling
+                    // the off-pace advice as well.
+                    let car_specs = self
                         .content_manager
-                        .get_car_specs(&self.session_info.car_name)
-                    {
-                        let mut rec = self.record_manager.get_or_calculate_record(
-                            &self.session_info.car_name,
-                            &self.session_info.track_name,
-                            &self.session_info.track_config,
-                            Some(car_specs),
-                            stat_spline_length,
-                        );
+                        .get_car_specs(&self.session_info.car_name);
+                    let reference = self.record_manager.get_or_calculate_record(
+                        &self.session_info.car_name,
+                        &self.session_info.track_name,
+                        &self.session_info.track_config,
+                        car_specs,
+                        stat_spline_length,
+                    );
 
-                        if last_lap_time < rec.time_ms {
-                            rec.time_ms = last_lap_time;
-                            rec.source = "User Best".to_string();
-                            self.record_manager.update_if_faster(rec.clone());
-                        }
-                        self.analyzer.set_world_record(rec);
-                    }
+                    // The driver's own best is tracked against their own
+                    // history, not against the world record. Comparing to the
+                    // WR meant `records.json` only ever gained an entry from
+                    // someone who had beaten it, so for every normal driver
+                    // the personal best was never saved at all.
+                    let mut personal = reference.clone();
+                    personal.time_ms = last_lap_time;
+                    personal.source = "User Best".to_string();
+                    self.record_manager.update_if_faster(personal);
+
+                    self.analyzer.set_world_record(reference);
                 }
             }
             self.current_lap_physics.clear();
@@ -582,6 +671,7 @@ impl AppState {
 
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
+        self.ui_state.analysis.tick_status();
         let delta = self.engineer.stats.current_delta;
         self.discord
             .update(self.is_connected, &self.session_info, delta);
@@ -601,12 +691,14 @@ impl AppState {
             *tick = (*tick + 1) % 100;
         }
 
+        // Kept above the early return so the launcher can read
+        // `is_game_running` rather than running its own scan on every frame.
+        let process_active = self.game_watcher.is_running();
+        self.is_game_running = process_active;
+
         if self.stage != AppStage::Running {
             return;
         }
-
-        let process_active = is_process_running("acs.exe") || is_process_running("simulator.exe");
-        self.is_game_running = process_active;
 
         if !process_active && self.is_connected {
             self.disconnect();
@@ -649,6 +741,42 @@ impl AppState {
         self.process_tick_logic(phys, gfx, stat);
     }
 
+    /// Fill in the final sector split from the lap time.
+    ///
+    /// The earlier splits come from AC's `last_sector_time` on each sector
+    /// transition, but the final one's transition *is* the lap rollover — the
+    /// same tick that increments `completed_laps`. Which of the two AC
+    /// publishes first is not guaranteed, and when the lap count won the race
+    /// the split was written after this lap had already been processed and
+    /// its array cleared, so it landed in the *next* lap instead. The symptom
+    /// was an occasional lap with a zero final sector and a following lap
+    /// whose splits did not add up.
+    ///
+    /// The lap time minus the sectors already known is not subject to that
+    /// ordering at all, so it is used instead. Left at zero if the earlier
+    /// splits are missing or do not leave a plausible remainder — a wrong
+    /// split is worse than a missing one, since `theoretical_best_lap_ms`
+    /// would take it as a personal best.
+    fn close_current_lap_sectors(&mut self, lap_time_ms: i32) {
+        let final_idx = (self.track_sector_count - 1).max(0) as usize;
+        if final_idx == 0 || final_idx >= self.current_lap_sectors.len() {
+            return;
+        }
+
+        let earlier: i32 = self.current_lap_sectors[..final_idx].iter().sum();
+        if self.current_lap_sectors[..final_idx]
+            .iter()
+            .any(|s| *s <= 0)
+        {
+            return;
+        }
+
+        let remainder = lap_time_ms - earlier;
+        if remainder > ac_core::analyzer::MIN_VALID_SECTOR_MS && remainder < lap_time_ms {
+            self.current_lap_sectors[final_idx] = remainder;
+        }
+    }
+
     pub fn disconnect(&mut self) {
         self.mem = None;
         self.is_connected = false;
@@ -659,6 +787,15 @@ impl AppState {
         self.current_lap_physics.clear();
         self.current_lap_graphics.clear();
         self.current_lap_number = -1;
+        // These were left behind on disconnect, so the first sector
+        // transition after reconnecting was measured against the previous
+        // session's state.
+        self.current_lap_sectors = [0; 3];
+        self.last_sector_index = -1;
+        self.track_sector_count = DEFAULT_SECTOR_COUNT;
+        // Fuel burn measured in the previous session says nothing about the
+        // next one.
+        self.engineer.reset_fuel_tracking();
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -768,5 +905,67 @@ mod tests {
         assert!(app.overlay_manager.state.speed_kmh > 0);
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
+    }
+
+    /// The final split is derived from the lap time rather than read off the
+    /// sector transition, because that transition races the lap-count
+    /// increment and could land the split in the following lap.
+    #[test]
+    fn final_sector_is_derived_from_the_lap_time() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        app.current_lap_sectors = [30_000, 35_000, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(
+            app.current_lap_sectors[2], 30_500,
+            "the remainder of the lap time is the final sector"
+        );
+        assert_eq!(
+            app.current_lap_sectors.iter().sum::<i32>(),
+            95_500,
+            "the splits add up to the lap time"
+        );
+    }
+
+    /// A wrong split is worse than a missing one: theoretical_best_lap_ms
+    /// would take it as a personal best and never let go of it.
+    #[test]
+    fn final_sector_stays_empty_when_earlier_splits_are_missing() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        app.current_lap_sectors = [30_000, 0, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[2], 0);
+    }
+
+    /// An implausible remainder means the earlier splits came from a
+    /// different lap, so it is discarded rather than recorded.
+    #[test]
+    fn final_sector_rejects_an_implausible_remainder() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 3;
+        // The two known splits already exceed the lap time.
+        app.current_lap_sectors = [60_000, 50_000, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[2], 0);
+    }
+
+    /// Two-sector mod tracks exist, and AcStatic says so.
+    #[test]
+    fn final_sector_honours_a_two_sector_track() {
+        let mut app = AppState::new(OverlayMode::External);
+        app.track_sector_count = 2;
+        app.current_lap_sectors = [45_000, 0, 0];
+
+        app.close_current_lap_sectors(95_500);
+
+        assert_eq!(app.current_lap_sectors[1], 50_500);
+        assert_eq!(app.current_lap_sectors[2], 0, "the third slot is unused");
     }
 }

@@ -1,5 +1,7 @@
+pub mod ac_paths;
 pub mod ac_structs;
 pub mod analyzer;
+pub mod atomic_file;
 pub mod config;
 pub mod content_manager;
 pub mod crash_logger;

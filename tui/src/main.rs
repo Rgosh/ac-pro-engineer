@@ -116,15 +116,34 @@ async fn main() -> Result<(), anyhow::Error> {
         OverlayMode::NativeDesktop
     };
 
-    if !args.silent {
-        setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if !args.silent
+        && let Err(error) = setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
+    {
+        // Not being able to write a log is a reason to run without one, not a
+        // reason to refuse to start. This used to abort before the TUI was
+        // drawn, so a read-only working directory looked like the app being
+        // broken.
+        eprintln!("Continuing without a log file: {error}");
     }
 
     info!("Starting application and connecting to telemetry...");
 
+    // Not fatal. `Command::spawn` returns NotFound when protontricks-launch
+    // is not installed, and `?` here killed the app before the TUI existed —
+    // so anyone running AC natively, through a different launcher, or just
+    // wanting to review saved laps offline could not start it at all. The
+    // launcher already has a "WAITING FOR SIMULATOR..." state for exactly
+    // this situation.
     #[cfg(target_os = "linux")]
-    let _mem_bridge = platform::linux::SharedMemoryBridge::start().await?;
+    let _mem_bridge = match platform::linux::SharedMemoryBridge::start().await {
+        Ok(bridge) => Some(bridge),
+        Err(error) => {
+            eprintln!(
+                "Could not start the shared-memory bridge: {error}\n                 Live telemetry will be unavailable; everything else still works."
+            );
+            None
+        }
+    };
 
     #[cfg(target_os = "windows")]
     set_console_icon();
@@ -137,12 +156,24 @@ async fn main() -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        SetSize(140, 40)
-    )?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    // Ask for more room only when the terminal has less than the UI needs.
+    // This used to be an unconditional SetSize(140, 40), which shrank the
+    // window of anyone running maximised and never put it back on exit.
+    // Terminals are free to ignore the request either way, which is why the
+    // renderer has its own too-small guard rather than relying on this.
+    const PREFERRED_COLS: u16 = 140;
+    const PREFERRED_ROWS: u16 = 40;
+    if let Ok((cols, rows)) = crossterm::terminal::size()
+        && (cols < PREFERRED_COLS || rows < PREFERRED_ROWS)
+    {
+        execute!(
+            stdout,
+            SetSize(cols.max(PREFERRED_COLS), rows.max(PREFERRED_ROWS))
+        )
+        .ok();
+    }
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -174,14 +205,30 @@ async fn main() -> Result<(), anyhow::Error> {
 
             app.tick();
 
+            // Sitting on the UPDATE item is the one moment the release list
+            // matters, so it is where a check that failed at startup gets
+            // another go. Debounced inside the updater, so holding the
+            // selection here does not hammer the API.
+            if app.launcher_selection == 5 {
+                app.updater.recheck_if_stale();
+            }
+
             app.overlay_manager.render_manual_state();
 
             terminal.draw(|f| renderer.render(f, &app))?;
 
             if event::poll(target_frame_time.saturating_sub(start.elapsed()))?
                 && let Event::Key(key) = event::read()?
-                && key.kind == event::KeyEventKind::Press
+                && is_key_action(key.kind)
             {
+                // Checked before the modal below. It used to sit after it, so
+                // the first-run prompt every new user sees could not be
+                // escaped: Ctrl+C, q and Esc all fell into the modal's
+                // `_ => {}` and did nothing.
+                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+                    break 'outer;
+                }
+
                 if app.show_first_run_prompt {
                     match key.code {
                         KeyCode::Left => app.first_run_selection = 0,
@@ -193,13 +240,12 @@ async fn main() -> Result<(), anyhow::Error> {
                                 app.active_tab = AppTab::Guide;
                             }
                         }
+                        // Dismiss without opening the guide, which is what
+                        // Esc means everywhere else in the app.
+                        KeyCode::Esc => app.show_first_run_prompt = false,
                         _ => {}
                     }
                     continue;
-                }
-
-                if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-                    break 'outer;
                 }
 
                 match key.code {
@@ -347,7 +393,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
             if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?
                 && let Event::Key(key) = event::read()?
-                && key.kind == event::KeyEventKind::Press
+                && is_key_action(key.kind)
             {
                 let mut app_lock = app_arc.safe_lock();
 
@@ -400,14 +446,33 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 if app_lock.show_help {
                     match key.code {
+                        // F1 included because the modal itself says
+                        // "PRESS ESC, ?, Q, OR F1 TO CLOSE" in nine places,
+                        // and F1 was the one key of the four that did nothing
+                        // -- which reads as the modal being stuck.
                         KeyCode::Esc
                         | KeyCode::Char('?')
                         | KeyCode::Char('q')
-                        | KeyCode::Char('Q') => {
+                        | KeyCode::Char('Q')
+                        | KeyCode::Char('й')
+                        | KeyCode::Char('Й')
+                        | KeyCode::F(1) => {
                             app_lock.show_help = false;
                         }
                         _ => {}
                     }
+                    continue;
+                }
+
+                // The analysis load menu owns Esc while it is open. Without
+                // this the global Esc below fired first and dropped the whole
+                // session back to the launcher, disconnecting on the way --
+                // while the menu's own footer promised "ESC: Close".
+                if app_lock.active_tab == AppTab::Analysis
+                    && app_lock.ui_state.analysis.load_menu.borrow().active
+                    && key.code == KeyCode::Esc
+                {
+                    app_lock.ui_state.analysis.load_menu.borrow_mut().active = false;
                     continue;
                 }
 
@@ -452,10 +517,24 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
                     _ => match app_lock.active_tab {
                         AppTab::Settings => {
-                            let AppState {
-                                ui_state, config, ..
-                            } = &mut *app_lock;
-                            ui_state.settings.handle_input(key.code, config);
+                            let changed = {
+                                let AppState {
+                                    ui_state, config, ..
+                                } = &mut *app_lock;
+                                ui_state.settings.handle_input(key.code, config)
+                            };
+                            if changed {
+                                // Nothing used to write these back, so every
+                                // unit, threshold and target the user set was
+                                // discarded on exit.
+                                if let Err(error) = app_lock.config.save() {
+                                    error!(error = ?error, "Could not save settings");
+                                }
+                                // And nothing re-read them either: history
+                                // size and the engineer's thresholds only took
+                                // effect on the next launch.
+                                app_lock.apply_config();
+                            }
                         }
                         AppTab::Engineer => match key.code {
                             KeyCode::Left => app_lock.ui_state.engineer.prev_tab(),
@@ -489,10 +568,21 @@ async fn main() -> Result<(), anyhow::Error> {
                             | KeyCode::Char('S')
                             | KeyCode::Char('ы')
                             | KeyCode::Char('Ы') => {
-                                if let Some(best) = app_lock.analyzer.best_lap_index
-                                    && let Some(lap) = app_lock.analyzer.laps.get(best).cloned()
-                                {
-                                    app_lock.ui_state.analysis.save_lap_data(&lap);
+                                // The lap the user has selected, not the
+                                // fastest one. This used to read
+                                // `best_lap_index`, so selecting lap 3 and
+                                // pressing S silently wrote lap 5 — while the
+                                // export handler two arms down correctly used
+                                // the selection.
+                                let selected = app_lock.ui_state.analysis.selected_lap_index;
+                                match app_lock.analyzer.laps.get(selected).cloned() {
+                                    Some(lap) => app_lock.ui_state.analysis.save_lap_data(&lap),
+                                    // Previously a silent no-op with nothing
+                                    // on screen to say why.
+                                    None => app_lock
+                                        .ui_state
+                                        .analysis
+                                        .set_status("No lap to save".to_string()),
                                 }
                             }
                             KeyCode::Char('l')
@@ -516,18 +606,45 @@ async fn main() -> Result<(), anyhow::Error> {
                                     .analysis
                                     .selected_lap_index
                                     .min(app_lock.analyzer.laps.len().saturating_sub(1));
-                                if let Some(lap) = app_lock.analyzer.laps.get(sel) {
-                                    let export_path = app_lock.config.resolve_data_path().join(
-                                        format!("exports/lap_{}_export.csv", lap.lap_number + 1),
-                                    );
-                                    if let Ok(p) =
-                                        ac_core::analyzer::export_lap_to_csv(lap, &export_path)
-                                    {
-                                        app_lock
-                                            .ui_state
-                                            .analysis
-                                            .set_status(format!("Exported CSV: {}", p.display()));
+                                match app_lock.analyzer.laps.get(sel).cloned() {
+                                    Some(lap) => {
+                                        // Named after the car, track and lap
+                                        // rather than "lap_3_export.csv",
+                                        // which collided with itself across
+                                        // every session at every circuit.
+                                        let file_name = format!(
+                                            "{}_{}_lap{}_{}.csv",
+                                            sanitise_for_file_name(&lap.car_model),
+                                            sanitise_for_file_name(&lap.track_name),
+                                            lap.lap_number + 1,
+                                            chrono::Local::now().format("%Y%m%d-%H%M%S"),
+                                        );
+                                        let export_path = app_lock
+                                            .config
+                                            .resolve_data_path()
+                                            .join("exports")
+                                            .join(file_name);
+
+                                        let status = match ac_core::analyzer::export_lap_to_csv(
+                                            &lap,
+                                            &export_path,
+                                        ) {
+                                            Ok(p) => format!("Exported CSV: {}", p.display()),
+                                            // Previously `if let Ok(..)`, so a
+                                            // failed export was silent and
+                                            // indistinguishable from a
+                                            // successful one.
+                                            Err(error) => {
+                                                error!(error = ?error, "CSV export failed");
+                                                format!("Export failed: {error}")
+                                            }
+                                        };
+                                        app_lock.ui_state.analysis.set_status(status);
                                     }
+                                    None => app_lock
+                                        .ui_state
+                                        .analysis
+                                        .set_status("No lap to export".to_string()),
                                 }
                             }
                             KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
@@ -548,31 +665,46 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                             _ => {}
                         },
-                        AppTab::Setup => match key.code {
-                            KeyCode::Up => {
-                                let current =
-                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                if current > 0 {
-                                    app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                        AppTab::Setup => {
+                            let in_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            match key.code {
+                                // 'B' toggles between the local setup list and
+                                // the cloud browser, in either direction.
+                                KeyCode::Char('b')
+                                | KeyCode::Char('B')
+                                | KeyCode::Char('и')
+                                | KeyCode::Char('И') => {
+                                    let mut active =
+                                        app_lock.setup_manager.browser_active.safe_lock();
+                                    *active = !*active;
                                 }
-                            }
-                            KeyCode::Down => {
-                                let current =
-                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                let total = app_lock.setup_manager.setups.safe_lock().len();
-                                if total > 0 && current + 1 < total {
-                                    app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                _ if in_browser => handle_setup_browser_key(key.code, &app_lock),
+                                KeyCode::Up => {
+                                    let current =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    if current > 0 {
+                                        app_lock
+                                            .ui_state
+                                            .setup_list_state
+                                            .select(Some(current - 1));
+                                    }
                                 }
+                                KeyCode::Down => {
+                                    let current =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let total = app_lock.setup_manager.setups.safe_lock().len();
+                                    if total > 0 && current + 1 < total {
+                                        app_lock
+                                            .ui_state
+                                            .setup_list_state
+                                            .select(Some(current + 1));
+                                    }
+                                }
+                                KeyCode::PageUp => app_lock.setup_manager.scroll_details(-1),
+                                KeyCode::PageDown => app_lock.setup_manager.scroll_details(1),
+                                _ => {}
                             }
-                            KeyCode::Char('b')
-                            | KeyCode::Char('B')
-                            | KeyCode::Char('и')
-                            | KeyCode::Char('И') => {
-                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
-                                *active = !*active;
-                            }
-                            _ => {}
-                        },
+                        }
                         _ => {}
                     },
                 }
@@ -594,5 +726,121 @@ async fn main() -> Result<(), anyhow::Error> {
 
     app.record_manager.save();
 
+    // The Settings tab describes this toggle as "save settings on exit", and
+    // until now nothing acted on it either way. Settings are written as they
+    // are edited now, so this is the belt to that braces — it also catches
+    // the language and banner toggles made from the launcher.
+    if app.config.auto_save
+        && let Err(error) = app.config.save()
+    {
+        error!(error = ?error, "Could not save the config on exit");
+    }
+
     Ok(())
+}
+
+/// Reduce a car or track name to something safe in a file name.
+fn sanitise_for_file_name(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "unknown".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Whether a key event should act, as opposed to being a key release.
+///
+/// Windows reports a held key as `Repeat` rather than a stream of `Press`
+/// events, and only `Press` was accepted — so holding an arrow in the guide
+/// or a lap list moved exactly one row and then stopped.
+fn is_key_action(kind: event::KeyEventKind) -> bool {
+    matches!(
+        kind,
+        event::KeyEventKind::Press | event::KeyEventKind::Repeat
+    )
+}
+
+/// Keys for the Setup Cloud browser.
+///
+/// Nothing routed to these before: the Setup tab handled only Up/Down/B, so
+/// the browser opened onto an empty SETUPS column that could never be filled
+/// and a DETAILS pane permanently reading "Select a car and setup". The
+/// on-screen hint, the help overlay and the README all documented D to
+/// download, and `download_setup`, `load_browser_car`,
+/// `get_browser_selected_setup` and `scroll_details` had no callers anywhere
+/// in the workspace.
+fn handle_setup_browser_key(key: KeyCode, app: &AppState) {
+    let manager = &app.setup_manager;
+    let focus_col = *manager.browser_focus_col.safe_lock();
+
+    match key {
+        KeyCode::Left => *manager.browser_focus_col.safe_lock() = 0,
+        KeyCode::Right => *manager.browser_focus_col.safe_lock() = 1,
+
+        KeyCode::Up | KeyCode::Down => {
+            let forward = key == KeyCode::Down;
+            if focus_col == 0 {
+                let total = manager.get_manifest().len();
+                let mut idx = manager.browser_car_idx.safe_lock();
+                let moved = step(*idx, total, forward);
+                if moved != *idx {
+                    *idx = moved;
+                    drop(idx);
+                    // Moving the car selection is what loads its setups. This
+                    // call is the reason the SETUPS column was always empty.
+                    manager.load_browser_car();
+                }
+            } else {
+                let total = manager.get_browser_setups().len();
+                let mut idx = manager.browser_setup_idx.safe_lock();
+                *idx = step(*idx, total, forward);
+                drop(idx);
+                *manager.details_scroll.safe_lock() = 0;
+            }
+        }
+
+        // Enter on the car column is an explicit "load this one", which also
+        // gives the user a way to retry after a failed fetch.
+        KeyCode::Enter if focus_col == 0 => {
+            manager.load_browser_car();
+            *manager.browser_focus_col.safe_lock() = 1;
+        }
+
+        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('в') | KeyCode::Char('В') => {
+            if let Some(setup) = manager.get_browser_selected_setup() {
+                let target = manager.get_browser_target_car();
+                if manager.download_setup(&setup, &target) {
+                    info!("Installed setup '{}' for {}", setup.name, target);
+                } else {
+                    error!("Could not install setup '{}' for {}", setup.name, target);
+                }
+            }
+        }
+
+        KeyCode::PageUp => manager.scroll_details(-1),
+        KeyCode::PageDown => manager.scroll_details(1),
+        _ => {}
+    }
+}
+
+/// Move a list selection one step, staying inside the list.
+fn step(current: usize, total: usize, forward: bool) -> usize {
+    if total == 0 {
+        return 0;
+    }
+    if forward {
+        (current + 1).min(total - 1)
+    } else {
+        current.saturating_sub(1)
+    }
 }

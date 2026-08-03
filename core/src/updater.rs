@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{error, info};
 // Only the non-Windows apply path logs at warn level.
 #[cfg(not(target_os = "windows"))]
@@ -312,11 +312,71 @@ fn is_prerelease(version: &str) -> bool {
     v.contains('-')
 }
 
+/// Turn the GitHub release feed into the list the launcher's version carousel
+/// walks with the arrow keys.
+///
+/// Every stable release that ships an asset for the running OS goes in,
+/// *including releases older than the one running* — the carousel exists to
+/// roll back to them, and `launcher.rs` renders a "you won't be able to switch
+/// back" warning for exactly that case. Filtering them out left the list
+/// holding a single entry whenever the newest release was already installed,
+/// which is what made the arrows look dead.
+///
+/// The result is sorted newest-first, so index 0 is the latest release and
+/// moving right walks backwards through history. GitHub returns releases in
+/// creation order, which is *usually* the same thing but is not guaranteed —
+/// a re-published or backported tag lands out of order.
+fn build_version_list(gh_releases: &[GitHubRelease]) -> Vec<RemoteVersion> {
+    let mut versions: Vec<RemoteVersion> = Vec::new();
+
+    for release in gh_releases {
+        if release.prerelease {
+            continue;
+        }
+
+        let remote_ver_str = release.tag_name.trim_start_matches('v');
+
+        // Skip prerelease version strings (e.g. "0.3.0-beta.1")
+        if is_prerelease(remote_ver_str) {
+            continue;
+        }
+
+        // Find the asset built for the OS we are running on
+        if let Some((kind, asset)) = select_asset(&release.assets) {
+            versions.push(RemoteVersion {
+                version: remote_ver_str.to_string(),
+                url: asset.browser_download_url.clone(),
+                notes: release.body.clone().unwrap_or_default(),
+                // Filled in below, once the list is in version order.
+                is_latest: false,
+                expected_size: asset.size,
+                delivery: kind,
+            });
+        } else {
+            info!(
+                "Release v{} has no asset for {}; skipping",
+                remote_ver_str,
+                std::env::consts::OS
+            );
+        }
+    }
+
+    versions.sort_by(|a, b| compare_semver(&b.version, &a.version));
+    if let Some(newest) = versions.first_mut() {
+        newest.is_latest = true;
+    }
+
+    versions
+}
+
 #[derive(Clone)]
 pub struct Updater {
     pub status: Arc<Mutex<UpdateStatus>>,
     pub releases: Arc<Mutex<Vec<RemoteVersion>>>,
     pub selected_index: Arc<Mutex<usize>>,
+    /// When the last check was started, so a retry cannot be triggered on
+    /// every frame the user sits on the UPDATE item.
+    last_check: Arc<Mutex<Instant>>,
 }
 
 impl Default for Updater {
@@ -325,16 +385,50 @@ impl Default for Updater {
     }
 }
 
+/// How long a failed or empty check has to be left alone before the launcher
+/// is allowed to ask GitHub again.
+const RECHECK_INTERVAL: Duration = Duration::from_secs(60);
+
 impl Updater {
     pub fn new() -> Self {
         let updater = Self {
             status: Arc::new(Mutex::new(UpdateStatus::Idle)),
             releases: Arc::new(Mutex::new(Vec::new())),
             selected_index: Arc::new(Mutex::new(0)),
+            last_check: Arc::new(Mutex::new(Instant::now())),
         };
 
         updater.check_for_updates();
         updater
+    }
+
+    /// Ask GitHub again if the last attempt left us with nothing usable.
+    ///
+    /// The only check ran from `new()`, so a machine that was offline at
+    /// startup — or behind a captive portal, which is the common case on a
+    /// laptop — kept `Error` and an empty carousel for the rest of the
+    /// session, with no way to retry short of restarting the app.
+    ///
+    /// A check that succeeded is left alone: re-polling the API while the user
+    /// scrolls a menu buys nothing and burns their rate limit.
+    pub fn recheck_if_stale(&self) {
+        let needs_retry = {
+            let status = self.status.lock().unwrap_or_else(|e| e.into_inner());
+            matches!(*status, UpdateStatus::Error(_) | UpdateStatus::Idle)
+        };
+        if !needs_retry {
+            return;
+        }
+
+        {
+            let mut last = self.last_check.lock().unwrap_or_else(|e| e.into_inner());
+            if last.elapsed() < RECHECK_INTERVAL {
+                return;
+            }
+            *last = Instant::now();
+        }
+
+        self.check_for_updates();
     }
 
     fn safe_lock<T, F>(&self, mutex: &Mutex<T>, f: F)
@@ -389,6 +483,7 @@ impl Updater {
     pub fn check_for_updates(&self) {
         let status = self.status.clone();
         let releases_store = self.releases.clone();
+        let selected = self.selected_index.clone();
 
         {
             let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -420,60 +515,30 @@ impl Updater {
 
                     match resp.json::<Vec<GitHubRelease>>() {
                         Ok(gh_releases) => {
-                            let mut parsed_versions = Vec::new();
+                            let parsed_versions = build_version_list(&gh_releases);
 
-                            for (i, release) in gh_releases.iter().enumerate() {
-                                // Skip prereleases by default
-                                if release.prerelease {
-                                    continue;
-                                }
-
-                                let remote_ver_str = release.tag_name.trim_start_matches('v');
-
-                                // Skip prerelease version strings (e.g. "0.3.0-beta.1")
-                                if is_prerelease(remote_ver_str) {
-                                    continue;
-                                }
-
-                                // Skip versions older than current (no downgrade)
-                                if compare_semver(remote_ver_str, CURRENT_VERSION)
-                                    == std::cmp::Ordering::Less
-                                {
-                                    continue;
-                                }
-
-                                // Find the asset built for the OS we are running on
-                                if let Some((kind, asset)) = select_asset(&release.assets) {
-                                    parsed_versions.push(RemoteVersion {
-                                        version: remote_ver_str.to_string(),
-                                        url: asset.browser_download_url.clone(),
-                                        notes: release.body.clone().unwrap_or_default(),
-                                        is_latest: i == 0 || parsed_versions.is_empty(),
-                                        expected_size: asset.size,
-                                        delivery: kind,
-                                    });
-                                } else {
-                                    info!(
-                                        "Release v{} has no asset for {}; skipping",
-                                        remote_ver_str,
-                                        std::env::consts::OS
-                                    );
-                                }
-                            }
-
-                            if !parsed_versions.is_empty() {
+                            if let Some(newest) = parsed_versions.first() {
+                                let newest_version = newest.version.clone();
                                 {
                                     let mut r_lock =
                                         releases_store.lock().unwrap_or_else(|e| e.into_inner());
-                                    *r_lock = parsed_versions.clone();
+                                    *r_lock = parsed_versions;
+                                }
+                                // The list was just replaced, so an index left
+                                // over from a previous check can be past its
+                                // end. Point at the newest release again.
+                                {
+                                    let mut i_lock =
+                                        selected.lock().unwrap_or_else(|e| e.into_inner());
+                                    *i_lock = 0;
                                 }
 
                                 let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
 
-                                if compare_semver(&parsed_versions[0].version, CURRENT_VERSION)
+                                if compare_semver(&newest_version, CURRENT_VERSION)
                                     == std::cmp::Ordering::Greater
                                 {
-                                    info!("Update available: v{}", parsed_versions[0].version);
+                                    info!("Update available: v{}", newest_version);
                                     *lock = UpdateStatus::UpdateAvailable;
                                 } else {
                                     info!("App is up to date.");
@@ -581,8 +646,14 @@ impl Updater {
                                         }
                                         downloaded += n as u64;
                                         if total_size > 0 {
-                                            let pct =
-                                                (downloaded as f32 / total_size as f32) * 100.0;
+                                            // Clamped because a body longer
+                                            // than its Content-Length would
+                                            // otherwise report over 100%, and
+                                            // the launcher sizes its progress
+                                            // bar from this number.
+                                            let pct = ((downloaded as f32 / total_size as f32)
+                                                * 100.0)
+                                                .clamp(0.0, 100.0);
                                             let mut lock =
                                                 status.lock().unwrap_or_else(|e| e.into_inner());
                                             *lock = UpdateStatus::Downloading(pct);
@@ -1162,5 +1233,134 @@ mod tests {
         let json = r#"{"version":"0.3.0","url":"http://x","notes":"","is_latest":true}"#;
         let rv: RemoteVersion = serde_json::from_str(json).expect("should parse");
         assert_eq!(rv.expected_size, 0);
+    }
+
+    /// An asset name this platform will actually classify, so the release
+    /// carries something installable wherever the test runs.
+    fn platform_asset() -> GitHubAsset {
+        asset(if cfg!(target_os = "windows") {
+            "ac_pro_engineer.exe"
+        } else {
+            "ac_pro_engineer"
+        })
+    }
+
+    fn release(tag: &str, prerelease: bool) -> GitHubRelease {
+        GitHubRelease {
+            tag_name: tag.to_string(),
+            body: Some(format!("notes for {tag}")),
+            assets: vec![platform_asset()],
+            prerelease,
+        }
+    }
+
+    /// The regression this whole change is about: an older release must survive
+    /// into the list, or the launcher's arrows have nowhere to move.
+    #[test]
+    fn version_list_keeps_releases_older_than_the_running_one() {
+        let feed = [release("v0.0.1", false)];
+        let versions = build_version_list(&feed);
+
+        assert_eq!(
+            versions.len(),
+            1,
+            "a release older than {CURRENT_VERSION} must still be offered for rollback"
+        );
+        assert_eq!(versions[0].version, "0.0.1");
+    }
+
+    #[test]
+    fn version_list_is_sorted_newest_first() {
+        // Deliberately out of order: GitHub returns creation order, which a
+        // backported or re-published tag breaks.
+        let feed = [
+            release("v0.2.3", false),
+            release("v1.0.0", false),
+            release("v0.9.9", false),
+        ];
+        let versions = build_version_list(&feed);
+
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["1.0.0", "0.9.9", "0.2.3"]);
+    }
+
+    #[test]
+    fn version_list_marks_only_the_newest_as_latest() {
+        let feed = [release("v0.2.3", false), release("v1.0.0", false)];
+        let versions = build_version_list(&feed);
+
+        assert!(versions[0].is_latest, "1.0.0 is the latest");
+        assert!(!versions[1].is_latest, "0.2.3 is not");
+    }
+
+    #[test]
+    fn version_list_skips_prereleases() {
+        let feed = [
+            release("v2.0.0-beta.1", false), // prerelease by version string
+            release("v1.5.0", true),         // prerelease by GitHub flag
+            release("v1.0.0", false),
+        ];
+        let versions = build_version_list(&feed);
+
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["1.0.0"]);
+    }
+
+    #[test]
+    fn version_list_skips_releases_with_no_asset_for_this_platform() {
+        let mut no_asset = release("v1.0.0", false);
+        no_asset.assets = vec![asset("ac_tui-installer.sh"), asset("sha256.sum")];
+        let feed = [no_asset, release("v0.9.0", false)];
+
+        let versions = build_version_list(&feed);
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["0.9.0"]);
+    }
+
+    /// The arrows themselves, over a list with more than one entry — which is
+    /// the state the old filter made unreachable.
+    #[test]
+    fn carousel_walks_the_whole_version_list() {
+        let updater = Updater {
+            status: Arc::new(Mutex::new(UpdateStatus::Idle)),
+            releases: Arc::new(Mutex::new(build_version_list(&[
+                release("v1.0.0", false),
+                release("v0.9.0", false),
+                release("v0.2.3", false),
+            ]))),
+            selected_index: Arc::new(Mutex::new(0)),
+            last_check: Arc::new(Mutex::new(Instant::now())),
+        };
+
+        let selected = || {
+            updater
+                .get_selected_release()
+                .expect("the list is not empty")
+                .version
+        };
+
+        assert_eq!(selected(), "1.0.0");
+
+        updater.next_version();
+        assert_eq!(
+            selected(),
+            "0.9.0",
+            "right should walk back through history"
+        );
+        updater.next_version();
+        assert_eq!(selected(), "0.2.3");
+
+        // The oldest entry is the end of the road.
+        updater.next_version();
+        assert_eq!(selected(), "0.2.3");
+
+        updater.prev_version();
+        assert_eq!(selected(), "0.9.0", "left should walk forward again");
+        updater.prev_version();
+        assert_eq!(selected(), "1.0.0");
+
+        // And the newest entry is the other end.
+        updater.prev_version();
+        assert_eq!(selected(), "1.0.0");
     }
 }

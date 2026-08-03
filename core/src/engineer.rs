@@ -60,6 +60,10 @@ pub enum WizardProblem {
     Instability,
 }
 
+/// How many recent laps the measured fuel average runs over. Short enough to
+/// track a changing pace, long enough that one cautious lap does not skew it.
+const FUEL_HISTORY_LAPS: usize = 3;
+
 pub struct Engineer {
     config: AppConfig,
     history_size: usize,
@@ -87,6 +91,16 @@ pub struct EngineerStats {
     pub input_history: crate::RingBuffer<(f64, f64, f64, f64, f64)>,
     pub fuel_laps_remaining: f32,
     pub fuel_consumption_rate: f32,
+    /// Fuel used on each of the last few completed laps, newest last.
+    ///
+    /// AC's own `fuel_x_lap` sits in the part of the graphics page that is
+    /// not confirmed against a live capture (see the note in ac_structs.rs),
+    /// and it reads zero on lap one regardless. Everything on the strategy
+    /// tab was gated on it being positive, so the tab showed "NO DATA" for
+    /// the whole first lap and, if that offset is wrong, forever.
+    pub recent_fuel_per_lap: Vec<f32>,
+    /// Fuel level at the start of the current lap, to measure against.
+    pub fuel_at_lap_start: f32,
     pub current_delta: f32,
     pub predicted_lap_time: f32,
     pub low_speed_rake: f32,
@@ -121,6 +135,8 @@ impl EngineerStats {
             input_history: crate::RingBuffer::new(300),
             fuel_laps_remaining: 0.0,
             fuel_consumption_rate: 0.0,
+            recent_fuel_per_lap: Vec::new(),
+            fuel_at_lap_start: 0.0,
             current_delta: 0.0,
             predicted_lap_time: 0.0,
             low_speed_rake: 0.0,
@@ -226,6 +242,7 @@ impl Engineer {
 
         let current_laps = gfx.completed_laps;
         if current_laps != self.stats.last_lap_count {
+            self.record_fuel_for_completed_lap(phys.fuel);
             if self.stats.last_lap_count == -1 || current_laps == 0 || phys.speed_kmh < 10.0 {
                 self.stats.base_tyre_wear = phys.tyre_wear;
                 self.stats.stint_laps = 0;
@@ -291,8 +308,27 @@ impl Engineer {
             self.stats.current_excess_steer = 0.0;
         }
 
-        if gfx.fuel_x_lap > 0.0 {
-            self.stats.fuel_laps_remaining = phys.fuel / gfx.fuel_x_lap;
+        // Prefer AC's own figure when it is reporting one, and fall back to
+        // what we measured ourselves otherwise. Either way the strategy tab
+        // has something to work with from the second lap onward.
+        let fuel_per_lap = if gfx.fuel_x_lap > 0.0 {
+            Some(gfx.fuel_x_lap)
+        } else {
+            self.measured_fuel_per_lap()
+        };
+        match fuel_per_lap {
+            Some(per_lap) if per_lap > 0.0 => {
+                self.stats.fuel_consumption_rate = per_lap;
+                self.stats.fuel_laps_remaining = phys.fuel / per_lap;
+            }
+            // Nothing to go on. Clear rather than leave the previous value
+            // standing: it was never reset, so after a refuel or a session
+            // change `analyze_strategy` could call BOX BOX BOX on a number
+            // measured before the stop.
+            _ => {
+                self.stats.fuel_consumption_rate = 0.0;
+                self.stats.fuel_laps_remaining = 0.0;
+            }
         }
 
         self.stats.current_delta = phys.performance_meter;
@@ -321,15 +357,51 @@ impl Engineer {
         self.driving_style.prev_brake = phys.brake;
         self.driving_style.prev_steer = phys.steer_angle;
 
-        let lateral_g = (phys.acc_g[0].powi(2) + phys.acc_g[1].powi(2)).sqrt();
+        // acc_g is [lateral, vertical, longitudinal]. This combined the
+        // lateral and *vertical* axes, so it measured cornering plus the ~1 g
+        // the car carries standing still, and never saw braking or
+        // acceleration at all.
+        let combined_g = (phys.acc_g[0].powi(2) + phys.acc_g[2].powi(2)).sqrt();
         self.driving_style.aggression =
-            0.9 * self.driving_style.aggression + 0.1 * lateral_g.min(2.5) / 2.5 * 100.0;
+            0.9 * self.driving_style.aggression + 0.1 * combined_g.min(2.5) / 2.5 * 100.0;
 
         if phys.brake > 0.1 && phys.steer_angle.abs() > 0.1 {
             self.driving_style.trail_braking =
                 0.95 * self.driving_style.trail_braking + 0.05 * 100.0;
         } else {
             self.driving_style.trail_braking *= 0.98;
+        }
+    }
+
+    /// Average fuel burn over the laps measured so far, if there are any.
+    fn measured_fuel_per_lap(&self) -> Option<f32> {
+        if self.stats.recent_fuel_per_lap.is_empty() {
+            return None;
+        }
+        let sum: f32 = self.stats.recent_fuel_per_lap.iter().sum();
+        Some(sum / self.stats.recent_fuel_per_lap.len() as f32)
+    }
+
+    /// Note how much fuel the lap that just ended consumed.
+    ///
+    /// A negative delta means the tank went up, i.e. a pit stop: the history
+    /// is dropped rather than averaged, because burn measured across a refuel
+    /// is meaningless.
+    fn record_fuel_for_completed_lap(&mut self, fuel_now: f32) {
+        let used = self.stats.fuel_at_lap_start - fuel_now;
+        self.stats.fuel_at_lap_start = fuel_now;
+
+        if used < 0.0 {
+            self.stats.recent_fuel_per_lap.clear();
+            return;
+        }
+        if used <= 0.0 || !used.is_finite() {
+            return;
+        }
+
+        self.stats.recent_fuel_per_lap.push(used);
+        if self.stats.recent_fuel_per_lap.len() > FUEL_HISTORY_LAPS {
+            self.stats.recent_fuel_per_lap.remove(0);
         }
     }
 
@@ -346,6 +418,15 @@ impl Engineer {
         self.stats.current_excess_steer = 0.0;
         self.stats.total_frames = 0;
         self.stats.ffb_clip_frames = 0;
+    }
+
+    /// Forget everything measured about this stint. Called when the session
+    /// changes underneath us.
+    pub fn reset_fuel_tracking(&mut self) {
+        self.stats.recent_fuel_per_lap.clear();
+        self.stats.fuel_at_lap_start = 0.0;
+        self.stats.fuel_laps_remaining = 0.0;
+        self.stats.fuel_consumption_rate = 0.0;
     }
 
     fn check_hysteresis(&mut self, key: &str, active: bool) -> bool {
@@ -880,6 +961,7 @@ impl Engineer {
         if phys.speed_kmh < 50.0 {
             return;
         }
+        let fmt = self.config.formatter();
         let ideal_spread = 8.0;
 
         for i in 0..4 {
@@ -935,20 +1017,30 @@ impl Engineer {
                         "Camber".to_string()
                     },
                     severity: Severity::Info,
+                    // The message hardcoded "C" while the parameter beside it
+                    // was labelled with the configured symbol, so with
+                    // Fahrenheit selected the user saw a Celsius number
+                    // labelled °F. A spread is a difference, so it converts
+                    // by scale only -- `format_temp` would add 32.
                     message: if ru {
                         format!(
-                            "{} Пятно контакта не эффективно (I-O: {:.1}C)",
-                            name, spread
+                            "{} Пятно контакта не эффективно (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
                         )
                     } else {
-                        format!("{} Contact patch inefficient (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Contact patch inefficient (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     },
                     action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
-                        current: spread,
-                        target: ideal_spread,
-                        unit: self.config.formatter().temp_symbol().to_string(),
+                        current: fmt.temp_delta_val(spread),
+                        target: fmt.temp_delta_val(ideal_spread),
+                        unit: fmt.temp_symbol().to_string(),
                     }],
                     confidence: 0.7,
                 });
@@ -993,16 +1085,24 @@ impl Engineer {
                     },
                     severity: Severity::Warning,
                     message: if ru {
-                        format!("{} Перегрев внутренней части (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Перегрев внутренней части (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     } else {
-                        format!("{} Inner edge overheating (I-O: {:.1}C)", name, spread)
+                        format!(
+                            "{} Inner edge overheating (I-O: {})",
+                            name,
+                            fmt.format_temp_delta(spread)
+                        )
                     },
                     action: action_text,
                     parameters: vec![Parameter {
                         name: "Temp Spread".to_string(),
-                        current: spread,
-                        target: ideal_spread,
-                        unit: self.config.formatter().temp_symbol().to_string(),
+                        current: fmt.temp_delta_val(spread),
+                        target: fmt.temp_delta_val(ideal_spread),
+                        unit: fmt.temp_symbol().to_string(),
                     }],
                     confidence: 0.8,
                 });
@@ -1010,7 +1110,7 @@ impl Engineer {
         }
     }
 
-    fn analyze_tyre_temperature(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_tyre_temperature(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let min_temp = self
             .config
             .alerts
@@ -1026,6 +1126,13 @@ impl Engineer {
         if phys.speed_kmh > 100.0 {
             for i in 0..4 {
                 let temp = phys.get_avg_tyre_temp(i);
+                // Same gate as the pressure and wear alerts. This ran on
+                // every frame, so a tyre that stayed cold produced a fresh
+                // recommendation dozens of times a second.
+                let out_of_band = temp < min_temp || temp > max_temp;
+                if !self.check_hysteresis(&format!("tyre_temp_{}", i), out_of_band) {
+                    continue;
+                }
                 if temp < min_temp {
                     let name = match i {
                         0 => "FL",
@@ -1113,11 +1220,16 @@ impl Engineer {
         }
     }
 
-    fn analyze_brakes(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_brakes(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
         for i in 0..4 {
-            if phys.brake_temp[i] > max_temp {
+            // Gated the way the pressure and wear alerts already are. Without
+            // it this pushed a fresh recommendation on every single frame the
+            // brake was over temperature — dozens a second, burying every
+            // other message in the list.
+            let too_hot = phys.brake_temp[i] > max_temp;
+            if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
                 recs.push(Recommendation {
                     component: if ru {
                         "Тормоза".to_string()
@@ -1130,10 +1242,23 @@ impl Engineer {
                         "Overheat".to_string()
                     },
                     severity: Severity::Critical,
-                    message: if ru {
-                        format!("Тормоз {} горит!", i + 1)
-                    } else {
-                        format!("Brake {} cooking!", i + 1)
+                    // FL/FR/RL/RR, matching every neighbouring alert. This
+                    // said "Brake 1" through "Brake 4", which is the only
+                    // place in the app that numbers the corners and leaves
+                    // the driver to work out which wheel that is.
+                    message: {
+                        let corner = match i {
+                            0 => "FL",
+                            1 => "FR",
+                            2 => "RL",
+                            3 => "RR",
+                            _ => "",
+                        };
+                        if ru {
+                            format!("Тормоз {} горит!", corner)
+                        } else {
+                            format!("Brake {} cooking!", corner)
+                        }
                     },
                     action: if ru {
                         "Сместить баланс / Охладить".to_string()
@@ -1361,7 +1486,10 @@ impl Engineer {
         }
 
         if (gfx.session_time_left > 0.0 || gfx.number_of_laps > 0) && gfx.fuel_x_lap > 0.0 {
-            let laps_remaining_in_race = crate::session_info::SessionTiming::remaining_laps(
+            // Whole laps, not the display fraction: a timed race runs until
+            // the leader completes the lap the clock ran out on, and the lap
+            // already in progress still has to be finished.
+            let laps_remaining_in_race = crate::session_info::SessionTiming::laps_to_fuel_for(
                 gfx.session_time_left,
                 gfx.i_best_time,
                 gfx.i_last_time,
@@ -1445,6 +1573,152 @@ mod tests {
 
         let recommendations = engineer.analyze_live(&physics, &graphics, None);
         assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
+    }
+
+    /// The brake and tyre-temperature alerts had no hysteresis, unlike the
+    /// pressure and wear alerts, so they pushed a fresh recommendation on
+    /// every frame the condition held.
+    #[test]
+    fn overheating_alerts_are_not_repeated_every_frame() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let graphics = AcGraphics::default();
+        let physics = AcPhysics {
+            speed_kmh: 150.0,
+            brake_temp: [1500.0; 4],
+            ..Default::default()
+        };
+
+        // The gate needs a second of sustained condition before it fires at
+        // all, so the first burst produces nothing.
+        let mut total = 0;
+        for _ in 0..50 {
+            total += engineer
+                .analyze_live(&physics, &graphics, None)
+                .iter()
+                .filter(|rec| rec.category == "Overheat")
+                .count();
+        }
+        assert_eq!(
+            total, 0,
+            "an alert should need a sustained condition, not a single frame"
+        );
+    }
+
+    /// AC's own fuel_x_lap sits in the unverified tail of the graphics page
+    /// and reads zero on lap one regardless, so the whole strategy tab was
+    /// gated on a field that may never be populated.
+    #[test]
+    fn fuel_estimate_falls_back_to_measured_consumption() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let session = crate::session_info::SessionInfo::default();
+
+        // AC reports nothing, as it does on lap one and as it would
+        // permanently if that offset is wrong.
+        let graphics = |laps| AcGraphics {
+            completed_laps: laps,
+            fuel_x_lap: 0.0,
+            ..Default::default()
+        };
+        let physics = |fuel| AcPhysics {
+            fuel,
+            speed_kmh: 120.0,
+            ..Default::default()
+        };
+
+        // Start the stint with a full tank.
+        engineer.update(&physics(50.0), &graphics(0), &session);
+        assert_eq!(
+            engineer.stats.fuel_laps_remaining, 0.0,
+            "nothing measured yet, so no estimate is claimed"
+        );
+
+        // Two laps at 2.5 L each.
+        engineer.update(&physics(47.5), &graphics(1), &session);
+        engineer.update(&physics(45.0), &graphics(2), &session);
+
+        assert!(
+            (engineer.stats.fuel_consumption_rate - 2.5).abs() < 0.01,
+            "measured burn, got {}",
+            engineer.stats.fuel_consumption_rate
+        );
+        assert!(
+            (engineer.stats.fuel_laps_remaining - 18.0).abs() < 0.1,
+            "45 L at 2.5 L/lap is 18 laps, got {}",
+            engineer.stats.fuel_laps_remaining
+        );
+    }
+
+    /// Burn measured across a refuel is meaningless, and the stale estimate
+    /// it produced could fire BOX BOX BOX on a car that had just filled up.
+    #[test]
+    fn refuelling_discards_the_measured_history() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let session = crate::session_info::SessionInfo::default();
+        let graphics = |laps| AcGraphics {
+            completed_laps: laps,
+            ..Default::default()
+        };
+        let physics = |fuel| AcPhysics {
+            fuel,
+            speed_kmh: 120.0,
+            ..Default::default()
+        };
+
+        engineer.update(&physics(20.0), &graphics(0), &session);
+        engineer.update(&physics(17.5), &graphics(1), &session);
+        assert!(engineer.stats.fuel_laps_remaining > 0.0);
+
+        // Pit stop: the tank goes up.
+        engineer.update(&physics(60.0), &graphics(2), &session);
+        assert_eq!(
+            engineer.stats.fuel_laps_remaining, 0.0,
+            "the estimate is dropped rather than carried across the stop"
+        );
+    }
+
+    /// acc_g is [lateral, vertical, longitudinal]. Aggression used indices 0
+    /// and 1, so it summed cornering with the ~1 g of gravity the car carries
+    /// even parked, and never looked at braking or acceleration.
+    #[test]
+    fn aggression_ignores_the_vertical_axis() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let graphics = AcGraphics::default();
+        let session = crate::session_info::SessionInfo::default();
+
+        // Straight line, steady speed, 1 g down. Nothing aggressive here.
+        let cruising = AcPhysics {
+            speed_kmh: 120.0,
+            acc_g: [0.0, 1.0, 0.0],
+            ..Default::default()
+        };
+        for _ in 0..200 {
+            engineer.update(&cruising, &graphics, &session);
+        }
+        let cruising_aggression = engineer.driving_style.aggression;
+        assert!(
+            cruising_aggression < 5.0,
+            "vertical g must not register as aggression, got {cruising_aggression}"
+        );
+
+        // Hard braking. This is the case the old formula could not see at all,
+        // because longitudinal g lives at index 2.
+        let braking = AcPhysics {
+            speed_kmh: 120.0,
+            acc_g: [0.0, 1.0, -1.8],
+            ..Default::default()
+        };
+        for _ in 0..200 {
+            engineer.update(&braking, &graphics, &session);
+        }
+        assert!(
+            engineer.driving_style.aggression > cruising_aggression + 20.0,
+            "braking must raise aggression, got {}",
+            engineer.driving_style.aggression
+        );
     }
 }
 

@@ -84,4 +84,31 @@ All commands must pass cleanly without warnings or errors.
 - **No `unwrap()` Calls**: Never call `.unwrap()` in production or library code. Use `anyhow::Context`, `?` operator, `expect()`, or safe fallbacks (`unwrap_or_default`, `unwrap_or_else`).
 - **Mutex Safety**: Use the `SafeLock` extension trait (`mutex.safe_lock()`) instead of raw `.lock().unwrap()` to avoid panicking on poisoned mutexes.
 - **TUI Visual Testing**: Always run `cargo run --bin tui_tester` after modifying UI tabs or widgets. Inspect generated visual outputs in `screenshots/` to verify layout rendering across English and Russian languages.
-- **Git Branching**: Development work must take place on dedicated agent branches (e.g. `agent/fix-optimize-crossplatform`) with incremental commits after each verified build.
+- **Git Branching**: Development work must take place on a dedicated branch with incremental commits after each verified build. History uses `fix/...` and `feature/...` prefixes.
+
+---
+
+## 5. Commit Messages
+
+Conventional Commits, all in **English**:
+
+```
+type(scope): lowercase imperative summary
+```
+
+- **Types in use**: `feat`, `fix`, `test`, `docs`, `style`, `chore`, `ci`, `perf`, plus a bare `release:` for version bumps.
+- **Scopes in use**: the module touched — `shm`, `updater`, `setup`, `engineer`, `analyzer`, `config`, `records`, `memory`, `keys`, `ui`, `i18n`, `paths`, `io`, `process`, `platform`, `dist`, `ci`, `changelog`.
+- **One commit per change.** A bug fix, a feature and a version bump are three commits, not one.
+
+Bodies are wrapped at ~72 characters and answer three questions:
+
+1. **What was wrong** — the specific mechanism, not "fixed a bug".
+2. **Why it mattered** — what the user saw, or what a reader would wrongly
+   conclude from the old code.
+3. **How the change was verified to bite** — ideally the assertion that fails
+   without it. See `4662354` and `ca8b1bb` for the house style.
+
+Note that comments and commit messages are written in English throughout.
+User-facing strings are bilingual (English/Russian) via `data/locales/`, and
+`KeyCode::Char('й')`-style aliases exist so Russian keyboard layouts reach the
+same shortcuts — neither is a reason to write Russian in code or history.

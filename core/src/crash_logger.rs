@@ -44,17 +44,33 @@ pub fn init_crash_handler() {
 
         eprintln!("\nCRASH DETECTED! Writing report to disk...\n{}", report);
 
-        let mut log_dir = PathBuf::from("logs");
-        if !log_dir.exists() {
-            drop(fs::create_dir_all(&log_dir));
-        }
-        if !log_dir.exists() {
-            log_dir = PathBuf::from(".");
+        // Somewhere writable, in preference order. The old code used "logs"
+        // relative to the working directory and fell back to "." — both of
+        // which are unwritable when the app is launched from a shortcut, from
+        // Explorer, or installed under Program Files. The report was then
+        // dropped in silence, which is the worst possible outcome for a crash
+        // report: the user is asked to send one that was never written.
+        let candidates = [
+            crate::config::app_dir().join("logs"),
+            PathBuf::from("logs"),
+            PathBuf::from("."),
+        ];
+
+        let mut written = false;
+        for dir in candidates {
+            drop(fs::create_dir_all(&dir));
+            let file_path = dir.join(format!("crash_report_{}.log", timestamp));
+            if let Ok(mut f) = File::create(&file_path)
+                && f.write_all(report.as_bytes()).is_ok()
+            {
+                eprintln!("Crash report written to {}", file_path.display());
+                written = true;
+                break;
+            }
         }
 
-        let file_path = log_dir.join(format!("crash_report_{}.log", timestamp));
-        if let Ok(mut f) = File::create(&file_path) {
-            drop(f.write_all(report.as_bytes()));
+        if !written {
+            eprintln!("Could not write a crash report anywhere; the trace above is all there is.");
         }
     }));
 }

@@ -192,18 +192,19 @@ Quick help overlay available from any screen by pressing **'?'**.
 
 | Key | Context | Action |
 |:---:|:---:|:---|
-| **F1 - F9** | Global | Switch Tabs (Dashboard, Telemetry, Engineer, Setup, Analysis, Strategy, FFB, Settings, Guide) |
+| **1 - 9** | Global | Switch Tabs (Dashboard, Telemetry, Engineer, Setup, Analysis, Strategy, FFB, Settings, Guide) |
 | **Tab / Shift+Tab** | Global | Cycle forward/backward through tabs |
 | **Q** / **Esc** | Global | Return to Launcher / Quit Application |
-| **L** | Global | Switch language (English / Russian) |
+| **Ctrl+L** | Global | Switch language (English / Russian) |
 | **F10** | Global | Toggle Master In-Game Overlay |
 | **F11** | Global | Toggle Overlay Control Center menu |
-| **?** | Global | Toggle Interactive Help modal |
+| **?** / **F1** | Global | Toggle Interactive Help modal |
 | **Up / Down** | Engineer / Analysis / Guide / Setup | Navigate debriefing laps, analysis laps, guide chapters, or setups |
 | **Left / Right** | Engineer / Analysis | Switch subtabs (Live Feed vs Debriefing / Overview vs Graphs vs Dynamics...) |
 | **B** | Setup Tab | Open/Close Setup Cloud Browser |
+| **PgUp / PgDn** | Setup Tab | Scroll setup details |
 | **D** | Setup Tab | Download selected cloud setup |
-| **S** | Analysis Tab | Save current lap telemetry to file |
+| **S** | Analysis Tab | Save the selected lap's telemetry to file |
 | **E** | Analysis Tab | Export selected lap telemetry to MoTeC-compatible CSV (`[New in v0.2.3]`) |
 | **C** | Analysis Tab | Toggle Lap Comparison Mode |
 

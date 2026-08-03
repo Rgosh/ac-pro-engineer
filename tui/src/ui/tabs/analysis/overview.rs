@@ -10,6 +10,9 @@ pub fn render(
 ) {
     let theme = &app.ui_state.theme;
     let is_ru = app.config.language == ac_core::config::Language::Russian;
+    // The ambient temperatures were rendered with a hardcoded "C" while the
+    // user may have Fahrenheit selected.
+    let fmt = app.config.formatter();
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -220,7 +223,7 @@ pub fn render(
         Gauge::default()
             .block(Block::default())
             .gauge_style(Style::default().fg(color))
-            .ratio(val / 100.0)
+            .ratio(crate::ui::widgets::safe_ratio(val / 100.0))
             .label(format!("{}: {:.0}/100", label, val))
     };
 
@@ -458,13 +461,20 @@ pub fn render(
             } else {
                 "Min Speed"
             }),
-            Cell::from(format!(
-                "{:.1} km/h",
-                lap.telemetry_trace
+            // Seeded with 999.0 before, so a lap with an empty trace showed
+            // "999.0 km/h" as though it were a measurement.
+            Cell::from({
+                let min_speed = lap
+                    .telemetry_trace
                     .iter()
                     .map(|p| p.speed)
-                    .fold(999.0, f32::min)
-            )),
+                    .fold(f32::INFINITY, f32::min);
+                if min_speed.is_finite() {
+                    format!("{:.1} km/h", min_speed)
+                } else {
+                    "—".to_string()
+                }
+            }),
         ]),
         Row::new(vec![
             Cell::from(if is_ru {
@@ -529,14 +539,14 @@ pub fn render(
         Line::from(vec![
             Span::raw("Air Temp: "),
             Span::styled(
-                format!("{:.1} C", lap.air_temp),
+                fmt.format_temp_prec(lap.air_temp, 1),
                 Style::default().fg(Color::Cyan),
             ),
         ]),
         Line::from(vec![
             Span::raw("Track Temp: "),
             Span::styled(
-                format!("{:.1} C", lap.road_temp),
+                fmt.format_temp_prec(lap.road_temp, 1),
                 Style::default().fg(Color::Yellow),
             ),
         ]),

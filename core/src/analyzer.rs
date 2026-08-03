@@ -25,7 +25,9 @@ pub struct LapData {
 
     pub max_speed: f32,
     pub avg_speed: f32,
-    pub avg_pressure: f32,
+    /// Mean tyre pressure over the samples above the speed gate. `None`
+    /// when the lap never got up to speed, so nothing was measured.
+    pub avg_pressure: Option<f32>,
     pub min_corner_speed_avg: f32,
     pub fuel_used: f32,
     pub gear_shifts: i32,
@@ -34,7 +36,9 @@ pub struct LapData {
 
     pub avg_tyre_temp: [f32; 4],
     pub max_brake_temp: [f32; 4],
-    pub pressure_deviation: f32,
+    /// Mean absolute deviation from the target pressure, over the same
+    /// samples as [`LapData::avg_pressure`]. `None` for the same reason.
+    pub pressure_deviation: Option<f32>,
     pub suspension_travel_hist: [f32; 4],
 
     #[serde(default)]
@@ -103,6 +107,40 @@ pub struct TelemetryPoint {
     pub x: f32,
     pub y: f32,
     pub rpms: i32,
+}
+
+/// Shortest split treated as a real sector. Anything under a second is AC
+/// reporting a partial or reset timer rather than a driven sector.
+pub const MIN_VALID_SECTOR_MS: i32 = 1000;
+
+/// How many samples make up one incident at the configured update rate.
+///
+/// The mistake counters are incremented once per sample, so the number of
+/// samples an incident lasts depends on how often the app is sampling.
+/// `at_60hz` is the run length the thresholds were tuned against; the result
+/// is that same duration expressed in samples at `update_rate_ms`.
+///
+/// This is the same normalisation `Engineer::update_stats` already applies to
+/// its own counters, which is why the engineer's numbers were stable across
+/// update rates while the analyzer's were not.
+fn samples_per_incident(at_60hz: i32, update_rate_ms: u64) -> i32 {
+    const SIXTY_HZ_MS: f32 = 1000.0 / 60.0;
+    let rate = (update_rate_ms as f32).max(1.0);
+    ((at_60hz as f32 * SIXTY_HZ_MS / rate).round() as i32).max(1)
+}
+
+/// Replace an untouched coordinate bound with zero.
+///
+/// The bounds scan seeds min with `f32::MAX` and max with `f32::MIN`, so a lap
+/// where no sample carried usable coordinates leaves those seeds in place.
+/// They are perfectly finite, so a `is_finite` check does not catch them — the
+/// sentinel value itself is the signal.
+fn without_sentinel(value: f32) -> f32 {
+    if value == f32::MAX || value == f32::MIN || !value.is_finite() {
+        0.0
+    } else {
+        value
+    }
 }
 
 pub struct TelemetryTrace;
@@ -291,7 +329,7 @@ impl TelemetryAnalyzer {
 
         // sectors already computed by caller
         for (i, sector) in sectors.iter().enumerate() {
-            if *sector > 1000 && *sector < self.best_sectors[i] {
+            if *sector > MIN_VALID_SECTOR_MS && *sector < self.best_sectors[i] {
                 self.best_sectors[i] = *sector;
             }
         }
@@ -551,9 +589,17 @@ impl TelemetryAnalyzer {
             sum_susp_travel[3] / safe_div_len,
         ];
 
+        // Pressure metrics only count samples above the speed gate, so a lap
+        // that never got up to speed — an out-lap, a wet crawl, a spin and
+        // recovery — has no samples at all. Dividing by a floor of 1 in that
+        // case gave 0.0 psi and a deviation of 0.0, which then scored a
+        // *perfect* 100 on tyre management: an out-lap rated better than a
+        // hot lap. `None` means "not measured" and is rendered as a dash.
+        let has_pressure_samples = pressure_sample_frames > 0;
         let pressure_sample_count = (pressure_sample_frames as f32 * 4.0).max(1.0);
-        let pressure_deviation = press_dev_acc / pressure_sample_count;
-        let avg_pressure = press_sum / pressure_sample_count;
+        let pressure_deviation =
+            has_pressure_samples.then(|| press_dev_acc / pressure_sample_count);
+        let avg_pressure = has_pressure_samples.then(|| press_sum / pressure_sample_count);
 
         let avg_wheels_pressure = [
             sum_wheels_pressure[0] / safe_div_len,
@@ -605,7 +651,12 @@ impl TelemetryAnalyzer {
             100.0
         };
 
-        let tyre_score = (100.0 - pressure_deviation * 20.0).clamp(0.0, 100.0);
+        // With nothing measured, sit at the neutral middle rather than claim a
+        // perfect score.
+        let tyre_score = match pressure_deviation {
+            Some(dev) => (100.0 - dev * 20.0).clamp(0.0, 100.0),
+            None => 50.0,
+        };
 
         let radar = RadarStats {
             smoothness: (throttle_smoothness + steering_smoothness) / 2.0 / 100.0,
@@ -734,18 +785,29 @@ impl TelemetryAnalyzer {
             pedal_overlap_percent: overlap_pct,
             full_throttle_percent: full_throttle_pct,
             grip_usage_percent,
-            oversteer_count: oversteer_c / 5,
-            understeer_count: understeer_c / 5,
-            lockup_count: lockup_c / 5,
-            scrubbing_incidents: scrubbing_c / 10,
+            // These are raw per-sample counters, so they scale with how often
+            // the app sampled — halving the update rate halved every count and
+            // made laps recorded at different rates incomparable. The divisors
+            // are the run lengths that constitute one "incident" at 60 Hz;
+            // `samples_per_incident` restates them in samples at whatever rate
+            // was actually used.
+            oversteer_count: oversteer_c / samples_per_incident(5, update_rate_ms),
+            understeer_count: understeer_c / samples_per_incident(5, update_rate_ms),
+            lockup_count: lockup_c / samples_per_incident(5, update_rate_ms),
+            scrubbing_incidents: scrubbing_c / samples_per_incident(10, update_rate_ms),
             max_steering_over_rotation: max_over_rotation,
             car_control_score: control_score,
             radar_stats: radar,
             telemetry_trace: trace,
-            bounds_min_x: min_x,
-            bounds_max_x: max_x,
-            bounds_min_y: min_y,
-            bounds_max_y: max_y,
+            // Without a single usable coordinate these are still the
+            // f32::MAX/f32::MIN sentinels the scan started from, and they get
+            // serialised into the saved lap that way. The renderer guards
+            // against them, but anything computing `max - min` off the file
+            // gets -6.8e38. Collapse to zero, which reads as "no track map".
+            bounds_min_x: without_sentinel(min_x),
+            bounds_max_x: without_sentinel(max_x),
+            bounds_min_y: without_sentinel(min_y),
+            bounds_max_y: without_sentinel(max_y),
         };
 
         self.laps.push(lap_data);
@@ -767,21 +829,23 @@ impl TelemetryAnalyzer {
     pub fn analyze_standalone(&self, lap: &LapData, _lang: &Language) -> StandaloneAnalysis {
         let mut advices = Vec::new();
 
-        if lap.pressure_deviation > 0.5 {
+        if lap.pressure_deviation.is_some_and(|dev| dev > 0.5)
+            && let Some(avg_pressure) = lap.avg_pressure
+        {
             let target = 27.5;
-            let diff = lap.avg_pressure - target;
+            let diff = avg_pressure - target;
 
             if diff > 0.5 {
                 advices.push(Advice {
                     zone: "Tyres".into(),
-                    problem: format!("Pressure High: {:.1} psi", lap.avg_pressure),
+                    problem: format!("Pressure High: {:.1} psi", avg_pressure),
                     solution: format!("Deflate tyres by {:.1} psi.", diff),
                     severity: 3,
                 });
             } else if diff < -0.5 {
                 advices.push(Advice {
                     zone: "Tyres".into(),
-                    problem: format!("Pressure Low: {:.1} psi", lap.avg_pressure),
+                    problem: format!("Pressure Low: {:.1} psi", avg_pressure),
                     solution: format!("Inflate tyres by {:.1} psi.", diff.abs()),
                     severity: 3,
                 });
@@ -870,15 +934,19 @@ impl TelemetryAnalyzer {
         let mut best_s2 = i32::MAX;
         let mut best_s3 = i32::MAX;
 
+        // `> MIN_VALID_SECTOR_MS`, matching `process_lap`. This used to
+        // test `> 0`, so the two disagreed about what counted as a sector and
+        // a stray sub-second split could become the theoretical best here
+        // while being rejected as a best sector there.
         for lap in &self.laps {
             if lap.valid {
-                if lap.sectors[0] > 0 && lap.sectors[0] < best_s1 {
+                if lap.sectors[0] > MIN_VALID_SECTOR_MS && lap.sectors[0] < best_s1 {
                     best_s1 = lap.sectors[0];
                 }
-                if lap.sectors[1] > 0 && lap.sectors[1] < best_s2 {
+                if lap.sectors[1] > MIN_VALID_SECTOR_MS && lap.sectors[1] < best_s2 {
                     best_s2 = lap.sectors[1];
                 }
-                if lap.sectors[2] > 0 && lap.sectors[2] < best_s3 {
+                if lap.sectors[2] > MIN_VALID_SECTOR_MS && lap.sectors[2] < best_s3 {
                     best_s3 = lap.sectors[2];
                 }
             }
@@ -900,30 +968,42 @@ pub fn export_lap_to_csv(
         std::fs::create_dir_all(parent)?;
     }
 
-    let mut content = String::with_capacity(lap.telemetry_trace.len() * 100);
-    content.push_str("\"Time\",\"Distance\",\"Speed\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\"Pos_X\",\"Pos_Y\"\n");
-    content.push_str("\"s\",\"fraction\",\"km/h\",\"rad\",\"%\",\"%\",\"\",\"m\",\"m\"\n");
+    // RPM, both G axes and average slip were dropped on the way out, even
+    // though TelemetryPoint carries all four — so an exported lap could not
+    // be used to look at engine usage, the friction circle or wheelspin, the
+    // three things an external analysis tool is most often opened for.
+    let mut content = String::with_capacity(lap.telemetry_trace.len() * 128);
+    content.push_str(
+        "\"Time\",\"Distance\",\"Speed\",\"RPM\",\"Steer\",\"Gas\",\"Brake\",\"Gear\",\
+         \"Lat_G\",\"Lon_G\",\"Slip\",\"Pos_X\",\"Pos_Y\"\n",
+    );
+    content.push_str(
+        "\"s\",\"fraction\",\"km/h\",\"rpm\",\"rad\",\"%\",\"%\",\"\",\
+         \"g\",\"g\",\"\",\"m\",\"m\"\n",
+    );
 
     for p in &lap.telemetry_trace {
         let time_sec = p.time_ms as f32 / 1000.0;
         let line = format!(
-            "{:.3},{:.5},{:.1},{:.3},{:.2},{:.2},{},{:.2},{:.2}\n",
+            "{:.3},{:.5},{:.1},{},{:.3},{:.2},{:.2},{},{:.3},{:.3},{:.3},{:.2},{:.2}\n",
             time_sec,
             p.distance,
             p.speed,
+            p.rpms,
             p.steer,
             p.gas * 100.0,
             p.brake * 100.0,
             p.gear,
+            p.lat_g,
+            p.lon_g,
+            p.slip_avg,
             p.x,
             p.y
         );
         content.push_str(&line);
     }
 
-    let temp_path = path.with_extension("tmp");
-    std::fs::write(&temp_path, &content)?;
-    std::fs::rename(&temp_path, path)?;
+    crate::atomic_file::write_atomic(path, content.as_bytes())?;
     Ok(path.to_path_buf())
 }
 
@@ -950,7 +1030,7 @@ pub fn calculate_ghost_delta(
 
 #[cfg(test)]
 mod tests {
-    use super::TelemetryAnalyzer;
+    use super::{TelemetryAnalyzer, samples_per_incident};
     use crate::ac_structs::{AcGraphics, AcPhysics};
 
     #[test]
@@ -980,8 +1060,97 @@ mod tests {
         );
 
         let lap = analyzer.laps.last().expect("lap should be recorded");
-        assert!((lap.avg_pressure - 28.0).abs() < f32::EPSILON);
-        assert!((lap.pressure_deviation - 0.5).abs() < f32::EPSILON);
+        let avg = lap.avg_pressure.expect("a high-speed sample was measured");
+        let dev = lap
+            .pressure_deviation
+            .expect("a high-speed sample was measured");
+        assert!((avg - 28.0).abs() < f32::EPSILON);
+        assert!((dev - 0.5).abs() < f32::EPSILON);
+    }
+
+    /// A lap that never got above the speed gate has nothing to measure. It
+    /// used to report 0.0 psi and, because the deviation was also 0.0, a
+    /// *perfect* tyre-management score — so an out-lap rated better than a
+    /// hot lap.
+    #[test]
+    fn a_lap_with_no_high_speed_samples_reports_no_pressure() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let crawling = AcPhysics {
+            speed_kmh: 30.0,
+            wheels_pressure: [20.0; 4],
+            ..Default::default()
+        };
+
+        analyzer.process_lap(
+            1,
+            90_000,
+            &[crawling, crawling],
+            &[AcGraphics::default()],
+            [0, 0, 0],
+            "test_car".to_string(),
+            "test_track".to_string(),
+            27.5,
+            16,
+        );
+
+        let lap = analyzer.laps.last().expect("lap should be recorded");
+        assert_eq!(lap.avg_pressure, None);
+        assert_eq!(lap.pressure_deviation, None);
+        assert!(
+            (lap.radar_stats.tyre_mgmt - 0.5).abs() < f32::EPSILON,
+            "unmeasured should sit at neutral, not perfect: {}",
+            lap.radar_stats.tyre_mgmt
+        );
+    }
+
+    /// Mistake counts must mean the same thing whatever update rate the user
+    /// picked, or laps recorded at different rates cannot be compared.
+    #[test]
+    fn samples_per_incident_holds_a_fixed_duration() {
+        // 16 ms is the default and is close enough to 60 Hz that the run
+        // length is unchanged.
+        assert_eq!(samples_per_incident(5, 16), 5);
+        // Half the rate, half as many samples for the same duration.
+        assert_eq!(samples_per_incident(5, 33), 3);
+        // Double the rate, twice as many.
+        assert_eq!(samples_per_incident(5, 8), 10);
+        // A very slow rate rounds below one sample per incident. This is a
+        // divisor, so it floors at 1 rather than dividing by zero.
+        assert_eq!(samples_per_incident(5, 1000), 1);
+        // Zero cannot reach here — AppConfig::validate clamps update_rate to
+        // 5..=1000 — but it must not divide by zero if it ever did.
+        assert!(samples_per_incident(5, 0) >= 1);
+    }
+
+    /// A lap where AC published no coordinates leaves the bounds scan holding
+    /// its f32::MAX/f32::MIN seeds, and those used to be serialised into the
+    /// saved lap. Anything computing `max - min` off the file got -6.8e38.
+    #[test]
+    fn a_lap_with_no_coordinates_reports_zero_bounds() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let sample = AcPhysics {
+            speed_kmh: 120.0,
+            ..Default::default()
+        };
+        // Default graphics means car_coordinates is all zeroes, which the
+        // scan skips as not-a-position.
+        analyzer.process_lap(
+            1,
+            90_000,
+            &[sample; 10],
+            &[AcGraphics::default(); 10],
+            [0, 0, 0],
+            "test_car".to_string(),
+            "test_track".to_string(),
+            27.5,
+            16,
+        );
+
+        let lap = analyzer.laps.last().expect("lap should be recorded");
+        assert_eq!(lap.bounds_min_x, 0.0);
+        assert_eq!(lap.bounds_max_x, 0.0);
+        assert_eq!(lap.bounds_min_y, 0.0);
+        assert_eq!(lap.bounds_max_y, 0.0);
     }
 
     #[test]

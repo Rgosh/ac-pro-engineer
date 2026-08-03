@@ -435,10 +435,14 @@ fn render_sector_advice(
         let rl_brake = lap.avg_brake_temp[2];
         let rr_brake = lap.avg_brake_temp[3];
 
-        let fl_rh = lap.avg_ride_height[0] * 1000.0;
-        let fr_rh = lap.avg_ride_height[0] * 1000.0;
-        let rl_rh = lap.avg_ride_height[1] * 1000.0;
-        let rr_rh = lap.avg_ride_height[1] * 1000.0;
+        // AC publishes ride height per axle, not per corner — AcPhysics
+        // carries [front, rear] and nothing more. Both corners of an axle
+        // therefore show the same number; there is no per-corner measurement
+        // to display, and none to compare.
+        let front_rh = lap.avg_ride_height[0] * 1000.0;
+        let rear_rh = lap.avg_ride_height[1] * 1000.0;
+        let (fl_rh, fr_rh) = (front_rh, front_rh);
+        let (rl_rh, rr_rh) = (rear_rh, rear_rh);
 
         let get_status_color = |val: f32, target: f32, tolerance: f32| -> Color {
             let diff = (val - target).abs();
@@ -775,11 +779,14 @@ fn render_sector_advice(
                 Span::styled(
                     if is_ru {
                         format!(
-                            " Сильный градиент температуры ({:.0}°C).",
-                            front_camber_diff
+                            " Сильный градиент температуры ({}).",
+                            fmt.format_temp_delta(front_camber_diff)
                         )
                     } else {
-                        format!(" High tyre temp gradient ({:.0}°C).", front_camber_diff)
+                        format!(
+                            " High tyre temp gradient ({}).",
+                            fmt.format_temp_delta(front_camber_diff)
+                        )
                     },
                     Style::default().fg(Color::Yellow),
                 ),
@@ -943,30 +950,11 @@ fn render_sector_advice(
             ]));
         }
 
-        let front_rh_diff: f32 = (fl_rh - fr_rh).abs();
-        let rear_rh_diff: f32 = (rl_rh - rr_rh).abs();
-
-        if front_rh_diff > 5.0 || rear_rh_diff > 5.0 {
-            lines.push(Line::from(vec![
-                warn_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " Асимметрия подвески в поворотах."
-                    } else {
-                        " High suspension roll asymmetry."
-                    },
-                    Style::default().fg(Color::Yellow),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Сделайте стабилизаторы (ARB) жестче для стабильности."
-                } else {
-                    "   >> [ADVICE]: Stiffen Anti-Roll Bars (ARB) for stability."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        }
+        // A left-versus-right roll asymmetry check used to live here. It
+        // compared fl_rh against fr_rh, which are by construction the same
+        // number — AC has no per-corner ride height to compare — so the
+        // difference was always exactly 0.0 and the warning was unreachable.
+        // Removed rather than left in place looking like a working check.
 
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), layout[1]);
     }

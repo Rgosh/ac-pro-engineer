@@ -2,6 +2,22 @@ use crate::AppState;
 use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
+/// Coerce a value into the 0.0..=1.0 that `Gauge::ratio` and
+/// `LineGauge::ratio` assert on.
+///
+/// `clamp` alone is not enough: it returns NaN for NaN, and the assert then
+/// fires on it. Every ratio in this app is ultimately a division of two floats
+/// read out of shared memory, so a stale or zeroed page — the state a leaked
+/// `/dev/shm` mapping leaves behind — reaches these call sites as NaN and
+/// takes the whole app down on the next frame.
+pub fn safe_ratio(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
 pub fn get_tyre_color(temp: f32) -> Color {
     match temp {
         t if t < 70.0 => Color::Blue,
@@ -183,12 +199,19 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         let rpm_block = Block::default()
             .title(tr("lbl_rpm", lang))
             .borders(Borders::ALL);
+        // max_rpm is 0 until the static page has been read, so this division
+        // has to be guarded — otherwise the ratio is inf and the readout sits
+        // pegged at the redline colour before the car has even been loaded.
+        // `render_header` has the same guard.
+        let rpm_ratio = if app.session_info.max_rpm > 0 {
+            data.rpms as f32 / app.session_info.max_rpm as f32
+        } else {
+            0.0
+        };
         let rpm = Paragraph::new(format!("{}\nRPM", data.rpms))
             .style(
                 Style::default()
-                    .fg(get_rpm_color(
-                        data.rpms as f32 / app.session_info.max_rpm as f32,
-                    ))
+                    .fg(get_rpm_color(rpm_ratio))
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Center)
@@ -227,5 +250,36 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
             .alignment(Alignment::Center)
             .block(delta_block);
         f.render_widget(delta_widget, layout[3]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_ratio;
+
+    #[test]
+    fn safe_ratio_passes_values_already_in_range() {
+        assert_eq!(safe_ratio(0.0), 0.0);
+        assert_eq!(safe_ratio(0.5), 0.5);
+        assert_eq!(safe_ratio(1.0), 1.0);
+    }
+
+    #[test]
+    fn safe_ratio_clamps_out_of_range_values() {
+        assert_eq!(safe_ratio(-3.0), 0.0);
+        assert_eq!(safe_ratio(42.0), 1.0);
+    }
+
+    /// The case `clamp` alone does not cover: it returns NaN unchanged, and
+    /// ratatui's `ratio` assert then fires on it.
+    #[test]
+    fn safe_ratio_converts_non_finite_values_to_zero() {
+        assert_eq!(safe_ratio(f64::NAN), 0.0);
+        assert_eq!(safe_ratio(f64::INFINITY), 0.0);
+        assert_eq!(safe_ratio(f64::NEG_INFINITY), 0.0);
+        // How this actually arises: a ratio taken against a field that is
+        // still zero because shared memory has not been read yet.
+        let unread_from_shm = 0.0_f64;
+        assert_eq!(safe_ratio(unread_from_shm / unread_from_shm), 0.0);
     }
 }

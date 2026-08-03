@@ -1,7 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
 use ac_core::config::Language;
-use ac_core::process::is_process_running;
 use ac_core::updater::UpdateStatus;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::atomic::AtomicBool;
@@ -394,8 +393,9 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let actual_running =
-        app.is_game_running || is_process_running("acs.exe") || is_process_running("simulator.exe");
+    // Read from state rather than scanning: `tick` refreshes this, and the
+    // scan behind it walks every process on the system.
+    let actual_running = app.is_game_running;
 
     let content = match app.launcher_selection {
         0 => vec![
@@ -520,8 +520,12 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     },
                     Style::default().fg(Color::Cyan),
                 )));
-                let filled = (pct / 5.0) as usize;
-                let bar = "█".repeat(filled) + &"░".repeat(20 - filled);
+                // The bar is 20 cells wide, so `filled` has to be capped
+                // whatever the percentage says: `20 - filled` is an unsigned
+                // subtraction and would panic on anything over 100%.
+                const BAR_CELLS: usize = 20;
+                let filled = ((pct / 5.0) as usize).min(BAR_CELLS);
+                let bar = "█".repeat(filled) + &"░".repeat(BAR_CELLS - filled);
                 lines.push(Line::from(Span::styled(
                     format!("{} {:.1}%", bar, pct),
                     Style::default().fg(Color::Cyan),
@@ -660,9 +664,7 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Color::Cyan,
         ),
         _ => {
-            let actual_running = app.is_game_running
-                || is_process_running("acs.exe")
-                || is_process_running("simulator.exe");
+            let actual_running = app.is_game_running;
             if actual_running {
                 (tr("launch_on", lang), Color::Green)
             } else {

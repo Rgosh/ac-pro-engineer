@@ -83,6 +83,20 @@ pub struct AppConfig {
 
     #[serde(default = "default_data_path")]
     pub data_path: PathBuf,
+
+    /// Where Assetto Corsa is installed. Empty means auto-detect.
+    ///
+    /// The escape hatch for an install `ac_paths` cannot find on its own: a
+    /// non-Steam copy, a library Steam's own metadata does not describe, or a
+    /// Proton prefix somewhere unusual.
+    #[serde(default)]
+    pub ac_install_path: PathBuf,
+
+    /// The Documents folder AC reads setups from. Empty means auto-detect.
+    ///
+    /// Under Proton this is inside the prefix, not the host's ~/Documents.
+    #[serde(default)]
+    pub ac_documents_path: PathBuf,
 }
 
 // Serde default helpers
@@ -251,6 +265,8 @@ impl Default for AppConfig {
 
             alerts: AlertsConfig::default(),
             data_path: PathBuf::from("./data"),
+            ac_install_path: PathBuf::new(),
+            ac_documents_path: PathBuf::new(),
         }
     }
 }
@@ -347,6 +363,24 @@ impl UnitFormatter {
         }
     }
 
+    /// Convert a temperature *difference*.
+    ///
+    /// A delta is not a temperature: only the scale factor applies, never the
+    /// +32 offset. A 10 °C spread is an 18 °F spread, not a 50 °F one. Passing
+    /// a difference through [`Self::temp_val`] would be wrong by 32 degrees
+    /// every time.
+    pub fn temp_delta_val(&self, delta_c: f32) -> f32 {
+        match self.temp_unit {
+            TempUnit::Celsius => delta_c,
+            TempUnit::Fahrenheit => delta_c * 1.8,
+        }
+    }
+
+    /// Format a temperature difference in the configured unit.
+    pub fn format_temp_delta(&self, delta_c: f32) -> String {
+        format!("{:.0}{}", self.temp_delta_val(delta_c), self.temp_symbol())
+    }
+
     /// Convert user input threshold in configured temp unit back to native Celsius.
     pub fn temp_to_celsius(&self, val: f32) -> f32 {
         match self.temp_unit {
@@ -367,6 +401,29 @@ impl AppConfig {
 
     pub fn formatter(&self) -> UnitFormatter {
         UnitFormatter::new(self.pressure_unit, self.temp_unit)
+    }
+
+    /// Clamp a float into a plausible range, substituting `fallback` when it
+    /// is not a number at all.
+    ///
+    /// `clamp` on its own returns NaN unchanged and panics if the bounds are
+    /// themselves NaN, so a `null`-turned-NaN in the JSON would survive it.
+    fn sane_value(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(min, max)
+        } else {
+            fallback
+        }
+    }
+
+    /// The configured AC install path, or `None` when it is unset.
+    pub fn ac_install_override(&self) -> Option<&std::path::Path> {
+        (!self.ac_install_path.as_os_str().is_empty()).then_some(self.ac_install_path.as_path())
+    }
+
+    /// The configured AC Documents path, or `None` when it is unset.
+    pub fn ac_documents_override(&self) -> Option<&std::path::Path> {
+        (!self.ac_documents_path.as_os_str().is_empty()).then_some(self.ac_documents_path.as_path())
     }
 
     /// Load config from disk with migration and backup support.
@@ -404,6 +461,11 @@ impl AppConfig {
 
         // Run migrations
         config.migrate();
+        // Then clamp. `validate` existed but had no caller outside its own
+        // unit test, so nothing on the load path ever checked the file's
+        // numbers — including `update_rate`, which the loops sleep and poll
+        // on.
+        config.validate();
 
         // Save if migration bumped the version
         if config.config_version != CONFIG_VERSION
@@ -435,6 +497,12 @@ impl AppConfig {
     }
 
     /// Validate config values, clamping any out-of-range values.
+    ///
+    /// The settings UI clamps as it edits, but the file on disk is plain JSON
+    /// that anyone can hand-edit, and a partial write can leave any field at
+    /// zero. `update_rate` is the dangerous one: the render loop passes it
+    /// straight to `event::poll` and the tick thread to `thread::sleep`, so a
+    /// zero there spins two cores at 100%.
     pub fn validate(&mut self) {
         self.update_rate = self.update_rate.clamp(5, 1000);
         self.history_size = self.history_size.clamp(50, 10000);
@@ -442,6 +510,37 @@ impl AppConfig {
         self.alerts.fuel_warning_laps = self.alerts.fuel_warning_laps.clamp(0.5, 20.0);
         self.alerts.wear_warning = self.alerts.wear_warning.clamp(50.0, 100.0);
         self.alerts.brake_temp_max = self.alerts.brake_temp_max.clamp(200.0, 1200.0);
+
+        // Pressure and temperature targets feed the engineer's recommendation
+        // maths directly. A zero target makes every suggestion a nonsense
+        // delta away from it; NaN propagates through the whole advice chain.
+        self.shift_point_offset = self.shift_point_offset.clamp(0, 3000);
+        self.target_tyre_pressure = Self::sane_value(self.target_tyre_pressure, 15.0, 45.0, 27.5);
+        self.target_hot_pressure_front =
+            Self::sane_value(self.target_hot_pressure_front, 15.0, 45.0, 27.5);
+        self.target_hot_pressure_rear =
+            Self::sane_value(self.target_hot_pressure_rear, 15.0, 45.0, 27.0);
+        self.alerts.tyre_pressure_min =
+            Self::sane_value(self.alerts.tyre_pressure_min, 15.0, 45.0, 26.0);
+        self.alerts.tyre_pressure_max =
+            Self::sane_value(self.alerts.tyre_pressure_max, 15.0, 45.0, 28.5);
+        self.alerts.tyre_temp_min = Self::sane_value(self.alerts.tyre_temp_min, 0.0, 200.0, 70.0);
+        self.alerts.tyre_temp_max = Self::sane_value(self.alerts.tyre_temp_max, 0.0, 200.0, 105.0);
+
+        // An inverted band would make both the "too low" and "too high"
+        // alerts fire on every reading at once.
+        if self.alerts.tyre_pressure_min > self.alerts.tyre_pressure_max {
+            std::mem::swap(
+                &mut self.alerts.tyre_pressure_min,
+                &mut self.alerts.tyre_pressure_max,
+            );
+        }
+        if self.alerts.tyre_temp_min > self.alerts.tyre_temp_max {
+            std::mem::swap(
+                &mut self.alerts.tyre_temp_min,
+                &mut self.alerts.tyre_temp_max,
+            );
+        }
     }
 
     /// Save config atomically: write to .tmp then rename.
@@ -450,11 +549,8 @@ impl AppConfig {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).ok();
         }
-        let temp_path = config_path.with_extension("json.tmp");
-
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(&temp_path, &content)?;
-        fs::rename(&temp_path, &config_path)?;
+        crate::atomic_file::write_atomic(&config_path, content.as_bytes())?;
         Ok(())
     }
 }
@@ -579,6 +675,73 @@ mod tests {
         assert_eq!(config.history_size, 10000);
         assert_eq!(config.fuel_safety_margin, 0.0);
         assert_eq!(config.alerts.fuel_warning_laps, 20.0);
+    }
+
+    /// A temperature difference converts by scale only. Passing it through
+    /// `temp_val` would add 32 and report a 10 degree spread as 50.
+    #[test]
+    fn a_temperature_delta_converts_without_the_offset() {
+        let fahrenheit = UnitFormatter::new(PressureUnit::Psi, TempUnit::Fahrenheit);
+        assert_eq!(fahrenheit.temp_delta_val(10.0), 18.0);
+        assert_eq!(fahrenheit.format_temp_delta(10.0), "18°F");
+        // For contrast, the same number read as an absolute temperature.
+        assert_eq!(fahrenheit.temp_val(10.0), 50.0);
+
+        let celsius = UnitFormatter::new(PressureUnit::Psi, TempUnit::Celsius);
+        assert_eq!(celsius.temp_delta_val(10.0), 10.0);
+        assert_eq!(celsius.format_temp_delta(10.0), "10°C");
+    }
+
+    #[test]
+    fn config_validate_clamps_pressure_and_temperature_targets() {
+        let mut config = AppConfig {
+            shift_point_offset: 50_000,
+            target_tyre_pressure: 0.0,
+            target_hot_pressure_front: 900.0,
+            ..Default::default()
+        };
+        // Below the floor, and below the min it is paired with — so the
+        // un-inverting swap below picks it up as well.
+        config.alerts.tyre_temp_max = -40.0;
+
+        config.validate();
+
+        assert_eq!(config.shift_point_offset, 3000);
+        assert_eq!(config.target_tyre_pressure, 15.0);
+        assert_eq!(config.target_hot_pressure_front, 45.0);
+        assert_eq!(
+            config.alerts.tyre_temp_min, 0.0,
+            "-40 clamps to the 0 floor, then swaps into the min slot"
+        );
+        assert_eq!(config.alerts.tyre_temp_max, 70.0);
+    }
+
+    /// A `null` in the JSON, or a float that came back from a partial write,
+    /// arrives as NaN. `clamp` passes NaN straight through, so it needs its
+    /// own branch.
+    #[test]
+    fn config_validate_replaces_nan_targets_with_defaults() {
+        let mut config = AppConfig {
+            target_tyre_pressure: f32::NAN,
+            ..Default::default()
+        };
+        config.validate();
+        assert_eq!(config.target_tyre_pressure, 27.5);
+    }
+
+    /// Both alert bands would otherwise fire at once on every reading.
+    #[test]
+    fn config_validate_uninverts_alert_bands() {
+        let mut config = AppConfig::default();
+        config.alerts.tyre_pressure_min = 30.0;
+        config.alerts.tyre_pressure_max = 20.0;
+        config.alerts.tyre_temp_min = 120.0;
+        config.alerts.tyre_temp_max = 60.0;
+
+        config.validate();
+
+        assert!(config.alerts.tyre_pressure_min < config.alerts.tyre_pressure_max);
+        assert!(config.alerts.tyre_temp_min < config.alerts.tyre_temp_max);
     }
 
     use std::fs::File;

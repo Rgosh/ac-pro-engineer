@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tracing::info;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,9 +33,21 @@ impl Default for ContentManager {
 
 impl ContentManager {
     pub fn new() -> Self {
-        let ac_root = Self::detect_ac_root().unwrap_or(PathBuf::from(
-            r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa",
-        ));
+        Self::with_root_override(None)
+    }
+
+    /// Build a manager, honouring a configured install path.
+    ///
+    /// Detection used to be four hardcoded Windows drive letters. That found
+    /// nothing on Linux — where the game is a normal Steam install under
+    /// Proton — so `cars` was always empty, `get_car_specs` always returned
+    /// None, and everything downstream of it silently did nothing. It also
+    /// missed any Windows library on a drive other than C through F.
+    pub fn with_root_override(configured: Option<&std::path::Path>) -> Self {
+        let ac_root = crate::ac_paths::ac_install_root(configured).unwrap_or_else(|| {
+            info!("No Assetto Corsa installation found; car specs unavailable");
+            PathBuf::new()
+        });
 
         let mut manager = Self {
             cars: Vec::new(),
@@ -43,23 +56,6 @@ impl ContentManager {
 
         manager.scan_cars();
         manager
-    }
-
-    fn detect_ac_root() -> Option<PathBuf> {
-        let paths = [
-            r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa",
-            r"D:\SteamLibrary\steamapps\common\assettocorsa",
-            r"E:\SteamLibrary\steamapps\common\assettocorsa",
-            r"F:\SteamLibrary\steamapps\common\assettocorsa",
-        ];
-
-        for p in paths {
-            let path = PathBuf::from(p);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-        None
     }
 
     pub fn scan_cars(&mut self) {

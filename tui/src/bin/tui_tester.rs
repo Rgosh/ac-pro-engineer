@@ -58,8 +58,11 @@ fn buffer_to_svg(
 
     // Window Title Text
     svg.push_str(&format!(
-        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.2.3 — High-Performance Sim Telemetry Suite</text>"##,
-        total_w / 2
+        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v{} — High-Performance Sim Telemetry Suite</text>"##,
+        total_w / 2,
+        // Was hardcoded to v0.2.3, so every screenshot in the README claimed
+        // a version two releases old.
+        ac_core::updater::CURRENT_VERSION
     ));
     svg.push('\n');
 
@@ -254,7 +257,7 @@ fn create_populated_app_state() -> AppState {
         timestamp: "14:32:05".to_string(),
         max_speed: 342.5,
         avg_speed: 254.2,
-        avg_pressure: 27.4,
+        avg_pressure: Some(27.4),
         min_corner_speed_avg: 78.5,
         fuel_used: 2.85,
         gear_shifts: 42,
@@ -262,7 +265,7 @@ fn create_populated_app_state() -> AppState {
         peak_brake_g: 4.85,
         avg_tyre_temp: [88.5, 87.2, 91.0, 89.4],
         max_brake_temp: [580.0, 565.0, 490.0, 485.0],
-        pressure_deviation: 0.15,
+        pressure_deviation: Some(0.15),
         suspension_travel_hist: [12.4, 11.8, 14.2, 13.9],
         avg_wheels_pressure: [27.4, 27.6, 27.5, 27.3],
         avg_tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
@@ -405,7 +408,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  [OK] Rendered Analysis_Radar.svg");
 
     // 5. Help_Modal.svg
-    app.ui_state.show_help = true;
+    // AppState::show_help, not UIState::show_help. The renderer checks the
+    // former; the latter was read by nothing, which is why every generated
+    // Help_Modal.svg was byte-identical to the screenshot before it.
+    app.show_help = true;
     terminal.draw(|f| renderer.render(f, &app))?;
     buffer_to_svg(
         terminal.backend().buffer(),
@@ -413,7 +419,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         height,
         &screenshot_dir.join("Help_Modal.svg"),
     )?;
-    app.ui_state.show_help = false;
+    app.show_help = false;
     println!("  [OK] Rendered Help_Modal.svg");
 
     // 6. Overlay_Control.svg

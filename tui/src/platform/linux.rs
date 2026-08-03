@@ -3,7 +3,13 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot::Sender;
 use tokio::task::{JoinHandle, block_in_place};
+use tokio::time::timeout;
 use tracing::{error, info};
+
+/// How long to wait for the bridge to acknowledge the exit request before
+/// giving up on it. Long enough for a Wine process to wind down, short enough
+/// that quitting the app never feels hung.
+const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 static GAME_ID: u32 = 244210;
 
@@ -90,8 +96,16 @@ impl SharedMemoryBridge {
                     // through Protontricks layer. We cannot send any signal to the bridge
                     // process, because it runs in Wine, and we cannot just kill Protontricks,
                     // or there will be remaining memory files links in /dev/shm.
-                    input.write_all("exit\n".as_bytes()).await?;
-                    input.flush().await?;
+                    //
+                    // Failing to deliver it is logged rather than propagated:
+                    // `?` here skipped the `child.wait()` below and leaked the
+                    // process, which is a worse outcome than a bridge that did
+                    // not hear the request.
+                    if let Err(error) = input.write_all("exit\n".as_bytes()).await {
+                        error!("[shm-bridge] Could not send the exit command: {error}");
+                    } else if let Err(error) = input.flush().await {
+                        error!("[shm-bridge] Could not flush the exit command: {error}");
+                    }
                 }
             }
 
@@ -115,9 +129,32 @@ impl Drop for SharedMemoryBridge {
         }
 
         if let Some(handle) = self.handle.take() {
-            let result = block_in_place(move || tokio::runtime::Handle::current().block_on(handle));
-            if let Err(e) = result {
-                error!("[shm-bridge] Failed to join bridge process handle: {:?}", e);
+            // Bounded. The bridge only shuts down when it reads "exit" on
+            // stdin, so a bridge that has already died, or a Wine layer that
+            // is not passing stdin through, left this blocking forever — the
+            // app would simply never finish quitting, with nothing on screen
+            // to say why.
+            let result = block_in_place(move || {
+                tokio::runtime::Handle::current()
+                    .block_on(async { timeout(SHUTDOWN_TIMEOUT, handle).await })
+            });
+
+            match result {
+                Err(_elapsed) => error!(
+                    "[shm-bridge] Bridge did not exit within {:?}; abandoning it. \
+                     Stale mappings may remain in /dev/shm.",
+                    SHUTDOWN_TIMEOUT
+                ),
+                Ok(Err(join_error)) => {
+                    error!("[shm-bridge] Failed to join bridge process handle: {join_error:?}")
+                }
+                // The inner Result used to be discarded, so a failure inside
+                // the task -- writing the exit command, or waiting on the
+                // child -- disappeared without trace.
+                Ok(Ok(Err(task_error))) => {
+                    error!("[shm-bridge] Bridge task failed: {task_error:?}")
+                }
+                Ok(Ok(Ok(()))) => {}
             }
         }
         info!("[shm-bridge] Memory bridge process finished...");

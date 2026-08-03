@@ -13,7 +13,6 @@ pub mod widgets;
 pub struct UIState {
     pub theme: ac_core::config::Theme,
     pub layout_mode: LayoutMode,
-    pub show_help: bool,
     pub blink_state: bool,
     pub overlay_mode: bool,
     pub last_blink: std::time::Instant,
@@ -48,7 +47,6 @@ impl UIState {
         Self {
             theme: ac_core::config::Theme::default(),
             layout_mode: LayoutMode::Auto,
-            show_help: false,
             blink_state: false,
             overlay_mode: false,
             last_blink: std::time::Instant::now(),
@@ -72,6 +70,65 @@ impl UIState {
     }
 }
 
+/// Below this the tabs have no room to lay out. Every panel in the app sizes
+/// itself off the frame, and several position widgets by subtracting a
+/// constant from the width — arithmetic that has nowhere to go once the
+/// terminal is smaller than the constant. Refusing to draw is the one
+/// behaviour that cannot be wrong at any size.
+pub const MIN_TERMINAL_WIDTH: u16 = 80;
+pub const MIN_TERMINAL_HEIGHT: u16 = 20;
+
+/// What to show instead. Deliberately built from nothing but `Paragraph` and
+/// centring arithmetic that saturates, because this is the path that has to
+/// survive the sizes the rest of the UI cannot.
+fn render_too_small(f: &mut Frame<'_>, app: &AppState) {
+    let size = f.size();
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+
+    let lines = vec![
+        Line::from(Span::styled(
+            if is_ru {
+                "ОКНО СЛИШКОМ МАЛЕНЬКОЕ"
+            } else {
+                "TERMINAL TOO SMALL"
+            },
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(format!("{} x {}", size.width, size.height)),
+        Line::from(Span::styled(
+            format!("min {} x {}", MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            if is_ru {
+                "Увеличьте окно"
+            } else {
+                "Resize to continue"
+            },
+            Style::default().fg(Color::Yellow),
+        )),
+    ];
+
+    // Centre vertically without ever producing a y past the frame.
+    let text_height = lines.len() as u16;
+    let y = size.y + size.height.saturating_sub(text_height) / 2;
+    let area = Rect {
+        x: size.x,
+        y,
+        width: size.width,
+        height: size.height.saturating_sub(y.saturating_sub(size.y)),
+    };
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
 pub struct UIRenderer;
 
 impl Default for UIRenderer {
@@ -86,6 +143,11 @@ impl UIRenderer {
     }
 
     pub fn render(&self, f: &mut Frame<'_>, app: &AppState) {
+        if f.size().width < MIN_TERMINAL_WIDTH || f.size().height < MIN_TERMINAL_HEIGHT {
+            render_too_small(f, app);
+            return;
+        }
+
         match app.stage {
             AppStage::Launcher => launcher::render(f, f.size(), app),
             AppStage::Running => {
@@ -349,22 +411,19 @@ impl UIRenderer {
             format!("{}:{:02}.{:03}", m, s, mil)
         };
 
-        let status_text = if app.is_connected {
-            " ONLINE "
-        } else {
-            " OFFLINE "
+        // Three states are tracked, and the footer used to collapse them into
+        // ONLINE/OFFLINE — so "the game is not running" and "the game is
+        // running but we cannot read its shared memory" looked identical,
+        // even though only the second one is a problem to investigate.
+        let (status_text, status_bg, status_fg) = match (app.is_game_running, app.is_connected) {
+            (_, true) => (" LIVE ", Color::Green, Color::Black),
+            (true, false) => (" AC RUNNING - NO DATA ", Color::Yellow, Color::Black),
+            (false, false) => (" AC NOT RUNNING ", Color::Red, Color::White),
         };
-        let status_style = if app.is_connected {
-            Style::default()
-                .bg(Color::Green)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .bg(Color::Red)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD)
-        };
+        let status_style = Style::default()
+            .bg(status_bg)
+            .fg(status_fg)
+            .add_modifier(Modifier::BOLD);
 
         let spans = vec![
             Span::styled(status_text, status_style),
@@ -400,7 +459,7 @@ impl UIRenderer {
             ),
             Span::raw(" "),
             Span::styled(
-                " [F10: Mini] [H: Help] ",
+                " [F10: Overlay] [?: Help] ",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
         ];

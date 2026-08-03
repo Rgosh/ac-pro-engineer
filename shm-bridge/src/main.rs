@@ -106,12 +106,28 @@ fn main() -> Result<()> {
 
     println!("\nShutting down.");
 
+    // Best effort, and deliberately so. `?` here meant one already-removed
+    // file — or one owned by another user — returned early and left the rest
+    // of the mappings in place. They persist as zero-filled pages that the TUI
+    // maps without complaint, so it reports a healthy connection to a feed
+    // that is all zeroes: the state that produces NaN telemetry downstream.
+    let mut failures = 0;
     for file_name in ACC_FILES {
         println!("Removing mapping {file_name}");
         let path = shm_dir.join(file_name);
 
-        remove_file(&path)
-            .with_context(|| format!("Could not unlink the /dev/shm backed file {file_name}"))?;
+        if let Err(error) = remove_file(&path) {
+            eprintln!("Could not unlink {}: {error}", path.display());
+            failures += 1;
+        }
+    }
+
+    if failures > 0 {
+        eprintln!(
+            "{failures} of {} mappings could not be removed; stale pages may remain in {}",
+            ACC_FILES.len(),
+            shm_dir.display()
+        );
     }
 
     Ok(())

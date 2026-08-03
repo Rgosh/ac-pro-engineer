@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ac_core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -26,10 +26,11 @@ dependencies = [
 
 [[package]]
 name = "ac_tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ac_core",
  "anyhow",
+ "chrono",
  "clap",
  "crossterm 0.29.0",
  "image",
@@ -1663,7 +1664,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shm-bridge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1852,7 +1853,7 @@ dependencies = [
 
 [[package]]
 name = "tests_suite"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ac_core",
  "ac_tui",
@@ -1928,7 +1929,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.1.1",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.1",
