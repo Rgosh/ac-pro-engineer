@@ -187,9 +187,7 @@ impl RecordManager {
         let list: Vec<&TrackRecord> = self.records.values().collect();
         let content = serde_json::to_string_pretty(&list)?;
 
-        let temp_path = parent.join(format!(".records_{}.tmp", std::process::id()));
-        fs::write(&temp_path, &content)?;
-        fs::rename(&temp_path, &self.db_path)?;
+        crate::atomic_file::write_atomic(&self.db_path, content.as_bytes())?;
         Ok(())
     }
 

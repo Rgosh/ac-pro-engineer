@@ -531,11 +531,8 @@ impl AppConfig {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).ok();
         }
-        let temp_path = config_path.with_extension("json.tmp");
-
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(&temp_path, &content)?;
-        fs::rename(&temp_path, &config_path)?;
+        crate::atomic_file::write_atomic(&config_path, content.as_bytes())?;
         Ok(())
     }
 }

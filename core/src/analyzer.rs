@@ -989,9 +989,7 @@ pub fn export_lap_to_csv(
         content.push_str(&line);
     }
 
-    let temp_path = path.with_extension("tmp");
-    std::fs::write(&temp_path, &content)?;
-    std::fs::rename(&temp_path, path)?;
+    crate::atomic_file::write_atomic(path, content.as_bytes())?;
     Ok(path.to_path_buf())
 }
 
