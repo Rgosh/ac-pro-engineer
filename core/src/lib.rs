@@ -1,3 +1,4 @@
+pub mod ac_paths;
 pub mod ac_structs;
 pub mod analyzer;
 pub mod config;

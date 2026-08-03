@@ -262,6 +262,9 @@ impl AppState {
 
         let overlay_manager = OverlayManager::new(overlay_mode);
 
+        let setup_manager = SetupManager::new();
+        setup_manager.set_documents_override(&config.ac_documents_path);
+
         Self {
             mem: None,
             mock_physics: None,
@@ -269,8 +272,8 @@ impl AppState {
             mock_static: None,
             is_demo_mode: false,
             demo_tick_counter: 0,
-            setup_manager: SetupManager::new(),
-            content_manager: ContentManager::new(),
+            setup_manager,
+            content_manager: ContentManager::with_root_override(config.ac_install_override()),
             record_manager: RecordManager::new(),
             updater: Updater::new(),
             discord: DiscordClient::new(),

@@ -83,6 +83,20 @@ pub struct AppConfig {
 
     #[serde(default = "default_data_path")]
     pub data_path: PathBuf,
+
+    /// Where Assetto Corsa is installed. Empty means auto-detect.
+    ///
+    /// The escape hatch for an install `ac_paths` cannot find on its own: a
+    /// non-Steam copy, a library Steam's own metadata does not describe, or a
+    /// Proton prefix somewhere unusual.
+    #[serde(default)]
+    pub ac_install_path: PathBuf,
+
+    /// The Documents folder AC reads setups from. Empty means auto-detect.
+    ///
+    /// Under Proton this is inside the prefix, not the host's ~/Documents.
+    #[serde(default)]
+    pub ac_documents_path: PathBuf,
 }
 
 // Serde default helpers
@@ -251,6 +265,8 @@ impl Default for AppConfig {
 
             alerts: AlertsConfig::default(),
             data_path: PathBuf::from("./data"),
+            ac_install_path: PathBuf::new(),
+            ac_documents_path: PathBuf::new(),
         }
     }
 }
@@ -380,6 +396,16 @@ impl AppConfig {
         } else {
             fallback
         }
+    }
+
+    /// The configured AC install path, or `None` when it is unset.
+    pub fn ac_install_override(&self) -> Option<&std::path::Path> {
+        (!self.ac_install_path.as_os_str().is_empty()).then_some(self.ac_install_path.as_path())
+    }
+
+    /// The configured AC Documents path, or `None` when it is unset.
+    pub fn ac_documents_override(&self) -> Option<&std::path::Path> {
+        (!self.ac_documents_path.as_os_str().is_empty()).then_some(self.ac_documents_path.as_path())
     }
 
     /// Load config from disk with migration and backup support.

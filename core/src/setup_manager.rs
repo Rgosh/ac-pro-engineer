@@ -1,4 +1,3 @@
-use directories_next::UserDirs;
 use ini::Ini;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -329,6 +328,10 @@ pub struct SetupManager {
     pub details_scroll: Arc<Mutex<usize>>,
     pub loading_tick: Arc<Mutex<usize>>,
 
+    /// Configured AC Documents folder, empty when auto-detecting. Shared so
+    /// the background scan thread resolves the same directory the UI does.
+    pub documents_override: Arc<Mutex<PathBuf>>,
+
     pub fetch_state: Arc<Mutex<FetchState>>,
     pub last_status: Arc<Mutex<String>>,
     pub shutdown_flag: Arc<std::sync::atomic::AtomicBool>,
@@ -390,6 +393,8 @@ impl SetupManager {
             details_scroll: Arc::new(Mutex::new(0)),
             loading_tick: Arc::new(Mutex::new(0)),
 
+            documents_override: Arc::new(Mutex::new(PathBuf::new())),
+
             fetch_state: Arc::new(Mutex::new(FetchState::Idle)),
             last_status: Arc::new(Mutex::new(String::new())),
 
@@ -401,6 +406,7 @@ impl SetupManager {
         let car_clone = manager.current_car.clone();
         let track_clone = manager.current_track.clone();
         let fetch_state_clone = manager.fetch_state.clone();
+        let documents_clone = manager.documents_override.clone();
         let manifest_clone = manager.manifest.clone();
 
         let shutdown_loop = shutdown.clone();
@@ -434,7 +440,8 @@ impl SetupManager {
                         setups_clone.safe_lock().clear();
                     }
 
-                    let mut all_setups = scan_folders(&car, &track);
+                    let configured_docs = documents_clone.safe_lock().clone();
+                    let mut all_setups = scan_folders(&car, &track, &configured_docs);
                     let current_state = fetch_state_clone.safe_lock().clone();
 
                     match current_state {
@@ -531,6 +538,24 @@ impl SetupManager {
         manager
     }
 
+    /// Where AC keeps its setups, honouring the configured override.
+    ///
+    /// Under Proton this is inside the game's prefix, not the host's
+    /// ~/Documents — which is why `UserDirs::document_dir()` found nothing on
+    /// Linux and local setups were never discovered there.
+    fn documents_dir(&self) -> Option<PathBuf> {
+        let configured = self.documents_override.safe_lock().clone();
+        crate::ac_paths::ac_documents_dir(
+            (!configured.as_os_str().is_empty()).then_some(configured.as_path()),
+        )
+    }
+
+    /// Point the manager at a specific AC Documents folder. Empty resumes
+    /// auto-detection.
+    pub fn set_documents_override(&self, path: &std::path::Path) {
+        *self.documents_override.safe_lock() = path.to_path_buf();
+    }
+
     pub fn scroll_details(&self, delta: i32) {
         let mut scroll = self.details_scroll.safe_lock();
         if delta < 0 {
@@ -543,9 +568,7 @@ impl SetupManager {
     }
 
     pub fn is_installed(&self, setup: &CarSetup, target_car: &str) -> bool {
-        if let Some(user_dirs) = UserDirs::new()
-            && let Some(docs) = user_dirs.document_dir()
-        {
+        if let Some(docs) = self.documents_dir() {
             let safe_name = sanitize_filename_component(&setup.name);
             let safe_author = sanitize_filename_component(&setup.author);
             let file_name = format!("{}_{}.ini", safe_author, safe_name);
@@ -676,11 +699,11 @@ impl SetupManager {
             return false;
         }
 
-        if let Some(user_dirs) = UserDirs::new() {
-            let docs = match user_dirs.document_dir() {
+        {
+            let docs = match self.documents_dir() {
                 Some(d) => d,
                 None => {
-                    *status_lock = "Err: No document directory found".to_string();
+                    *status_lock = "Err: No Assetto Corsa documents folder found".to_string();
                     return false;
                 }
             };
@@ -720,8 +743,6 @@ impl SetupManager {
                     *status_lock = format!("Err: {}", e);
                 }
             }
-        } else {
-            *status_lock = "Err: Could not determine user dirs".to_string();
         }
         false
     }
@@ -817,11 +838,15 @@ fn fetch_server_setups(car: &str) -> Result<Vec<CarSetup>, String> {
     Ok(setups)
 }
 
-fn scan_folders(car_model: &str, track_name: &str) -> Vec<CarSetup> {
+fn scan_folders(
+    car_model: &str,
+    track_name: &str,
+    configured_docs: &std::path::Path,
+) -> Vec<CarSetup> {
     let mut found = Vec::new();
-    if let Some(user_dirs) = UserDirs::new()
-        && let Some(docs) = user_dirs.document_dir()
-    {
+    if let Some(docs) = crate::ac_paths::ac_documents_dir(
+        (!configured_docs.as_os_str().is_empty()).then_some(configured_docs),
+    ) {
         let base_path = docs.join("Assetto Corsa").join("setups").join(car_model);
         if !track_name.is_empty() && track_name != "-" {
             scan_single_folder(
