@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use tracing::error;
 use walkdir::WalkDir;
 
 /// Sanitize a filename component: strip path separators, `..`, control chars,
@@ -556,24 +557,47 @@ impl SetupManager {
         self.browser_setups.safe_lock().clone()
     }
 
+    /// Fetch the setup list for the car the browser is pointing at.
+    ///
+    /// Runs on its own thread: `fetch_server_setups` is a blocking HTTP call
+    /// with a five second timeout, and this is driven straight off a keypress.
+    /// Doing it inline would freeze the whole TUI — including the loading
+    /// spinner meant to show that something is happening.
     pub fn load_browser_car(&self) {
         let idx = *self.browser_car_idx.safe_lock();
         let manifest = self.manifest.safe_lock();
-        if idx < manifest.len() {
-            let car_id = &manifest[idx].id;
+        let Some(car_id) = manifest.get(idx).map(|m| m.id.clone()) else {
+            return;
+        };
+        drop(manifest);
 
-            let car_id_clone = car_id.clone();
-            drop(manifest);
+        // Clear immediately so the pane does not keep showing the previous
+        // car's setups while the new ones are in flight.
+        self.browser_setups.safe_lock().clear();
+        *self.browser_setup_idx.safe_lock() = 0;
+        *self.details_scroll.safe_lock() = 0;
 
-            if let Ok(mut setups) = fetch_server_setups(&car_id_clone) {
+        let browser_setups = Arc::clone(&self.browser_setups);
+        let browser_car_idx = Arc::clone(&self.browser_car_idx);
+        let last_status = Arc::clone(&self.last_status);
+        let requested_idx = idx;
+
+        std::thread::spawn(move || match fetch_server_setups(&car_id) {
+            Ok(mut setups) => {
                 for s in &mut setups {
-                    s.car_id = car_id_clone.clone();
+                    s.car_id = car_id.clone();
                 }
-                *self.browser_setups.safe_lock() = setups;
-                *self.browser_setup_idx.safe_lock() = 0;
-                *self.details_scroll.safe_lock() = 0;
+                // The user may have moved on while this was in flight. Only
+                // publish if the selection is still the one we fetched for.
+                if *browser_car_idx.safe_lock() == requested_idx {
+                    *browser_setups.safe_lock() = setups;
+                }
             }
-        }
+            Err(e) => {
+                error!("Could not fetch setups for {}: {}", car_id, e);
+                *last_status.safe_lock() = format!("Fetch failed: {}", car_id);
+            }
+        });
     }
 
     pub fn get_browser_selected_setup(&self) -> Option<CarSetup> {

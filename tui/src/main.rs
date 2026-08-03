@@ -582,31 +582,46 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                             _ => {}
                         },
-                        AppTab::Setup => match key.code {
-                            KeyCode::Up => {
-                                let current =
-                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                if current > 0 {
-                                    app_lock.ui_state.setup_list_state.select(Some(current - 1));
+                        AppTab::Setup => {
+                            let in_browser = *app_lock.setup_manager.browser_active.safe_lock();
+                            match key.code {
+                                // 'B' toggles between the local setup list and
+                                // the cloud browser, in either direction.
+                                KeyCode::Char('b')
+                                | KeyCode::Char('B')
+                                | KeyCode::Char('и')
+                                | KeyCode::Char('И') => {
+                                    let mut active =
+                                        app_lock.setup_manager.browser_active.safe_lock();
+                                    *active = !*active;
                                 }
-                            }
-                            KeyCode::Down => {
-                                let current =
-                                    app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
-                                let total = app_lock.setup_manager.setups.safe_lock().len();
-                                if total > 0 && current + 1 < total {
-                                    app_lock.ui_state.setup_list_state.select(Some(current + 1));
+                                _ if in_browser => handle_setup_browser_key(key.code, &app_lock),
+                                KeyCode::Up => {
+                                    let current =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    if current > 0 {
+                                        app_lock
+                                            .ui_state
+                                            .setup_list_state
+                                            .select(Some(current - 1));
+                                    }
                                 }
+                                KeyCode::Down => {
+                                    let current =
+                                        app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
+                                    let total = app_lock.setup_manager.setups.safe_lock().len();
+                                    if total > 0 && current + 1 < total {
+                                        app_lock
+                                            .ui_state
+                                            .setup_list_state
+                                            .select(Some(current + 1));
+                                    }
+                                }
+                                KeyCode::PageUp => app_lock.setup_manager.scroll_details(-1),
+                                KeyCode::PageDown => app_lock.setup_manager.scroll_details(1),
+                                _ => {}
                             }
-                            KeyCode::Char('b')
-                            | KeyCode::Char('B')
-                            | KeyCode::Char('и')
-                            | KeyCode::Char('И') => {
-                                let mut active = app_lock.setup_manager.browser_active.safe_lock();
-                                *active = !*active;
-                            }
-                            _ => {}
-                        },
+                        }
                         _ => {}
                     },
                 }
@@ -639,4 +654,79 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+
+/// Keys for the Setup Cloud browser.
+///
+/// Nothing routed to these before: the Setup tab handled only Up/Down/B, so
+/// the browser opened onto an empty SETUPS column that could never be filled
+/// and a DETAILS pane permanently reading "Select a car and setup". The
+/// on-screen hint, the help overlay and the README all documented D to
+/// download, and `download_setup`, `load_browser_car`,
+/// `get_browser_selected_setup` and `scroll_details` had no callers anywhere
+/// in the workspace.
+fn handle_setup_browser_key(key: KeyCode, app: &AppState) {
+    let manager = &app.setup_manager;
+    let focus_col = *manager.browser_focus_col.safe_lock();
+
+    match key {
+        KeyCode::Left => *manager.browser_focus_col.safe_lock() = 0,
+        KeyCode::Right => *manager.browser_focus_col.safe_lock() = 1,
+
+        KeyCode::Up | KeyCode::Down => {
+            let forward = key == KeyCode::Down;
+            if focus_col == 0 {
+                let total = manager.get_manifest().len();
+                let mut idx = manager.browser_car_idx.safe_lock();
+                let moved = step(*idx, total, forward);
+                if moved != *idx {
+                    *idx = moved;
+                    drop(idx);
+                    // Moving the car selection is what loads its setups. This
+                    // call is the reason the SETUPS column was always empty.
+                    manager.load_browser_car();
+                }
+            } else {
+                let total = manager.get_browser_setups().len();
+                let mut idx = manager.browser_setup_idx.safe_lock();
+                *idx = step(*idx, total, forward);
+                drop(idx);
+                *manager.details_scroll.safe_lock() = 0;
+            }
+        }
+
+        // Enter on the car column is an explicit "load this one", which also
+        // gives the user a way to retry after a failed fetch.
+        KeyCode::Enter if focus_col == 0 => {
+            manager.load_browser_car();
+            *manager.browser_focus_col.safe_lock() = 1;
+        }
+
+        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('в') | KeyCode::Char('В') => {
+            if let Some(setup) = manager.get_browser_selected_setup() {
+                let target = manager.get_browser_target_car();
+                if manager.download_setup(&setup, &target) {
+                    info!("Installed setup '{}' for {}", setup.name, target);
+                } else {
+                    error!("Could not install setup '{}' for {}", setup.name, target);
+                }
+            }
+        }
+
+        KeyCode::PageUp => manager.scroll_details(-1),
+        KeyCode::PageDown => manager.scroll_details(1),
+        _ => {}
+    }
+}
+
+/// Move a list selection one step, staying inside the list.
+fn step(current: usize, total: usize, forward: bool) -> usize {
+    if total == 0 {
+        return 0;
+    }
+    if forward {
+        (current + 1).min(total - 1)
+    } else {
+        current.saturating_sub(1)
+    }
 }
