@@ -218,6 +218,40 @@ impl Memory {
 /// almost all three-sector.
 pub const DEFAULT_SECTOR_COUNT: i32 = 3;
 
+/// Frame and tick timing, for the footer readout.
+#[derive(Debug, Clone, Copy)]
+pub struct PerfStats {
+    /// Duration of the last completed render.
+    pub frame_time: std::time::Duration,
+    /// When the background tick last finished.
+    pub last_tick: Instant,
+}
+
+impl Default for PerfStats {
+    fn default() -> Self {
+        Self {
+            frame_time: std::time::Duration::ZERO,
+            last_tick: Instant::now(),
+        }
+    }
+}
+
+impl PerfStats {
+    /// Frames per second implied by the last frame's duration.
+    ///
+    /// Zero while nothing has been drawn yet, rather than dividing by zero and
+    /// reporting infinity.
+    pub fn fps(&self) -> f32 {
+        let secs = self.frame_time.as_secs_f32();
+        if secs > 0.0 { 1.0 / secs } else { 0.0 }
+    }
+
+    /// How long since the background tick last completed.
+    pub fn tick_age(&self) -> std::time::Duration {
+        self.last_tick.elapsed()
+    }
+}
+
 pub struct AppState {
     pub mem: Option<Memory>,
     pub setup_manager: SetupManager,
@@ -265,6 +299,13 @@ pub struct AppState {
     pub demo_tick_counter: u64,
     pub show_help: bool,
     pub show_overlay_menu: bool,
+    /// How long the last rendered frame took, and how long ago the background
+    /// tick last completed.
+    ///
+    /// The render loop and the tick thread contend for the same state mutex,
+    /// so when one stalls it is usually because the other is holding the lock.
+    /// Neither was observable, which made that a guess.
+    pub perf: PerfStats,
     pub overlay_menu_selection: usize,
 }
 
@@ -327,6 +368,7 @@ impl AppState {
             first_run_selection: 0,
             show_help: false,
             show_overlay_menu: false,
+            perf: PerfStats::default(),
             overlay_menu_selection: 0,
         }
     }
@@ -967,5 +1009,25 @@ mod tests {
 
         assert_eq!(app.current_lap_sectors[1], 50_500);
         assert_eq!(app.current_lap_sectors[2], 0, "the third slot is unused");
+    }
+
+    #[test]
+    fn fps_is_derived_from_the_frame_time() {
+        let perf = PerfStats {
+            frame_time: std::time::Duration::from_millis(16),
+            ..Default::default()
+        };
+        assert!(
+            (perf.fps() - 62.5).abs() < 0.5,
+            "16ms is about 62fps, got {}",
+            perf.fps()
+        );
+    }
+
+    /// Before the first frame there is no duration to divide by, and
+    /// reporting infinity in the footer would be worse than reporting nothing.
+    #[test]
+    fn fps_is_zero_before_anything_is_drawn() {
+        assert_eq!(PerfStats::default().fps(), 0.0);
     }
 }

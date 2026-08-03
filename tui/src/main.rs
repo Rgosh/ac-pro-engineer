@@ -367,7 +367,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     app_lock.config.update_rate
                 };
                 std::thread::sleep(Duration::from_millis(rate));
-                bg_app.safe_lock().tick();
+                let mut app_lock = bg_app.safe_lock();
+                app_lock.tick();
+                app_lock.perf.last_tick = Instant::now();
             }
         });
 
@@ -389,6 +391,10 @@ async fn main() -> Result<(), anyhow::Error> {
                         ac_tui::ui::overlay::render(f, f.size(), &app_lock);
                     }
                 })?;
+
+                // Measured around the draw only, so it reports the cost of
+                // rendering rather than the frame budget the loop sleeps out.
+                app_lock.perf.frame_time = start.elapsed();
             }
 
             if event::poll(Duration::from_millis(rate).saturating_sub(start.elapsed()))?

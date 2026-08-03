@@ -459,6 +459,24 @@ impl UIRenderer {
                 Style::default().bg(Color::Yellow).fg(Color::Black),
             ),
             Span::raw(" "),
+            // Frame cost and the age of the last background tick. The two
+            // contend for the same state mutex, so a stalled UI and a stalled
+            // telemetry read look identical from the outside without this.
+            Span::styled(
+                format!(
+                    " {:.0}fps {}ms ",
+                    app.perf.fps(),
+                    app.perf.tick_age().as_millis().min(9999)
+                ),
+                Style::default().bg(Color::DarkGray).fg(
+                    if app.perf.tick_age() > std::time::Duration::from_millis(500) {
+                        Color::Red
+                    } else {
+                        Color::Gray
+                    },
+                ),
+            ),
+            Span::raw(" "),
             Span::styled(
                 " [F10: Overlay] [?: Help] ",
                 Style::default().add_modifier(Modifier::BOLD),
