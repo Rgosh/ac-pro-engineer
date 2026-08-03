@@ -21,6 +21,10 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 /// Steam's app id for Assetto Corsa. Names the Proton prefix.
+///
+/// Only the Proton lookup needs it, and that is Linux-only — on Windows the
+/// game writes to the real Documents folder and there is no prefix to find.
+#[cfg(not(target_os = "windows"))]
 const AC_APP_ID: &str = "244210";
 
 /// Directory name of the game inside a Steam library.
