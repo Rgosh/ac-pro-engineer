@@ -602,6 +602,7 @@ impl AppState {
 
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
+        self.ui_state.analysis.tick_status();
         let delta = self.engineer.stats.current_delta;
         self.discord
             .update(self.is_connected, &self.session_info, delta);
