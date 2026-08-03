@@ -413,22 +413,19 @@ impl UIRenderer {
             format!("{}:{:02}.{:03}", m, s, mil)
         };
 
-        let status_text = if app.is_connected {
-            " ONLINE "
-        } else {
-            " OFFLINE "
+        // Three states are tracked, and the footer used to collapse them into
+        // ONLINE/OFFLINE — so "the game is not running" and "the game is
+        // running but we cannot read its shared memory" looked identical,
+        // even though only the second one is a problem to investigate.
+        let (status_text, status_bg, status_fg) = match (app.is_game_running, app.is_connected) {
+            (_, true) => (" LIVE ", Color::Green, Color::Black),
+            (true, false) => (" AC RUNNING - NO DATA ", Color::Yellow, Color::Black),
+            (false, false) => (" AC NOT RUNNING ", Color::Red, Color::White),
         };
-        let status_style = if app.is_connected {
-            Style::default()
-                .bg(Color::Green)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .bg(Color::Red)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD)
-        };
+        let status_style = Style::default()
+            .bg(status_bg)
+            .fg(status_fg)
+            .add_modifier(Modifier::BOLD);
 
         let spans = vec![
             Span::styled(status_text, status_style),

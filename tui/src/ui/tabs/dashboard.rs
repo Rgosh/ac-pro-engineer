@@ -2,6 +2,41 @@ use crate::AppState;
 use crate::ui::localization::tr;
 use ratatui::{prelude::*, widgets::*};
 
+/// Draw a titled panel explaining that there is no telemetry yet.
+///
+/// Better than the early `return` these call sites used to do, which drew
+/// literally nothing and left an unexplained hole in the layout.
+fn render_waiting_panel(f: &mut Frame<'_>, area: Rect, app: &AppState, title: &str) {
+    let theme = &app.ui_state.theme;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+
+    let message = if app.is_game_running {
+        if is_ru {
+            "Ожидание данных от Assetto Corsa..."
+        } else {
+            "Waiting for telemetry from Assetto Corsa..."
+        }
+    } else if is_ru {
+        "Assetto Corsa не запущена"
+    } else {
+        "Assetto Corsa is not running"
+    };
+
+    let block = Block::default()
+        .title(format!(" {} ", title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+
+    f.render_widget(
+        Paragraph::new(message)
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
+            .block(block),
+        area,
+    );
+}
+
 pub fn render_horizontal(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -61,7 +96,8 @@ fn render_tyre_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     render_tyre_widget(f, rear[0], 2, app, "RL");
     render_tyre_widget(f, rear[1], 3, app, "RR");
 
-    if let Some(data) = app.mem.as_ref().map(|m| m.physics()) {
+    // Accessor again, so the summary populates under --demo too.
+    if let Some(data) = app.ac_physics() {
         let avg_pressure: f32 = data.wheels_pressure.iter().sum::<f32>() / 4.0;
         let avg_temp: f32 = (0..4).map(|i| data.get_avg_tyre_temp(i)).sum::<f32>() / 4.0;
 
@@ -93,12 +129,15 @@ fn render_tyre_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
 
-    let Some(mem) = &app.mem.as_ref() else {
+    // Through the accessors, not `app.mem` directly: they fall back to the
+    // mock data, which is why the whole cockpit was blank under --demo. And
+    // an early `return` drawing nothing at all is indistinguishable from a
+    // rendering bug, so say what is going on instead.
+    let (Some(phys), Some(gfx)) = (app.ac_physics(), app.ac_graphics()) else {
+        render_waiting_panel(f, area, app, "COCKPIT");
         return;
     };
-
-    let phys = mem.ac_physics;
-    let gfx = mem.ac_graphics;
+    let (phys, gfx) = (*phys, *gfx);
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -316,7 +355,8 @@ fn render_mini_bar(f: &mut Frame<'_>, area: Rect, label: &str, val: f32, color: 
 }
 
 fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let Some(mem) = &app.mem else {
+    let (Some(phys), Some(gfx)) = (app.ac_physics(), app.ac_graphics()) else {
+        render_waiting_panel(f, area, app, "SESSION");
         return;
     };
 
@@ -356,7 +396,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Span::styled("Time Left: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 ac_core::session_info::SessionTiming::format_time_left_minutes(
-                    mem.ac_graphics.session_time_left,
+                    gfx.session_time_left,
                 ),
                 Style::default().fg(Color::Yellow),
             ),
@@ -368,7 +408,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(Color::Gray),
             ),
             Span::styled(
-                format!("{:.1} L", mem.ac_physics.fuel),
+                format!("{:.1} L", phys.fuel),
                 Style::default().fg(get_fuel_color(app.engineer.stats.fuel_laps_remaining)),
             ),
         ]),

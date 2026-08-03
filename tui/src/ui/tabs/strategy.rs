@@ -6,20 +6,30 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    let Some(mem) = app.mem.as_ref() else {
+    // Through the accessors, so --demo populates this tab like the others.
+    // Reading `app.mem` directly meant the whole strategy tab said "no data"
+    // in demo mode.
+    let (Some(gfx_ref), Some(phys_ref)) = (app.ac_graphics(), app.ac_physics()) else {
         let block = Block::default()
             .title(tr("tab_strat", lang))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        let text = Paragraph::new(tr("no_data", lang))
+        let message = if app.is_game_running {
+            tr("no_data", lang)
+        } else if *lang == ac_core::config::Language::Russian {
+            "Assetto Corsa не запущена".to_string()
+        } else {
+            "Assetto Corsa is not running".to_string()
+        };
+        let text = Paragraph::new(message)
             .alignment(Alignment::Center)
             .block(block);
         f.render_widget(text, area);
         return;
     };
 
-    let gfx = mem.ac_graphics;
-    let phys = mem.ac_physics;
+    let gfx = *gfx_ref;
+    let phys = *phys_ref;
 
     let v_layout = Layout::default()
         .direction(Direction::Vertical)
