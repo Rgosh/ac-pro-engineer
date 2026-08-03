@@ -121,9 +121,11 @@ fn test_07_wizard_matrix_entry_understeer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Entry;
     engineer.wizard_problem = WizardProblem::Understeer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Decrease Front Rebound".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Decrease Front Rebound".to_string())
+    );
 }
 
 #[test]
@@ -131,9 +133,11 @@ fn test_08_wizard_matrix_entry_oversteer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Entry;
     engineer.wizard_problem = WizardProblem::Oversteer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Increase Front Rebound".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Increase Front Rebound".to_string())
+    );
 }
 
 #[test]
@@ -141,9 +145,11 @@ fn test_09_wizard_matrix_apex_understeer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Apex;
     engineer.wizard_problem = WizardProblem::Understeer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Softer Front Springs".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Softer Front Springs".to_string())
+    );
 }
 
 #[test]
@@ -151,9 +157,11 @@ fn test_10_wizard_matrix_apex_oversteer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Apex;
     engineer.wizard_problem = WizardProblem::Oversteer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Softer Rear Springs".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Softer Rear Springs".to_string())
+    );
 }
 
 #[test]
@@ -161,9 +169,11 @@ fn test_11_wizard_matrix_exit_understeer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Exit;
     engineer.wizard_problem = WizardProblem::Understeer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Increase Front Bump".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Increase Front Bump".to_string())
+    );
 }
 
 #[test]
@@ -171,9 +181,11 @@ fn test_12_wizard_matrix_exit_oversteer() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Exit;
     engineer.wizard_problem = WizardProblem::Oversteer;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Decrease Rear Bump".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Decrease Rear Bump".to_string())
+    );
 }
 
 #[test]
@@ -181,9 +193,11 @@ fn test_13_wizard_matrix_instability_any() {
     let mut engineer = Engineer::new(&get_english_config());
     engineer.wizard_phase = WizardPhase::Apex;
     engineer.wizard_problem = WizardProblem::Instability;
-    assert!(engineer
-        .get_wizard_advice()
-        .contains(&"Increase Downforce (Wings)".to_string()));
+    assert!(
+        engineer
+            .get_wizard_advice()
+            .contains(&"Increase Downforce (Wings)".to_string())
+    );
 }
 
 #[test]
@@ -717,7 +731,7 @@ fn test_41_cold_tyre_pressure_calculator() {
 
 #[test]
 fn test_42_csv_export_format() {
-    use ac_core::analyzer::{export_lap_to_csv, LapData, TelemetryPoint};
+    use ac_core::analyzer::{LapData, TelemetryPoint, export_lap_to_csv};
 
     let mut lap = LapData {
         lap_number: 1,
@@ -743,7 +757,7 @@ fn test_42_csv_export_format() {
     let res = export_lap_to_csv(&lap, &tmp_path);
     assert!(res.is_ok());
 
-    let content = std::fs::read_to_string(&tmp_path).unwrap();
+    let content = std::fs::read_to_string(&tmp_path).expect("the export just wrote this file");
     assert!(content.contains("\"Time\",\"Distance\",\"Speed\""));
     assert!(content.contains("2.500,100.00000,180.0"));
 
@@ -752,7 +766,7 @@ fn test_42_csv_export_format() {
 
 #[test]
 fn test_43_ghost_delta_calculation() {
-    use ac_core::analyzer::{calculate_ghost_delta, LapData, TelemetryPoint};
+    use ac_core::analyzer::{LapData, TelemetryPoint, calculate_ghost_delta};
 
     let mut best_lap = LapData::default();
     best_lap.telemetry_trace.push(TelemetryPoint {
@@ -788,7 +802,8 @@ fn test_43_ghost_delta_calculation() {
 
     let delta = calculate_ghost_delta(&best_lap, 1.0, 31.5);
     assert!(delta.is_some());
-    assert!((delta.unwrap() - 1.5).abs() < 0.01);
+    let delta = delta.expect("the best lap has a trace, so a delta is computed");
+    assert!((delta - 1.5).abs() < 0.01);
 }
 
 /// `updater::CURRENT_VERSION` is `ac_core`'s own `CARGO_PKG_VERSION`, and it is
