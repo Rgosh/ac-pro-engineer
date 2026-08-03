@@ -199,12 +199,19 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         let rpm_block = Block::default()
             .title(tr("lbl_rpm", lang))
             .borders(Borders::ALL);
+        // max_rpm is 0 until the static page has been read, so this division
+        // has to be guarded — otherwise the ratio is inf and the readout sits
+        // pegged at the redline colour before the car has even been loaded.
+        // `render_header` has the same guard.
+        let rpm_ratio = if app.session_info.max_rpm > 0 {
+            data.rpms as f32 / app.session_info.max_rpm as f32
+        } else {
+            0.0
+        };
         let rpm = Paragraph::new(format!("{}\nRPM", data.rpms))
             .style(
                 Style::default()
-                    .fg(get_rpm_color(
-                        data.rpms as f32 / app.session_info.max_rpm as f32,
-                    ))
+                    .fg(get_rpm_color(rpm_ratio))
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Center)
