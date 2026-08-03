@@ -1442,7 +1442,10 @@ impl Engineer {
         }
 
         if (gfx.session_time_left > 0.0 || gfx.number_of_laps > 0) && gfx.fuel_x_lap > 0.0 {
-            let laps_remaining_in_race = crate::session_info::SessionTiming::remaining_laps(
+            // Whole laps, not the display fraction: a timed race runs until
+            // the leader completes the lap the clock ran out on, and the lap
+            // already in progress still has to be finished.
+            let laps_remaining_in_race = crate::session_info::SessionTiming::laps_to_fuel_for(
                 gfx.session_time_left,
                 gfx.i_best_time,
                 gfx.i_last_time,
