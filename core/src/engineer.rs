@@ -1110,7 +1110,7 @@ impl Engineer {
         }
     }
 
-    fn analyze_tyre_temperature(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_tyre_temperature(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let min_temp = self
             .config
             .alerts
@@ -1126,6 +1126,13 @@ impl Engineer {
         if phys.speed_kmh > 100.0 {
             for i in 0..4 {
                 let temp = phys.get_avg_tyre_temp(i);
+                // Same gate as the pressure and wear alerts. This ran on
+                // every frame, so a tyre that stayed cold produced a fresh
+                // recommendation dozens of times a second.
+                let out_of_band = temp < min_temp || temp > max_temp;
+                if !self.check_hysteresis(&format!("tyre_temp_{}", i), out_of_band) {
+                    continue;
+                }
                 if temp < min_temp {
                     let name = match i {
                         0 => "FL",
@@ -1213,11 +1220,16 @@ impl Engineer {
         }
     }
 
-    fn analyze_brakes(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_brakes(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
         for i in 0..4 {
-            if phys.brake_temp[i] > max_temp {
+            // Gated the way the pressure and wear alerts already are. Without
+            // it this pushed a fresh recommendation on every single frame the
+            // brake was over temperature — dozens a second, burying every
+            // other message in the list.
+            let too_hot = phys.brake_temp[i] > max_temp;
+            if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
                 recs.push(Recommendation {
                     component: if ru {
                         "Тормоза".to_string()
@@ -1561,6 +1573,36 @@ mod tests {
 
         let recommendations = engineer.analyze_live(&physics, &graphics, None);
         assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
+    }
+
+    /// The brake and tyre-temperature alerts had no hysteresis, unlike the
+    /// pressure and wear alerts, so they pushed a fresh recommendation on
+    /// every frame the condition held.
+    #[test]
+    fn overheating_alerts_are_not_repeated_every_frame() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let graphics = AcGraphics::default();
+        let physics = AcPhysics {
+            speed_kmh: 150.0,
+            brake_temp: [1500.0; 4],
+            ..Default::default()
+        };
+
+        // The gate needs a second of sustained condition before it fires at
+        // all, so the first burst produces nothing.
+        let mut total = 0;
+        for _ in 0..50 {
+            total += engineer
+                .analyze_live(&physics, &graphics, None)
+                .iter()
+                .filter(|rec| rec.category == "Overheat")
+                .count();
+        }
+        assert_eq!(
+            total, 0,
+            "an alert should need a sustained condition, not a single frame"
+        );
     }
 
     /// AC's own fuel_x_lap sits in the unverified tail of the graphics page
