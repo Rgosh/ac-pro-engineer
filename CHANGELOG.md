@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-08-04
+
+A small follow-up to v0.3.1. Four pieces of functionality that were fully
+implemented but had no way to reach the user are now wired up, one wrong
+number in the analysis tab is corrected, and three things that ran far more
+often than they needed to no longer do.
+
+### 🚀 New Features
+
+- **Screenshot the interface with Ctrl+S.** A complete SVG renderer for a
+  drawn terminal buffer already existed inside `tui_tester`, where it
+  generates the images in the README; the application itself had no way to
+  capture what it was showing. Frames are written to
+  `<data>/screenshots/<timestamp>.svg` and the path is reported in the status
+  line. SVG keeps the text selectable and needs no image encoder.
+- **Tyre pressure targets are on screen.** `ColdPressureCalculator` and
+  `TyrePressureOptimizer` were both fully implemented in `ac_core` and called
+  only by the test suite. A third Engineer sub-tab shows what to set the tyres
+  to cold so they reach the configured hot target at the current air
+  temperature and track grip, and what each corner's inner-versus-outer
+  temperature spread says to change.
+- **Frame and tick timing in the footer.** The render loop and the background
+  tick thread contend for the same state mutex, so when one stalls it is
+  usually because the other holds the lock — and from the outside both look
+  identical, because the numbers stop moving either way. The footer now shows
+  frames per second and how long ago the tick completed, in red past 500ms.
+
+### 🛡️ Fixed
+
+- **A missing sector split no longer zeroes the best sector.** The analysis tab
+  computed each best sector as a plain minimum over the raw values, which
+  includes the zeroes left by a lap whose split was never captured and by the
+  unused third slot of a two-sector track. One such lap pinned that sector to
+  0.000 and made the "Optimal" row a lap time no car could set. The analyzer's
+  own `theoretical_best_lap_ms` — which filters those out and had no callers
+  outside its unit test — is used instead, and a sector with nothing recorded
+  renders as a dash rather than as a time.
+- **The config is no longer rewritten on every launch.** The decision to save
+  compared the file's text against a re-serialisation, so different
+  indentation, a different key order, or a serialisation failure all triggered
+  a write. The comparison is now between values, and formatting stops
+  mattering. Migration and validation still write, which they must.
+- **The mouse is no longer captured.** Capture was enabled at startup and no
+  mouse event was ever handled, so the only effect was taking selection and
+  copy away from the terminal — which is how anyone gets a lap time or an
+  error message out of a TUI and into a bug report.
+- **The timing readout stays blank until a frame is measured**, rather than
+  reporting a fabricated "0fps" before anything has been drawn.
+
+### ⚡ Performance
+
+- **The delta-versus-best series is cached.** It was recomputed every frame,
+  and computing it resamples two telemetry traces — cloning and fully sorting
+  up to 7200 points each — to arrive at an answer that cannot change, since
+  both laps are finished.
+- **Setup folders are rescanned on a ten second heartbeat** instead of twice a
+  second. The scan walks three directory trees and parses every setup ini in
+  them, for a directory that changes only when the user saves a setup from
+  inside the game.
+
+### 🧹 Internal
+
+185 tests, up from 171. The SVG renderer moved out of `tui_tester` into
+`ui::screenshot` so the binary and the application share one implementation;
+the README screenshots regenerate byte-identical from it.
+
 ## [v0.3.1] - 2026-08-03
 
 A bug-fix release, and a large one. Three features that the interface has
