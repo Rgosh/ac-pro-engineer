@@ -11,7 +11,7 @@ use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
 use ac_core::memory::SharedMemory;
 use ac_core::overlay::{OverlayManager, OverlayMode};
-use ac_core::process::is_process_running;
+use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
 use ac_core::setup_manager::SetupManager;
@@ -232,6 +232,10 @@ pub struct AppState {
     pub stage: AppStage,
     pub launcher_selection: usize,
     pub is_game_running: bool,
+    /// Cached "is AC (or the simulator) running" check. The uncached scan
+    /// reads every process on the system, and the launcher used to ask twice
+    /// per frame.
+    pub game_watcher: ProcessWatcher,
     pub is_connected: bool,
     pub active_tab: AppTab,
     pub session_info: SessionInfo,
@@ -302,6 +306,7 @@ impl AppState {
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
+            game_watcher: ProcessWatcher::new(&["acs.exe", "simulator.exe"]),
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
@@ -686,12 +691,14 @@ impl AppState {
             *tick = (*tick + 1) % 100;
         }
 
+        // Kept above the early return so the launcher can read
+        // `is_game_running` rather than running its own scan on every frame.
+        let process_active = self.game_watcher.is_running();
+        self.is_game_running = process_active;
+
         if self.stage != AppStage::Running {
             return;
         }
-
-        let process_active = is_process_running("acs.exe") || is_process_running("simulator.exe");
-        self.is_game_running = process_active;
 
         if !process_active && self.is_connected {
             self.disconnect();
