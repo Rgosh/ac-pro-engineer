@@ -6,134 +6,228 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.3.1] - 2026-08-03
 
-A bug-fix release. The launcher's version carousel, the Settings tab and the
-Setup Cloud browser now do what they have always claimed to; several crashes
-are gone; and Assetto Corsa is finally found on Linux.
+A bug-fix release, and a large one. Three features that the interface has
+always advertised — the version carousel, saving your settings, and the Setup
+Cloud browser — did not work at all and now do. Four reachable crashes are
+gone. Assetto Corsa is finally found on Linux.
+
+47 commits, 171 tests (up from 130), green on Linux and Windows.
 
 ### ⚠️ Read This First
 
-- **Cold tyre pressure targets will shift.** The calculator scales by
-  `surface_grip`, which used to read a constant `0.0` and clamp to a floor of
-  `0.80`, so every recommendation carried the same fixed compensation. With
-  real grip, a well-rubbered track (≈0.94) gives roughly a third of the old
-  adjustment. Your numbers will differ from v0.3.0 on the same car and track —
-  that is the fix working.
-- **Settings you saved before this release were never written to disk.** The
-  Settings tab did not persist anything, so it will come up with defaults one
-  last time.
+- **Your cold tyre pressure targets will change.** The calculator scales its
+  recommendation by `surface_grip`, which used to read a constant `0.0` and
+  clamp to a floor of `0.80` — so every recommendation carried the same fixed
+  compensation regardless of track state. With real grip being read, a
+  well-rubbered track (≈0.94) produces roughly a third of the previous
+  adjustment. Numbers will differ from v0.3.0 for the same car and track.
+  This is the fix working, not a regression.
+- **Any settings you saved before this release were never written to disk.**
+  The Settings tab did not persist anything, so it comes up with defaults one
+  last time. From now on it saves as you edit.
+- **Lap records saved before this release may be missing.** Personal bests
+  were compared against the world record rather than your own history, so
+  `records.json` only ever gained an entry from someone who had beaten it.
 
-### 🚀 New
+### 🚀 New Features
 
 - **Assetto Corsa is found on Linux.** The install root was probed as four
-  hardcoded Windows drive letters, and setups were looked for in
-  `~/Documents` — but under Proton the game writes inside its own prefix.
-  Steam's `libraryfolders.vdf` is read too, so a library on any drive works.
-  `ac_install_path` and `ac_documents_path` in the config override both.
-- **The Setup Cloud browser works.** Arrows navigate, `D` installs,
-  PgUp/PgDn scroll. Previously the tab handled only Up/Down/B, so the browser
-  opened onto a permanently empty list — while its own hint line, the help
-  overlay and the README all documented `D`.
-- **Fuel strategy no longer waits on AC.** Consumption measured across
-  completed laps fills in when `fuel_x_lap` reads zero, which it does for the
-  whole of lap one.
+  hardcoded Windows drive letters, so `content/cars` was never located and
+  every car-spec lookup returned nothing. Setups were looked for in
+  `~/Documents`, but under Proton the game is a Windows process writing inside
+  its own prefix. The new `ac_paths` module walks the real Steam roots
+  (`~/.steam/steam`, `~/.local/share/Steam`, Flatpak and Snap homes, Program
+  Files on Windows), reads Steam's `libraryfolders.vdf` so a library on any
+  drive is found rather than guessed at, and locates the Proton prefix by app
+  id. `ac_install_path` and `ac_documents_path` in the config override both.
+- **The Setup Cloud browser works.** The Setup tab handled only Up, Down and
+  B, so pressing B opened a browser onto a permanently empty setup list with
+  no way to install anything — while the tab's own hint line, the help overlay
+  and the README all documented `D` to download. Arrows navigate, Enter
+  reloads a car, `D` installs, PgUp/PgDn scroll the details. Fetching runs off
+  the render thread, so the UI no longer freezes on a five-second HTTP call.
+- **Fuel strategy no longer waits on AC.** Every fuel figure was gated on
+  `gfx.fuel_x_lap`, which reads zero for the whole of lap one and sits in the
+  part of the graphics page not yet confirmed against a live capture.
+  Consumption measured across completed laps now fills in, so the strategy tab
+  works from lap two regardless of that field.
 - **Honest connection status.** The footer distinguishes `LIVE`,
-  `AC RUNNING - NO DATA` and `AC NOT RUNNING` instead of ONLINE/OFFLINE.
-- **CSV export carries RPM, both G axes and slip**, and names files after the
-  car, track and lap instead of colliding on `lap_3_export.csv`.
-- **Terminal-too-small screen** instead of drawing into an area that cannot
-  hold the layout.
+  `AC RUNNING - NO DATA` and `AC NOT RUNNING` rather than collapsing three
+  tracked states into ONLINE/OFFLINE. Panels with no telemetry say which it is
+  instead of drawing nothing.
+- **Richer CSV export.** RPM, lateral G, longitudinal G and average slip were
+  being dropped even though the trace carries them — the three things an
+  external tool is most often opened for. Files are named after the car, track
+  and lap instead of colliding on `lap_3_export.csv`, and a failed export now
+  reports itself instead of failing silently.
+- **Terminal-too-small screen.** Below 80x20 the app shows its current and
+  required size instead of drawing into an area that cannot hold the layout.
+  The startup resize is now grow-only, so it stops shrinking the window of
+  anyone running maximised.
+- **Ghost delta.** The `show_ghost_delta` toggle now selects the delta source:
+  with it on, the readout compares against your own recorded best lap through
+  `calculate_ghost_delta`, which was fully implemented and had no caller.
 
-### 🛡️ Fixed
+### 🛡️ Crashes Fixed
 
-**Crashes**
-- Narrow terminals: four `Rect` fields in the Setup tab subtracted constants
-  from a `u16` width, wrapping to ~65530 below 20 columns.
-- Updater: `"░".repeat(20 - filled)` panicked mid-download on any percentage
-  over 100.
-- Stale shared memory: `Gauge::ratio` asserts on its input and `clamp` passes
-  NaN through, so one garbage float from a zeroed `/dev/shm` page took the app
-  down.
-- A config with `update_rate: 0` spun two cores at 100% — `validate()` had no
-  caller outside its own unit test.
+- **Narrow terminals.** Four `Rect` fields in the Setup tab subtracted
+  constants from a `u16` width and height. Below 20 columns they wrapped to
+  around 65530 and indexed out of the render buffer.
+- **Mid-download panic.** The updater's progress bar built its trailing
+  segment with `"░".repeat(20 - filled)` on an unclamped percentage, so a
+  response body longer than its Content-Length aborted the app while the user
+  watched it update.
+- **NaN from stale shared memory.** `Gauge::ratio` asserts its input is within
+  0.0..=1.0 and `clamp` returns NaN unchanged, so a single garbage float from
+  a zeroed `/dev/shm` page took the app down. All nine gauge call sites reject
+  non-finite input first.
+- **100% CPU from a config file.** `AppConfig::validate` had no caller outside
+  its own unit test, so `update_rate: 0` reached `event::poll` and
+  `thread::sleep` and spun two cores. Validation now runs on load, and covers
+  the pressure targets, alert bands, temperature limits and shift point that
+  previously had no bounds at all.
 
-**Things that silently did nothing**
-- Version carousel arrows: releases older than the running one were filtered
-  out, leaving a one-entry list with nowhere to move.
-- Settings were never saved, and never re-applied without a restart. The
-  `auto_save` and `show_ghost_delta` toggles were read by nothing.
-- Personal bests were compared against the *world record*, so `records.json`
-  only ever gained an entry from someone who had beaten it.
-- Setup auto-detection required a perfect three-way match, so one lap of burnt
-  fuel blanked the "(NOW: x%)" hints.
-- The suspension roll-asymmetry warning compared a value against itself.
-- On Linux the launcher waited forever for `simulator.exe`; the Linux build is
-  called `simulator`.
+### 🛡️ Things That Silently Did Nothing
 
-**Wrong numbers**
-- Driving-style aggression combined the lateral and *vertical* G axes, so a
-  stationary car scored 40% and braking was invisible.
-- Out-laps scored perfect tyre management: with no sample above the speed gate
-  the deviation computed to 0.0 and the score to 100.
-- Mistake counts scaled with Update Rate, making laps recorded at different
+- **Version carousel arrows.** `check_for_updates` dropped every release older
+  than the running one, so on the newest build the list held a single entry
+  and Left/Right had nowhere to move — while the launcher rendered a "you
+  won't be able to switch back" warning for versions that could never appear.
+- **Update checks after being offline.** The check ran once at startup, so a
+  machine behind a captive portal kept an empty carousel for the whole session
+  with no way to retry. Selecting the UPDATE item now re-checks, debounced to
+  once a minute.
+- **Saving settings.** `handle_input` mutated the config and nothing wrote it
+  back; `apply_config` had no callers, so changes did not take effect until a
+  restart. The `auto_save` and `show_ghost_delta` toggles were read by nothing.
+- **Personal bests.** Compared against the world record, and the whole block
+  was nested inside a car-specs lookup that always failed on Linux — so no
+  record was created, compared or saved there at all, which also left
+  `world_record` as None and disabled the off-pace advice.
+- **Setup auto-detection.** `match_score` can only produce 0/20/25/30/45/50/
+  55/75 and the threshold was `> 60`, so only a perfect three-way match ever
+  qualified. One lap of burnt fuel dropped it to 55 and silently blanked the
+  "(NOW: x%)" hints in the brake-bias and camber advice.
+- **Suspension roll-asymmetry warning.** It compared `avg_ride_height[0]`
+  against itself, so the difference was always exactly zero. AC publishes ride
+  height per axle, not per corner, so the check cannot be written against this
+  data and has been removed rather than left looking functional.
+- **Simulator detection on Linux.** `is_process_running` matched only
+  `simulator.exe`, but the Linux build is called `simulator`, so the launcher
+  waited forever on the platform the bridge exists for.
+
+### 🛡️ Wrong Numbers
+
+- **Driving-style aggression** combined the lateral and *vertical* G axes, so
+  a stationary car scored 40% and braking or acceleration was invisible to it.
+- **Out-laps scored perfect tyre management.** With no sample above the speed
+  gate, pressure deviation computed to 0.0 and the score to a perfect 100 — an
+  out-lap rated better than a hot lap, and the advice recommended inflating by
+  27.5 psi against a 0.0 psi reading.
+- **Mistake counts scaled with Update Rate.** Oversteer, understeer, lockup
+  and scrubbing counters were divided by a fixed sample count, so changing the
+  rate in Settings halved every score and made laps recorded at different
   rates incomparable.
-- The final sector split raced the lap counter and could land in the next lap.
-  `AcStatic::sector_count` is honoured now, so 2- and 4-sector mod tracks work.
-- Fuel targets under-fuelled: a timed race ends when the leader *completes* the
-  lap the clock ran out on, and the lap in progress still has to be finished.
-- `fuel_laps_remaining` was never cleared, so BOX BOX BOX could fire after a
-  refuel on a value measured before the stop.
-- Physics and graphics pages are re-read when AC's `packet_id` moves mid-copy,
-  so a frame spliced from two game ticks no longer reaches the analyzer.
-- Target pressures printed a hardcoded "PSI" and temperatures a hardcoded "C";
-  tyre temperature *spreads* were converted as absolute temperatures, adding a
-  32°F offset that does not belong to a difference.
+- **The final sector split raced the lap counter** and could land in the
+  following lap. It is derived from the lap time now. `AcStatic::sector_count`
+  is honoured too, so 2- and 4-sector mod tracks produce a theoretical best.
+- **Fuel targets under-fuelled.** A timed race ends when the leader
+  *completes* the lap the clock ran out on, and the lap already in progress
+  still has to be finished; the target accounted for neither.
+- **Stale fuel warnings.** `fuel_laps_remaining` was never cleared, so
+  BOX BOX BOX could fire after a refuel on a value measured before the stop.
+- **Torn shared-memory reads.** The physics page is rewritten at 333 Hz while
+  ~600 bytes are copied out of it. Pages are re-read when AC's `packet_id`
+  moves mid-copy, so a frame spliced from two game ticks no longer reaches the
+  jerk accumulators and peak-G tracking as a phantom lockup.
+- **Track-map bounds** were serialised as `f32::MAX`/`f32::MIN` sentinels when
+  a lap had no usable coordinates, so anything computing `max - min` from a
+  saved lap got -6.8e38.
+- **Units were ignored.** Target pressures printed a hardcoded "PSI" and
+  ambient temperatures a hardcoded "C" whatever the Display settings said;
+  alert thresholds printed no unit at all. Tyre temperature *spreads* were
+  converted as absolute temperatures, adding a 32°F offset that does not
+  belong to a difference. Min Speed was folded from a seed of 999.0, so an
+  empty trace displayed "999.0 km/h" as if it were a measurement.
 
-**Keys and text**
-- The first-run prompt could not be exited with Ctrl+C, q or Esc.
-- F1 did not close the help modal that says "PRESS ESC, ?, Q, OR F1 TO CLOSE".
-- Esc in the analysis load menu quit the whole session.
-- Held keys were dropped on Windows.
-- `S` saved the fastest lap rather than the selected one.
-- Tabs were documented as F1–F9 throughout; they are 1–9.
-- Status messages never cleared, so a stale one looked fresh.
-- Twelve locale keys existed only in Russian; a test now enforces parity.
+### 🛡️ Keys, Text and Alerts
 
-**Data and shutdown**
-- Records, config and CSV export renamed a temp file into place without
-  flushing first, so a power loss could publish a correctly-named empty file.
-  Two instances saving at once also shared a temp path.
-- Crash reports and logs were written relative to the working directory, which
-  is unwritable from a shortcut or under Program Files — the crash report was
-  then dropped in silence. A logging failure also aborted startup.
-- shm-bridge's cleanup returned on the first failure, leaving zero-filled pages
-  the app maps without complaint, reporting a healthy connection to a dead feed.
-- Quitting could hang forever waiting on a bridge that never acknowledged the
-  exit request.
-- A missing `protontricks-launch` was fatal, so anyone running AC natively —
-  or reviewing saved laps offline — could not start the app.
-- A newline in a downloaded setup's notes could inject an INI section into a
-  file AC parses as a car setup.
+- The first-run prompt could not be exited with Ctrl+C, q or Esc — the first
+  screen every new user sees, and Enter was the only way out.
+- F1 did not close the help modal that says "PRESS ESC, ?, Q, OR F1 TO CLOSE"
+  in nine places.
+- Esc in the analysis load menu quit the whole session back to the launcher,
+  while the menu's own footer promised "ESC: Close".
+- Held keys were dropped on Windows, which reports them as `Repeat` rather
+  than `Press`.
+- `S` in the analysis tab saved the fastest lap rather than the selected one.
+- Tabs were documented as F1–F9 in nine screen titles, the navigation summary
+  and the README; they are 1–9. The footer advertised "[H: Help]" for a key
+  that is not handled, and F10 was described as a compact UI mode when it
+  toggles the game overlay. Keys documented nowhere — Tab/Shift+Tab, F11,
+  Ctrl+L, E, PgUp/PgDn, the A/S/D category switches — are now listed.
+- Brake and tyre-temperature alerts pushed a fresh recommendation on every
+  frame the condition held — roughly sixty a second per corner, burying every
+  other message. They now use the same hysteresis as every comparable alert.
+- Status messages never cleared, so "Exported CSV: ..." stayed pinned to the
+  footer for the session and a stale message looked like a fresh one.
+- Twelve locale keys existed only in Russian; a test now enforces parity. A
+  malformed locale override produced an empty dictionary in silence,
+  degrading the whole UI to raw key names.
+
+### 🛡️ Data, Shutdown and Security
+
+- **Durability.** The records file, config and CSV export renamed a temp file
+  into place without flushing it first, so a power loss could publish a
+  correctly-named empty file. Two instances saving at once also shared a temp
+  path, which is the one way that pattern corrupts rather than merely loses.
+- **Records validation.** A zero or negative lap time was accepted, written to
+  disk, then dropped by the read path on next load — which reads to the driver
+  as a personal best vanishing between sessions.
+- **Crash reports and logs** were written relative to the working directory,
+  unwritable when launched from a shortcut or installed under Program Files.
+  The crash report was then dropped in silence. A logging failure also aborted
+  startup before the TUI was drawn.
+- **Stale `/dev/shm` mappings.** shm-bridge's cleanup returned on the first
+  failure, leaving the remaining pages behind zero-filled — and the app maps
+  those without complaint, reporting a healthy connection to a dead feed.
+- **Quitting could hang forever** waiting on a bridge that never acknowledged
+  the exit request. Bounded to five seconds, and errors inside that task are
+  no longer discarded.
+- **A missing `protontricks-launch` was fatal**, so anyone running AC natively,
+  through another launcher, or simply reviewing saved laps offline could not
+  start the app at all.
+- **INI injection.** A newline in a downloaded setup's notes field opened a new
+  line in the file AC parses as a car setup, letting a `[SECTION]` be smuggled
+  past everything the downloader validates.
 
 ### ⚡ Performance
 
 - `is_process_running` reads every process on the system and was called twice
-  per frame from the launcher — roughly 124 full scans a second while sitting
-  in a menu. Cached for one second.
-- Loading a car's cloud setups no longer blocks the render thread on a
-  five-second HTTP call.
+  per frame from the launcher — roughly 124 full process-table scans a second
+  while sitting in a menu. Cached for one second.
+- Loading a car's cloud setups no longer blocks the render thread.
 
 ### 🧹 Internal
 
-- Shared-memory layout tests parse graphics, physics and static pages captured
-  verbatim from a live AC 1.16.4 session. Previously every test built an `Ac*`
-  value in Rust and read it back, so none could detect a mismatch with the game.
-- The test suite now compiles under the workspace edition and lints;
-  `unwrap_used` and `panic` were silently unenforced across it. Removed two
-  modules that asserted nothing about this project.
-- CI builds with `--locked`. Release scripts and generated screenshots read the
-  version from the workspace manifest instead of a hardcoded string two
-  releases old.
-- 171 tests, up from 130.
+- **Shared-memory layout tests** parse graphics, physics and static pages
+  captured verbatim from a live AC 1.16.4 session through the same zerocopy
+  call the app uses. Previously every test built an `Ac*` value in Rust and
+  read it back, so none could detect a mismatch with the game.
+- **The test suite now compiles under the workspace edition and lints.** It
+  was pinned to edition 2021 against the workspace's 2024 and omitted
+  `[lints] workspace = true`, so `unwrap_used` and `panic` were silently
+  unenforced across it. Two modules that asserted nothing about this project
+  were removed — one never imported the crate under test, the other spawned
+  `sh` and checked its exit status.
+- **CI builds with `--locked`** and runs on `actions/checkout@v6`, matching the
+  release workflow.
+- **Version numbers come from the manifest.** The release scripts and the
+  generated screenshots hardcoded `v0.2.3`, two releases behind.
+- **Screenshots regenerated**, including `Help_Modal.svg`, which was
+  byte-identical to `Analysis_Radar.svg` because the tester set a field the
+  renderer does not read.
+- **The commit convention is written down** in AGENTS.md.
 
 ## [v0.3.0] - 2026-08-02
 
