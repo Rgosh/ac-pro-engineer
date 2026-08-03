@@ -937,10 +937,28 @@ fn scan_single_folder(
     }
 }
 
+/// Flatten a value so it cannot break out of the `KEY=value` line it is
+/// written on.
+///
+/// Every other field of a `CarSetup` is a `u32` or `i32` and cannot express
+/// anything but a number. `notes` is a free-form string that arrives from the
+/// setup JSON fetched over the network, and a newline in it would start a new
+/// INI line — `[SPRING_RATE_LF]\nVALUE=...` in a notes field is a section AC
+/// would parse and apply as part of the setup.
+fn sanitize_ini_value(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| if c == '\r' || c == '\n' { ' ' } else { c })
+        .collect()
+}
+
 fn generate_ini_content(s: &CarSetup) -> String {
     let mut out = String::new();
     if !s.notes.is_empty() {
-        out.push_str(&format!("[NOTES]\nVALUE={}\n\n", s.notes));
+        out.push_str(&format!(
+            "[NOTES]\nVALUE={}\n\n",
+            sanitize_ini_value(&s.notes)
+        ));
     }
     out.push_str(&format!(
         "[FUEL]\nVALUE={}\n\n[FRONT_BIAS]\nVALUE={}\n\n[ENGINE_LIMITER]\nVALUE={}\n\n",
@@ -1109,5 +1127,48 @@ mod tests {
 
         assert!(mgr.shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
         assert!(mgr.bg_thread.safe_lock().is_none());
+    }
+
+    /// `notes` is the one free-form string in a setup, and it arrives from
+    /// the network. A newline in it would open a new INI line, and AC parses
+    /// whatever section that line names as part of the setup.
+    #[test]
+    fn ini_notes_cannot_inject_extra_sections() {
+        let setup = CarSetup {
+            notes: "nice setup\n\n[SPRING_RATE_LF]\nVALUE=99999".to_string(),
+            ..CarSetup::default()
+        };
+
+        let ini = generate_ini_content(&setup);
+        let notes_line = ini
+            .lines()
+            .find(|l| l.starts_with("VALUE="))
+            .expect("the notes value is written");
+
+        assert!(
+            notes_line.contains("99999"),
+            "the text is kept, just flattened onto one line: {notes_line}"
+        );
+        // What matters is that it is no longer a *section header*: an INI
+        // parser only recognises `[NAME]` at the start of a line. Inside a
+        // value it is just text.
+        assert_eq!(
+            ini.lines()
+                .filter(|l| l.starts_with("[SPRING_RATE_LF]"))
+                .count(),
+            1,
+            "only the real spring rate section, not one smuggled in via notes"
+        );
+        assert_eq!(
+            ini.lines().filter(|l| l.contains("99999")).count(),
+            1,
+            "the whole injected string stays on the single notes line"
+        );
+    }
+
+    #[test]
+    fn sanitize_ini_value_flattens_line_breaks() {
+        assert_eq!(sanitize_ini_value("a\r\nb\nc"), "a  b c");
+        assert_eq!(sanitize_ini_value("plain text"), "plain text");
     }
 }
