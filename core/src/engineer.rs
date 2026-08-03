@@ -321,9 +321,13 @@ impl Engineer {
         self.driving_style.prev_brake = phys.brake;
         self.driving_style.prev_steer = phys.steer_angle;
 
-        let lateral_g = (phys.acc_g[0].powi(2) + phys.acc_g[1].powi(2)).sqrt();
+        // acc_g is [lateral, vertical, longitudinal]. This combined the
+        // lateral and *vertical* axes, so it measured cornering plus the ~1 g
+        // the car carries standing still, and never saw braking or
+        // acceleration at all.
+        let combined_g = (phys.acc_g[0].powi(2) + phys.acc_g[2].powi(2)).sqrt();
         self.driving_style.aggression =
-            0.9 * self.driving_style.aggression + 0.1 * lateral_g.min(2.5) / 2.5 * 100.0;
+            0.9 * self.driving_style.aggression + 0.1 * combined_g.min(2.5) / 2.5 * 100.0;
 
         if phys.brake > 0.1 && phys.steer_angle.abs() > 0.1 {
             self.driving_style.trail_braking =
@@ -1445,6 +1449,48 @@ mod tests {
 
         let recommendations = engineer.analyze_live(&physics, &graphics, None);
         assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
+    }
+
+    /// acc_g is [lateral, vertical, longitudinal]. Aggression used indices 0
+    /// and 1, so it summed cornering with the ~1 g of gravity the car carries
+    /// even parked, and never looked at braking or acceleration.
+    #[test]
+    fn aggression_ignores_the_vertical_axis() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        let graphics = AcGraphics::default();
+        let session = crate::session_info::SessionInfo::default();
+
+        // Straight line, steady speed, 1 g down. Nothing aggressive here.
+        let cruising = AcPhysics {
+            speed_kmh: 120.0,
+            acc_g: [0.0, 1.0, 0.0],
+            ..Default::default()
+        };
+        for _ in 0..200 {
+            engineer.update(&cruising, &graphics, &session);
+        }
+        let cruising_aggression = engineer.driving_style.aggression;
+        assert!(
+            cruising_aggression < 5.0,
+            "vertical g must not register as aggression, got {cruising_aggression}"
+        );
+
+        // Hard braking. This is the case the old formula could not see at all,
+        // because longitudinal g lives at index 2.
+        let braking = AcPhysics {
+            speed_kmh: 120.0,
+            acc_g: [0.0, 1.0, -1.8],
+            ..Default::default()
+        };
+        for _ in 0..200 {
+            engineer.update(&braking, &graphics, &session);
+        }
+        assert!(
+            engineer.driving_style.aggression > cruising_aggression + 20.0,
+            "braking must raise aggression, got {}",
+            engineer.driving_style.aggression
+        );
     }
 }
 
