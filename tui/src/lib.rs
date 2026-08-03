@@ -384,7 +384,8 @@ impl AppState {
                 avg_tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
                 avg_tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
                 avg_brake_temp: [450.0, 442.0, 380.0, 375.0],
-                avg_ride_height: [25.0, 55.0],
+                // Metres, as AC publishes them. The renderer scales to mm.
+                avg_ride_height: [0.025, 0.055],
                 damper_histograms: [[25.0, 35.0, 20.0, 20.0]; 4],
                 throttle_smoothness: 94.2,
                 steering_smoothness: 91.8,
