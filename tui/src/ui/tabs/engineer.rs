@@ -4,6 +4,9 @@ use ac_core::analyzer::LapData;
 use ac_core::config::Language;
 use ratatui::{prelude::*, widgets::*};
 
+/// Live feed, post-stint debrief, and pressures.
+const SUB_TAB_COUNT: usize = 3;
+
 pub struct EngineerState {
     pub active_sub_tab: usize,
     pub selected_lap_index: usize,
@@ -24,11 +27,11 @@ impl EngineerState {
     }
 
     pub fn next_tab(&mut self) {
-        self.active_sub_tab = (self.active_sub_tab + 1) % 2;
+        self.active_sub_tab = (self.active_sub_tab + 1) % SUB_TAB_COUNT;
     }
 
     pub fn prev_tab(&mut self) {
-        self.active_sub_tab = if self.active_sub_tab == 0 { 1 } else { 0 };
+        self.active_sub_tab = (self.active_sub_tab + SUB_TAB_COUNT - 1) % SUB_TAB_COUNT;
     }
 
     pub fn next_lap(&mut self, total_laps: usize) {
@@ -61,16 +64,18 @@ pub fn render_horizontal(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     render_sub_tabs(f, layout[0], app);
 
-    if app.ui_state.engineer.active_sub_tab == 0 {
-        let content_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(layout[1]);
+    match app.ui_state.engineer.active_sub_tab {
+        0 => {
+            let content_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+                .split(layout[1]);
 
-        render_live_recs(f, content_layout[0], app);
-        render_stats(f, content_layout[1], app);
-    } else {
-        render_debrief(f, layout[1], app);
+            render_live_recs(f, content_layout[0], app);
+            render_stats(f, content_layout[1], app);
+        }
+        1 => render_debrief(f, layout[1], app),
+        _ => render_pressures(f, layout[1], app),
     }
 }
 
@@ -91,16 +96,18 @@ pub fn render_vertical(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     render_sub_tabs(f, layout[0], app);
 
-    if app.ui_state.engineer.active_sub_tab == 0 {
-        let content_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(layout[1]);
+    match app.ui_state.engineer.active_sub_tab {
+        0 => {
+            let content_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(layout[1]);
 
-        render_live_recs(f, content_layout[0], app);
-        render_stats(f, content_layout[1], app);
-    } else {
-        render_debrief(f, layout[1], app);
+            render_live_recs(f, content_layout[0], app);
+            render_stats(f, content_layout[1], app);
+        }
+        1 => render_debrief(f, layout[1], app),
+        _ => render_pressures(f, layout[1], app),
     }
 }
 
@@ -116,9 +123,14 @@ fn render_sub_tabs(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             "🔴 LIVE FEED [<-]"
         },
         if is_ru {
-            "📋 ДЕБРИФИНГ [->]"
+            "📋 ДЕБРИФИНГ"
         } else {
-            "📋 POST-STINT [->]"
+            "📋 POST-STINT"
+        },
+        if is_ru {
+            "🎯 ДАВЛЕНИЯ [->]"
+        } else {
+            "🎯 PRESSURES [->]"
         },
     ];
 
@@ -958,4 +970,176 @@ fn render_sector_advice(
 
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), layout[1]);
     }
+}
+
+/// Tyre pressure targets: what to set cold to arrive at the hot target, and
+/// what the current corner temperatures say to change.
+///
+/// `ColdPressureCalculator` and `TyrePressureOptimizer` were both fully
+/// implemented in `ac_core::engineer` and referenced only from the test suite.
+fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    use ac_core::engineer::{ColdPressureCalculator, TyrePressureOptimizer};
+
+    let theme = &app.ui_state.theme;
+    let is_ru = app.config.language == Language::Russian;
+    let fmt = app.config.formatter();
+
+    let block = Block::default()
+        .title(if is_ru {
+            " ЦЕЛЕВЫЕ ДАВЛЕНИЯ "
+        } else {
+            " PRESSURE TARGETS "
+        })
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let Some(phys) = app.ac_physics() else {
+        f.render_widget(
+            Paragraph::new(if is_ru {
+                "Ожидание телеметрии..."
+            } else {
+                "Waiting for telemetry..."
+            })
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center),
+            inner,
+        );
+        return;
+    };
+
+    let gfx = app.ac_graphics();
+    let ambient = phys.air_temp;
+    let grip = gfx.map(|g| g.surface_grip).unwrap_or(1.0);
+
+    let mut lines = Vec::new();
+
+    // Cold targets, front and rear, from the configured hot targets.
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "СТАРТОВЫЕ (ХОЛОДНЫЕ) ДАВЛЕНИЯ"
+        } else {
+            "COLD SETUP PRESSURES"
+        },
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!(
+            "{} {:.0}°  |  {} {:.2}",
+            if is_ru { "Воздух" } else { "Air" },
+            fmt.temp_val(ambient),
+            if is_ru { "сцепление" } else { "grip" },
+            grip
+        ),
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(""));
+
+    for (label, target) in [
+        (
+            if is_ru { "Перед" } else { "Front" },
+            app.config.target_hot_pressure_front,
+        ),
+        (
+            if is_ru { "Зад" } else { "Rear" },
+            app.config.target_hot_pressure_rear,
+        ),
+    ] {
+        let estimate = ColdPressureCalculator::calculate(target, ambient, grip);
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<6} ", label),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:>7}", fmt.format_pressure(estimate.recommended_cold_psi)),
+                Style::default()
+                    .fg(Color::LightGreen)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    "  → {} {}",
+                    fmt.format_pressure(estimate.target_hot_psi),
+                    if is_ru { "горячее" } else { "hot" }
+                ),
+                Style::default().fg(Color::Gray),
+            ),
+        ]));
+        lines.push(Line::from(Span::styled(
+            format!(
+                "         -{:.1} {}  -{:.1} {}",
+                estimate.delta_temp_psi,
+                if is_ru { "темп." } else { "temp" },
+                estimate.delta_grip_psi,
+                if is_ru { "сцеп." } else { "grip" }
+            ),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "ПОКОРНЕРНАЯ КОРРЕКЦИЯ"
+        } else {
+            "PER-CORNER ADJUSTMENT"
+        },
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    let optimizer = TyrePressureOptimizer::calculate(phys, app.config.target_tyre_pressure);
+    for corner in &optimizer.corners {
+        let delta = corner.recommended_delta_psi;
+        let (delta_text, delta_color) = if delta.abs() < 0.05 {
+            (
+                if is_ru {
+                    "  ок".to_string()
+                } else {
+                    "  ok".to_string()
+                },
+                Color::Green,
+            )
+        } else if delta > 0.0 {
+            (format!("+{:.1}", delta), Color::Yellow)
+        } else {
+            (format!("{:.1}", delta), Color::LightBlue)
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<4}", corner.corner_name),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!("{:>7}  ", fmt.format_pressure(corner.current_psi))),
+            Span::styled(
+                format!("{:>5}", delta_text),
+                Style::default()
+                    .fg(delta_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            // Inner-minus-outer is a difference, so it is scaled but never
+            // offset — a 32°F shift does not belong to a temperature delta.
+            Span::styled(
+                format!(
+                    "   Δ{:>5.1}{}",
+                    fmt.temp_delta_val(corner.temp_spread_c),
+                    fmt.temp_symbol()
+                ),
+                Style::default().fg(if corner.temp_spread_c.abs() > 12.0 {
+                    Color::Red
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+        ]));
+    }
+
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), inner);
 }
