@@ -1191,4 +1191,128 @@ mod tests {
         let rv: RemoteVersion = serde_json::from_str(json).expect("should parse");
         assert_eq!(rv.expected_size, 0);
     }
+
+    /// An asset name this platform will actually classify, so the release
+    /// carries something installable wherever the test runs.
+    fn platform_asset() -> GitHubAsset {
+        asset(if cfg!(target_os = "windows") {
+            "ac_pro_engineer.exe"
+        } else {
+            "ac_pro_engineer"
+        })
+    }
+
+    fn release(tag: &str, prerelease: bool) -> GitHubRelease {
+        GitHubRelease {
+            tag_name: tag.to_string(),
+            body: Some(format!("notes for {tag}")),
+            assets: vec![platform_asset()],
+            prerelease,
+        }
+    }
+
+    /// The regression this whole change is about: an older release must survive
+    /// into the list, or the launcher's arrows have nowhere to move.
+    #[test]
+    fn version_list_keeps_releases_older_than_the_running_one() {
+        let feed = [release("v0.0.1", false)];
+        let versions = build_version_list(&feed);
+
+        assert_eq!(
+            versions.len(),
+            1,
+            "a release older than {CURRENT_VERSION} must still be offered for rollback"
+        );
+        assert_eq!(versions[0].version, "0.0.1");
+    }
+
+    #[test]
+    fn version_list_is_sorted_newest_first() {
+        // Deliberately out of order: GitHub returns creation order, which a
+        // backported or re-published tag breaks.
+        let feed = [
+            release("v0.2.3", false),
+            release("v1.0.0", false),
+            release("v0.9.9", false),
+        ];
+        let versions = build_version_list(&feed);
+
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["1.0.0", "0.9.9", "0.2.3"]);
+    }
+
+    #[test]
+    fn version_list_marks_only_the_newest_as_latest() {
+        let feed = [release("v0.2.3", false), release("v1.0.0", false)];
+        let versions = build_version_list(&feed);
+
+        assert!(versions[0].is_latest, "1.0.0 is the latest");
+        assert!(!versions[1].is_latest, "0.2.3 is not");
+    }
+
+    #[test]
+    fn version_list_skips_prereleases() {
+        let feed = [
+            release("v2.0.0-beta.1", false), // prerelease by version string
+            release("v1.5.0", true),         // prerelease by GitHub flag
+            release("v1.0.0", false),
+        ];
+        let versions = build_version_list(&feed);
+
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["1.0.0"]);
+    }
+
+    #[test]
+    fn version_list_skips_releases_with_no_asset_for_this_platform() {
+        let mut no_asset = release("v1.0.0", false);
+        no_asset.assets = vec![asset("ac_tui-installer.sh"), asset("sha256.sum")];
+        let feed = [no_asset, release("v0.9.0", false)];
+
+        let versions = build_version_list(&feed);
+        let order: Vec<&str> = versions.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(order, ["0.9.0"]);
+    }
+
+    /// The arrows themselves, over a list with more than one entry — which is
+    /// the state the old filter made unreachable.
+    #[test]
+    fn carousel_walks_the_whole_version_list() {
+        let updater = Updater {
+            status: Arc::new(Mutex::new(UpdateStatus::Idle)),
+            releases: Arc::new(Mutex::new(build_version_list(&[
+                release("v1.0.0", false),
+                release("v0.9.0", false),
+                release("v0.2.3", false),
+            ]))),
+            selected_index: Arc::new(Mutex::new(0)),
+        };
+
+        let selected = || {
+            updater
+                .get_selected_release()
+                .expect("the list is not empty")
+                .version
+        };
+
+        assert_eq!(selected(), "1.0.0");
+
+        updater.next_version();
+        assert_eq!(selected(), "0.9.0", "right should walk back through history");
+        updater.next_version();
+        assert_eq!(selected(), "0.2.3");
+
+        // The oldest entry is the end of the road.
+        updater.next_version();
+        assert_eq!(selected(), "0.2.3");
+
+        updater.prev_version();
+        assert_eq!(selected(), "0.9.0", "left should walk forward again");
+        updater.prev_version();
+        assert_eq!(selected(), "1.0.0");
+
+        // And the newest entry is the other end.
+        updater.prev_version();
+        assert_eq!(selected(), "1.0.0");
+    }
 }
