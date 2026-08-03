@@ -108,6 +108,30 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let args = AppArgs::parse();
 
+    // Started from a file manager or a desktop entry, there is no terminal to
+    // draw on: raw mode fails and the process dies before showing anything.
+    // Open one and run there instead. Must happen before the panic hook or
+    // any terminal setup, since neither applies to a process that is about to
+    // hand off to a child.
+    #[cfg(target_os = "linux")]
+    if platform::relaunch::needs_terminal() {
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ac_pro_engineer"));
+        let forwarded: Vec<String> = std::env::args().skip(1).collect();
+        match platform::relaunch::relaunch_in_terminal(&exe, &forwarded) {
+            Ok(terminal) => {
+                info!("No terminal attached; relaunched in {terminal}");
+                return Ok(());
+            }
+            Err(reason) => {
+                // Carry on rather than exit. The application will fail
+                // visibly on stderr, which is more use than a silent exit,
+                // and a user who piped stdout deliberately still gets to run.
+                eprintln!("Could not open a terminal window ({reason}).");
+                eprintln!("Run this from a terminal instead: ac_pro_engineer");
+            }
+        }
+    }
+
     let overlay_mode = if args.overlay_test_d {
         OverlayMode::StandaloneTest
     } else if args.overlay_test_vr {
