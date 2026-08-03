@@ -8,7 +8,7 @@ use ac_tui::ui::UIRenderer;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
-    event::{self, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, SetSize, enable_raw_mode},
 };
@@ -156,7 +156,11 @@ async fn main() -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // Mouse capture is deliberately not enabled. It was, and nothing ever
+    // handled an `Event::Mouse` — the only effect was to take selection and
+    // copy away from the user's terminal, which is how anyone gets a log line
+    // or a lap time out of a TUI. Enabling it again means handling the events.
+    execute!(stdout, EnterAlternateScreen)?;
 
     // Ask for more room only when the terminal has less than the UI needs.
     // This used to be an unconditional SetSize(140, 40), which shrank the
