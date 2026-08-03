@@ -54,18 +54,29 @@ pub fn is_process_running(target_name: &str) -> bool {
     use std::fs;
 
     let target_lower = target_name.to_lowercase();
+    // A Windows executable run under Proton keeps its .exe name, but anything
+    // built for Linux does not — `cargo build` produces `simulator`, never
+    // `simulator.exe`. Matching only the name as given meant the launcher sat
+    // on "WAITING FOR SIMULATOR..." forever while the simulator was running,
+    // on the very platform the bridge exists for. Accept both spellings.
+    let target_native = target_lower
+        .strip_suffix(".exe")
+        .unwrap_or(&target_lower)
+        .to_string();
+
+    let matches_target = |candidate: &str| {
+        let candidate = candidate.to_lowercase();
+        [&target_lower, &target_native]
+            .iter()
+            .any(|name| candidate == **name || candidate.ends_with(&format!("/{}", name)))
+    };
+
     let is_proc_alive = if let Ok(entries) = fs::read_dir("/proc") {
         entries.flatten().any(|entry| {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
                 let parts: Vec<&str> = cmdline.split('\0').collect();
-                if let Some(first) = parts.first() {
-                    let first_lower = first.to_lowercase();
-                    first_lower.ends_with(&target_lower)
-                        || first_lower.ends_with(&format!("/{}", target_lower))
-                } else {
-                    false
-                }
+                parts.first().is_some_and(|first| matches_target(first))
             } else {
                 false
             }
