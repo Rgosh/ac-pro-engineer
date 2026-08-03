@@ -472,10 +472,24 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
                     _ => match app_lock.active_tab {
                         AppTab::Settings => {
-                            let AppState {
-                                ui_state, config, ..
-                            } = &mut *app_lock;
-                            ui_state.settings.handle_input(key.code, config);
+                            let changed = {
+                                let AppState {
+                                    ui_state, config, ..
+                                } = &mut *app_lock;
+                                ui_state.settings.handle_input(key.code, config)
+                            };
+                            if changed {
+                                // Nothing used to write these back, so every
+                                // unit, threshold and target the user set was
+                                // discarded on exit.
+                                if let Err(error) = app_lock.config.save() {
+                                    error!(error = ?error, "Could not save settings");
+                                }
+                                // And nothing re-read them either: history
+                                // size and the engineer's thresholds only took
+                                // effect on the next launch.
+                                app_lock.apply_config();
+                            }
                         }
                         AppTab::Engineer => match key.code {
                             KeyCode::Left => app_lock.ui_state.engineer.prev_tab(),
@@ -613,6 +627,16 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     app.record_manager.save();
+
+    // The Settings tab describes this toggle as "save settings on exit", and
+    // until now nothing acted on it either way. Settings are written as they
+    // are edited now, so this is the belt to that braces — it also catches
+    // the language and banner toggles made from the launcher.
+    if app.config.auto_save
+        && let Err(error) = app.config.save()
+    {
+        error!(error = ?error, "Could not save the config on exit");
+    }
 
     Ok(())
 }

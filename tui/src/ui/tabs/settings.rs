@@ -58,7 +58,10 @@ impl SettingsState {
         self.is_editing = false;
     }
 
-    pub fn handle_input(&mut self, key: KeyCode, config: &mut AppConfig) {
+    /// Returns whether this keypress changed `config`, so the caller knows to
+    /// persist it. Navigating between items and categories does not; only the
+    /// editing branch below touches the config.
+    pub fn handle_input(&mut self, key: KeyCode, config: &mut AppConfig) -> bool {
         if !self.is_editing {
             match key {
                 KeyCode::Down => self.selected_index += 1,
@@ -89,14 +92,30 @@ impl SettingsState {
             if self.selected_index >= max_items {
                 self.selected_index = max_items.saturating_sub(1);
             }
+            false
         } else {
             match key {
-                KeyCode::Enter | KeyCode::Esc => self.is_editing = false,
-                KeyCode::Left => self.modify_value(config, -1.0),
-                KeyCode::Right => self.modify_value(config, 1.0),
-                KeyCode::Up => self.modify_value(config, 10.0),
-                KeyCode::Down => self.modify_value(config, -10.0),
-                _ => {}
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.is_editing = false;
+                    false
+                }
+                KeyCode::Left => {
+                    self.modify_value(config, -1.0);
+                    true
+                }
+                KeyCode::Right => {
+                    self.modify_value(config, 1.0);
+                    true
+                }
+                KeyCode::Up => {
+                    self.modify_value(config, 10.0);
+                    true
+                }
+                KeyCode::Down => {
+                    self.modify_value(config, -10.0);
+                    true
+                }
+                _ => false,
             }
         }
     }

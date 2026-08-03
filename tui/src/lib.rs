@@ -486,6 +486,26 @@ impl AppState {
         self.engineer.update_config(&self.config);
         self.engineer.update(&phys, &gfx, &self.session_info);
 
+        // The engineer sets `current_delta` from AC's own performance meter,
+        // which is measured against whatever reference the game picked. With
+        // the ghost delta enabled, compare against our own recorded best lap
+        // instead — `calculate_ghost_delta` existed for this and had no caller
+        // outside its unit test, which is also why the Settings toggle did
+        // nothing at all.
+        if self.config.show_ghost_delta
+            && let Some(best) = self
+                .analyzer
+                .best_lap_index
+                .and_then(|i| self.analyzer.laps.get(i))
+            && let Some(delta) = ac_core::analyzer::calculate_ghost_delta(
+                best,
+                gfx.normalized_car_position,
+                gfx.i_current_time as f32 / 1000.0,
+            )
+        {
+            self.engineer.stats.current_delta = delta;
+        }
+
         self.overlay_manager.update(&self.session_info);
 
         let current_sector = gfx.current_sector_index;
