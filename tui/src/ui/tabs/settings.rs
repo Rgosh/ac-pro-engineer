@@ -9,6 +9,7 @@ pub enum SettingsCategory {
     System,
     Display,
     RaceEngineer,
+    Overlay,
 }
 
 pub struct SettingsState {
@@ -36,7 +37,8 @@ impl SettingsState {
         self.category = match self.category {
             SettingsCategory::System => SettingsCategory::Display,
             SettingsCategory::Display => SettingsCategory::RaceEngineer,
-            SettingsCategory::RaceEngineer => SettingsCategory::System,
+            SettingsCategory::RaceEngineer => SettingsCategory::Overlay,
+            SettingsCategory::Overlay => SettingsCategory::System,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -44,9 +46,10 @@ impl SettingsState {
 
     pub fn prev_category(&mut self) {
         self.category = match self.category {
-            SettingsCategory::System => SettingsCategory::RaceEngineer,
+            SettingsCategory::System => SettingsCategory::Overlay,
             SettingsCategory::Display => SettingsCategory::System,
             SettingsCategory::RaceEngineer => SettingsCategory::Display,
+            SettingsCategory::Overlay => SettingsCategory::RaceEngineer,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -82,6 +85,9 @@ impl SettingsState {
                 }
                 KeyCode::Char('d') | KeyCode::Char('D') => {
                     self.set_category(SettingsCategory::RaceEngineer)
+                }
+                KeyCode::Char('f') | KeyCode::Char('F') => {
+                    self.set_category(SettingsCategory::Overlay)
                 }
 
                 KeyCode::Enter => self.is_editing = true,
@@ -125,6 +131,7 @@ impl SettingsState {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
+            SettingsCategory::Overlay => 2,
         }
     }
 
@@ -212,6 +219,15 @@ impl SettingsState {
                         (config.target_hot_pressure_rear + delta * 0.1).clamp(15.0, 45.0)
                 }
                 9 if delta.abs() > 0.0 => config.show_ghost_delta = !config.show_ghost_delta,
+                _ => {}
+            },
+            SettingsCategory::Overlay => match self.selected_index {
+                0 if delta.abs() > 0.0 => {
+                    config.overlay.show_telemetry = !config.overlay.show_telemetry
+                }
+                1 if delta.abs() > 0.0 => {
+                    config.overlay.show_engineer = !config.overlay.show_engineer
+                }
                 _ => {}
             },
         }
@@ -327,6 +343,23 @@ impl SettingsState {
                 }
                 _ => "",
             },
+            SettingsCategory::Overlay => match self.selected_index {
+                0 => {
+                    if is_ru {
+                        "Показывать блок телеметрии в игровом оверлее."
+                    } else {
+                        "Show the telemetry block in the in-game overlay."
+                    }
+                }
+                1 => {
+                    if is_ru {
+                        "Показывать советы инженера в игровом оверлее."
+                    } else {
+                        "Show engineer advice in the in-game overlay."
+                    }
+                }
+                _ => "",
+            },
         }
         .to_string()
     }
@@ -390,6 +423,12 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             "🔧",
             "[D]",
         ),
+        (
+            SettingsCategory::Overlay,
+            if is_ru { "ОВЕРЛЕЙ" } else { "OVERLAY" },
+            "🖥",
+            "[F]",
+        ),
     ];
 
     let items: Vec<ListItem<'_>> = categories
@@ -447,6 +486,7 @@ fn render_settings_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         SettingsCategory::System => render_system_settings(f, &rows, app),
         SettingsCategory::Display => render_display_settings(f, &rows, app),
         SettingsCategory::RaceEngineer => render_engineer_settings(f, &rows, app),
+        SettingsCategory::Overlay => render_overlay_settings(f, &rows, app),
     }
 }
 
@@ -601,6 +641,41 @@ fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let items = vec![
         (tr("unit_pressure", lang), p_unit.to_string(), false),
         (tr("unit_temp", lang), t_unit.to_string(), false),
+    ];
+
+    for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
+        if i < areas.len() {
+            render_item(f, areas[i], i, label, val, is_toggle, app);
+        }
+    }
+}
+
+/// The in-game panel's sections. Toggling one here changes a flag on the next
+/// published frame, so the panel follows within a tick — no restart, and no
+/// need to alt-tab into the game to find out whether it worked.
+fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
+    let overlay = &app.config.overlay;
+    let is_ru = app.config.language == Language::Russian;
+
+    let items = vec![
+        (
+            if is_ru {
+                "Телеметрия в оверлее".to_string()
+            } else {
+                "Telemetry section".to_string()
+            },
+            if overlay.show_telemetry { "ON" } else { "OFF" }.to_string(),
+            true,
+        ),
+        (
+            if is_ru {
+                "Советы инженера в оверлее".to_string()
+            } else {
+                "Engineer section".to_string()
+            },
+            if overlay.show_engineer { "ON" } else { "OFF" }.to_string(),
+            true,
+        ),
     ];
 
     for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {

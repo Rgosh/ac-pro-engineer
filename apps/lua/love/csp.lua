@@ -688,9 +688,15 @@ function csp.appFrame(x, y, w, h, options)
 
   gfx.setColor(CHROME.background.r, CHROME.background.g, CHROME.background.b, CHROME.background.mult)
   gfx.rectangle('fill', x, y, w, h, 6, 6)
-  gfx.setColor(CHROME.titleBar.r, CHROME.titleBar.g, CHROME.titleBar.b, 1)
+  local titleShade = options.dragging and 1.35 or 1
+  gfx.setColor(CHROME.titleBar.r * titleShade, CHROME.titleBar.g * titleShade,
+    CHROME.titleBar.b * titleShade, 1)
   gfx.rectangle('fill', x, y, w, TITLE_HEIGHT, 6, 6)
   gfx.rectangle('fill', x, y + TITLE_HEIGHT - 6, w, 6)
+  if options.dragging then
+    gfx.setColor(CHROME.iconHot.r, CHROME.iconHot.g, CHROME.iconHot.b, 0.5)
+    gfx.rectangle('line', x, y, w, h, 6, 6)
+  end
   gfx.setColor(CHROME.border.r, CHROME.border.g, CHROME.border.b, CHROME.border.mult)
   gfx.rectangle('line', x, y, w, h, 6, 6)
 

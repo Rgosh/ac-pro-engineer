@@ -882,13 +882,16 @@ impl AppState {
 
         frame.set_flag(flags::PIT_LIMITER, phys.pit_limiter_on != 0);
         frame.set_flag(flags::CONNECTED, self.is_connected);
+        // Both sides have to agree: the overlay manager knows whether there is
+        // anything to show right now, the config carries what the driver asked
+        // for in the Settings tab.
         frame.set_flag(
             flags::SHOW_TELEMETRY,
-            self.overlay_manager.state.show_telemetry,
+            self.overlay_manager.state.show_telemetry && self.config.overlay.show_telemetry,
         );
         frame.set_flag(
             flags::SHOW_ENGINEER,
-            self.overlay_manager.state.show_engineer,
+            self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
         );
         frame.set_flag(
             flags::FUEL_WARNING,

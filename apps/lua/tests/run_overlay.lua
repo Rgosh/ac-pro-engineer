@@ -83,8 +83,14 @@ local w, e2 = pcall(script.windowMain, 0.016)
 if not w then print('windowMain FAILED: ' .. tostring(e2)); os.exit(1) end
 print('windowMain: OK')
 
--- The settings window is drawn by the same script and can break the same way,
--- so it gets driven too.
+-- The other windows are drawn by the same script and can break the same way,
+-- so they get driven too.
+if script.windowEngineer ~= nil then
+  local e, e4 = pcall(script.windowEngineer, 0.016)
+  if not e then print('windowEngineer FAILED: ' .. tostring(e4)); os.exit(1) end
+  print('windowEngineer: OK')
+end
+
 if script.windowSettings ~= nil then
   local s, e3 = pcall(script.windowSettings, 0.016)
   if not s then print('windowSettings FAILED: ' .. tostring(e3)); os.exit(1) end

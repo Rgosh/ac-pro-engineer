@@ -22,6 +22,14 @@ config.defaults = {
   showBounds = false,        -- outline the panel's content rectangle
   showFps = true,
   settingsOpen = false,      -- the app's settings window, as the gear opens it
+  engineerOpen = true,       -- the advice window, its own window in game too
+
+  -- Where each window sits. Flat keys because the saved file is a table of
+  -- scalars, and a window position is the one setting nobody wants to retype
+  -- after every run.
+  mainX = 24, mainY = 46,
+  engineerX = 24, engineerY = 440,
+  settingsX = 336, settingsY = 46,
   tab = 'Telemetry',
 }
 
@@ -78,9 +86,11 @@ Options:
   --paused                  start with the simulation stopped
   --bounds                  outline the overlay's content rectangle
   --settings                start with the app's settings window open
+  --no-engineer             start with the advice window closed
   --tab NAME                open on Telemetry, Overlay, Settings or Log
   --reset                   discard saved settings and start from defaults
   --test                    run headless for a few seconds, then exit
+  --shot NAME               save a screenshot into the save directory and exit
   --help                    this text
 
 Settings changed in the window are saved and reused next time; a flag wins for
@@ -130,10 +140,14 @@ function config.applyArguments(args)
       config.values.showBounds = true
     elseif a == '--settings' then
       config.values.settingsOpen = true
+    elseif a == '--no-engineer' then
+      config.values.engineerOpen = false
     elseif a == '--reset' then
       config.values = copy(config.defaults)
     elseif a == '--test' then
       testMode = true
+    elseif a == '--shot' then
+      config.shot = next_() or 'harness.png'
     end
     i = i + 1
   end

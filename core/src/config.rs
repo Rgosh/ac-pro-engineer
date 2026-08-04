@@ -81,6 +81,11 @@ pub struct AppConfig {
     #[serde(default)]
     pub alerts: AlertsConfig,
 
+    /// What the in-game overlay shows. Published as flags on every frame, so a
+    /// change here reaches the panel on the next tick without a restart.
+    #[serde(default)]
+    pub overlay: OverlayConfig,
+
     #[serde(default = "default_data_path")]
     pub data_path: PathBuf,
 
@@ -135,6 +140,29 @@ fn default_target_hot_pressure_rear() -> f32 {
 }
 fn default_data_path() -> PathBuf {
     app_dir()
+}
+
+/// The in-game overlay's sections.
+///
+/// These are the application's side of the decision. The Lua app has its own
+/// switches for the same sections, and both have to agree before anything is
+/// drawn: this one means "there is nothing worth showing", the app's means
+/// "the driver does not want to see it".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OverlayConfig {
+    #[serde(default = "default_true")]
+    pub show_telemetry: bool,
+    #[serde(default = "default_true")]
+    pub show_engineer: bool,
+}
+
+impl Default for OverlayConfig {
+    fn default() -> Self {
+        Self {
+            show_telemetry: true,
+            show_engineer: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,6 +295,7 @@ impl Default for AppConfig {
             data_path: PathBuf::from("./data"),
             ac_install_path: PathBuf::new(),
             ac_documents_path: PathBuf::new(),
+            overlay: OverlayConfig::default(),
         }
     }
 }

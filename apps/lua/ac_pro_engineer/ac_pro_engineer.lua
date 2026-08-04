@@ -41,7 +41,6 @@ local COLOR = {
   limiter   = rgbm(1.00, 0.62, 0.10, 1),
 }
 
-local WINDOW_PADDING = vec2(12, 12)
 local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
 -- ---------------------------------------------------------------------------
@@ -57,6 +56,7 @@ local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 -- simply stand, which is why the storage call is guarded rather than assumed.
 
 local DEFAULTS = {
+  textSize = 'normal',   -- compact | normal | large
   showRpmBar = true,
   showTyres = true,
   showTiming = true,
@@ -73,6 +73,22 @@ for key, value in pairs(DEFAULTS) do settings[key] = value end
 if type(ac) == 'table' and type(ac.storage) == 'function' then
   local storageOk, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
   if storageOk and stored ~= nil then settings = stored end
+end
+
+-- Text size, as font tiers rather than a scale factor: CSP has no API for
+-- scaling a font, but it does give five of them, and stepping between tiers is
+-- what "bigger text" has to mean here.
+local FONT_TIERS = {
+  compact = { caption = 'Tiny',  body = 'Tiny',   hero = 'Title', gear = 'Small' },
+  normal  = { caption = 'Tiny',  body = 'Main',   hero = 'Huge',  gear = 'Title' },
+  large   = { caption = 'Small', body = 'Title',  hero = 'Huge',  gear = 'Huge' },
+}
+
+local TEXT_SIZES = { 'compact', 'normal', 'large' }
+
+local function pushRole(role)
+  local tier = FONT_TIERS[settings.textSize] or FONT_TIERS.normal
+  ui.pushFont(ui.Font[tier[role]] or ui.Font.Main)
 end
 
 -- Colours are decided from the real Celsius and psi values; only the text that
@@ -95,7 +111,7 @@ end
 --- A section caption, or nothing when the panel is set to run without them.
 local function sectionLabel(text)
   if not settings.sectionLabels then return end
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
   ui.textColored(text, COLOR.label)
   ui.popFont()
 end
@@ -247,10 +263,12 @@ end
 --- A label above a value, as its own column.
 local function stat(label, value, color)
   ui.beginGroup()
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
   ui.textColored(label, COLOR.label)
   ui.popFont()
+  pushRole('body')
   ui.textColored(value, color or COLOR.text)
+  ui.popFont()
   ui.endGroup()
 end
 
@@ -272,7 +290,7 @@ end
 
 local function drawHeader()
   ui.beginGroup()
-  ui.pushFont(ui.Font.Huge)
+  pushRole('hero')
   ui.textColored(string.format('%.0f', shown.speed_kmh), COLOR.text)
   ui.popFont()
   ui.endGroup()
@@ -280,10 +298,10 @@ local function drawHeader()
   ui.sameLine()
 
   ui.beginGroup()
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
   ui.textColored('KM/H', COLOR.label)
   ui.popFont()
-  ui.pushFont(ui.Font.Title)
+  pushRole('gear')
   ui.textColored(gearText(shown.gear), rpmColor(rpmRatio()))
   ui.popFont()
   ui.endGroup()
@@ -313,16 +331,18 @@ local function drawTyres()
       ui.beginGroup()
 
       -- Tyre Label
-      ui.pushFont(ui.Font.Tiny)
+      pushRole('caption')
       ui.textColored(TYRE_LABEL[i], COLOR.dim)
       ui.popFont()
       ui.sameLine()
 
       -- Pressure
+      pushRole('body')
       ui.textColored(pressureText(shown.tyre_pressure_psi[i]), COLOR.text)
+      ui.popFont()
 
       -- Temps
-      ui.pushFont(ui.Font.Tiny)
+      pushRole('caption')
       ui.textColored('T: ' .. tempText(shown.tyre_temp_c[i]), tyreTempColor(shown.tyre_temp_c[i]))
       ui.sameLine()
       ui.textColored('B: ' .. tempText(shown.brake_temp_c[i]), brakeColor(shown.brake_temp_c[i]))
@@ -386,19 +406,42 @@ local function drawEngineerMessages()
   end
 end
 
--- Главная точка входа рендеринга
-function ac.onRenderWidget()
-  -- Если бэкенд отвалился — ничего не рендерим
-  if not isLive then return end
+-- ---------------------------------------------------------------------------
+-- The panel
+--
+-- CSP owns the window: the manifest declares it, CSP draws the frame, the
+-- title bar and the background, and the driver moves and resizes it. So this
+-- draws contents and nothing else — `ui.begin` does not exist in the app SDK
+-- (`cargo test -p ac_core the_overlay_app_only_calls` checks that against the
+-- installed CSP), and pushing WindowBg or WindowRounding from in here would
+-- style a window that was never opened.
+-- ---------------------------------------------------------------------------
 
-  -- Настройка стилей
-  ui.pushStyleVar(ui.StyleVar.WindowRounding, 8)
-  ui.pushStyleVar(ui.StyleVar.WindowPadding, WINDOW_PADDING)
-  ui.pushStyleColor(ui.StyleColor.WindowBg, COLOR.panel)
+function script.windowMain(dt)
+  if openError ~= nil then
+    ui.textColored('Shared memory unavailable', COLOR.bad)
+    pushRole('caption')
+    ui.textColored(openError, COLOR.dim)
+    ui.popFont()
+    return
+  end
 
-  -- Окно
-  local flags = bit.bor(ui.WindowFlags.NoTitleBar, ui.WindowFlags.NoScrollbar)
-  ui.begin('AC Pro Engineer', flags)
+  if not isLive then
+    -- Deliberately quiet. A panel of stale numbers is worse than an empty one.
+    pushRole('caption')
+    ui.textColored('AC Pro Engineer is not running', COLOR.dim)
+    ui.popFont()
+    return
+  end
+
+  if shown.version ~= EXPECTED_VERSION then
+    ui.textColored('Version mismatch', COLOR.bad)
+    pushRole('caption')
+    ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
+      COLOR.dim)
+    ui.popFont()
+    return
+  end
 
   drawHeader()
   ui.offsetCursorY(6)
@@ -420,15 +463,55 @@ function ac.onRenderWidget()
     end
   end
 
+  -- The advice also has a window of its own; this block is for keeping it in
+  -- the corner of the eye without a second window on screen.
   if hasFlag(FLAG_SHOW_ENGINEER) and settings.showEngineer and shown.message_count > 0 then
     ui.offsetCursorY(8)
     drawEngineerMessages()
   end
+end
 
-  ui['end']()
+-- ---------------------------------------------------------------------------
+-- Engineer window
+--
+-- Its own entry in CSP's sidebar and its own window, because advice is read
+-- while the telemetry is being watched, not instead of it — and because a
+-- window that holds four lines of text wants to sit somewhere else on screen
+-- than one holding four corners of tyre data.
+-- ---------------------------------------------------------------------------
 
-  ui.popStyleColor()
-  ui.popStyleVar(2)
+function script.windowEngineer(dt)
+  if not isLive then
+    pushRole('caption')
+    ui.textColored('AC Pro Engineer is not running', COLOR.dim)
+    ui.popFont()
+    return
+  end
+
+  if not hasFlag(FLAG_SHOW_ENGINEER) then
+    pushRole('caption')
+    ui.textColored('Engineer advice is switched off in the desktop app', COLOR.dim)
+    ui.popFont()
+    return
+  end
+
+  local count = math.min(shown.message_count, 4)
+  if count == 0 then
+    pushRole('caption')
+    ui.textColored('Nothing to report', COLOR.dim)
+    ui.popFont()
+    return
+  end
+
+  pushRole('body')
+  for i = 1, count do
+    if shown.messages[i] ~= '' then
+      ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
+      ui.textWrapped('> ' .. shown.messages[i])
+      ui.popStyleColor()
+    end
+  end
+  ui.popFont()
 end
 
 -- ---------------------------------------------------------------------------
@@ -447,7 +530,7 @@ local function settingToggle(label, key)
 end
 
 function script.windowSettings(dt)
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
   ui.textColored('SECTIONS', COLOR.label)
   ui.popFont()
 
@@ -459,14 +542,25 @@ function script.windowSettings(dt)
   settingToggle('Section captions', 'sectionLabels')
 
   ui.separator()
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
+  ui.textColored('TEXT SIZE', COLOR.label)
+  ui.popFont()
+
+  for _, size in ipairs(TEXT_SIZES) do
+    if ui.radioButton(size, settings.textSize == size) then
+      settings.textSize = size
+    end
+  end
+
+  ui.separator()
+  pushRole('caption')
   ui.textColored('UNITS', COLOR.label)
   ui.popFont()
 
   settingToggle('Celsius', 'celsius')
   settingToggle('PSI', 'psi')
 
-  ui.pushFont(ui.Font.Tiny)
+  pushRole('caption')
   ui.textColored(settings.celsius and 'temperatures in °C' or 'temperatures in °F', COLOR.dim)
   ui.textColored(settings.psi and 'pressures in psi' or 'pressures in bar', COLOR.dim)
   ui.popFont()
@@ -491,7 +585,7 @@ function script.windowSettings(dt)
   end
 end
 
--- Экспорт для дебаг-лаунчера
+-- Exported for the LÖVE harness, which draws these on their own to compare
+-- pieces of the layout side by side.
 script.drawHeader = drawHeader
 script.drawTyres = drawTyres
-script.windowMain = ac.onRenderWidget

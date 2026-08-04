@@ -22,6 +22,7 @@ local app = {
 local harness = {
   test = false,
   settingsOpen = false,
+  engineerOpen = true,
   testFrames = 0,
   fps = 0,
   lastError = nil,
@@ -110,6 +111,7 @@ function love.load(args)
   S = config.values
   harness.test = testMode or false
   harness.settingsOpen = S.settingsOpen
+  harness.engineerOpen = S.engineerOpen
 
   csp.install(function() return sim.frame end, 'app-settings.lua')
   ui = _G.ui
@@ -194,26 +196,155 @@ end
 
 local PADDING = 10
 
---- The panel, inside the window furniture CSP puts around every app: rounded
---- translucent frame, icon and name along the top, and the gear that opens the
---- settings window. The backdrop goes behind all of it, because in game there
---- is a track back there and the frame is translucent over it.
-local function drawOverlayPanel(x, y)
-  local w, h = S.panelWidth, S.panelHeight
-
-  drawBackdrop(x, y, w, h + csp.TITLE_HEIGHT)
-
-  local frame = csp.appFrame(x, y, w, h + csp.TITLE_HEIGHT, {
+-- Every window the app declares in its manifest, plus the settings window CSP
+-- opens from the gear. Each gets the same chrome, remembers where it was put,
+-- and is dragged by its title bar — which is what happens in game, where the
+-- driver arranges the windows once and CSP keeps the layout.
+local windows = {
+  {
+    id = 'main',
     title = 'AC Pro Engineer',
+    fn = 'windowMain',
+    gear = true,
+    size = function() return S.panelWidth, S.panelHeight end,
+    isOpen = function() return true end,
+  },
+  {
+    id = 'engineer',
+    title = 'AC Pro Engineer — advice',
+    fn = 'windowEngineer',
+    closable = true,
+    size = function() return 280, 150 end,
+    isOpen = function() return harness.engineerOpen end,
+    onClose = function()
+      harness.engineerOpen = false
+      S.engineerOpen = false
+      config.save()
+    end,
+  },
+  {
+    id = 'settings',
+    title = 'AC Pro Engineer — settings',
+    fn = 'windowSettings',
+    closable = true,
+    size = function() return 264, 360 end,
+    isOpen = function() return harness.settingsOpen end,
+    onClose = function()
+      harness.settingsOpen = false
+      S.settingsOpen = false
+      config.save()
+    end,
+  },
+}
+
+-- Back to front. Pressing anywhere in a window raises it, so the one being
+-- worked on is the one on top.
+local order = { 'main', 'engineer', 'settings' }
+local drag = { id = nil, offsetX = 0, offsetY = 0 }
+
+local function windowById(id)
+  for _, window in ipairs(windows) do
+    if window.id == id then return window end
+  end
+end
+
+local function positionOf(id)
+  return S[id .. 'X'] or 24, S[id .. 'Y'] or 46
+end
+
+local function raise(id)
+  for index, value in ipairs(order) do
+    if value == id then
+      table.remove(order, index)
+      order[#order + 1] = id
+      return
+    end
+  end
+end
+
+--- Is the pointer over any open window? Used to keep a click that lands on a
+--- floating window from also reaching the control panel underneath it.
+local function pointerOverWindow()
+  local input = csp.input
+  for _, id in ipairs(order) do
+    local window = windowById(id)
+    if window ~= nil and window.isOpen() then
+      local x, y = positionOf(id)
+      local w, h = window.size()
+      h = h + csp.TITLE_HEIGHT
+      if input.x >= x and input.x <= x + w and input.y >= y and input.y <= y + h then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--- Start a drag when the press lands on a title bar, clear of the chrome
+--- buttons on its right.
+local function beginDrag(window, x, y, w)
+  local input = csp.input
+  if drag.id ~= nil or not input.pressed then return end
+
+  local buttons = csp.TITLE_HEIGHT * 2
+  local onTitle = input.x >= x and input.x <= x + w - buttons
+    and input.y >= y and input.y <= y + csp.TITLE_HEIGHT
+  if onTitle then
+    drag.id = window.id
+    drag.offsetX = input.x - x
+    drag.offsetY = input.y - y
+  end
+end
+
+--- Follow the pointer, and save the position once the button comes up: the
+--- layout is a setting, and losing it on every restart is the thing that makes
+--- arranging windows feel like work.
+local function updateDrag()
+  local input = csp.input
+  if drag.id == nil then return end
+
+  if input.down then
+    S[drag.id .. 'X'] = math.floor(input.x - drag.offsetX)
+    S[drag.id .. 'Y'] = math.max(0, math.floor(input.y - drag.offsetY))
+  else
+    config.save()
+    drag.id = nil
+  end
+end
+
+local function drawWindow(window)
+  if not window.isOpen() then return end
+
+  local x, y = positionOf(window.id)
+  local w, h = window.size()
+  h = h + csp.TITLE_HEIGHT
+
+  if window.id == 'main' then
+    drawBackdrop(x, y, w, h)
+  end
+
+  local input = csp.input
+  local inside = input.x >= x and input.x <= x + w and input.y >= y and input.y <= y + h
+  if inside and input.pressed then raise(window.id) end
+
+  local frame = csp.appFrame(x, y, w, h, {
+    title = window.title,
     icon = app.icon,
-    settings = true,
+    settings = window.gear,
+    closable = window.closable,
+    dragging = drag.id == window.id,
   })
+
+  beginDrag(window, x, y, w)
 
   if frame.settings then
     harness.settingsOpen = not harness.settingsOpen
     S.settingsOpen = harness.settingsOpen
+    raise('settings')
     config.save()
   end
+
+  if frame.close and window.onClose then window.onClose() end
 
   if not app.loaded then
     love.graphics.setColor(1, 0.34, 0.34, 1)
@@ -221,13 +352,22 @@ local function drawOverlayPanel(x, y)
     return
   end
 
+  local draw = _G.script[window.fn]
+  if draw == nil then
+    csp.beginWindow(frame.x + PADDING, frame.y + PADDING,
+      frame.width - PADDING * 2, frame.height - PADDING * 2)
+    ui.textColored('this app has no ' .. window.fn, csp.colors.textDim)
+    csp.endWindow()
+    return
+  end
+
   csp.beginWindow(frame.x + PADDING, frame.y + PADDING,
     frame.width - PADDING * 2, frame.height - PADDING * 2)
-  local ok, err = pcall(_G.script.windowMain, love.timer.getDelta())
+  local ok, err = pcall(draw, love.timer.getDelta())
   csp.endWindow()
 
   if not ok then
-    harness.lastError = 'windowMain: ' .. tostring(err)
+    harness.lastError = window.fn .. ': ' .. tostring(err)
     harness.errorCount = harness.errorCount + 1
     love.graphics.setColor(1, 0.34, 0.34, 1)
     love.graphics.printf(tostring(err), x + 8, y + h - 40, w - 16)
@@ -240,28 +380,10 @@ local function drawOverlayPanel(x, y)
   end
 end
 
---- The settings window, as its own CSP window beside the panel — which is
---- where it appears in game once the gear is clicked.
-local function drawSettingsWindow(x, y)
-  if not harness.settingsOpen or not app.loaded then return end
-  if _G.script.windowSettings == nil then return end
-
-  local w, h = 264, 340
-  local frame = csp.appFrame(x, y, w, h, {
-    title = 'AC Pro Engineer — settings',
-    icon = app.icon,
-    closable = true,
-  })
-  if frame.close then harness.settingsOpen = false end
-
-  csp.beginWindow(frame.x + PADDING, frame.y + PADDING,
-    frame.width - PADDING * 2, frame.height - PADDING * 2)
-  local ok, err = pcall(_G.script.windowSettings, love.timer.getDelta())
-  csp.endWindow()
-
-  if not ok then
-    harness.lastError = 'windowSettings: ' .. tostring(err)
-    harness.errorCount = harness.errorCount + 1
+local function drawWindows()
+  for _, id in ipairs(order) do
+    local window = windowById(id)
+    if window ~= nil then drawWindow(window) end
   end
 end
 
@@ -394,6 +516,26 @@ local function harnessSettingsTab()
   if hChanged then S.panelHeight = h; config.save() end
 
   ui.separator()
+  ui.textColored('WINDOWS', csp.colors.textDim)
+  if ui.checkbox('Advice window', harness.engineerOpen) then
+    harness.engineerOpen = not harness.engineerOpen
+    S.engineerOpen = harness.engineerOpen
+    config.save()
+  end
+  if ui.checkbox('Settings window', harness.settingsOpen) then
+    harness.settingsOpen = not harness.settingsOpen
+    S.settingsOpen = harness.settingsOpen
+    config.save()
+  end
+  ui.textColored('drag a title bar to move a window', csp.colors.textDim)
+  if ui.button('Reset positions') then
+    S.mainX, S.mainY = config.defaults.mainX, config.defaults.mainY
+    S.engineerX, S.engineerY = config.defaults.engineerX, config.defaults.engineerY
+    S.settingsX, S.settingsY = config.defaults.settingsX, config.defaults.settingsY
+    config.save()
+  end
+
+  ui.separator()
   ui.textColored('BACKDROP', csp.colors.textDim)
   for _, option in ipairs({ 'dark', 'checker', 'green' }) do
     if ui.radioButton(option, S.background == option) then
@@ -479,19 +621,40 @@ end
 function love.draw()
   love.graphics.clear(0.05, 0.05, 0.06)
 
-  local panelX, panelY = 24, 46
-  drawOverlayPanel(panelX, panelY)
-  drawSettingsWindow(panelX + S.panelWidth + 12, panelY + 40)
+  -- The control panel is the backdrop the windows float over, so it is drawn
+  -- first — and while it is drawn the pointer is moved out of the way if it is
+  -- over a window, so a click on a window does not also press a slider behind
+  -- it.
+  local controlW = 340
+  local controlX = love.graphics.getWidth() - controlW - 24
 
-  local controlX = panelX + S.panelWidth + (harness.settingsOpen and 296 or 24)
-  local controlW = love.graphics.getWidth() - controlX - 24
-  drawControlPanel(controlX, 24, math.max(240, controlW), love.graphics.getHeight() - 48)
+  local overWindow = pointerOverWindow()
+  local savedX, savedY = csp.input.x, csp.input.y
+  if overWindow then csp.input.x, csp.input.y = -1000, -1000 end
+  drawControlPanel(controlX, 24, controlW, love.graphics.getHeight() - 48)
+  csp.input.x, csp.input.y = savedX, savedY
+
+  drawWindows()
+  updateDrag()
 
   if S.showFps then
     love.graphics.setColor(0.45, 0.48, 0.52, 1)
     love.graphics.setFont(harness.statusFont)
     love.graphics.print(string.format('%d fps   %s   seq %d   %s',
       harness.fps, S.source, sim.frame.sequence, S.paused and 'paused' or 'running'), 24, 8)
+  end
+
+  -- A screenshot of the harness itself, for a README or a bug report. Taken
+  -- after a few frames so the tab bar has its labels and the simulation has
+  -- moved off its starting values.
+  if config.shot ~= nil then
+    harness.shotFrames = (harness.shotFrames or 0) + 1
+    if harness.shotFrames == 45 then
+      love.graphics.captureScreenshot(config.shot)
+    elseif harness.shotFrames > 50 then
+      print('screenshot: ' .. love.filesystem.getSaveDirectory() .. '/' .. config.shot)
+      love.event.quit(0)
+    end
   end
 
   -- Input edges last exactly one frame, and the frame ends here.

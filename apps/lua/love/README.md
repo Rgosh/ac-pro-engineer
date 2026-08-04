@@ -10,7 +10,10 @@ loaded from its own directory, so what is on screen is what would be installed.
 ./run.sh --help          # every flag
 ```
 
-`F5` reloads the app script, `space` pauses, `escape` quits.
+`F5` reloads the app script, `space` pauses, `F2` opens the settings window,
+`escape` quits. **Windows are dragged by their title bars** and remember where
+they were put — same as in game, where the driver arranges them once and CSP
+keeps the layout.
 
 ## Why
 
@@ -41,6 +44,20 @@ Anything not emulated resolves to a no-op that counts itself and appears in the
 **Log** tab — a CSP function the app starts using shows up as a line there
 rather than as a crash mid-frame. That also means the harness runs app versions
 it has never seen, including ones built around `ui.begin`/`ac.onRenderWidget`.
+
+## The windows
+
+The app declares two in its manifest, and CSP opens a third from the gear:
+
+| Window | `FUNCTION_MAIN` | |
+|---|---|---|
+| AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel |
+| AC Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
+| settings | `FUNCTION_SETTINGS` | sections, text size, units |
+
+Each is a separate entry in CSP's sidebar in game, moved and sized separately.
+The harness draws all three through the same chrome, so what is arranged here
+is what can be arranged there.
 
 ## The tabs
 
