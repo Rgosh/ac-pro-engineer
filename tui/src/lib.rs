@@ -348,11 +348,17 @@ impl AppState {
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
             overlay_manager,
-            overlay_writer: match ac_core::overlay::shared_writer::OverlayWriter::open() {
-                Ok(writer) => Some(writer),
-                Err(error) => {
-                    info!(error = ?error, "In-game overlay unavailable");
-                    None
+            // Installed from the binary that writes the struct it reads, so
+            // the two can never be out of step. Cheap and idempotent: it only
+            // writes when the files differ.
+            overlay_writer: {
+                ac_core::overlay::install::install_on_startup(config.ac_install_override());
+                match ac_core::overlay::shared_writer::OverlayWriter::open() {
+                    Ok(writer) => Some(writer),
+                    Err(error) => {
+                        info!(error = ?error, "In-game overlay unavailable");
+                        None
+                    }
                 }
             },
             stage: AppStage::Launcher,

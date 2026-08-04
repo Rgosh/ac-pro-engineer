@@ -1,4 +1,5 @@
 pub mod frame;
+pub mod install;
 pub mod provider;
 pub mod shared_writer;
 pub mod state;

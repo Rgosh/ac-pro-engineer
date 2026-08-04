@@ -21,11 +21,35 @@ pub struct SharedMemoryBridge {
     exit_tx: Option<Sender<()>>,
 }
 
+/// Locate `shm-bridge.exe`.
+///
+/// Next to the running executable first, then the working directory. It used
+/// to be the working directory alone, which works when the app is started
+/// from its own folder in a shell and fails everywhere else — from a desktop
+/// entry, from a file manager, or from an installed location, all of which
+/// leave the working directory somewhere unrelated.
+fn bridge_path() -> std::path::PathBuf {
+    const BRIDGE: &str = "shm-bridge.exe";
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let beside = dir.join(BRIDGE);
+        if beside.is_file() {
+            return beside;
+        }
+    }
+
+    std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(BRIDGE)
+}
+
 impl SharedMemoryBridge {
     pub async fn start() -> Result<Self, std::io::Error> {
         info!("[shm-bridge] Starting memory bridge process...");
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let pwd = match std::env::current_dir()?.as_os_str().to_str() {
+        let pwd = match bridge_path().to_str() {
             Some(pwd) => pwd.to_string(),
             None => ".".to_string(),
         };
@@ -46,11 +70,7 @@ impl SharedMemoryBridge {
             }
         } else {
             let mut c = Command::new(proton_cmd);
-            c.args([
-                "--appid",
-                &GAME_ID.to_string(),
-                &format!("{pwd}/shm-bridge.exe"),
-            ]);
+            c.args(["--appid", &GAME_ID.to_string(), &pwd]);
             c
         };
 
