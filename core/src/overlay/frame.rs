@@ -425,6 +425,68 @@ mod tests {
         }
     }
 
+    /// Every `ui.*` the overlay app calls must exist in the installed CSP.
+    ///
+    /// A missing one is a nil call at draw time, which takes the app's window
+    /// down mid-frame — and the only way to find out is to launch the game.
+    /// This is that check, run wherever CSP happens to be installed.
+    #[test]
+    fn the_overlay_app_only_calls_ui_functions_csp_provides() {
+        let Some(lib) = installed_csp_lib() else {
+            eprintln!("CSP not installed; skipping UI conformance check");
+            return;
+        };
+
+        let app = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../apps/lua/ac_pro_engineer/ac_pro_engineer.lua"
+        ))
+        .expect("the overlay app source");
+
+        let mut checked = 0;
+        for line in app.lines() {
+            // Skip comments: they name functions in prose.
+            if line.trim_start().starts_with("--") {
+                continue;
+            }
+            for call in ui_calls(line) {
+                let as_function = format!("function ui.{call}(");
+                let as_table = format!("ui.{call} = ");
+                assert!(
+                    lib.contains(&as_function) || lib.contains(&as_table),
+                    "the overlay calls ui.{call}, which this CSP does not define"
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 10,
+            "expected to have checked real calls, got {checked}"
+        );
+    }
+
+    /// `ui.<name>` occurrences in a line of Lua.
+    fn ui_calls(line: &str) -> Vec<String> {
+        let mut found = Vec::new();
+        for (index, _) in line.match_indices("ui.") {
+            // Only a standalone `ui.`, not the tail of another identifier.
+            if index > 0 {
+                let prev = line.as_bytes()[index - 1];
+                if prev.is_ascii_alphanumeric() || prev == b'_' || prev == b'.' {
+                    continue;
+                }
+            }
+            let name: String = line[index + 3..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                found.push(name);
+            }
+        }
+        found
+    }
+
     /// `ac_apps/lib.lua` from an installed CSP, if there is one.
     fn installed_csp_lib() -> Option<String> {
         let home = std::env::var_os("HOME")?;

@@ -11,26 +11,43 @@
 -- average frame rate.
 --
 -- The rules that keep it cheap:
---   * no allocation in the per-frame path (no `..`, no table literals)
---   * `script.update` copies only the handful of fields drawn, and only when
---     the writer says the struct is settled
---   * strings are formatted only when the value behind them changed
+--   * nothing is allocated per frame that can be allocated once
+--   * `script.update` copies only the fields drawn, and only when the writer
+--     says the struct is settled
+--   * colours are picked from preallocated constants, never built with rgbm()
+--     inside the draw path
 
 local layout = require('frame_layout')
 
--- Must match ac_core::overlay::frame::OVERLAY_VERSION. Refusing to draw an
--- unknown version is better than misreading a struct from another release.
+-- Must match ac_core::overlay::frame::OVERLAY_VERSION.
 local EXPECTED_VERSION = 1
 
--- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME. The
--- `AcTools.CSP.Limited.` prefix is what lets a script without IO permission
--- open shared memory at all.
+-- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
 
 -- How long the sequence may stand still before the application is presumed
--- gone. Two seconds is long enough to ride out a stalled tick and short enough
--- that nobody reads frozen numbers as live ones.
+-- gone. Two seconds rides out a stalled tick without letting anyone read
+-- frozen numbers as live ones.
 local LIVENESS_TIMEOUT = 2.0
+
+-- Preallocated. `rgbm()` allocates, and building the same handful of colours
+-- sixty times a second is exactly the garbage this design exists to avoid.
+local COLOR = {
+  dim       = rgbm(0.45, 0.48, 0.52, 1),
+  label     = rgbm(0.62, 0.66, 0.72, 1),
+  text      = rgbm(0.88, 0.90, 0.94, 1),
+  accent    = rgbm(0.20, 0.72, 1.00, 1),
+  good      = rgbm(0.35, 0.85, 0.45, 1),
+  warn      = rgbm(1.00, 0.76, 0.20, 1),
+  bad       = rgbm(1.00, 0.34, 0.34, 1),
+  cold      = rgbm(0.38, 0.60, 1.00, 1),
+  purple    = rgbm(0.76, 0.44, 1.00, 1),
+  barBack   = rgbm(0.16, 0.17, 0.20, 1),
+  panel     = rgbm(0.10, 0.11, 0.13, 0.55),
+  limiter   = rgbm(1.00, 0.62, 0.10, 1),
+}
+
+local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
 local frame = nil
 local openError = nil
@@ -42,23 +59,17 @@ if not ok then
   openError = tostring(err)
 end
 
--- Last settled snapshot. Preallocated once and only ever overwritten, so the
--- per-frame path never allocates a table.
+-- Last settled snapshot, allocated once and only ever overwritten.
 local shown = {
-  version = 0,
-  sequence = 0,
-  speed_kmh = 0,
-  rpm = 0,
-  max_rpm = 0,
-  gear = 0,
-  fuel_litres = 0,
-  fuel_laps_remaining = 0,
-  delta_seconds = 0,
-  flags = 0,
-  message_count = 0,
+  version = 0, sequence = 0,
+  speed_kmh = 0, rpm = 0, max_rpm = 0, gear = 0,
+  fuel_litres = 0, fuel_laps_remaining = 0, fuel_per_lap = 0,
+  delta_seconds = 0, best_lap_ms = 0, last_lap_ms = 0,
+  flags = 0, message_count = 0,
   tyre_pressure_psi = { 0, 0, 0, 0 },
   tyre_temp_c = { 0, 0, 0, 0 },
   tyre_wear_percent = { 0, 0, 0, 0 },
+  brake_temp_c = { 0, 0, 0, 0 },
   messages = { '', '', '', '' },
 }
 
@@ -67,11 +78,11 @@ local secondsSinceChange = 0
 local isLive = false
 
 -- Bit flags, matching ac_core::overlay::frame::flags.
-local FLAG_PIT_LIMITER = 1
-local FLAG_CONNECTED = 2
+local FLAG_PIT_LIMITER   = 1
+local FLAG_CONNECTED     = 2
 local FLAG_SHOW_TELEMETRY = 4
 local FLAG_SHOW_ENGINEER = 8
-local FLAG_FUEL_WARNING = 16
+local FLAG_FUEL_WARNING  = 16
 
 local function hasFlag(flag)
   return bit.band(shown.flags, flag) ~= 0
@@ -79,11 +90,11 @@ end
 
 --- Copy the struct into `shown`, but only if it is settled.
 --
--- The writer keeps `sequence` odd while it is mid-write and bumps it by two
--- per update, so an odd value means we caught it in the middle, and a value
--- that changed across our read means it finished one while we were copying.
--- Either way the previous snapshot is kept: skipping a frame at 60 Hz is
--- invisible, whereas a frame spliced from two updates is a visible flicker.
+-- The writer keeps `sequence` odd while mid-write and bumps it by two per
+-- update, so an odd value means we caught it in the middle, and a value that
+-- moved across our read means it finished one while we copied. Either way the
+-- previous snapshot is kept: skipping a frame at 60 Hz is invisible, a frame
+-- spliced from two updates is a visible flicker.
 local function readFrame()
   local seq = frame.sequence
   if seq % 2 ~= 0 then return false end
@@ -97,7 +108,10 @@ local function readFrame()
   shown.gear = frame.gear
   shown.fuel_litres = frame.fuel_litres
   shown.fuel_laps_remaining = frame.fuel_laps_remaining
+  shown.fuel_per_lap = frame.fuel_per_lap
   shown.delta_seconds = frame.delta_seconds
+  shown.best_lap_ms = frame.best_lap_ms
+  shown.last_lap_ms = frame.last_lap_ms
   shown.flags = frame.flags
   shown.message_count = frame.message_count
 
@@ -105,16 +119,13 @@ local function readFrame()
     shown.tyre_pressure_psi[i] = frame.tyre_pressure_psi[i - 1]
     shown.tyre_temp_c[i] = frame.tyre_temp_c[i - 1]
     shown.tyre_wear_percent[i] = frame.tyre_wear_percent[i - 1]
+    shown.brake_temp_c[i] = frame.brake_temp_c[i - 1]
   end
 
-  for i = 1, math.min(frame.message_count, 4) do
-    shown.messages[i] = frame.messages[i - 1]
-  end
-  for i = frame.message_count + 1, 4 do
-    shown.messages[i] = ''
-  end
+  local count = math.min(frame.message_count, 4)
+  for i = 1, count do shown.messages[i] = frame.messages[i - 1] end
+  for i = count + 1, 4 do shown.messages[i] = '' end
 
-  -- Re-read: if it moved while we copied, the snapshot is mixed.
   if frame.sequence ~= seq then return false end
 
   lastSequence = seq
@@ -132,12 +143,16 @@ function script.update(dt)
   end
 
   -- The sequence standing still is how the application's absence is detected.
-  -- There is no separate heartbeat channel because there does not need to be:
-  -- the thing that proves it is alive is the thing it is already sending.
+  -- No separate heartbeat is needed: the thing that proves it is alive is the
+  -- thing it already sends.
   if secondsSinceChange > LIVENESS_TIMEOUT then
     isLive = false
   end
 end
+
+-- ---------------------------------------------------------------------------
+-- Drawing
+-- ---------------------------------------------------------------------------
 
 local function gearText(gear)
   if gear < 0 then return 'R' end
@@ -145,89 +160,237 @@ local function gearText(gear)
   return tostring(gear)
 end
 
-local function rpmColor()
-  if shown.max_rpm <= 0 then return rgbm(0.8, 0.8, 0.8, 1) end
-  local ratio = shown.rpm / shown.max_rpm
-  if ratio > 0.95 then return rgbm(1, 0.2, 0.2, 1) end
-  if ratio > 0.85 then return rgbm(1, 0.8, 0.2, 1) end
-  return rgbm(0.4, 1, 0.4, 1)
+local function rpmRatio()
+  if shown.max_rpm <= 0 then return 0 end
+  local r = shown.rpm / shown.max_rpm
+  if r < 0 then return 0 end
+  if r > 1 then return 1 end
+  return r
 end
 
-local function tyreColor(temp)
-  if temp < 70 then return rgbm(0.4, 0.6, 1, 1) end
-  if temp < 95 then return rgbm(0.4, 1, 0.4, 1) end
-  if temp < 105 then return rgbm(1, 0.8, 0.2, 1) end
-  return rgbm(1, 0.3, 0.3, 1)
+local function rpmColor(ratio)
+  if ratio > 0.95 then return COLOR.bad end
+  if ratio > 0.85 then return COLOR.warn end
+  return COLOR.good
+end
+
+local function tyreTempColor(temp)
+  if temp < 70 then return COLOR.cold end
+  if temp < 95 then return COLOR.good end
+  if temp < 105 then return COLOR.warn end
+  return COLOR.bad
+end
+
+local function wearColor(wear)
+  if wear >= 96 then return COLOR.good end
+  if wear >= 85 then return COLOR.warn end
+  return COLOR.bad
+end
+
+local function brakeColor(temp)
+  if temp < 150 then return COLOR.cold end
+  if temp < 550 then return COLOR.good end
+  if temp < 750 then return COLOR.warn end
+  return COLOR.bad
+end
+
+local function lapTimeText(ms)
+  if ms <= 0 then return '--:--.---' end
+  local minutes = math.floor(ms / 60000)
+  local seconds = math.floor((ms % 60000) / 1000)
+  local millis = ms % 1000
+  return string.format('%d:%02d.%03d', minutes, seconds, millis)
+end
+
+--- A label above a value, as its own column.
+local function stat(label, value, color)
+  ui.beginGroup()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored(label, COLOR.label)
+  ui.popFont()
+  ui.textColored(value, color or COLOR.text)
+  ui.endGroup()
+end
+
+--- The RPM bar. Drawn by hand rather than with progressBar so the redline
+--- segment can be shaded separately.
+local function rpmBar(width)
+  local ratio = rpmRatio()
+  local height = 6
+  local origin = ui.getCursor()
+  local to = vec2(origin.x + width, origin.y + height)
+
+  ui.drawRectFilled(origin, to, COLOR.barBack, 2)
+  if ratio > 0 then
+    local filled = vec2(origin.x + width * ratio, origin.y + height)
+    ui.drawRectFilled(origin, filled, rpmColor(ratio), 2)
+  end
+  ui.dummy(vec2(width, height))
+end
+
+local function drawHeader()
+  ui.beginGroup()
+  ui.pushFont(ui.Font.Huge)
+  ui.textColored(string.format('%.0f', shown.speed_kmh), COLOR.text)
+  ui.popFont()
+  ui.endGroup()
+
+  ui.sameLine()
+  ui.beginGroup()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('KM/H', COLOR.label)
+  ui.popFont()
+  ui.pushFont(ui.Font.Title)
+  ui.textColored(gearText(shown.gear), rpmColor(rpmRatio()))
+  ui.popFont()
+  ui.endGroup()
+
+  if hasFlag(FLAG_PIT_LIMITER) then
+    ui.sameLine()
+    ui.pushFont(ui.Font.Small)
+    ui.textColored('LIMITER', COLOR.limiter)
+    ui.popFont()
+  end
+
+  rpmBar(ui.availableSpaceX())
+end
+
+local function drawTyres()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('TYRES', COLOR.label)
+  ui.popFont()
+
+  -- Two by two, the way they sit on the car, so a hot corner is where you
+  -- expect it rather than third in a list.
+  local columnWidth = ui.availableSpaceX() * 0.5
+  for row = 0, 1 do
+    for col = 0, 1 do
+      local i = row * 2 + col + 1
+      if col == 1 then ui.sameLine(columnWidth) end
+
+      ui.beginGroup()
+      ui.pushFont(ui.Font.Tiny)
+      ui.textColored(TYRE_LABEL[i], COLOR.dim)
+      ui.popFont()
+
+      ui.sameLine()
+      ui.textColored(string.format('%.1f', shown.tyre_pressure_psi[i]),
+        tyreTempColor(shown.tyre_temp_c[i]))
+
+      ui.pushFont(ui.Font.Tiny)
+      ui.textColored(string.format('%.0f°  %.0f%%',
+        shown.tyre_temp_c[i], shown.tyre_wear_percent[i]),
+        wearColor(shown.tyre_wear_percent[i]))
+      ui.popFont()
+      ui.endGroup()
+    end
+  end
+end
+
+local function drawBrakes()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('BRAKES', COLOR.label)
+  for i = 1, 4 do
+    ui.textColored(string.format('%s %.0f°', TYRE_LABEL[i], shown.brake_temp_c[i]),
+      brakeColor(shown.brake_temp_c[i]))
+    if i < 4 then ui.sameLine() end
+  end
+  ui.popFont()
+end
+
+local function drawTiming()
+  local deltaColor = COLOR.text
+  if shown.delta_seconds < -0.001 then
+    deltaColor = COLOR.good
+  elseif shown.delta_seconds > 0.001 then
+    deltaColor = COLOR.bad
+  end
+
+  stat('DELTA', string.format('%+.3f', shown.delta_seconds), deltaColor)
+  ui.sameLine(ui.availableSpaceX() * 0.42)
+  stat('BEST', lapTimeText(shown.best_lap_ms), COLOR.purple)
+  ui.sameLine(ui.availableSpaceX() * 0.42)
+  stat('LAST', lapTimeText(shown.last_lap_ms), COLOR.text)
+end
+
+local function drawFuel()
+  local color = hasFlag(FLAG_FUEL_WARNING) and COLOR.bad or COLOR.text
+  stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
+  ui.sameLine(ui.availableSpaceX() * 0.42)
+  stat('LAPS LEFT',
+    shown.fuel_laps_remaining > 0 and string.format('%.1f', shown.fuel_laps_remaining) or '--',
+    color)
+  ui.sameLine(ui.availableSpaceX() * 0.42)
+  stat('PER LAP',
+    shown.fuel_per_lap > 0 and string.format('%.2f L', shown.fuel_per_lap) or '--',
+    COLOR.dim)
+end
+
+local function drawAdvice()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('ENGINEER', COLOR.label)
+  ui.popFont()
+  for i = 1, math.min(shown.message_count, 4) do
+    if shown.messages[i] ~= '' then
+      ui.textColored('• ' .. shown.messages[i], COLOR.warn)
+    end
+  end
+end
+
+--- What to show when there is nothing to show.
+local function drawIdle(message, detail)
+  local space = ui.availableSpace()
+  ui.offsetCursorY(math.max(0, space.y * 0.35))
+  ui.pushFont(ui.Font.Small)
+  ui.textColored(message, COLOR.dim)
+  if detail ~= nil then
+    ui.pushFont(ui.Font.Tiny)
+    ui.textColored(detail, COLOR.dim)
+    ui.popFont()
+  end
+  ui.popFont()
 end
 
 function script.windowMain(dt)
   if openError ~= nil then
-    ui.textColored('Could not open shared memory:', rgbm(1, 0.4, 0.4, 1))
-    ui.text(openError)
+    ui.textColored('Shared memory unavailable', COLOR.bad)
+    ui.pushFont(ui.Font.Tiny)
+    ui.textColored(openError, COLOR.dim)
+    ui.popFont()
     return
   end
 
   if not isLive then
-    -- Deliberately quiet. The overlay only has something to say while the
-    -- desktop application is feeding it, and a panel full of stale numbers is
-    -- worse than an empty one.
-    ui.textColored('AC Pro Engineer is not running', rgbm(0.6, 0.6, 0.6, 1))
+    -- Deliberately quiet. A panel of stale numbers is worse than an empty one.
+    drawIdle('AC Pro Engineer is not running', 'Start the desktop app to see telemetry')
     return
   end
 
   if shown.version ~= EXPECTED_VERSION then
-    ui.textColored('Version mismatch', rgbm(1, 0.4, 0.4, 1))
-    ui.text(string.format('app sends v%d, overlay expects v%d', shown.version, EXPECTED_VERSION))
+    ui.textColored('Version mismatch', COLOR.bad)
+    ui.pushFont(ui.Font.Tiny)
+    ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
+      COLOR.dim)
+    ui.popFont()
     return
   end
 
-  ui.pushFont(ui.Font.Title)
-  ui.text(string.format('%.0f', shown.speed_kmh))
-  ui.sameLine()
-  ui.popFont()
-  ui.text('km/h')
-
-  ui.sameLine()
-  ui.textColored(gearText(shown.gear), rpmColor())
-
-  if hasFlag(FLAG_PIT_LIMITER) then
-    ui.sameLine()
-    ui.textColored('LIMITER', rgbm(1, 0.8, 0.2, 1))
-  end
-
-  ui.separator()
+  drawHeader()
+  ui.offsetCursorY(4)
 
   if hasFlag(FLAG_SHOW_TELEMETRY) then
-    local labels = { 'FL', 'FR', 'RL', 'RR' }
-    for i = 1, 4 do
-      ui.text(labels[i])
-      ui.sameLine()
-      ui.textColored(
-        string.format('%.1f psi  %.0f C  %.0f%%',
-          shown.tyre_pressure_psi[i],
-          shown.tyre_temp_c[i],
-          shown.tyre_wear_percent[i]),
-        tyreColor(shown.tyre_temp_c[i]))
-    end
-    ui.separator()
+    drawTyres()
+    ui.offsetCursorY(2)
+    drawBrakes()
+    ui.offsetCursorY(4)
   end
 
-  local fuelColor = hasFlag(FLAG_FUEL_WARNING) and rgbm(1, 0.3, 0.3, 1) or rgbm(0.8, 0.8, 0.8, 1)
-  ui.textColored(
-    string.format('Fuel %.1f L  (%.1f laps)', shown.fuel_litres, shown.fuel_laps_remaining),
-    fuelColor)
-
-  if shown.delta_seconds ~= 0 then
-    local deltaColor = shown.delta_seconds < 0 and rgbm(0.4, 1, 0.4, 1) or rgbm(1, 0.5, 0.5, 1)
-    ui.textColored(string.format('Delta %+.3f', shown.delta_seconds), deltaColor)
-  end
+  drawTiming()
+  ui.offsetCursorY(2)
+  drawFuel()
 
   if hasFlag(FLAG_SHOW_ENGINEER) and shown.message_count > 0 then
-    ui.separator()
-    for i = 1, math.min(shown.message_count, 4) do
-      if shown.messages[i] ~= '' then
-        ui.text(shown.messages[i])
-      end
-    end
+    ui.offsetCursorY(4)
+    drawAdvice()
   end
 end
