@@ -671,8 +671,25 @@ local function popStyle(store, order, count)
   end
 end
 
-function ui.pushStyleVar(var, value) pushStyle(styleVars, varOrder, var, value) end
-function ui.popStyleVar(count) popStyle(styleVars, varOrder, count) end
+function ui.pushStyleVar(var, value)
+  pushStyle(styleVars, varOrder, var, value)
+  -- ItemSpacing is layout, not decoration: the panel pins it so the gaps it
+  -- was designed with are the gaps it gets, and the harness has to obey it for
+  -- the comparison to mean anything.
+  if var == ui.StyleVar.ItemSpacing and type(value) == 'table' then
+    L.spacingX, L.spacingY = value.x or L.spacingX, value.y or L.spacingY
+  end
+end
+
+function ui.popStyleVar(count)
+  popStyle(styleVars, varOrder, count)
+  local spacing = topOf(styleVars, ui.StyleVar.ItemSpacing)
+  if type(spacing) == 'table' then
+    L.spacingX, L.spacingY = spacing.x or 6, spacing.y or 3
+  else
+    L.spacingX, L.spacingY = 6, 3
+  end
+end
 function ui.pushStyleColor(color, value) pushStyle(styleColors, colorOrder, color, value) end
 function ui.popStyleColor(count) popStyle(styleColors, colorOrder, count) end
 

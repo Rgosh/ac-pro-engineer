@@ -350,6 +350,24 @@ end
 -- Columns measured against the whole width then drift apart until a block of
 -- four tyres reads as four unrelated numbers, so the layout keeps to a column
 -- and lets the rest of the window be empty.
+-- Spacing, pinned rather than inherited.
+--
+-- The LÖVE harness lays the panel out with these exact numbers, so the layout
+-- judged there is the layout that ships. Left to CSP's theme, the same code
+-- comes out with different gaps in game and every decision made in the harness
+-- has to be made again.
+local ITEM_SPACING = vec2(6, 3)
+local ITEM_SPACING_VR = vec2(8, 8)
+local FRAME_PADDING = vec2(6, 3)
+
+--- Apply the panel's spacing. Returns how many style vars to pop.
+local function pushLayoutStyle()
+  ui.pushStyleVar(ui.StyleVar.ItemSpacing,
+    settings.vrMode and ITEM_SPACING_VR or ITEM_SPACING)
+  ui.pushStyleVar(ui.StyleVar.FramePadding, FRAME_PADDING)
+  return 2
+end
+
 local MAX_CONTENT = 360
 local MAX_CONTENT_VR = 520
 
@@ -629,6 +647,8 @@ function script.windowMain(dt)
     return
   end
 
+  local styles = pushLayoutStyle()
+
   if settings.showHeader then
     drawHeader()
     gap(6)
@@ -665,6 +685,8 @@ function script.windowMain(dt)
     gap(8)
     drawEngineerMessages()
   end
+
+  ui.popStyleVar(styles)
 end
 
 -- ---------------------------------------------------------------------------
@@ -697,7 +719,9 @@ function script.windowEngineer(dt)
     return
   end
 
+  local styles = pushLayoutStyle()
   drawEngineerMessages(false)
+  ui.popStyleVar(styles)
 end
 
 -- ---------------------------------------------------------------------------
@@ -729,6 +753,7 @@ function script.windowSettings(dt)
   -- Four tabs rather than one long column: the window is as tall as the driver
   -- left it, and a list that runs past the bottom edge hides the half of the
   -- settings nobody scrolled to.
+  local styles = pushLayoutStyle()
   ui.tabBar('acpeSettings', function()
     ui.tabItem('Sections', function()
       settingToggle('Speed and gear', 'showHeader')
@@ -823,6 +848,7 @@ function script.windowSettings(dt)
       end
     end)
   end)
+  ui.popStyleVar(styles)
 end
 
 -- Exported for the LÖVE harness, which draws these on their own to compare
