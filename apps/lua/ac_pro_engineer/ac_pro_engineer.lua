@@ -93,6 +93,10 @@ local DEFAULTS = {
   engineerMaxChars = 64,   -- a line longer than this is cut, not wrapped away
   showDebugBounds = false,
   freezeDisplay = false,
+  devDemo = false,          -- plausible numbers with no application running
+  devIgnoreFlags = false,   -- draw every section whatever the app asked for
+  devIgnoreVersion = false, -- draw anyway when the versions disagree
+  devSampleAdvice = false,  -- four lines, one of each severity, one very long
   background = 0.0,       -- panel backing, 0 for none
   accent = 'blue',
   celsius = true,
@@ -283,6 +287,10 @@ local FLAG_SHOW_TIMING   = 64
 local FLAG_SHOW_FUEL     = 128
 
 local function hasFlag(flag)
+  -- Developer mode can answer yes to every section: the layout has to be
+  -- judged with everything on screen, and a real session rarely shows all of
+  -- it at once.
+  if settings.devIgnoreFlags and flag >= FLAG_SHOW_TELEMETRY then return true end
   return bit.band(shown.flags, flag) ~= 0
 end
 
@@ -338,7 +346,13 @@ end
 function script.update(dt)
   -- Frozen on purpose: a held frame is the only way to read a number that was
   -- there for a tenth of a second.
-  if settings.freezeDisplay and frame ~= nil then return end
+  if settings.freezeDisplay then return end
+
+  if settings.devDemo then
+    applyDemo()
+    isLive = true
+    return
+  end
 
   if frame == nil then
     -- Keep trying, quietly. Once the application starts, the panel fills in on
@@ -696,6 +710,14 @@ end
 local function drawEngineerMessages(withLabel)
   if withLabel ~= false then sectionLabel('ENGINEER') end
 
+  if settings.devSampleAdvice then
+    shown.message_count = 4
+    for i = 1, 4 do
+      shown.messages[i] = DEMO_ADVICE[i]
+      shown.message_severity[i] = (i - 1) % 3
+    end
+  end
+
   local bySeverity = settings.engineerBullet == 'severity'
   local bullet = BULLETS[settings.engineerBullet] or ''
   local count = math.min(shown.message_count, settings.engineerLines, 4)
@@ -729,6 +751,38 @@ local function drawEngineerMessages(withLabel)
 
   if count == 0 and withLabel ~= false then
     say('caption', 'nothing to report', COLOR.dim)
+  end
+end
+
+-- Numbers that look like a car on a warm lap. Only reachable from developer
+-- mode, and the panel says so, so nobody mistakes them for telemetry.
+local DEMO_ADVICE = {
+  'Fuel is fine for the stint',
+  'Rear tyres are going off, ease the traction',
+  'Box this lap',
+  'Front-left pressure is 0.4 psi low and the corner is running cold in sector two',
+}
+
+local function applyDemo()
+  shown.version = EXPECTED_VERSION
+  shown.speed_kmh = 214
+  shown.rpm, shown.max_rpm, shown.gear = 7400, 8500, 5
+  shown.fuel_litres, shown.fuel_per_lap, shown.fuel_laps_remaining = 41.2, 3.1, 13.3
+  shown.delta_seconds = -0.284
+  shown.best_lap_ms, shown.last_lap_ms, shown.current_lap_ms = 91380, 92450, 34120
+  shown.position, shown.lap_count = 4, 7
+  shown.air_temp_c, shown.road_temp_c, shown.surface_grip = 22, 31, 0.97
+  for i = 1, 4 do
+    shown.tyre_pressure_psi[i] = 26.8 + i * 0.2
+    shown.tyre_temp_c[i] = 78 + i * 7
+    shown.tyre_wear_percent[i] = 99 - i * 3
+    shown.brake_temp_c[i] = 320 + i * 90
+  end
+  shown.flags = 2 + 4 + 8 + 32 + 64 + 128
+  shown.message_count = 4
+  for i = 1, 4 do
+    shown.messages[i] = DEMO_ADVICE[i]
+    shown.message_severity[i] = (i - 1) % 3
   end
 end
 
@@ -792,7 +846,7 @@ function script.windowMain(dt)
     return
   end
 
-  if shown.version ~= EXPECTED_VERSION then
+  if shown.version ~= EXPECTED_VERSION and not settings.devIgnoreVersion then
     ui.textColored('Version mismatch', COLOR.bad)
     pushRole('caption')
     ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
@@ -1029,6 +1083,37 @@ end
 --- What is only worth seeing while working on the panel: the numbers behind
 --- the numbers, and the switches that make the panel lie on purpose.
 local function drawDevBody()
+  say('caption', 'DRAW WITHOUT A SESSION', COLOR.label)
+  settingToggle('Demo numbers', 'devDemo')
+  settingToggle('Sample advice, all severities', 'devSampleAdvice')
+  settingToggle('Ignore what the app asked for', 'devIgnoreFlags')
+  settingToggle('Ignore version mismatch', 'devIgnoreVersion')
+
+  ui.separator()
+  say('caption', 'INSPECT', COLOR.label)
+  settingToggle('Freeze the display', 'freezeDisplay')
+  settingToggle('Outline the content', 'showDebugBounds')
+
+  ui.separator()
+  if ui.button('Everything on') then
+    for _, key in ipairs(SETTING_KEYS) do
+      if key:match('^show') and type(settings[key]) == 'boolean' then
+        settings[key] = true
+      end
+    end
+    settings.devIgnoreFlags = true
+  end
+  ui.sameLine()
+  if ui.button('Leave developer mode') then
+    settings.devMode = false
+    settings.devDemo = false
+    settings.devSampleAdvice = false
+    settings.devIgnoreFlags = false
+    settings.freezeDisplay = false
+    settings.showDebugBounds = false
+  end
+
+  ui.separator()
   say('caption', 'FRAME', COLOR.label)
   row('sequence', tostring(shown.sequence))
   row('since change', string.format('%.2f s', secondsSinceChange))
@@ -1043,17 +1128,11 @@ local function drawDevBody()
     textSize('body') * (settings.engineerScale or 1)))
 
   ui.separator()
-  settingToggle('Freeze the display', 'freezeDisplay')
-  settingToggle('Outline the content', 'showDebugBounds')
-
-  ui.separator()
   if ui.button('Dump settings to console') then
     for _, key in ipairs(SETTING_KEYS) do
       consoleSay(key .. ' = ' .. tostring(settings[key]))
     end
   end
-  ui.sameLine()
-  if ui.button('Leave developer mode') then settings.devMode = false end
 end
 
 local function drawTelemetryBody()
