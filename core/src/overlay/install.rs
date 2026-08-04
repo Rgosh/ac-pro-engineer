@@ -100,6 +100,53 @@ pub fn install_into(target: &Path) -> io::Result<InstallOutcome> {
     }
 }
 
+/// What the application knows about the overlay's installation.
+///
+/// Gathered in one place so the launcher can show it without asking four
+/// separate questions and drawing whatever the answers happen to be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallReport {
+    /// The Assetto Corsa root, if one was found.
+    pub game_root: Option<PathBuf>,
+    /// Where the app goes inside it.
+    pub app_path: Option<PathBuf>,
+    /// Every embedded file is present and identical.
+    pub current: bool,
+    /// Custom Shaders Patch is installed. Without it the game has no Lua apps
+    /// at all, and a perfectly installed overlay will never appear.
+    pub csp_present: bool,
+}
+
+/// Look at the game folder and report what is there.
+pub fn describe(configured_install: Option<&Path>) -> InstallReport {
+    let game_root = ac_paths::ac_install_root(configured_install);
+    let app_path = game_root
+        .as_ref()
+        .map(|root| root.join("apps").join("lua").join(APP_DIR));
+
+    let current = app_path.as_ref().is_some_and(|path| {
+        FILES.iter().all(|(name, contents)| {
+            std::fs::read(path.join(name)).is_ok_and(|existing| existing == *contents)
+        })
+    });
+
+    // The SDK is written by CSP itself, so its presence is the honest test —
+    // an extension folder can survive an uninstall.
+    let csp_present = game_root.as_ref().is_some_and(|root| {
+        root.join("extension")
+            .join("internal")
+            .join("lua-sdk")
+            .exists()
+    });
+
+    InstallReport {
+        game_root,
+        app_path,
+        current,
+        csp_present,
+    }
+}
+
 /// Where the overlay app would be installed, for diagnostics.
 pub fn install_path(configured_install: Option<&Path>) -> Option<PathBuf> {
     ac_paths::ac_install_root(configured_install)
@@ -218,6 +265,37 @@ mod tests {
 
     /// Run the overlay app under a real LuaJIT with the CSP API stubbed.
     ///
+    /// The launcher's card is only as good as this: it tells people whether
+    /// the panel is in the game folder, and being wrong about that sends them
+    /// looking for the problem inside the game.
+    #[test]
+    fn describing_a_folder_with_the_app_in_it_reports_it_current() {
+        let temp = std::env::temp_dir().join("acpe-describe-test");
+        let app = temp.join("apps").join("lua").join(APP_DIR);
+        let _ = std::fs::remove_dir_all(&temp);
+        // The override is only honoured if it exists — an absent one falls back
+        // to whatever real install is on this machine, which would make the
+        // test agree with itself for the wrong reason.
+        std::fs::create_dir_all(&temp).expect("temp game folder");
+
+        let report = describe(Some(&temp));
+        assert!(
+            !report.current,
+            "an empty game folder cannot be up to date: {report:?}"
+        );
+
+        install_into(&app).expect("install into the temp folder");
+        let report = describe(Some(&temp));
+        assert!(
+            report.current,
+            "freshly written files are current: {report:?}"
+        );
+        assert_eq!(report.app_path.as_deref(), Some(app.as_path()));
+        assert!(!report.csp_present, "no CSP was put in the temp folder");
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
     /// Syntax checks and the SDK conformance tests prove the calls exist;
     /// this proves the script actually runs — that no field is nil, no
     /// arithmetic lands on a string, and every draw path completes. The only

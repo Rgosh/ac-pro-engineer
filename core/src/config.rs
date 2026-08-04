@@ -166,6 +166,9 @@ pub struct OverlayConfig {
     /// How many engineer lines reach the overlay at once, 0 to 4.
     #[serde(default = "default_engineer_lines")]
     pub engineer_lines: u8,
+    /// Show what was found and installed when the application starts.
+    #[serde(default = "default_true")]
+    pub startup_card: bool,
 }
 
 impl Default for OverlayConfig {
@@ -177,6 +180,7 @@ impl Default for OverlayConfig {
             show_timing: true,
             show_fuel: true,
             engineer_lines: default_engineer_lines(),
+            startup_card: true,
         }
     }
 }

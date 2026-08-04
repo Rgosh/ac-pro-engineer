@@ -296,6 +296,13 @@ pub struct AppState {
     pub show_update_success: bool,
     pub show_first_run_prompt: bool,
     pub first_run_selection: usize,
+
+    /// The overlay install card shown at startup: what was found in the game
+    /// folder, and what the last install attempt did.
+    pub show_overlay_card: bool,
+    pub overlay_card_selection: usize,
+    pub overlay_report: ac_core::overlay::install::InstallReport,
+    pub overlay_install_status: String,
     pub mock_physics: Option<AcPhysics>,
     pub mock_graphics: Option<AcGraphics>,
     pub mock_static: Option<AcStatic>,
@@ -332,7 +339,7 @@ impl AppState {
         let setup_manager = SetupManager::new();
         setup_manager.set_documents_override(&config.ac_documents_path);
 
-        Self {
+        let mut state = Self {
             mem: None,
             mock_physics: None,
             mock_graphics: None,
@@ -383,11 +390,51 @@ impl AppState {
             show_update_success: show_success,
             show_first_run_prompt: is_first_run,
             first_run_selection: 0,
+            show_overlay_card: false,
+            overlay_card_selection: 0,
+            overlay_report: ac_core::overlay::install::InstallReport {
+                game_root: None,
+                app_path: None,
+                current: false,
+                csp_present: false,
+            },
+            overlay_install_status: String::new(),
             show_help: false,
             show_overlay_menu: false,
             perf: PerfStats::default(),
             overlay_menu_selection: 0,
-        }
+        };
+
+        state.refresh_overlay_report();
+        state.show_overlay_card = state.config.overlay.startup_card;
+        state
+    }
+
+    /// Look at the game folder again and remember what is there.
+    pub fn refresh_overlay_report(&mut self) {
+        self.overlay_report =
+            ac_core::overlay::install::describe(self.config.ac_install_override());
+    }
+
+    /// Write the overlay app into the game folder now, and say what happened.
+    ///
+    /// The application already does this at startup; this is the button for
+    /// when the game moved, the files were deleted, or the panel is being
+    /// installed for a copy of AC that was not there at launch.
+    pub fn install_overlay_now(&mut self) {
+        use ac_core::overlay::install::{InstallOutcome, install};
+
+        self.overlay_install_status = match install(self.config.ac_install_override()) {
+            Ok(InstallOutcome::Installed { updated }) => {
+                format!("installed, {updated} file(s) written")
+            }
+            Ok(InstallOutcome::AlreadyCurrent) => "already up to date".to_string(),
+            Ok(InstallOutcome::NoGameFound) => {
+                "no Assetto Corsa found — set the path in Settings".to_string()
+            }
+            Err(error) => format!("failed: {error}"),
+        };
+        self.refresh_overlay_report();
     }
 
     pub fn enable_demo_simulation(&mut self) {

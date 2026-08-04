@@ -257,6 +257,28 @@ async fn main() -> Result<(), anyhow::Error> {
                     break 'outer;
                 }
 
+                if app.show_overlay_card && !app.show_first_run_prompt {
+                    match key.code {
+                        KeyCode::Left => app.overlay_card_selection = 0,
+                        KeyCode::Right => app.overlay_card_selection = 1,
+                        KeyCode::Enter => {
+                            if app.overlay_card_selection == 0 {
+                                app.install_overlay_now();
+                            } else {
+                                app.show_overlay_card = false;
+                            }
+                        }
+                        KeyCode::Char('d') | KeyCode::Char('D') => {
+                            app.config.overlay.startup_card = false;
+                            let _ = app.config.save();
+                            app.show_overlay_card = false;
+                        }
+                        KeyCode::Esc => app.show_overlay_card = false,
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 if app.show_first_run_prompt {
                     match key.code {
                         KeyCode::Left => app.first_run_selection = 0,
@@ -576,6 +598,17 @@ async fn main() -> Result<(), anyhow::Error> {
                     KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
                     _ => match app_lock.active_tab {
                         AppTab::Settings => {
+                            // The overlay category has an action, not just
+                            // values: pushing the panel into the game folder
+                            // is a thing you do, not a number you set.
+                            if matches!(key.code, KeyCode::Char('i') | KeyCode::Char('I'))
+                                && app_lock.ui_state.settings.category
+                                    == ac_tui::ui::tabs::settings::SettingsCategory::Overlay
+                            {
+                                app_lock.install_overlay_now();
+                                continue;
+                            }
+
                             let changed = {
                                 let AppState {
                                     ui_state, config, ..

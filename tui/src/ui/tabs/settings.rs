@@ -131,7 +131,7 @@ impl SettingsState {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
-            SettingsCategory::Overlay => 6,
+            SettingsCategory::Overlay => 7,
         }
     }
 
@@ -236,6 +236,9 @@ impl SettingsState {
                 5 => {
                     let next = config.overlay.engineer_lines as i32 + delta.signum() as i32;
                     config.overlay.engineer_lines = next.clamp(0, 4) as u8;
+                }
+                6 if delta.abs() > 0.0 => {
+                    config.overlay.startup_card = !config.overlay.startup_card
                 }
                 _ => {}
             },
@@ -393,6 +396,13 @@ impl SettingsState {
                         "Сколько строк инженера уходит в оверлей (0-4)."
                     } else {
                         "How many engineer lines reach the overlay (0-4)."
+                    }
+                }
+                6 => {
+                    if is_ru {
+                        "Показывать карточку оверлея при запуске. [I] — установить сейчас."
+                    } else {
+                        "Show the overlay card at startup. [I] installs it right now."
                     }
                 }
                 _ => "",
@@ -748,6 +758,15 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             },
             overlay.engineer_lines.to_string(),
             false,
+        ),
+        (
+            if is_ru {
+                "Карточка при запуске  [I] — установить".to_string()
+            } else {
+                "Startup card  [I] to install now".to_string()
+            },
+            if overlay.startup_card { "ON" } else { "OFF" }.to_string(),
+            true,
         ),
     ];
 

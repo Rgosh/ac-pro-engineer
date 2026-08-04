@@ -24,6 +24,18 @@ that — a column landing on top of another is visible the moment something draw
 it. This is that something, and it found the timing and fuel rows overlapping on
 its first run.
 
+## Getting it into the game
+
+The desktop application writes the app into
+`assettocorsa/apps/lua/ac_pro_engineer/` every time it starts, and says what it
+found in a card on the launcher screen: where the game is, whether CSP is
+there, and whether the files are current. `ENTER` installs them again from
+that card, `[I]` does the same from **Settings → OVERLAY**, and `D` stops the
+card appearing at startup.
+
+Getting AC, CSP and Content Manager running under Proton in the first place is
+in the [main README](../../../README.md#getting-assetto-corsa-csp-and-content-manager-to-run-under-proton).
+
 ## What the panel actually is
 
 A CSP Lua app in `../ac_pro_engineer/`, installed into the game folder by the

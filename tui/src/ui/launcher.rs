@@ -32,7 +32,122 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     if app.show_first_run_prompt {
         render_first_run_popup(f, area, app);
+    } else if app.show_overlay_card {
+        render_overlay_card(f, area, app);
     }
+}
+
+/// What was found in the game folder, and what the overlay's state is.
+///
+/// The application installs the panel at startup on its own; this says so out
+/// loud, because an overlay that silently did or did not appear is the thing
+/// people spend an evening on before finding out CSP was never installed.
+fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let popup_area = center_rect(area, 66, 15);
+    f.render_widget(Clear, popup_area);
+
+    let report = &app.overlay_report;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(Color::Cyan).bg(Color::Black))
+        .title(" IN-GAME OVERLAY ")
+        .title_alignment(Alignment::Center);
+
+    let dim = Style::default().fg(Color::DarkGray);
+    let good = Style::default().fg(Color::Green);
+    let bad = Style::default().fg(Color::Red);
+    let warn = Style::default().fg(Color::Yellow);
+
+    let short = |path: &std::path::Path| {
+        let text = path.display().to_string();
+        if text.len() > 52 {
+            format!("…{}", &text[text.len() - 51..])
+        } else {
+            text
+        }
+    };
+
+    let mut lines = vec![Line::from("")];
+
+    match report.game_root.as_ref() {
+        Some(root) => lines.push(Line::from(vec![
+            Span::styled("game     ", dim),
+            Span::styled(short(root), good),
+        ])),
+        None => lines.push(Line::from(vec![
+            Span::styled("game     ", dim),
+            Span::styled("not found — set the path in Settings", bad),
+        ])),
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("CSP      ", dim),
+        if report.csp_present {
+            Span::styled("installed", good)
+        } else {
+            Span::styled("missing — the panel cannot appear without it", warn)
+        },
+    ]));
+
+    if let Some(path) = report.app_path.as_ref() {
+        lines.push(Line::from(vec![
+            Span::styled("panel    ", dim),
+            Span::styled(short(path), Style::default().fg(Color::Gray)),
+        ]));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("files    ", dim),
+        if report.current {
+            Span::styled("up to date", good)
+        } else {
+            Span::styled("not installed — press ENTER", warn)
+        },
+    ]));
+
+    if !app.overlay_install_status.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            app.overlay_install_status.clone(),
+            Style::default().fg(Color::White),
+        )));
+    }
+
+    lines.push(Line::from(""));
+
+    let install_style = if app.overlay_card_selection == 0 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let close_style = if app.overlay_card_selection == 1 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    lines.push(Line::from(vec![
+        Span::styled(" [ INSTALL INTO THE GAME ] ", install_style),
+        Span::raw("   "),
+        Span::styled(" [ CLOSE ] ", close_style),
+    ]));
+    lines.push(Line::from(Span::styled(
+        "D — do not show this at startup",
+        dim,
+    )));
+
+    let p = Paragraph::new(lines)
+        .block(block)
+        .alignment(Alignment::Center);
+    f.render_widget(p, popup_area);
 }
 
 fn render_first_run_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
