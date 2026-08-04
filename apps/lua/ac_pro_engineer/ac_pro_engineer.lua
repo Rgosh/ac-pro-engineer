@@ -423,6 +423,48 @@ local text = {
   position = '', lap = '', conditions = '',
 }
 
+local WINDOW_IDS = {
+  { 'main', 'panel' },
+  { 'engineer', 'advice' },
+  { 'settings', 'settings' },
+  { 'telemetry', 'telemetry' },
+  { 'status', 'status' },
+}
+
+local WIDE_MIN = vec2(160, 90)
+local WIDE_MAX = vec2(4000, 4000)
+
+--- Hand every window back to the mouse.
+---
+--- A window whose minimum equals its maximum has no grip to take hold of, and
+--- that is one way to end up with a window that cannot be dragged at all. This
+--- runs at load so a pinned window from an earlier build, or from CSP's own
+--- defaults, is freed rather than inherited.
+local function freeWindows()
+  if type(ac.setWindowSizeConstraints) ~= 'function' then return false end
+  for _, window in ipairs(WINDOW_IDS) do
+    pcall(ac.setWindowSizeConstraints, window[1], WIDE_MIN, WIDE_MAX)
+  end
+  return true
+end
+
+-- Applying a size and leaving the window free are the same operation a frame
+-- apart: pin it to the size asked for, then let go on the next frame.
+local pendingResize = nil
+
+local function resizeWindow(id, width, height)
+  if type(ac.setWindowSizeConstraints) ~= 'function' then return end
+  local size = vec2(width, height)
+  pcall(ac.setWindowSizeConstraints, id, size, size)
+  pendingResize = id
+end
+
+local function releaseResize()
+  if pendingResize == nil then return end
+  pcall(ac.setWindowSizeConstraints, pendingResize, WIDE_MIN, WIDE_MAX)
+  pendingResize = nil
+end
+
 -- Bit flags, matching ac_core::overlay::frame::flags.
 local FLAG_PIT_LIMITER   = 1
 local FLAG_CONNECTED     = 2
@@ -521,7 +563,17 @@ local function formatFrame()
     tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100)
 end
 
+local freedWindows = false
+
 function script.update(dt)
+  -- One frame after a size was applied, hand the window back to the mouse.
+  releaseResize()
+
+  if not freedWindows then
+    freedWindows = true
+    freeWindows()
+  end
+
   -- Frozen on purpose: a held frame is the only way to read a number that was
   -- there for a tenth of a second.
   if settings.freezeDisplay then return end
@@ -641,12 +693,6 @@ local ACCENT_NAMES = { 'blue', 'teal', 'amber', 'violet', 'green' }
 -- Starting points by screen, so the first thing a driver sees is legible.
 -- The third field keeps two buttons on a line.
 -- The windows the manifest declares, and the sizes a script can pin them to.
-local WINDOW_IDS = {
-  { 'main', 'panel' },
-  { 'engineer', 'advice' },
-  { 'settings', 'settings' },
-}
-
 local PRESETS = {
   { '1080p', { fontScale = 1.0, contentWidth = 360, barHeight = 6, textSize = 'normal' }, true },
   { '1440p', { fontScale = 1.35, contentWidth = 460, barHeight = 8, textSize = 'normal' }, false },
@@ -1810,18 +1856,22 @@ function script.windowSettings(dt)
             return
           end
 
+          say('caption', 'set a size here, or drag the corner — the size is', COLOR.dim)
+          say('caption', 'applied for one frame and the window stays free', COLOR.dim)
+          if ui.button('Free every window') then freeWindows() end
+          ui.separator()
+
           for _, window in ipairs(WINDOW_IDS) do
             say('caption', window[2], COLOR.label)
             local widthKey, heightKey = window[1] .. 'Width', window[1] .. 'Height'
             local changed = settingSlider(widthKey, widthKey, 200, 1600, 'width  %.0f', true)
             changed = settingSlider(heightKey, heightKey, 120, 1400, 'height  %.0f', true) or changed
-            if changed then
-              pcall(ac.setWindowSizeConstraints, window[1],
-                vec2(settings[widthKey], settings[heightKey]),
-                vec2(settings[widthKey], settings[heightKey]))
+            if ui.button('Apply to ' .. window[2]) then
+              resizeWindow(window[1], settings[widthKey], settings[heightKey])
             end
-            if ui.button('Free ' .. window[2]) then
-              pcall(ac.setWindowSizeConstraints, window[1], vec2(160, 100), vec2(4000, 4000))
+            ui.sameLine()
+            if ui.button('Free##' .. window[1]) then
+              pcall(ac.setWindowSizeConstraints, window[1], WIDE_MIN, WIDE_MAX)
             end
             ui.separator()
           end
