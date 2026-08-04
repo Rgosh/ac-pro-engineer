@@ -76,6 +76,18 @@ local DEFAULTS = {
   showTyreTemp = true,
   showBrakeTemp = true,
   showWear = true,
+  showDelta = true,
+  showBest = true,
+  showLast = true,
+  showFuelLitres = true,
+  showLapsLeft = true,
+  showPerLap = true,
+  showPosition = true,
+  showLapNumber = true,
+  showCurrentLap = true,
+  showConditions = true,
+  pressureDecimals = 1,
+  columnsPerRow = 0,       -- 0 follows the layout, 2 or 3 force it
 
   -- How the advice reads. The application decides how many lines it publishes;
   -- these decide how many of them are drawn and what they look like.
@@ -240,11 +252,29 @@ local function tempText(celsius)
   return string.format('%.0f°F', celsius * 1.8 + 32)
 end
 
+local function gearText(gear)
+  if gear < 0 then return 'R' end
+  if gear == 0 then return 'N' end
+  return tostring(gear)
+end
+
+local function lapTimeText(ms)
+  if ms <= 0 then return '--:--.---' end
+  local minutes = math.floor(ms / 60000)
+  local seconds = math.floor((ms % 60000) / 1000)
+  local millis = ms % 1000
+  return string.format('%d:%02d.%03d', minutes, seconds, millis)
+end
+
+local PRESSURE_FORMAT = { [0] = '%.0f psi', '%.1f psi', '%.2f psi' }
+local BAR_FORMAT = { [0] = '%.1f bar', '%.2f bar', '%.3f bar' }
+
 local function pressureText(psi)
+  local decimals = settings.pressureDecimals or 1
   if settings.psi then
-    return string.format('%.1f psi', psi)
+    return string.format(PRESSURE_FORMAT[decimals] or '%.1f psi', psi)
   end
-  return string.format('%.2f bar', psi * 0.0689476)
+  return string.format(BAR_FORMAT[decimals] or '%.2f bar', psi * 0.0689476)
 end
 
 --- A section caption, or nothing when the panel is set to run without them.
@@ -297,6 +327,23 @@ local shown = {
 local lastSequence = -1
 local secondsSinceChange = 0
 local isLive = false
+
+-- Text is built when a frame arrives, not when one is drawn.
+--
+-- The application publishes about sixty times a second; AC draws at whatever
+-- the car is running at, 165 or more. Formatting in the draw path meant the
+-- same numbers were turned into the same strings three times over, and every
+-- one of those strings is garbage for a collector that runs mid-frame.
+local text = {
+  speed = '0', gear = 'N',
+  pressure = { '', '', '', '' },
+  tyreTemp = { '', '', '', '' },
+  brakeTemp = { '', '', '', '' },
+  wear = { '', '', '', '' },
+  delta = '+0.000', best = '', last = '', current = '',
+  fuel = '', lapsLeft = '', perLap = '',
+  position = '', lap = '', conditions = '',
+}
 
 -- Bit flags, matching ac_core::overlay::frame::flags.
 local FLAG_PIT_LIMITER   = 1
@@ -365,6 +412,38 @@ local function readFrame()
   return true
 end
 
+--- Turn the snapshot into the strings the panel draws.
+---
+--- Called once per settled frame and once when a setting that changes a format
+--- is touched — never from the draw path.
+local function formatFrame()
+  text.speed = string.format('%.0f', shown.speed_kmh)
+  text.gear = gearText(shown.gear)
+
+  for i = 1, 4 do
+    text.pressure[i] = pressureText(shown.tyre_pressure_psi[i])
+    text.tyreTemp[i] = 'T: ' .. tempText(shown.tyre_temp_c[i])
+    text.brakeTemp[i] = 'B: ' .. tempText(shown.brake_temp_c[i])
+    text.wear[i] = string.format('Wear: %.0f%%', shown.tyre_wear_percent[i])
+  end
+
+  text.delta = string.format('%+.3f', shown.delta_seconds)
+  text.best = lapTimeText(shown.best_lap_ms)
+  text.last = lapTimeText(shown.last_lap_ms)
+  text.current = lapTimeText(shown.current_lap_ms)
+
+  text.fuel = string.format('%.1f L', shown.fuel_litres)
+  text.lapsLeft = shown.fuel_laps_remaining > 0
+    and string.format('%.1f', shown.fuel_laps_remaining) or '--'
+  text.perLap = shown.fuel_per_lap > 0
+    and string.format('%.2f L', shown.fuel_per_lap) or '--'
+
+  text.position = shown.position > 0 and string.format('P%d', shown.position) or '--'
+  text.lap = tostring(shown.lap_count)
+  text.conditions = string.format('AIR %s   ROAD %s   GRIP %.0f%%',
+    tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100)
+end
+
 function script.update(dt)
   -- Frozen on purpose: a held frame is the only way to read a number that was
   -- there for a tenth of a second.
@@ -372,6 +451,7 @@ function script.update(dt)
 
   if settings.devDemo then
     applyDemo()
+    formatFrame()
     isLive = true
     return
   end
@@ -388,6 +468,7 @@ function script.update(dt)
   end
 
   if readFrame() then
+    formatFrame()
     secondsSinceChange = 0
     isLive = shown.version == EXPECTED_VERSION and shown.sequence ~= 0
   else
@@ -403,12 +484,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Drawing
 -- ---------------------------------------------------------------------------
-
-local function gearText(gear)
-  if gear < 0 then return 'R' end
-  if gear == 0 then return 'N' end
-  return tostring(gear)
-end
 
 local function rpmRatio()
   if shown.max_rpm <= 0 then return 0 end
@@ -442,14 +517,6 @@ local function brakeColor(temp)
   if temp < 550 then return COLOR.good end
   if temp < 750 then return COLOR.warn end
   return COLOR.bad
-end
-
-local function lapTimeText(ms)
-  if ms <= 0 then return '--:--.---' end
-  local minutes = math.floor(ms / 60000)
-  local seconds = math.floor((ms % 60000) / 1000)
-  local millis = ms % 1000
-  return string.format('%d:%02d.%03d', minutes, seconds, millis)
 end
 
 --- A label above a value, as its own column.
@@ -617,7 +684,8 @@ end
 --- third column runs into its neighbour — the wrap happens by itself, since a
 --- stat leaves the cursor at the start of the next line.
 local function nextColumn(width, index)
-  local perRow = settings.vrMode and 2 or 3
+  local perRow = settings.columnsPerRow or 0
+  if perRow < 2 then perRow = settings.vrMode and 2 or 3 end
   local column = index % perRow
   if column > 0 then ui.sameLine(width / perRow * column) end
 end
@@ -655,14 +723,14 @@ end
 
 local function drawHeader()
   ui.beginGroup()
-  say('hero', string.format('%.0f', shown.speed_kmh), COLOR.text)
+  say('hero', text.speed, COLOR.text)
   ui.endGroup()
 
   ui.sameLine()
 
   ui.beginGroup()
   say('caption', 'KM/H', COLOR.label)
-  say('gear', gearText(shown.gear), rpmColor(rpmRatio()))
+  say('gear', text.gear, rpmColor(rpmRatio()))
   ui.endGroup()
 
   if settings.showLimiter and hasFlag(FLAG_PIT_LIMITER) then
@@ -691,21 +759,18 @@ local function drawTyres()
 
       say('caption', TYRE_LABEL[i], COLOR.dim)
       ui.sameLine()
-      say('body', pressureText(shown.tyre_pressure_psi[i]), COLOR.text)
+      say('body', text.pressure[i], COLOR.text)
 
       if settings.showTyreTemp then
-        say('caption', 'T: ' .. tempText(shown.tyre_temp_c[i]),
-          tyreTempColor(shown.tyre_temp_c[i]))
+        say('caption', text.tyreTemp[i], tyreTempColor(shown.tyre_temp_c[i]))
       end
       if settings.showBrakeTemp then
         if settings.showTyreTemp then ui.sameLine() end
-        say('caption', 'B: ' .. tempText(shown.brake_temp_c[i]),
-          brakeColor(shown.brake_temp_c[i]))
+        say('caption', text.brakeTemp[i], brakeColor(shown.brake_temp_c[i]))
       end
 
       if settings.showWear then
-        say('caption', string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]),
-          wearColor(shown.tyre_wear_percent[i]))
+        say('caption', text.wear[i], wearColor(shown.tyre_wear_percent[i]))
       end
 
       ui.endGroup()
@@ -727,12 +792,21 @@ local function drawTiming()
   -- top of each other.
   local width = contentWidth()
 
-  nextColumn(width, 0)
-  stat('DELTA', string.format('%+.3f', shown.delta_seconds), deltaColor)
-  nextColumn(width, 1)
-  stat('BEST', lapTimeText(shown.best_lap_ms), COLOR.purple)
-  nextColumn(width, 2)
-  stat('LAST', lapTimeText(shown.last_lap_ms), COLOR.text)
+  local column = 0
+  if settings.showDelta then
+    nextColumn(width, column)
+    stat('DELTA', text.delta, deltaColor)
+    column = column + 1
+  end
+  if settings.showBest then
+    nextColumn(width, column)
+    stat('BEST', text.best, COLOR.purple)
+    column = column + 1
+  end
+  if settings.showLast then
+    nextColumn(width, column)
+    stat('LAST', text.last, COLOR.text)
+  end
 end
 
 local function drawFuel()
@@ -740,16 +814,20 @@ local function drawFuel()
 
   local width = contentWidth()
 
-  nextColumn(width, 0)
-  stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
-  nextColumn(width, 1)
-  stat('LAPS LEFT',
-    shown.fuel_laps_remaining > 0 and string.format('%.1f', shown.fuel_laps_remaining) or '--',
-    color)
-  nextColumn(width, 2)
-  stat('PER LAP',
-    shown.fuel_per_lap > 0 and string.format('%.2f L', shown.fuel_per_lap) or '--',
-    COLOR.dim)
+  local column = 0
+  if settings.showFuelLitres then
+    nextColumn(width, column)
+    stat('FUEL', text.fuel, color)
+    column = column + 1
+  end
+  if settings.showLapsLeft then
+    nextColumn(width, column)
+    stat('LAPS LEFT', text.lapsLeft, color)
+    column = column + 1
+  end
+  if not settings.showPerLap then return end
+  nextColumn(width, column)
+  stat('PER LAP', text.perLap, COLOR.dim)
 end
 
 --- Where the session is: position, lap, the lap running now, and the
@@ -758,16 +836,25 @@ local function drawSession()
   sectionLabel('SESSION')
 
   local width = contentWidth()
-  nextColumn(width, 0)
-  stat('POS', shown.position > 0 and string.format('P%d', shown.position) or '--', COLOR.text)
-  nextColumn(width, 1)
-  stat('LAP', tostring(shown.lap_count), COLOR.text)
-  nextColumn(width, 2)
-  stat('CURRENT', lapTimeText(shown.current_lap_ms), accentColor())
+  local column = 0
+  if settings.showPosition then
+    nextColumn(width, column)
+    stat('POS', text.position, COLOR.text)
+    column = column + 1
+  end
+  if settings.showLapNumber then
+    nextColumn(width, column)
+    stat('LAP', text.lap, COLOR.text)
+    column = column + 1
+  end
+  if settings.showCurrentLap then
+    nextColumn(width, column)
+    stat('CURRENT', text.current, accentColor())
+  end
 
-  say('caption', string.format('AIR %s   ROAD %s   GRIP %.0f%%',
-    tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100),
-    COLOR.dim)
+  if settings.showConditions then
+    say('caption', text.conditions, COLOR.dim)
+  end
 end
 
 --- The engineer's lines, drawn the way the settings ask for.
@@ -1580,8 +1667,14 @@ function script.windowSettings(dt)
     end)
 
     ui.tabItem('Units', function()
-      settingToggle('Celsius', 'celsius')
-      settingToggle('PSI', 'psi')
+      if ui.checkbox('Celsius', settings.celsius) then
+        settings.celsius = not settings.celsius
+        formatFrame()
+      end
+      if ui.checkbox('PSI', settings.psi) then
+        settings.psi = not settings.psi
+        formatFrame()
+      end
 
       pushRole('caption')
       ui.textColored(settings.celsius and 'temperatures in °C' or 'temperatures in °F', COLOR.dim)
