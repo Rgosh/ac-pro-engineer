@@ -91,6 +91,9 @@ local DEFAULTS = {
   brakeCold = 150, brakeHot = 550, brakeOver = 750,
   wearWarn = 96, wearBad = 85,
   columnsPerRow = 0,       -- 0 follows the layout, 2 or 3 force it
+  mainWidth = 320, mainHeight = 420,
+  engineerWidth = 300, engineerHeight = 170,
+  settingsWidth = 560, settingsHeight = 680,
 
   -- How the advice reads. The application decides how many lines it publishes;
   -- these decide how many of them are drawn and what they look like.
@@ -162,6 +165,26 @@ end
 --- assigns it. Assigning all of them is how a settings screen that was edited
 --- while storage was unavailable — or a default that was never touched — ends
 --- up saved anyway.
+local lastSaved = {}
+
+--- Save when anything changed, whatever changed it.
+---
+--- Wiring every control to a save call missed the ones that set a value
+--- directly — accents, palette entries, presets. Comparing the table against
+--- what was last written catches all of them, and it only runs while the
+--- settings window is open.
+local function autoSave()
+  local dirty = false
+  for _, key in ipairs(SETTING_KEYS) do
+    if lastSaved[key] ~= settings[key] then
+      lastSaved[key] = settings[key]
+      dirty = true
+    end
+  end
+  if dirty then return true end
+  return false
+end
+
 local function saveSettings()
   if not storageActive then return false end
   local ok = pcall(function()
@@ -617,6 +640,13 @@ local ACCENT_NAMES = { 'blue', 'teal', 'amber', 'violet', 'green' }
 
 -- Starting points by screen, so the first thing a driver sees is legible.
 -- The third field keeps two buttons on a line.
+-- The windows the manifest declares, and the sizes a script can pin them to.
+local WINDOW_IDS = {
+  { 'main', 'panel' },
+  { 'engineer', 'advice' },
+  { 'settings', 'settings' },
+}
+
 local PRESETS = {
   { '1080p', { fontScale = 1.0, contentWidth = 360, barHeight = 6, textSize = 'normal' }, true },
   { '1440p', { fontScale = 1.35, contentWidth = 460, barHeight = 8, textSize = 'normal' }, false },
@@ -1772,6 +1802,31 @@ function script.windowSettings(dt)
             or 'fixed size and width', COLOR.dim)
         end)
 
+        ui.tabItem('Windows', function()
+          -- CSP can be told a window's size directly, which is the way out of a
+          -- window that will not take a drag: pin it, look at it, free it.
+          if type(ac.setWindowSizeConstraints) ~= 'function' then
+            say('caption', 'this CSP cannot resize windows from a script', COLOR.warn)
+            return
+          end
+
+          for _, window in ipairs(WINDOW_IDS) do
+            say('caption', window[2], COLOR.label)
+            local widthKey, heightKey = window[1] .. 'Width', window[1] .. 'Height'
+            local changed = settingSlider(widthKey, widthKey, 200, 1600, 'width  %.0f', true)
+            changed = settingSlider(heightKey, heightKey, 120, 1400, 'height  %.0f', true) or changed
+            if changed then
+              pcall(ac.setWindowSizeConstraints, window[1],
+                vec2(settings[widthKey], settings[heightKey]),
+                vec2(settings[widthKey], settings[heightKey]))
+            end
+            if ui.button('Free ' .. window[2]) then
+              pcall(ac.setWindowSizeConstraints, window[1], vec2(160, 100), vec2(4000, 4000))
+            end
+            ui.separator()
+          end
+        end)
+
         ui.tabItem('Size', function()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
@@ -1910,6 +1965,11 @@ function script.windowSettings(dt)
       ui.popStyleColor(3)
     end
   end)
+
+  -- Anything the tabs changed is written here, once, at the end of the frame
+  -- that changed it.
+  if autoSave() then saveSettings() end
+
   popLayoutStyle(styles, colors)
 end
 
