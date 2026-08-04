@@ -108,6 +108,10 @@ local DEFAULTS = {
   engineerScale = 1.0,    -- advice, sized on its own
   engineerMinSeverity = 0,-- 0 everything, 1 warnings up, 2 critical only
   engineerSpacing = false,
+  engineerLineGap = 4,
+  engineerSeparator = false,
+  engineerBackground = 0.0,
+  engineerShowCount = false,
   engineerMaxChars = 64,   -- a line longer than this is cut, not wrapped away
   engineerUppercase = false,
   engineerNumbered = false,
@@ -128,6 +132,10 @@ local DEFAULTS = {
   colorBad = '1.00,0.34,0.34',
   celsius = true,
   psi = true,
+  mph = false,
+  gallons = false,
+  shortLapTimes = false,
+  unitSuffix = true,
 }
 
 local settings = {}
@@ -262,18 +270,41 @@ local function gearText(gear)
 end
 
 local function lapTimeText(ms)
-  if ms <= 0 then return '--:--.---' end
+  if ms <= 0 then return settings.shortLapTimes and '--.--' or '--:--.---' end
   local minutes = math.floor(ms / 60000)
   local seconds = math.floor((ms % 60000) / 1000)
   local millis = ms % 1000
+  if settings.shortLapTimes then
+    return string.format('%d:%02d.%01d', minutes, seconds, math.floor(millis / 100))
+  end
   return string.format('%d:%02d.%03d', minutes, seconds, millis)
+end
+
+--- Speed and volume in whichever unit the driver thinks in.
+local function speedText(kmh)
+  if settings.mph then
+    return string.format(settings.unitSuffix and '%.0f mph' or '%.0f', kmh * 0.621371)
+  end
+  return string.format('%.0f', kmh)
+end
+
+local function volumeText(litres)
+  if settings.gallons then
+    return string.format(settings.unitSuffix and '%.1f gal' or '%.1f', litres * 0.264172)
+  end
+  return string.format(settings.unitSuffix and '%.1f L' or '%.1f', litres)
 end
 
 local PRESSURE_FORMAT = { [0] = '%.0f psi', '%.1f psi', '%.2f psi' }
 local BAR_FORMAT = { [0] = '%.1f bar', '%.2f bar', '%.3f bar' }
+local PLAIN_FORMAT = { [0] = '%.0f', '%.1f', '%.2f' }
 
 local function pressureText(psi)
   local decimals = settings.pressureDecimals or 1
+  if not settings.unitSuffix then
+    return string.format(PLAIN_FORMAT[decimals] or '%.1f',
+      settings.psi and psi or psi * 0.0689476)
+  end
   if settings.psi then
     return string.format(PRESSURE_FORMAT[decimals] or '%.1f psi', psi)
   end
@@ -420,7 +451,7 @@ end
 --- Called once per settled frame and once when a setting that changes a format
 --- is touched — never from the draw path.
 local function formatFrame()
-  text.speed = string.format('%.0f', shown.speed_kmh)
+  text.speed = speedText(shown.speed_kmh)
   text.gear = gearText(shown.gear)
 
   for i = 1, 4 do
@@ -435,11 +466,10 @@ local function formatFrame()
   text.last = lapTimeText(shown.last_lap_ms)
   text.current = lapTimeText(shown.current_lap_ms)
 
-  text.fuel = string.format('%.1f L', shown.fuel_litres)
+  text.fuel = volumeText(shown.fuel_litres)
   text.lapsLeft = shown.fuel_laps_remaining > 0
     and string.format('%.1f', shown.fuel_laps_remaining) or '--'
-  text.perLap = shown.fuel_per_lap > 0
-    and string.format('%.2f L', shown.fuel_per_lap) or '--'
+  text.perLap = shown.fuel_per_lap > 0 and volumeText(shown.fuel_per_lap) or '--'
 
   text.position = shown.position > 0 and string.format('P%d', shown.position) or '--'
   text.lap = tostring(shown.lap_count)
@@ -624,6 +654,7 @@ local function readColorInto(text, target)
 end
 
 local appliedPalette = {}
+local paletteSelection = 1
 
 local function applyPalette()
   for _, entry in ipairs(PALETTE) do
@@ -734,7 +765,7 @@ local function drawHeader()
   ui.sameLine()
 
   ui.beginGroup()
-  say('caption', 'KM/H', COLOR.label)
+  say('caption', settings.mph and 'MPH' or 'KM/H', COLOR.label)
   say('gear', text.gear, rpmColor(rpmRatio()))
   ui.endGroup()
 
@@ -880,6 +911,16 @@ end
 local function drawEngineerMessages(withLabel)
   if withLabel ~= false then sectionLabel('ENGINEER') end
 
+  -- A plate behind the advice, on its own. Numbers are read in a glance and
+  -- forgiven a busy background; a sentence is not.
+  if settings.engineerBackground > 0.01 then
+    local origin = ui.getCursor()
+    local space = ui.availableSpace()
+    ui.drawRectFilled(vec2(origin.x - 4, origin.y - 3),
+      vec2(origin.x + contentWidth(), origin.y + math.min(space.y, 140)),
+      rgbm(0.04, 0.05, 0.07, settings.engineerBackground), 4)
+  end
+
   if settings.devSampleAdvice then
     shown.message_count = 4
     for i = 1, 4 do
@@ -918,12 +959,15 @@ local function drawEngineerMessages(withLabel)
       else
         sayAdvice(bySeverity and line or (mark .. line), bySeverity and COLOR.text or textColor)
       end
-      if settings.engineerSpacing then gap(4) end
+      if settings.engineerSeparator then ui.separator() end
+      if settings.engineerSpacing then gap(settings.engineerLineGap or 4) end
     end
   end
 
   if count == 0 and withLabel ~= false then
     say('caption', 'nothing to report', COLOR.dim)
+  elseif settings.engineerShowCount then
+    say('caption', string.format('%d of %d shown', count, shown.message_count), COLOR.dim)
   end
 end
 
@@ -1652,6 +1696,15 @@ function script.windowSettings(dt)
       settingToggle('Wrap long lines', 'engineerWrap')
       settingToggle('Highlight advice', 'engineerHighlight')
       settingToggle('Space between lines', 'engineerSpacing')
+      local lineGap, gapChanged = ui.slider('##adviceGap', settings.engineerLineGap, 0, 20,
+        'gap  %.0f px', true)
+      if gapChanged then settings.engineerLineGap = lineGap end
+      settingToggle('Rule between lines', 'engineerSeparator')
+      settingToggle('Show how many are hidden', 'engineerShowCount')
+
+      local plate, plateChanged = ui.slider('##advicePlate', settings.engineerBackground, 0, 1,
+        'plate behind the advice  %.2f')
+      if plateChanged then settings.engineerBackground = plate end
 
       ui.separator()
       say('caption', 'FORMAT', COLOR.label)
@@ -1714,22 +1767,31 @@ function script.windowSettings(dt)
 
           ui.separator()
           say('caption', 'PALETTE', COLOR.label)
-          -- Swatches, not six open pickers stacked down the window: a colour
-          -- button opens the picker where it is clicked and closes again. Both
-          -- edit the colour in place and report whether it changed — they do
-          -- not hand one back, which is why reading the return value as a
-          -- colour did nothing at all.
+          -- A colour button is a swatch, not a picker: clicking one does not
+          -- open anything, which is why nothing happened. So the swatches
+          -- choose, and one picker edits what was chosen.
           for index, entry in ipairs(PALETTE) do
-            local current = COLOR[entry[1]]
-            if ui.colorButton(entry[1] .. '##swatch', current) then
-              settings[entry[2]] =
-                string.format('%.3f,%.3f,%.3f', current.r, current.g, current.b)
-            end
+            ui.colorButton(entry[1] .. '##swatch', COLOR[entry[1]])
             ui.sameLine()
-            say('caption', entry[1], COLOR.label)
+            if ui.button(entry[1] .. (paletteSelection == index and '  •' or '')) then
+              paletteSelection = index
+            end
             if index % 2 == 0 then ui.newLine() else ui.sameLine() end
           end
           ui.newLine()
+
+          ui.separator()
+          local chosen = PALETTE[paletteSelection]
+          if chosen ~= nil then
+            local current = COLOR[chosen[1]]
+            say('caption', 'editing ' .. chosen[1], COLOR.label)
+            if ui.colorPicker('##palettePicker', current) then
+              settings[chosen[2]] =
+                string.format('%.3f,%.3f,%.3f', current.r, current.g, current.b)
+            end
+          end
+
+          ui.separator()
           if ui.button('Default palette') then
             for _, entry in ipairs(PALETTE) do settings[entry[2]] = DEFAULTS[entry[2]] end
           end
@@ -1750,6 +1812,25 @@ function script.windowSettings(dt)
       end
       if ui.checkbox('PSI', settings.psi) then
         settings.psi = not settings.psi
+        formatFrame()
+      end
+      if ui.checkbox('Miles per hour', settings.mph) then
+        settings.mph = not settings.mph
+        formatFrame()
+      end
+      if ui.checkbox('Gallons', settings.gallons) then
+        settings.gallons = not settings.gallons
+        formatFrame()
+      end
+
+      ui.separator()
+      say('caption', 'FORMAT', COLOR.label)
+      if ui.checkbox('Short lap times', settings.shortLapTimes) then
+        settings.shortLapTimes = not settings.shortLapTimes
+        formatFrame()
+      end
+      if ui.checkbox('Unit suffixes', settings.unitSuffix) then
+        settings.unitSuffix = not settings.unitSuffix
         formatFrame()
       end
 
