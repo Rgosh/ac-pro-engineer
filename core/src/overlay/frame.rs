@@ -217,7 +217,11 @@ pub fn lua_struct_declaration() -> String {
     out.push_str("local FRAME_LAYOUT = {\n");
     // Without this CSP reorders fields for its own packing and nothing lines
     // up. It is the single most important line in the file.
-    out.push_str("  ac.StructItem.explicitOrder(4, 4),\n\n");
+    //
+    // Named `explicit`, not `explicitOrder` — checked against the SDK shipped
+    // with CSP in extension/internal/lua-sdk/ac_apps/lib.lua. Calling the
+    // wrong name is a nil call at load time, which takes the whole app down.
+    out.push_str("  ac.StructItem.explicit(4, 4),\n\n");
 
     for (name, kind) in FIELDS {
         out.push_str(&format!("  {name} = {kind},\n"));
@@ -354,7 +358,7 @@ mod tests {
     #[test]
     fn the_generated_lua_pins_the_field_order() {
         let lua = lua_struct_declaration();
-        assert!(lua.contains("ac.StructItem.explicitOrder(4, 4)"));
+        assert!(lua.contains("ac.StructItem.explicit(4, 4)"));
         assert!(lua.contains("version = ac.StructItem.uint32()"));
         assert!(lua.contains("messages = ac.StructItem.array(ac.StructItem.string(64), 4)"));
         // Order matters as much as presence.
@@ -391,6 +395,48 @@ mod tests {
             bridge.contains(OVERLAY_MMF_NAME),
             "shm-bridge must map the same name the writer uses"
         );
+    }
+
+    /// Every `ac.StructItem.*` the generator emits must exist in the CSP SDK,
+    /// or the app dies with a nil call the moment it loads.
+    ///
+    /// Skipped when CSP is not installed, because most machines building this
+    /// do not have Assetto Corsa on them — but it runs where it can, and it is
+    /// the only check that catches an API renamed between CSP versions.
+    /// `explicitOrder` vs `explicit` was exactly that, and cost a release.
+    #[test]
+    fn the_generated_calls_exist_in_the_installed_csp_sdk() {
+        let Some(lib) = installed_csp_lib() else {
+            eprintln!("CSP not installed; skipping SDK conformance check");
+            return;
+        };
+
+        let lua = lua_struct_declaration();
+        for call in lua
+            .lines()
+            .filter_map(|line| line.split("ac.StructItem.").nth(1))
+            .filter_map(|rest| rest.split('(').next())
+        {
+            let declaration = format!("function ac.StructItem.{call}(");
+            assert!(
+                lib.contains(&declaration),
+                "the generator emits ac.StructItem.{call}, which this CSP does not define"
+            );
+        }
+    }
+
+    /// `ac_apps/lib.lua` from an installed CSP, if there is one.
+    fn installed_csp_lib() -> Option<String> {
+        let home = std::env::var_os("HOME")?;
+        for steam in [".steam/steam", ".local/share/Steam"] {
+            let path = std::path::Path::new(&home)
+                .join(steam)
+                .join("steamapps/common/assettocorsa/extension/internal/lua-sdk/ac_apps/lib.lua");
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                return Some(text);
+            }
+        }
+        None
     }
 
     /// The Lua app ships a copy of this declaration. If the two drift, every

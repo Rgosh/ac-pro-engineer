@@ -49,6 +49,37 @@ pub fn is_process_running(target_name: &str) -> bool {
     }
 }
 
+/// Whether a `/proc` cmdline entry names the process we are looking for.
+///
+/// Two things make this fiddlier than a substring test.
+///
+/// The game runs under Proton, so its command line is a *Windows* path with
+/// backslashes — `C:\\Program Files\\...\\acs.exe`. Matching only on `/`
+/// misses it entirely, which is what broke game detection once already.
+///
+/// And a Linux build of a Windows-named binary drops the extension: the
+/// simulator ships as `simulator.exe` under Wine but `cargo build` produces
+/// plain `simulator`, so the launcher waited forever on the platform the
+/// bridge exists for.
+///
+/// The name must still occupy a whole final path component, or `my_acs.exe`
+/// would count as a hit.
+#[cfg(not(target_os = "windows"))]
+fn matches_process_name(cmdline_first: &str, target_lower: &str) -> bool {
+    let candidate = cmdline_first.to_lowercase();
+    let without_exe = target_lower.strip_suffix(".exe").unwrap_or(target_lower);
+
+    [target_lower, without_exe].iter().any(|name| {
+        if candidate == **name {
+            return true;
+        }
+        // A whole trailing component, under either platform's separator.
+        candidate
+            .strip_suffix(*name)
+            .is_some_and(|prefix| prefix.ends_with('/') || prefix.ends_with('\\'))
+    })
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn is_process_running(target_name: &str) -> bool {
     use std::fs;
@@ -59,13 +90,9 @@ pub fn is_process_running(target_name: &str) -> bool {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
                 let parts: Vec<&str> = cmdline.split('\0').collect();
-                if let Some(first) = parts.first() {
-                    let first_lower = first.to_lowercase();
-                    first_lower.ends_with(&target_lower)
-                        || first_lower.ends_with(&format!("/{}", target_lower))
-                } else {
-                    false
-                }
+                parts
+                    .first()
+                    .is_some_and(|first| matches_process_name(first, &target_lower))
             } else {
                 false
             }
@@ -219,5 +246,46 @@ mod watcher_tests {
             first_checked,
             "the cached answer should have been reused"
         );
+    }
+
+    /// The case that broke game detection: Proton hands us a Windows path,
+    /// and matching only on `/` never sees it.
+    #[test]
+    fn a_wine_style_windows_path_is_matched() {
+        assert!(matches_process_name(
+            r"c:\program files (x86)\steam\steamapps\common\assettocorsa\acs.exe",
+            "acs.exe"
+        ));
+        assert!(matches_process_name(r"z:\home\user\ac\acs.exe", "acs.exe"));
+    }
+
+    #[test]
+    fn a_unix_path_is_matched() {
+        assert!(matches_process_name("/usr/bin/acs.exe", "acs.exe"));
+        assert!(matches_process_name("acs.exe", "acs.exe"));
+    }
+
+    /// A Linux build drops the .exe the callers ask for.
+    #[test]
+    fn the_extensionless_linux_build_is_matched() {
+        assert!(matches_process_name(
+            "/home/user/projects/target/release/simulator",
+            "simulator.exe"
+        ));
+        assert!(matches_process_name("simulator", "simulator.exe"));
+    }
+
+    /// ...but the name has to be a whole component, or an unrelated binary
+    /// that merely ends with the same letters counts as the game running.
+    #[test]
+    fn a_partial_component_is_not_matched() {
+        assert!(!matches_process_name("/usr/bin/my_acs.exe", "acs.exe"));
+        assert!(!matches_process_name("/opt/notsimulator", "simulator.exe"));
+        assert!(!matches_process_name("/usr/bin/steam", "acs.exe"));
+    }
+
+    #[test]
+    fn matching_ignores_case() {
+        assert!(matches_process_name(r"C:\Games\AC\ACS.EXE", "acs.exe"));
     }
 }
