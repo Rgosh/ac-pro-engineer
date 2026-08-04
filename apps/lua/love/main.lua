@@ -37,6 +37,12 @@ local S = config.values
 -- declaration after them would leave them looking at a different variable.
 local ui
 
+-- Same reason: the keyboard handler feeds the console, and the console is
+-- defined further down with the tabs it belongs to.
+local consoleState = { text = '' }
+local consoleHistory = {}
+local runConsole
+
 -- ---------------------------------------------------------------------------
 -- Loading the overlay
 -- ---------------------------------------------------------------------------
@@ -126,7 +132,27 @@ function love.load(args)
   love.keyboard.setKeyRepeat(true)
 end
 
+function love.textinput(character)
+  csp.textInput(character)
+end
+
 function love.keypressed(key)
+  if csp.focusedInput ~= nil then
+    if key == 'backspace' then
+      csp.inputBackspace()
+      return
+    elseif key == 'return' or key == 'kpenter' then
+      runConsole(consoleState.text)
+      consoleState.text = ''
+      return
+    elseif key == 'escape' then
+      csp.focusedInput = nil
+      return
+    end
+    -- Everything else while typing is text, not a shortcut.
+    if #key == 1 then return end
+  end
+
   if key == 'f5' then
     loadApp()
   elseif key == 'space' then
@@ -140,6 +166,7 @@ function love.keypressed(key)
 end
 
 function love.mousepressed() csp.input.pressed = true; csp.input.down = true end
+function love.wheelmoved(_, y) csp.wheel = y end
 function love.mousereleased() csp.input.released = true; csp.input.down = false end
 
 function love.update(dt)
@@ -422,7 +449,7 @@ local function drawWindow(window)
   end
 
   csp.beginWindow(frame.x + PADDING, frame.y + PADDING,
-    frame.width - PADDING * 2, frame.height - PADDING * 2)
+    frame.width - PADDING * 2, frame.height - PADDING * 2, window.id)
   local ok, err = pcall(draw, love.timer.getDelta())
   csp.endWindow()
 
@@ -458,6 +485,22 @@ local function slider(label, value, min, max, format, integer)
 end
 
 local function telemetryTab()
+  if not S.devMode then
+    ui.textColored('READING', csp.colors.textDim)
+    ui.textColored(string.format('source   %s', S.source), csp.colors.text)
+    ui.textColored(string.format('sequence %d', sim.frame.sequence), csp.colors.text)
+    ui.textColored(string.format('speed    %.0f km/h', sim.frame.speed_kmh), csp.colors.text)
+    ui.textColored(string.format('advice   %d line(s)', sim.frame.message_count),
+      csp.colors.text)
+    ui.separator()
+    ui.pushStyleColor(ui.StyleColor.Text, csp.colors.textDim)
+    ui.textWrapped('Feeding the panel by hand is developer work: it can make the '
+      .. 'overlay show things no real session would. The Dev tab, or --dev-mode, '
+      .. 'unlocks it.')
+    ui.popStyleColor()
+    return
+  end
+
   ui.textColored('SOURCE', csp.colors.textDim)
   for _, option in ipairs({
     { 'sim', 'Simulated lap' },
@@ -642,6 +685,58 @@ local function harnessSettingsTab()
   end
 end
 
+--- Apply a typed command line. Everything `run.sh` accepts works here, which
+--- is the point: one vocabulary, whether it is given at launch or mid-session.
+function runConsole(line)
+  local args = {}
+  for word in tostring(line):gmatch('%S+') do args[#args + 1] = word end
+  if #args == 0 then return end
+
+  local before = S.uiScale
+  local proceed, message = config.applyArguments(args)
+  S = config.values
+  harness.settingsOpen = S.settingsOpen
+  harness.engineerOpen = S.engineerOpen
+  if S.uiScale ~= before then csp.setScale(S.uiScale) end
+  config.save()
+
+  consoleHistory[#consoleHistory + 1] = '> ' .. line
+  if not proceed and message ~= nil then
+    for text in message:gmatch('[^\n]+') do
+      consoleHistory[#consoleHistory + 1] = text
+    end
+  end
+  while #consoleHistory > 40 do table.remove(consoleHistory, 1) end
+end
+
+local function advancedTab()
+  ui.textColored('CONSOLE', csp.colors.textDim)
+  csp.inputState = consoleState
+  ui.inputText('##console', consoleState, 'type --help and press enter')
+  if ui.button('Run') then
+    runConsole(consoleState.text)
+    consoleState.text = ''
+  end
+  ui.sameLine()
+  if ui.button('Clear') then consoleHistory = {} end
+
+  ui.separator()
+  if ui.checkbox('Developer mode', S.devMode) then
+    S.devMode = not S.devMode
+    config.save()
+  end
+  ui.pushStyleColor(ui.StyleColor.Text, csp.colors.textDim)
+  ui.textWrapped('unlocks the simulation controls on the Telemetry tab')
+  ui.popStyleColor()
+
+  ui.separator()
+  ui.textColored('OUTPUT', csp.colors.textDim)
+  local first = math.max(1, #consoleHistory - 24)
+  for i = first, #consoleHistory do
+    ui.textColored(consoleHistory[i], csp.colors.textDim)
+  end
+end
+
 local function logTab()
   ui.textColored('APP', csp.colors.textDim)
   ui.textColored(app.path or '-', csp.colors.text)
@@ -680,11 +775,12 @@ local function drawControlPanel(x, y, w, h)
   love.graphics.setColor(0.09, 0.095, 0.11, 1)
   love.graphics.rectangle('fill', x, y, w, h, 4, 4)
 
-  csp.beginWindow(x + PADDING, y + PADDING, w - PADDING * 2, h - PADDING * 2)
+  csp.beginWindow(x + PADDING, y + PADDING, w - PADDING * 2, h - PADDING * 2, 'controls')
   ui.tabBar('harness', function()
     ui.tabItem('Telemetry', telemetryTab)
     ui.tabItem('App settings', appSettingsTab)
     ui.tabItem('Harness', harnessSettingsTab)
+    ui.tabItem('Dev', advancedTab)
     ui.tabItem('Log', logTab)
   end)
   csp.endWindow()
@@ -739,5 +835,6 @@ function love.draw()
   -- Input edges last exactly one frame, and the frame ends here.
   csp.input.pressed = false
   csp.input.released = false
+  csp.wheel = 0
   if not csp.input.down then csp.input.activeId = nil end
 end

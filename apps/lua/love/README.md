@@ -24,6 +24,23 @@ that — a column landing on top of another is visible the moment something draw
 it. This is that something, and it found the timing and fuel rows overlapping on
 its first run.
 
+## What the panel actually is
+
+A CSP Lua app in `../ac_pro_engineer/`, installed into the game folder by the
+desktop application on every launch. It computes nothing. Once a frame the
+desktop side packs a 416-byte `#[repr(C)]` `OverlayFrame` into shared memory,
+and the app reads fields out of it and hands them to ImGui — Lua runs on AC's
+render thread, where LuaJIT collects garbage mid-frame, so the panel allocates
+nothing per frame that can be allocated once.
+
+The frame carries speed, revs and gear; four corners of pressure, temperature,
+wear and brake heat; delta and lap times; fuel, laps left and consumption;
+position, lap, air and road temperature, grip; up to four lines of engineer
+advice **with a severity each**; and a bit field of what the application wants
+shown. A `sequence` counter that only ever moves by two guards against torn
+reads and doubles as the liveness signal: frozen for two seconds means the
+application is gone, and the panel says so instead of holding numbers.
+
 ## What is emulated
 
 `csp.lua` puts CSP's globals in place on top of LÖVE:
@@ -62,16 +79,26 @@ is what can be arranged there.
 
 ## The tabs
 
-- **Telemetry** — where the frame comes from (a self-driving lap, the real
-  shared-memory frame, or the sliders), every field as a slider, the five
-  `flags` bits as checkboxes, and the engineer messages.
+- **Telemetry** — a read-only summary of what the panel is being fed. With
+  developer mode on it becomes the controls: where the frame comes from (a
+  self-driving lap, the real shared-memory frame, or the sliders), every field
+  as a slider, every `flags` bit as a checkbox, and the advice lines with their
+  severities.
 - **App settings** — the overlay's *own* settings window, drawn by the overlay's
   own code, docked into the panel. The gear in the app's title bar opens the
   same window where CSP opens it, floating beside the panel (`--settings`, or
   `F2`).
 - **Harness** — font scale, panel size, backdrop (dark, checkerboard for
   translucency, or green), content outline. Saved and reused next run.
+- **Dev** — a console that takes the same flags as `run.sh`, applied on the
+  spot: `--source shm`, `--scale 1.4`, `--size 320x520`, `--vr`, `--help`.
+  Nothing restarts. Developer mode lives here too, and the simulation controls
+  stay behind it — hand-fed telemetry can make the panel show things no real
+  session would, which is a good way to trust a layout that does not work.
 - **Log** — what loaded, what threw, and which CSP calls the emulation ignored.
+
+Every panel scrolls with the wheel when its contents outgrow it, the same way
+CSP scrolls a window in game.
 
 ## What the application controls, live
 
@@ -85,6 +112,15 @@ warning threshold, and how many engineer lines are published at all (0–4).
 The panel has its own switch for each block, and both have to agree: the flag
 means "there is nothing worth showing", the app's setting means "the driver
 does not want to see it".
+
+## Advice, coloured the way the application colours it
+
+Severity travels with each line — 0 info, 1 warning, 2 critical — because the
+text alone cannot carry it, and the same sentence should not mean one thing on
+the desktop and another in the car. The panel marks them `i`, `!` and `!!` in
+green, yellow and red, matching the terminal's own icons, and leaves the
+sentence in the reading colour. Marker style, line count, wrapping and whether
+advice is highlighted at all are settings.
 
 ## Nothing without the application
 

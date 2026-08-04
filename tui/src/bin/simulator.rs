@@ -278,6 +278,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ];
             (*phys).wheels_pressure = [27.4, 27.6, 27.2, 27.4];
             (*phys).brake_temp = [480.0, 490.0, 390.0, 400.0];
+
+            // Wear counts down from 100 the way AC publishes it, rears faster
+            // than fronts. Leaving it at zero made every consumer read four
+            // destroyed tyres — the numbers a simulator does not write are the
+            // ones its users end up debugging.
+            let laps_done = total_elapsed / (LAP_DURATION_MS as f32 / 1000.0);
+            (*phys).tyre_wear = [
+                (100.0 - laps_done * 0.9).max(0.0),
+                (100.0 - laps_done * 0.9).max(0.0),
+                (100.0 - laps_done * 1.2).max(0.0),
+                (100.0 - laps_done * 1.2).max(0.0),
+            ];
             // Metres, which is what AC publishes — the UI multiplies by
             // 1000 to show millimetres. Writing 25.0 here meant the demo
             // displayed a 25000mm ride height.

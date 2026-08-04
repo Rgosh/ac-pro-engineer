@@ -16,12 +16,12 @@
 //! `tools/gen_lua_layout` emits the Lua declaration from this file so the two
 //! cannot drift apart by hand.
 
-use crate::engineer::Recommendation;
+use crate::engineer::{Recommendation, Severity};
 use crate::session_info::SessionInfo;
 
 /// Bumped whenever the layout changes. The overlay refuses to draw a version
 /// it does not recognise rather than misreading a struct from another release.
-pub const OVERLAY_VERSION: u32 = 1;
+pub const OVERLAY_VERSION: u32 = 2;
 
 /// Shared memory name. The `AcTools.CSP.Limited.` prefix matters: CSP allows
 /// scripts without IO permission to open shared memory only when the name
@@ -94,6 +94,20 @@ pub struct OverlayFrame {
     /// Engineer advice, most severe first. UTF-8, NUL-padded, truncated on a
     /// character boundary.
     pub messages: [[u8; MESSAGE_BYTES]; MESSAGE_SLOTS],
+
+    /// How serious each message is: 0 info, 1 warning, 2 critical.
+    ///
+    /// The text alone cannot carry this. The application colours advice by
+    /// severity and the overlay has to be able to do the same, or the same
+    /// sentence means one thing on the desktop and another in the car.
+    pub message_severity: [u32; MESSAGE_SLOTS],
+}
+
+/// Severity as it travels in [`OverlayFrame::message_severity`].
+pub mod severity {
+    pub const INFO: u32 = 0;
+    pub const WARNING: u32 = 1;
+    pub const CRITICAL: u32 = 2;
 }
 
 /// Bit positions in [`OverlayFrame::flags`].
@@ -156,6 +170,7 @@ impl OverlayFrame {
             flags: 0,
             message_count: 0,
             messages: [[0; MESSAGE_BYTES]; MESSAGE_SLOTS],
+            message_severity: [0; MESSAGE_SLOTS],
         }
     }
 
@@ -188,12 +203,18 @@ impl OverlayFrame {
     /// cannot make that call — it does not know how the panel is being read.
     pub fn set_messages_capped(&mut self, recommendations: &[Recommendation], limit: usize) {
         self.messages = [[0; MESSAGE_BYTES]; MESSAGE_SLOTS];
+        self.message_severity = [severity::INFO; MESSAGE_SLOTS];
         let limit = limit.min(MESSAGE_SLOTS);
         let taken = recommendations.len().min(limit);
 
-        for (slot, rec) in self.messages.iter_mut().take(limit).zip(recommendations) {
+        for (index, rec) in recommendations.iter().take(limit).enumerate() {
             let text = truncate_on_boundary(&rec.message, MESSAGE_BYTES);
-            slot[..text.len()].copy_from_slice(text.as_bytes());
+            self.messages[index][..text.len()].copy_from_slice(text.as_bytes());
+            self.message_severity[index] = match rec.severity {
+                Severity::Critical => severity::CRITICAL,
+                Severity::Warning => severity::WARNING,
+                Severity::Info => severity::INFO,
+            };
         }
 
         self.message_count = taken as u32;
@@ -296,6 +317,10 @@ const FIELDS: &[(&str, &str)] = &[
         "messages",
         "ac.StructItem.array(ac.StructItem.string(64), 4)",
     ),
+    (
+        "message_severity",
+        "ac.StructItem.array(ac.StructItem.uint32(), 4)",
+    ),
 ];
 
 #[cfg(test)]
@@ -342,15 +367,19 @@ mod tests {
         let scalars = 20 * 4;
         let arrays = 16 * 4;
         let messages = MESSAGE_SLOTS * MESSAGE_BYTES;
-        assert_eq!(size_of::<OverlayFrame>(), scalars + arrays + messages);
+        let severities = MESSAGE_SLOTS * 4;
+        assert_eq!(
+            size_of::<OverlayFrame>(),
+            scalars + arrays + messages + severities
+        );
     }
 
     /// Every field must be listed for the generator, or the Lua side silently
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
-        // 20 scalars + 4 arrays + the message block = 25 entries.
-        assert_eq!(FIELDS.len(), 25);
+        // 20 scalars + 4 arrays + the message block + its severities = 26.
+        assert_eq!(FIELDS.len(), 26);
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.

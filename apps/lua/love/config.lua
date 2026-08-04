@@ -37,6 +37,7 @@ config.defaults = {
   engineerWidth = 280, engineerHeight = 150,
   settingsWidth = 264, settingsHeight = 360,
   tab = 'Telemetry',
+  devMode = false,           -- unlocks the simulation controls and the console
 }
 
 local function copy(t)
@@ -93,14 +94,18 @@ Options:
   --bounds                  outline the overlay's content rectangle
   --settings                start with the app's settings window open
   --no-engineer             start with the advice window closed
-  --tab NAME                open on Telemetry, Overlay, Settings or Log
+  --tab NAME                open on Telemetry, App settings, Harness, Dev or Log
+  --dev-mode                unlock the simulation controls and the console
+  --no-dev-mode             lock them again
   --reset                   discard saved settings and start from defaults
   --test                    run headless for a few seconds, then exit
   --shot NAME               save a screenshot into the save directory and exit
   --help                    this text
 
 Settings changed in the window are saved and reused next time; a flag wins for
-the run it is given on.
+the run it is given on. Every flag above can also be typed into the console on
+the Advanced tab while the harness is running — it takes effect immediately and
+nothing needs restarting.
 ]]
 
 --- Apply command-line arguments over the loaded settings.
@@ -148,6 +153,10 @@ function config.applyArguments(args)
       config.values.settingsOpen = true
     elseif a == '--no-engineer' then
       config.values.engineerOpen = false
+    elseif a == '--dev-mode' then
+      config.values.devMode = true
+    elseif a == '--no-dev-mode' then
+      config.values.devMode = false
     elseif a == '--reset' then
       config.values = copy(config.defaults)
     elseif a == '--test' then

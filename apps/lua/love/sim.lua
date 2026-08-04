@@ -25,6 +25,7 @@ typedef struct {
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
   char messages[4][64];
+  uint32_t message_severity[4];
 } AcpeFrame;
 ]]
 
@@ -48,7 +49,8 @@ sim.FLAG = FLAG
 --- The frame the overlay reads. Arrays are zero-based because that is how the
 --- app indexes them — it speaks the struct's dialect, not Lua's.
 local frame = {
-  version = 1,
+  -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
+  version = 2,
   sequence = 2,
   speed_kmh = 0,
   fuel_litres = 45,
@@ -74,6 +76,8 @@ local frame = {
   tyre_wear_percent = { [0] = 98, 97, 95, 94 },
   brake_temp_c = { [0] = 420, 430, 380, 375 },
   messages = { [0] = 'Fuel is fine for the stint', 'Rear tyres are going off', '', '' },
+  -- 0 info, 1 warning, 2 critical — as ac_core::overlay::frame::severity.
+  message_severity = { [0] = 0, 1, 0, 0 },
 }
 
 sim.frame = frame
@@ -149,6 +153,8 @@ local function advanceSimulation(dt, speedFactor)
     local first = math.floor(t / 12) % #ADVICE
     frame.messages[0] = ADVICE[first + 1]
     frame.messages[1] = ADVICE[(first + 2) % #ADVICE + 1]
+    frame.message_severity[0] = first % 3
+    frame.message_severity[1] = (first + 2) % 3
     frame.message_count = 2
   end
 
@@ -213,6 +219,7 @@ local function readSharedMemory(path)
     frame.tyre_wear_percent[i] = raw.tyre_wear_percent[i]
     frame.brake_temp_c[i] = raw.brake_temp_c[i]
     frame.messages[i] = ffi.string(raw.messages[i])
+    frame.message_severity[i] = raw.message_severity[i]
   end
 
   sim.shmError = nil

@@ -55,7 +55,7 @@ const OVERLAY_FILE: &str = "AcTools.CSP.Limited.ACPE.v1";
 /// telemetry crate to learn one number would be a poor trade. The mapping only
 /// has to be at least struct-sized, so this is checked against the real value
 /// by a test in ac_core rather than kept in step by hand.
-const OVERLAY_FILE_SIZE: usize = 400;
+const OVERLAY_FILE_SIZE: usize = 416;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = LONG_ABOUT)]

@@ -28,6 +28,7 @@ typedef struct {
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
   char messages[4][64];
+  uint32_t message_severity[4];
 } F;]]
 
 ac = {
@@ -40,6 +41,9 @@ ac = {
     -- Wrap so `messages[i]` yields a Lua string, as CSP's string() type does.
     local raw = b[0]
     return setmetatable({}, { __index = function(_, k)
+      if k == 'message_severity' then
+        return setmetatable({}, { __index = function(_, i) return raw.message_severity[i] end })
+      end
       if k == 'messages' then
         return setmetatable({}, { __index = function(_, i) return ffi.string(raw.messages[i]) end })
       end

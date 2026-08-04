@@ -894,6 +894,15 @@ impl Engineer {
     fn analyze_tyre_wear(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
 
+        // AC counts wear down from 100, so all four corners reading zero is not
+        // four destroyed tyres — it is a session that has not published wear
+        // yet. Without this the panel opens with four CRITICAL lines telling a
+        // driver who just left the pits that every tyre is gone, which is the
+        // kind of thing that gets an engineer ignored for the rest of the race.
+        if phys.tyre_wear.iter().all(|wear| *wear <= 0.0) {
+            return;
+        }
+
         for i in 0..4 {
             let wear = phys.tyre_wear[i];
             let warning_threshold = self.config.alerts.wear_warning;
@@ -1542,6 +1551,39 @@ impl Engineer {
 
 #[cfg(test)]
 mod tests {
+
+    /// The simulator publishes zero wear until a lap is done, and so does a
+    /// real session before its first update. Neither means the tyres are gone.
+    #[test]
+    fn wear_of_zero_on_every_corner_is_no_data_rather_than_four_dead_tyres() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+
+        let mut phys = AcPhysics {
+            tyre_wear: [0.0; 4],
+            ..Default::default()
+        };
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_wear(&phys, &mut recs);
+        assert!(recs.is_empty(), "no wear data means no wear advice");
+
+        // One corner reporting something plausible is data, and a corner at 40%
+        // in that state is worth saying out loud. Alerts are held back for a
+        // second before they are reported, so the timer is aged by hand here
+        // rather than by sleeping through it.
+        phys.tyre_wear = [98.0, 97.0, 40.0, 96.0];
+        let aged = std::time::Instant::now() - std::time::Duration::from_secs(2);
+        engineer
+            .alert_timers
+            .insert("wear_2".to_string(), (aged, std::time::Instant::now()));
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_wear(&phys, &mut recs);
+        assert!(
+            recs.iter().any(|rec| rec.message.contains("RL")),
+            "the worn corner is reported once there is data: {recs:?}"
+        );
+    }
     use super::Engineer;
     use crate::ac_structs::{AcGraphics, AcPhysics};
     use crate::config::AppConfig;

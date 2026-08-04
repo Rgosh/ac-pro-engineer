@@ -131,13 +131,46 @@ local function contentRight() return L.originX + L.width end
 local function contentBottom() return L.originY + L.height end
 
 --- Begin drawing a CSP-style window into this rectangle.
-function csp.beginWindow(x, y, w, h)
-  L.originX, L.originY, L.width, L.height = x, y, w, h
+-- How far each window's contents are scrolled. In game CSP scrolls a window
+-- whose contents outgrow it; here the wheel does the same, so a settings list
+-- that does not fit is a list you can still reach the bottom of.
+local scrollOffsets = {}
+local scrollTarget = nil
+csp.wheel = 0
+
+--- Scroll the window drawn under the pointer, and clamp it to its contents.
+local function applyScroll(id, x, y, w, h)
+  if id == nil then return 0 end
+
+  local offset = scrollOffsets[id] or 0
+  local input = csp.input
+  local hovering = input.x >= x and input.x <= x + w and input.y >= y and input.y <= y + h
+  if hovering and csp.wheel ~= 0 then
+    offset = offset - csp.wheel * 28
+  end
+
+  local content = csp.contentHeight and csp.contentHeight[id] or 0
+  local maximum = math.max(0, content - h)
+  if offset > maximum then offset = maximum end
+  if offset < 0 then offset = 0 end
+  scrollOffsets[id] = offset
+  return offset
+end
+
+csp.contentHeight = {}
+
+function csp.beginWindow(x, y, w, h, id)
+  local offset = applyScroll(id, x, y, w, h)
+  scrollTarget = id
+
+  L.originX, L.originY, L.width, L.height = x, y - offset, w, h + offset
   L.lineStartX = x
-  L.x, L.y, L.lineY = x, y, y
+  L.x, L.y, L.lineY = x, y - offset, y - offset
   L.lineH, L.prevLineH, L.prevLineY = 0, 0, y
-  L.lastX, L.lastY, L.lastW, L.lastH = x, y, 0, 0
-  L.maxX, L.maxY = x, y
+  L.lastX, L.lastY, L.lastW, L.lastH = x, L.y, 0, 0
+  L.maxX, L.maxY = x, L.y
+  L.scrollY = offset
+  L.viewTop, L.viewHeight = y, h
   L.fontStack = {}
   L.currentFont = L.fonts.Main
   L.nextItemWidth = nil
@@ -146,8 +179,26 @@ function csp.beginWindow(x, y, w, h)
 end
 
 function csp.endWindow()
+  local used = L.maxY - L.originY
+
+  -- A scrollbar, only when there is something to scroll to.
+  if scrollTarget ~= nil then
+    csp.contentHeight[scrollTarget] = used
+    local view = L.viewHeight or L.height
+    if used > view then
+      local track = view
+      local thumb = math.max(24, track * view / used)
+      local travel = (track - thumb) * ((L.scrollY or 0) / math.max(1, used - view))
+      gfx.setColor(1, 1, 1, 0.06)
+      gfx.rectangle('fill', L.originX + L.width - 4, L.viewTop, 3, track, 2, 2)
+      gfx.setColor(0.62, 0.66, 0.72, 0.45)
+      gfx.rectangle('fill', L.originX + L.width - 4, L.viewTop + travel, 3, thumb, 2, 2)
+    end
+    scrollTarget = nil
+  end
+
   gfx.setScissor()
-  return L.maxY - L.originY
+  return used
 end
 
 -- ---------------------------------------------------------------------------
@@ -444,6 +495,52 @@ function ui.slider(label, value, min, max, format, power)
 
   itemSize(w, h)
   return value, changed
+end
+
+--- A single-line text field. `state` is a table with a `text` field, which is
+--- where the typing lands; the caller owns it, the way immediate-mode UI wants.
+function ui.inputText(label, state, hint)
+  local f = font()
+  local h = f:getHeight() + 8
+  local w = itemWidth(ui.availableSpaceX())
+  local x, y = L.x, L.y
+  local id = widgetId(label, x, y)
+
+  local hot = hovered(x, y, w, h)
+  if hot and csp.input.pressed then csp.focusedInput = id end
+  if csp.input.pressed and not hot and csp.focusedInput == id then csp.focusedInput = nil end
+  local focused = csp.focusedInput == id
+
+  setColor(focused and COL.frameHot or COL.frame)
+  gfx.rectangle('fill', x, y, w, h, 3, 3)
+  if focused then
+    setColor(COL.accent)
+    gfx.rectangle('line', x, y, w, h, 3, 3)
+  end
+
+  local text = state.text or ''
+  setColor(#text > 0 and COL.text or COL.textDim)
+  gfx.setFont(f)
+  local shown = #text > 0 and text or (hint or '')
+  if focused and math.floor(love.timer.getTime() * 2) % 2 == 0 then
+    shown = shown .. '_'
+  end
+  gfx.print(shown, x + 6, y + 4)
+
+  itemSize(w, h)
+  return focused
+end
+
+--- Feed a typed character to whatever field has focus.
+function csp.textInput(character)
+  if csp.focusedInput == nil or csp.inputState == nil then return end
+  csp.inputState.text = (csp.inputState.text or '') .. character
+end
+
+function csp.inputBackspace()
+  if csp.focusedInput == nil or csp.inputState == nil then return end
+  local text = csp.inputState.text or ''
+  csp.inputState.text = text:sub(1, -2)
 end
 
 -- Tab bars keep the labels they saw last frame so the header row can be drawn

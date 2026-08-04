@@ -17,7 +17,7 @@
 local layout = require('frame_layout')
 
 -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-local EXPECTED_VERSION = 1
+local EXPECTED_VERSION = 2
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
 -- How long the sequence may stand still before the application is presumed
@@ -69,7 +69,7 @@ local DEFAULTS = {
   -- How the advice reads. The application decides how many lines it publishes;
   -- these decide how many of them are drawn and what they look like.
   engineerLines = 4,
-  engineerBullet = '>',   -- > | dot | none
+  engineerBullet = 'severity',   -- severity | > | dot | none
   engineerWrap = true,
   engineerHighlight = true,
 
@@ -97,7 +97,14 @@ local FONT_TIERS = {
 
 local TEXT_SIZES = { 'compact', 'normal', 'large' }
 local BULLETS = { ['>'] = '> ', dot = '• ', none = '' }
-local BULLET_NAMES = { '>', 'dot', 'none' }
+local BULLET_NAMES = { 'severity', '>', 'dot', 'none' }
+
+-- Severity as the desktop application shows it: red, yellow, green, with the
+-- marker carrying the colour and the sentence staying readable. The emoji it
+-- uses in the terminal are not in CSP's font, so the marker is the two
+-- characters that read the same at a glance.
+local SEVERITY_MARK = { [0] = 'i  ', [1] = '!  ', [2] = '!! ' }
+local SEVERITY_COLOR = { [0] = COLOR.good, [1] = COLOR.warn, [2] = COLOR.bad }
 
 local function pushRole(role)
   -- In a headset the panel is a metre away through lenses that blur the edges,
@@ -164,6 +171,7 @@ local shown = {
   tyre_wear_percent = { 0, 0, 0, 0 },
   brake_temp_c = { 0, 0, 0, 0 },
   messages = { '', '', '', '' },
+  message_severity = { 0, 0, 0, 0 },
 }
 
 local lastSequence = -1
@@ -219,8 +227,14 @@ local function readFrame()
   end
 
   local count = math.min(frame.message_count, 4)
-  for i = 1, count do shown.messages[i] = frame.messages[i - 1] end
-  for i = count + 1, 4 do shown.messages[i] = '' end
+  for i = 1, count do
+    shown.messages[i] = frame.messages[i - 1]
+    shown.message_severity[i] = frame.message_severity[i - 1]
+  end
+  for i = count + 1, 4 do
+    shown.messages[i] = ''
+    shown.message_severity[i] = 0
+  end
 
   if frame.sequence ~= seq then return false end
   lastSequence = seq
@@ -470,20 +484,33 @@ end
 local function drawEngineerMessages(withLabel)
   if withLabel ~= false then sectionLabel('ENGINEER') end
 
+  local bySeverity = settings.engineerBullet == 'severity'
   local bullet = BULLETS[settings.engineerBullet] or ''
-  local color = settings.engineerHighlight and COLOR.warn or COLOR.text
   local count = math.min(shown.message_count, settings.engineerLines, 4)
 
   pushRole('body')
   for i = 1, count do
     if shown.messages[i] ~= '' then
+      local level = shown.message_severity[i] or 0
+      local mark = bySeverity and (SEVERITY_MARK[level] or '') or bullet
+      -- The application colours the marker and leaves the sentence readable;
+      -- doing the same here is the whole point of shipping severity across.
+      local markColor = SEVERITY_COLOR[level] or COLOR.text
+      local textColor = settings.engineerHighlight and markColor or COLOR.text
+
+      if bySeverity then
+        ui.textColored(mark, markColor)
+        ui.sameLine()
+      end
+
       if settings.engineerWrap then
         -- textWrapped takes the colour from the style stack, not an argument.
-        ui.pushStyleColor(ui.StyleColor.Text, color)
-        ui.textWrapped(bullet .. shown.messages[i])
+        ui.pushStyleColor(ui.StyleColor.Text, bySeverity and COLOR.text or textColor)
+        ui.textWrapped(bySeverity and shown.messages[i] or (mark .. shown.messages[i]))
         ui.popStyleColor()
       else
-        ui.textColored(bullet .. shown.messages[i], color)
+        ui.textColored(bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
+          bySeverity and COLOR.text or textColor)
       end
     end
   end
@@ -502,17 +529,23 @@ end
 --- are worse than no numbers, and a panel that looks broken sends people
 --- looking for the wrong problem. This says which problem it is.
 local function drawWaitingForApp()
+  -- Wrapped, not clipped: this text is wider than a narrow panel and the half
+  -- of the sentence that fits is not the useful half.
   pushRole('body')
-  ui.textColored('AC Pro Engineer is not running', COLOR.warn)
+  ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
+  ui.textWrapped('AC Pro Engineer is not running')
+  ui.popStyleColor()
   ui.popFont()
 
   pushRole('caption')
-  ui.textColored('Start the desktop application to see telemetry.', COLOR.dim)
+  ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
+  ui.textWrapped('Start the desktop application to see telemetry.')
   if shown.sequence == 0 then
-    ui.textColored('Nothing has been published yet.', COLOR.dim)
+    ui.textWrapped('Nothing has been published yet.')
   else
-    ui.textColored(string.format('Last frame %.0f s ago.', secondsSinceChange), COLOR.dim)
+    ui.textWrapped(string.format('Last frame %.0f s ago.', secondsSinceChange))
   end
+  ui.popStyleColor()
   ui.popFont()
 end
 
