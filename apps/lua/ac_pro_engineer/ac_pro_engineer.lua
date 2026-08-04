@@ -1947,6 +1947,30 @@ function script.windowSettings(dt)
   popLayoutStyle(styles, colors)
 end
 
+-- CSP's own settings list, which is where a settings window is supposed to
+-- come from.
+--
+-- The gear in a window's title bar opens a window CSP builds from
+-- `FUNCTION_SETTINGS`, and its geometry is CSP's: the script never gets a grip
+-- on it, which is why that one cannot be dragged. `ui.addSettings` is the
+-- supported way to ask for one — with a default size, a minimum and a maximum
+-- of our choosing, so it opens big enough to read and still takes a drag.
+--
+-- Guarded: an older CSP without the call simply keeps the manifest's window.
+if type(ui) == 'table' and type(ui.addSettings) == 'function' then
+  pcall(ui.addSettings, {
+    icon = ui.Icons and ui.Icons.Settings or nil,
+    name = 'AC Pro Engineer',
+    id = 'acpe.settings',
+    size = {
+      default = vec2(560, 680),
+      min = vec2(280, 220),
+      max = vec2(1600, 1400),
+      automatic = false,
+    },
+  }, function() script.windowSettings(0) end)
+end
+
 -- Exported for the LÖVE harness, which draws these on their own to compare
 -- pieces of the layout side by side.
 script.drawHeader = drawHeader
