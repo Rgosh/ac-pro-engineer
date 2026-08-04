@@ -1,0 +1,618 @@
+-- Enough of CSP's app API to run the overlay under LÖVE.
+--
+-- The overlay script is written against Assetto Corsa's Lua environment: it
+-- draws with `ui.*`, reads shared memory through `ac.readMemoryMappedFile` and
+-- is driven by CSP calling `script.update` and `script.windowMain`. None of
+-- that exists outside the game, which is why the only way to look at the panel
+-- used to be launching AC.
+--
+-- This module puts the same globals in place on top of LÖVE. Layout follows
+-- ImGui's rules closely enough that the app's `sameLine`/`beginGroup` code
+-- lands where it does in game: items advance the cursor down a line, sameLine
+-- pulls the next item back up beside the previous one, and a group is measured
+-- as a single item so a sameLine after it clears the whole block.
+--
+-- Anything the app calls that is not implemented here resolves to a no-op that
+-- records itself in `csp.unimplemented`, so a missing function shows up in the
+-- harness's Log tab instead of taking the frame down.
+
+local csp = {}
+
+local gfx = love.graphics
+
+-- CSP's font tiers. The sizes are picked to sit in the same proportions as the
+-- in-game ones rather than to match them pixel for pixel.
+local FONT_SIZES = {
+  Tiny = 11,
+  Small = 13,
+  Monospace = 13,
+  Main = 15,
+  Italic = 15,
+  Title = 22,
+  Huge = 38,
+}
+
+csp.unimplemented = {}
+
+-- Layout state. One window is drawn at a time, so a single set of these is
+-- enough; `stack` holds the saved state of enclosing groups.
+local L = {
+  originX = 0, originY = 0, width = 0, height = 0,
+  x = 0, y = 0,
+  lineStartX = 0, lineY = 0, lineH = 0,
+  prevLineY = 0, prevLineH = 0,
+  lastX = 0, lastY = 0, lastW = 0, lastH = 0,
+  maxX = 0, maxY = 0,
+  spacingX = 6, spacingY = 3,
+  fonts = {}, fontStack = {}, currentFont = nil,
+  nextItemWidth = nil,
+  stack = {},
+}
+
+-- Mouse state for the frame being drawn. The harness feeds this in; widgets
+-- read it the way immediate-mode UI always does — no callbacks, no retained
+-- widget objects.
+csp.input = {
+  x = 0, y = 0,
+  down = false,        -- button held right now
+  pressed = false,     -- went down during this frame
+  released = false,    -- came up during this frame
+  activeId = nil,      -- widget that grabbed the drag
+}
+
+local scale = 1
+
+-- ---------------------------------------------------------------------------
+-- Fonts and colours
+-- ---------------------------------------------------------------------------
+
+local function buildFonts()
+  L.fonts = {}
+  for name, size in pairs(FONT_SIZES) do
+    L.fonts[name] = gfx.newFont(math.max(6, math.floor(size * scale + 0.5)))
+  end
+  L.currentFont = L.fonts.Main
+end
+
+--- Rebuild the fonts at a new scale. Cheap, and only ever called from settings.
+function csp.setScale(value)
+  scale = value
+  buildFonts()
+end
+
+function csp.getScale() return scale end
+
+local function font()
+  return L.currentFont or L.fonts.Main
+end
+
+local function setColor(c)
+  if c == nil then
+    gfx.setColor(0.88, 0.90, 0.94, 1)
+  else
+    gfx.setColor(c.r or 1, c.g or 1, c.b or 1, c.mult or 1)
+  end
+end
+
+csp.setColor = setColor
+
+-- ---------------------------------------------------------------------------
+-- Item placement
+-- ---------------------------------------------------------------------------
+
+--- Record an item of this size at the cursor and move to the next line.
+local function itemSize(w, h)
+  L.lastX, L.lastY, L.lastW, L.lastH = L.x, L.y, w, h
+  L.prevLineY = L.lineY
+  L.prevLineH = math.max(L.lineH, h)
+
+  L.maxX = math.max(L.maxX, L.x + w)
+  L.maxY = math.max(L.maxY, L.y + h)
+
+  L.lineY = L.lineY + L.prevLineH + L.spacingY
+  L.x = L.lineStartX
+  L.y = L.lineY
+  L.lineH = 0
+end
+
+local function contentRight() return L.originX + L.width end
+local function contentBottom() return L.originY + L.height end
+
+--- Begin drawing a CSP-style window into this rectangle.
+function csp.beginWindow(x, y, w, h)
+  L.originX, L.originY, L.width, L.height = x, y, w, h
+  L.lineStartX = x
+  L.x, L.y, L.lineY = x, y, y
+  L.lineH, L.prevLineH, L.prevLineY = 0, 0, y
+  L.lastX, L.lastY, L.lastW, L.lastH = x, y, 0, 0
+  L.maxX, L.maxY = x, y
+  L.fontStack = {}
+  L.currentFont = L.fonts.Main
+  L.nextItemWidth = nil
+  L.stack = {}
+  gfx.setScissor(x, y, w, h)
+end
+
+function csp.endWindow()
+  gfx.setScissor()
+  return L.maxY - L.originY
+end
+
+-- ---------------------------------------------------------------------------
+-- Widget plumbing
+-- ---------------------------------------------------------------------------
+
+local function hovered(x, y, w, h)
+  local i = csp.input
+  return i.x >= x and i.x <= x + w and i.y >= y and i.y <= y + h
+end
+
+--- A stable-enough identity for a widget: its label plus where it was drawn.
+local function widgetId(label, x, y)
+  return string.format('%s@%d,%d', label, math.floor(x), math.floor(y))
+end
+
+local function itemWidth(fallback)
+  local w = L.nextItemWidth or fallback
+  L.nextItemWidth = nil
+  return w
+end
+
+-- ---------------------------------------------------------------------------
+-- The API the overlay uses
+-- ---------------------------------------------------------------------------
+
+local ui = {}
+
+ui.Font = {}
+for name in pairs(FONT_SIZES) do ui.Font[name] = name end
+
+function ui.pushFont(f)
+  L.fontStack[#L.fontStack + 1] = L.currentFont
+  L.currentFont = L.fonts[f] or L.fonts.Main
+end
+
+function ui.popFont()
+  local n = #L.fontStack
+  if n > 0 then
+    L.currentFont = L.fontStack[n]
+    L.fontStack[n] = nil
+  end
+end
+
+function ui.text(s)
+  ui.textColored(s, nil)
+end
+
+function ui.textColored(s, color)
+  s = tostring(s)
+  local f = font()
+  setColor(color)
+  gfx.setFont(f)
+  gfx.print(s, L.x, L.y)
+  itemSize(f:getWidth(s), f:getHeight())
+end
+
+function ui.dummy(size)
+  itemSize(size.x, size.y)
+end
+
+function ui.offsetCursorY(dy)
+  L.lineY = L.lineY + dy
+  L.y = L.lineY
+end
+
+function ui.offsetCursorX(dx)
+  L.x = L.x + dx
+end
+
+function ui.sameLine(offsetX, spacing)
+  if offsetX ~= nil and offsetX > 0 then
+    L.x = L.lineStartX + offsetX
+  else
+    L.x = L.lastX + L.lastW + (spacing or L.spacingX)
+  end
+  L.lineY = L.prevLineY
+  L.y = L.lineY
+  L.lineH = L.prevLineH
+end
+
+function ui.newLine()
+  itemSize(0, font():getHeight())
+end
+
+function ui.getCursor()
+  return { x = L.x, y = L.y }
+end
+
+function ui.setCursor(pos)
+  L.x, L.y, L.lineY = pos.x, pos.y, pos.y
+end
+
+function ui.availableSpaceX()
+  return math.max(0, contentRight() - L.x)
+end
+
+function ui.availableSpace()
+  return { x = math.max(0, contentRight() - L.x), y = math.max(0, contentBottom() - L.y) }
+end
+
+function ui.drawRectFilled(from, to, color, rounding)
+  setColor(color)
+  local w, h = to.x - from.x, to.y - from.y
+  if rounding and rounding > 0 then
+    gfx.rectangle('fill', from.x, from.y, w, h, rounding, rounding)
+  else
+    gfx.rectangle('fill', from.x, from.y, w, h)
+  end
+end
+
+function ui.drawRect(from, to, color, rounding, thickness)
+  setColor(color)
+  gfx.setLineWidth(thickness or 1)
+  gfx.rectangle('line', from.x, from.y, to.x - from.x, to.y - from.y, rounding or 0, rounding or 0)
+  gfx.setLineWidth(1)
+end
+
+function ui.drawLine(from, to, color, thickness)
+  setColor(color)
+  gfx.setLineWidth(thickness or 1)
+  gfx.line(from.x, from.y, to.x, to.y)
+  gfx.setLineWidth(1)
+end
+
+function ui.separator()
+  local w = ui.availableSpaceX()
+  gfx.setColor(1, 1, 1, 0.10)
+  gfx.rectangle('fill', L.x, L.y + 3, w, 1)
+  itemSize(w, 7)
+end
+
+function ui.setNextItemWidth(w)
+  L.nextItemWidth = w
+end
+
+function ui.beginGroup()
+  L.stack[#L.stack + 1] = {
+    x = L.x, lineY = L.lineY, lineStartX = L.lineStartX,
+    lineH = L.lineH, prevLineY = L.prevLineY, prevLineH = L.prevLineH,
+    maxX = L.maxX, maxY = L.maxY,
+  }
+  L.lineStartX = L.x
+  L.maxX, L.maxY = L.x, L.y
+  L.lineH = 0
+end
+
+function ui.endGroup()
+  local g = table.remove(L.stack)
+  if g == nil then return end
+
+  local w = math.max(0, L.maxX - g.x)
+  local h = math.max(0, L.maxY - g.lineY)
+
+  L.lineStartX = g.lineStartX
+  L.x, L.lineY, L.y = g.x, g.lineY, g.lineY
+  L.lineH, L.prevLineY, L.prevLineH = g.lineH, g.prevLineY, g.prevLineH
+  L.maxX, L.maxY = math.max(g.maxX, L.maxX), math.max(g.maxY, L.maxY)
+
+  itemSize(w, h)
+end
+
+-- ---------------------------------------------------------------------------
+-- Interactive widgets
+--
+-- These exist in CSP too, with these signatures — the overlay's settings
+-- window uses checkbox/button/separator, and the harness's own panels use the
+-- rest.
+-- ---------------------------------------------------------------------------
+
+local COL = {
+  frame     = { r = 0.16, g = 0.17, b = 0.21, mult = 1 },
+  frameHot  = { r = 0.22, g = 0.24, b = 0.29, mult = 1 },
+  frameDown = { r = 0.13, g = 0.14, b = 0.17, mult = 1 },
+  accent    = { r = 0.20, g = 0.72, b = 1.00, mult = 1 },
+  accentDim = { r = 0.16, g = 0.44, b = 0.62, mult = 1 },
+  text      = { r = 0.88, g = 0.90, b = 0.94, mult = 1 },
+  textDim   = { r = 0.62, g = 0.66, b = 0.72, mult = 1 },
+}
+
+csp.colors = COL
+
+function ui.button(label, size, _flags)
+  local f = font()
+  local padX, padY = 10, 5
+  local w = (size and size.x) or itemWidth(f:getWidth(label) + padX * 2)
+  local h = (size and size.y) or (f:getHeight() + padY * 2)
+  local x, y = L.x, L.y
+
+  local hot = hovered(x, y, w, h)
+  local id = widgetId(label, x, y)
+  if hot and csp.input.pressed then csp.input.activeId = id end
+  local down = hot and csp.input.down
+
+  setColor(down and COL.frameDown or (hot and COL.frameHot or COL.frame))
+  gfx.rectangle('fill', x, y, w, h, 3, 3)
+  setColor(hot and COL.text or COL.textDim)
+  gfx.setFont(f)
+  gfx.print(label, x + (w - f:getWidth(label)) * 0.5, y + padY)
+
+  itemSize(w, h)
+  return hot and csp.input.released and csp.input.activeId == id
+end
+
+function ui.checkbox(label, checked)
+  local f = font()
+  local box = f:getHeight() + 2
+  local w = box + 6 + f:getWidth(label)
+  local h = box
+  local x, y = L.x, L.y
+
+  local hot = hovered(x, y, w, h)
+  local id = widgetId(label, x, y)
+  if hot and csp.input.pressed then csp.input.activeId = id end
+
+  setColor(hot and COL.frameHot or COL.frame)
+  gfx.rectangle('fill', x, y, box, box, 3, 3)
+  if checked then
+    setColor(COL.accent)
+    gfx.rectangle('fill', x + 3, y + 3, box - 6, box - 6, 2, 2)
+  end
+  setColor(hot and COL.text or COL.textDim)
+  gfx.setFont(f)
+  gfx.print(label, x + box + 6, y)
+
+  itemSize(w, h)
+  return hot and csp.input.released and csp.input.activeId == id
+end
+
+function ui.radioButton(label, active)
+  local f = font()
+  local r = (f:getHeight()) * 0.5
+  local w = r * 2 + 6 + f:getWidth(label)
+  local h = r * 2
+  local x, y = L.x, L.y
+
+  local hot = hovered(x, y, w, h)
+  local id = widgetId(label, x, y)
+  if hot and csp.input.pressed then csp.input.activeId = id end
+
+  setColor(hot and COL.frameHot or COL.frame)
+  gfx.circle('fill', x + r, y + r, r)
+  if active then
+    setColor(COL.accent)
+    gfx.circle('fill', x + r, y + r, r - 3)
+  end
+  setColor(hot and COL.text or COL.textDim)
+  gfx.setFont(f)
+  gfx.print(label, x + r * 2 + 6, y)
+
+  itemSize(w, h)
+  return hot and csp.input.released and csp.input.activeId == id
+end
+
+--- CSP returns `value, changed`; so does this.
+function ui.slider(label, value, min, max, format, power)
+  min = min or 0
+  max = max or 1
+  local integer = power == true
+  local f = font()
+  local h = f:getHeight() + 6
+  local w = itemWidth(math.max(80, ui.availableSpaceX()))
+  local x, y = L.x, L.y
+
+  local id = widgetId(label, x, y)
+  local hot = hovered(x, y, w, h)
+  local input = csp.input
+
+  if hot and input.pressed then input.activeId = id end
+  local changed = false
+  if input.activeId == id and input.down then
+    local t = (input.x - x) / math.max(1, w)
+    t = math.max(0, math.min(1, t))
+    local v = min + t * (max - min)
+    if integer then v = math.floor(v + 0.5) end
+    if v ~= value then
+      value = v
+      changed = true
+    end
+  end
+
+  local t = (max > min) and ((value - min) / (max - min)) or 0
+  t = math.max(0, math.min(1, t))
+
+  setColor(COL.frame)
+  gfx.rectangle('fill', x, y, w, h, 3, 3)
+  setColor(hot and COL.accent or COL.accentDim)
+  gfx.rectangle('fill', x, y, w * t, h, 3, 3)
+
+  local text = string.format(label .. '  ' .. (format or (integer and '%.0f' or '%.3f')), value)
+  setColor(COL.text)
+  gfx.setFont(f)
+  gfx.print(text, x + 6, y + 3)
+
+  itemSize(w, h)
+  return value, changed
+end
+
+-- Tab bars keep the labels they saw last frame so the header row can be drawn
+-- before the content callbacks run. The one-frame lag only shows on the very
+-- first frame, when nothing has been clicked yet anyway.
+local tabBars = {}
+local currentTabBar = nil
+
+function ui.tabBar(id, a, b)
+  local content = b or a
+  local state = tabBars[id]
+  if state == nil then
+    state = { labels = {}, selected = nil }
+    tabBars[id] = state
+  end
+
+  local f = L.fonts.Small
+  local h = f:getHeight() + 8
+  local x, y = L.x, L.y
+  local cursor = x
+
+  for _, label in ipairs(state.labels) do
+    local w = f:getWidth(label) + 18
+    local hot = hovered(cursor, y, w, h)
+    local selected = state.selected == label
+    if hot and csp.input.pressed then csp.input.activeId = widgetId(label, cursor, y) end
+    if hot and csp.input.released and csp.input.activeId == widgetId(label, cursor, y) then
+      state.selected = label
+    end
+    setColor(selected and COL.frameHot or (hot and COL.frame or nil))
+    if selected or hot then
+      gfx.rectangle('fill', cursor, y, w, h, 3, 3)
+    end
+    setColor(selected and COL.text or COL.textDim)
+    gfx.setFont(f)
+    gfx.print(label, cursor + 9, y + 4)
+    if selected then
+      setColor(COL.accent)
+      gfx.rectangle('fill', cursor + 4, y + h - 2, w - 8, 2)
+    end
+    cursor = cursor + w + 2
+  end
+
+  itemSize(math.max(0, cursor - x), h)
+  ui.offsetCursorY(4)
+
+  state.pending = {}
+  currentTabBar = state
+  local ok, err = pcall(content)
+  currentTabBar = nil
+  state.labels = state.pending
+  if not ok then error(err, 0) end
+end
+
+function ui.tabItem(label, a, b)
+  local content = b or a
+  local state = currentTabBar
+  if state == nil then
+    if type(content) == 'function' then content() end
+    return
+  end
+  state.pending[#state.pending + 1] = label
+  if state.selected == nil then state.selected = label end
+  if state.selected == label and type(content) == 'function' then content() end
+end
+
+--- Which tab is showing, for the harness to persist across runs.
+function csp.selectedTab(id) return tabBars[id] and tabBars[id].selected end
+function csp.selectTab(id, label)
+  local state = tabBars[id]
+  if state == nil then
+    state = { labels = {}, selected = label }
+    tabBars[id] = state
+  else
+    state.selected = label
+  end
+end
+
+-- Unknown calls become no-ops that report themselves once. A CSP function the
+-- overlay starts using but the harness has not grown yet then shows up as a
+-- line in the Log tab rather than as a crash halfway through a frame.
+local uiProxy = setmetatable({}, {
+  __index = function(_, key)
+    if csp.unimplemented[key] == nil then
+      csp.unimplemented[key] = 0
+    end
+    return function(...)
+      csp.unimplemented[key] = csp.unimplemented[key] + 1
+      return nil
+    end
+  end,
+})
+
+for k, v in pairs(ui) do uiProxy[k] = v end
+
+-- ---------------------------------------------------------------------------
+-- `ac`, and the globals CSP puts in place
+-- ---------------------------------------------------------------------------
+
+--- Persistent app settings, the way `ac.storage` works in game: hand it a table
+--- of defaults, get back a table whose writes are saved.
+local function makeStorage(saveName)
+  local saved = {}
+  local ok, chunk = pcall(love.filesystem.load, saveName)
+  if ok and chunk then
+    local good, value = pcall(chunk)
+    if good and type(value) == 'table' then saved = value end
+  end
+
+  return function(defaults, _prefix)
+    local values = {}
+    for k, v in pairs(defaults) do
+      local stored = saved[k]
+      if stored ~= nil and type(stored) == type(v) then
+        values[k] = stored
+      else
+        values[k] = v
+      end
+    end
+
+    local function persist()
+      local out = { 'return {' }
+      for k, v in pairs(values) do
+        if type(v) == 'string' then
+          out[#out + 1] = string.format('  [%q] = %q,', k, v)
+        else
+          out[#out + 1] = string.format('  [%q] = %s,', k, tostring(v))
+        end
+      end
+      out[#out + 1] = '}'
+      love.filesystem.write(saveName, table.concat(out, '\n'))
+    end
+
+    return setmetatable({}, {
+      __index = values,
+      __newindex = function(_, k, v)
+        values[k] = v
+        persist()
+      end,
+      __pairs = function() return pairs(values) end,
+    })
+  end
+end
+
+--- Put CSP's globals in place. `frameSource` is a function returning the table
+--- the overlay reads its telemetry from.
+function csp.install(frameSource, storageFile)
+  buildFonts()
+
+  _G.vec2 = function(x, y) return { x = x or 0, y = y or 0 } end
+  _G.vec3 = function(x, y, z) return { x = x or 0, y = y or 0, z = z or 0 } end
+  _G.rgbm = function(r, g, b, m) return { r = r or 0, g = g or 0, b = b or 0, mult = m or 1 } end
+  _G.rgb = function(r, g, b) return { r = r or 0, g = g or 0, b = b or 0, mult = 1 } end
+  _G.bit = require('bit')
+  _G.ui = uiProxy
+
+  _G.ac = {
+    -- The layout table is CSP's business; the harness only needs the call to
+    -- succeed, since the frame it hands back is already a Lua table.
+    StructItem = setmetatable({}, {
+      __index = function() return function() return 0 end end,
+    }),
+    readMemoryMappedFile = function(_name, _layout) return frameSource() end,
+    storage = makeStorage(storageFile or 'app-settings.lua'),
+    log = function(...) csp.log(...) end,
+    warn = function(...) csp.log(...) end,
+    debug = function() end,
+    getSim = function() return {} end,
+  }
+
+  _G.script = {}
+  return _G.script
+end
+
+csp.messages = {}
+
+function csp.log(...)
+  local parts = {}
+  for i = 1, select('#', ...) do parts[#parts + 1] = tostring((select(i, ...))) end
+  csp.messages[#csp.messages + 1] = table.concat(parts, ' ')
+  if #csp.messages > 200 then table.remove(csp.messages, 1) end
+end
+
+return csp

@@ -49,6 +49,55 @@ local COLOR = {
 
 local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
+-- ---------------------------------------------------------------------------
+-- Settings
+-- ---------------------------------------------------------------------------
+--
+-- What the panel shows and in which units. These are read in the draw path, so
+-- they are plain fields on a table that is written only when the settings
+-- window is open — never computed per frame.
+--
+-- CSP keeps them across sessions through `ac.storage`. Everywhere else — the
+-- LuaJIT harness, the LÖVE harness before it installs one — the defaults
+-- simply stand, which is why the storage call is guarded rather than assumed.
+
+local DEFAULTS = {
+  showRpmBar = true,
+  showTyres = true,
+  showBrakes = true,
+  showTiming = true,
+  showFuel = true,
+  showEngineer = true,
+  sectionLabels = true,
+  celsius = true,
+  psi = true,
+}
+
+local settings = {}
+for key, value in pairs(DEFAULTS) do settings[key] = value end
+
+if type(ac) == 'table' and type(ac.storage) == 'function' then
+  local storageOk, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
+  if storageOk and stored ~= nil then settings = stored end
+end
+
+-- Colours are decided from the real Celsius and psi values; only the text that
+-- reaches the screen is converted. A warning that changes meaning with the
+-- unit setting would be a bug, not a feature.
+local function tempText(celsius)
+  if settings.celsius then
+    return string.format('%.0f°', celsius)
+  end
+  return string.format('%.0f°', celsius * 1.8 + 32)
+end
+
+local function pressureText(psi)
+  if settings.psi then
+    return string.format('%.1f', psi)
+  end
+  return string.format('%.2f', psi * 0.0689476)
+end
+
 local frame = nil
 local openError = nil
 
@@ -252,13 +301,21 @@ local function drawHeader()
     ui.popFont()
   end
 
-  rpmBar(ui.availableSpaceX())
+  if settings.showRpmBar then
+    rpmBar(ui.availableSpaceX())
+  end
+end
+
+--- A section caption, or nothing when the panel is set to run without them.
+local function sectionLabel(text)
+  if not settings.sectionLabels then return end
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored(text, COLOR.label)
+  ui.popFont()
 end
 
 local function drawTyres()
-  ui.pushFont(ui.Font.Tiny)
-  ui.textColored('TYRES', COLOR.label)
-  ui.popFont()
+  sectionLabel('TYRES')
 
   -- Two by two, the way they sit on the car, so a hot corner is where you
   -- expect it rather than third in a list.
@@ -274,12 +331,12 @@ local function drawTyres()
       ui.popFont()
 
       ui.sameLine()
-      ui.textColored(string.format('%.1f', shown.tyre_pressure_psi[i]),
+      ui.textColored(pressureText(shown.tyre_pressure_psi[i]),
         tyreTempColor(shown.tyre_temp_c[i]))
 
       ui.pushFont(ui.Font.Tiny)
-      ui.textColored(string.format('%.0f°  %.0f%%',
-        shown.tyre_temp_c[i], shown.tyre_wear_percent[i]),
+      ui.textColored(string.format('%s  %.0f%%',
+        tempText(shown.tyre_temp_c[i]), shown.tyre_wear_percent[i]),
         wearColor(shown.tyre_wear_percent[i]))
       ui.popFont()
       ui.endGroup()
@@ -288,10 +345,10 @@ local function drawTyres()
 end
 
 local function drawBrakes()
+  sectionLabel('BRAKES')
   ui.pushFont(ui.Font.Tiny)
-  ui.textColored('BRAKES', COLOR.label)
   for i = 1, 4 do
-    ui.textColored(string.format('%s %.0f°', TYRE_LABEL[i], shown.brake_temp_c[i]),
+    ui.textColored(string.format('%s %s', TYRE_LABEL[i], tempText(shown.brake_temp_c[i])),
       brakeColor(shown.brake_temp_c[i]))
     if i < 4 then ui.sameLine() end
   end
@@ -306,30 +363,36 @@ local function drawTiming()
     deltaColor = COLOR.bad
   end
 
+  -- The row width is taken once, before anything is drawn. Asking for the
+  -- space left after each column gives the same answer every time — the cursor
+  -- is back at the start of the line by then — and all three columns land on
+  -- top of each other.
+  local width = ui.availableSpaceX()
+
   stat('DELTA', string.format('%+.3f', shown.delta_seconds), deltaColor)
-  ui.sameLine(ui.availableSpaceX() * 0.42)
+  ui.sameLine(width * 0.38)
   stat('BEST', lapTimeText(shown.best_lap_ms), COLOR.purple)
-  ui.sameLine(ui.availableSpaceX() * 0.42)
+  ui.sameLine(width * 0.69)
   stat('LAST', lapTimeText(shown.last_lap_ms), COLOR.text)
 end
 
 local function drawFuel()
   local color = hasFlag(FLAG_FUEL_WARNING) and COLOR.bad or COLOR.text
+  local width = ui.availableSpaceX()
+
   stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
-  ui.sameLine(ui.availableSpaceX() * 0.42)
+  ui.sameLine(width * 0.38)
   stat('LAPS LEFT',
     shown.fuel_laps_remaining > 0 and string.format('%.1f', shown.fuel_laps_remaining) or '--',
     color)
-  ui.sameLine(ui.availableSpaceX() * 0.42)
+  ui.sameLine(width * 0.69)
   stat('PER LAP',
     shown.fuel_per_lap > 0 and string.format('%.2f L', shown.fuel_per_lap) or '--',
     COLOR.dim)
 end
 
 local function drawAdvice()
-  ui.pushFont(ui.Font.Tiny)
-  ui.textColored('ENGINEER', COLOR.label)
-  ui.popFont()
+  sectionLabel('ENGINEER')
   for i = 1, math.min(shown.message_count, 4) do
     if shown.messages[i] ~= '' then
       ui.textColored('• ' .. shown.messages[i], COLOR.warn)
@@ -378,19 +441,92 @@ function script.windowMain(dt)
   drawHeader()
   ui.offsetCursorY(4)
 
+  -- Two gates on each section, and they mean different things: the flag is the
+  -- application saying it has nothing to show, the setting is the driver
+  -- saying they do not want to see it.
   if hasFlag(FLAG_SHOW_TELEMETRY) then
-    drawTyres()
-    ui.offsetCursorY(2)
-    drawBrakes()
-    ui.offsetCursorY(4)
+    if settings.showTyres then
+      drawTyres()
+      ui.offsetCursorY(2)
+    end
+    if settings.showBrakes then
+      drawBrakes()
+      ui.offsetCursorY(4)
+    end
   end
 
-  drawTiming()
-  ui.offsetCursorY(2)
-  drawFuel()
+  if settings.showTiming then
+    drawTiming()
+    ui.offsetCursorY(2)
+  end
 
-  if hasFlag(FLAG_SHOW_ENGINEER) and shown.message_count > 0 then
+  if settings.showFuel then
+    drawFuel()
+  end
+
+  if hasFlag(FLAG_SHOW_ENGINEER) and settings.showEngineer and shown.message_count > 0 then
     ui.offsetCursorY(4)
     drawAdvice()
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Settings window
+--
+-- CSP opens this from the app's own title bar, and it is a separate window
+-- from the panel: none of this runs while the overlay is merely being drawn.
+-- ---------------------------------------------------------------------------
+
+--- A checkbox bound to a settings field. `ui.checkbox` reports the click, not
+--- the new value, so the flip happens here.
+local function settingToggle(label, key)
+  if ui.checkbox(label, settings[key]) then
+    settings[key] = not settings[key]
+  end
+end
+
+function script.windowSettings(dt)
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('SECTIONS', COLOR.label)
+  ui.popFont()
+
+  settingToggle('RPM bar', 'showRpmBar')
+  settingToggle('Tyres', 'showTyres')
+  settingToggle('Brakes', 'showBrakes')
+  settingToggle('Lap timing', 'showTiming')
+  settingToggle('Fuel', 'showFuel')
+  settingToggle('Engineer advice', 'showEngineer')
+  settingToggle('Section captions', 'sectionLabels')
+
+  ui.separator()
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored('UNITS', COLOR.label)
+  ui.popFont()
+
+  settingToggle('Celsius', 'celsius')
+  settingToggle('PSI', 'psi')
+
+  ui.pushFont(ui.Font.Tiny)
+  ui.textColored(settings.celsius and 'temperatures in °C' or 'temperatures in °F', COLOR.dim)
+  ui.textColored(settings.psi and 'pressures in psi' or 'pressures in bar', COLOR.dim)
+  ui.popFont()
+
+  ui.separator()
+  if ui.button('Reset to defaults') then
+    for key, value in pairs(DEFAULTS) do settings[key] = value end
+  end
+
+  -- Sections the application itself is suppressing. Without this the settings
+  -- read as broken: a box is ticked and nothing appears.
+  if not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER) then
+    ui.separator()
+    ui.pushFont(ui.Font.Tiny)
+    if not hasFlag(FLAG_SHOW_TELEMETRY) then
+      ui.textColored('Telemetry is switched off in the desktop app', COLOR.warn)
+    end
+    if not hasFlag(FLAG_SHOW_ENGINEER) then
+      ui.textColored('Engineer advice is switched off in the desktop app', COLOR.warn)
+    end
+    ui.popFont()
   end
 end
