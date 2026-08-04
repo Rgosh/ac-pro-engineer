@@ -135,7 +135,6 @@ local DEFAULTS = {
   colorBad = '1.00,0.34,0.34',
   celsius = true,
   psi = true,
-  language = 'auto',      -- auto follows the application, en and ru pin it
   mph = false,
   gallons = false,
   shortLapTimes = false,
@@ -151,12 +150,25 @@ end
 table.sort(SETTING_KEYS)
 
 local storageActive = false
+local storageError = nil
 
+--- Ask CSP for persistent storage, both ways it is spelled.
+---
+--- The prefixed form is what the documentation shows; the bare form is what
+--- older builds take. Trying one and giving up is how the panel ended up
+--- announcing that settings last for this session only.
 if type(ac) == 'table' and type(ac.storage) == 'function' then
-  local storageOk, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
-  if storageOk and stored ~= nil then
+  local ok, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
+  if not ok or stored == nil then
+    storageError = tostring(stored)
+    ok, stored = pcall(ac.storage, DEFAULTS)
+  end
+  if ok and stored ~= nil then
     settings = stored
     storageActive = true
+    storageError = nil
+  elseif storageError == nil then
+    storageError = tostring(stored)
   end
 end
 
@@ -284,6 +296,11 @@ end
 --- one place where the size of everything is decided.
 local function say(role, text, color)
   ui.dwriteText(text, textSize(role), color)
+end
+
+--- Say it in the application's language.
+local function sayTr(role, text, color)
+  ui.dwriteText(tr(text), textSize(role), color)
 end
 
 local function pushRole(role)
@@ -486,13 +503,80 @@ local RUSSIAN = {
   ['LINK'] = 'СВЯЗЬ',
   ['FRAME'] = 'КАДР',
   ['PANEL'] = 'ПАНЕЛЬ',
+
+  -- The settings window, so the tabs and the switches read in one language.
+  ['Panel'] = 'Панель', ['Advice'] = 'Советы', ['Look'] = 'Вид',
+  ['Units'] = 'Единицы', ['Console'] = 'Консоль', ['Dev'] = 'Разраб',
+  ['Blocks'] = 'Блоки', ['Corners'] = 'Колёса', ['Limits'] = 'Пороги',
+  ['Fields'] = 'Поля', ['State'] = 'Состояние', ['Screen'] = 'Экран',
+  ['Size'] = 'Размер', ['Colour'] = 'Цвет', ['Switches'] = 'Ключи',
+  ['Data'] = 'Данные', ['Link'] = 'Связь',
+
+  ['Speed and gear'] = 'Скорость и передача',
+  ['RPM bar'] = 'Полоса оборотов',
+  ['Tyres and brakes'] = 'Шины и тормоза',
+  ['Lap timing'] = 'Время круга',
+  ['Fuel'] = 'Топливо',
+  ['Session'] = 'Сессия',
+  ['Engineer advice'] = 'Советы инженера',
+  ['Section captions'] = 'Подписи секций',
+  ['LIMITER badge'] = 'Значок лимитера',
+  ['One-line mode'] = 'Одной строкой',
+  ['Shift light'] = 'Индикатор переключения',
+  ['Tyre temperature'] = 'Температура шин',
+  ['Brake temperature'] = 'Температура тормозов',
+  ['Wear'] = 'Износ',
+  ['Delta'] = 'Дельта',
+  ['Best lap'] = 'Лучший круг',
+  ['Last lap'] = 'Последний круг',
+  ['In the tank'] = 'В баке',
+  ['Laps left'] = 'Кругов осталось',
+  ['Per lap'] = 'На круг',
+  ['Position'] = 'Позиция',
+  ['Lap number'] = 'Номер круга',
+  ['Current lap'] = 'Текущий круг',
+  ['Track conditions'] = 'Условия трассы',
+  ['Wrap long lines'] = 'Переносить длинные строки',
+  ['Highlight advice'] = 'Подсвечивать советы',
+  ['Space between lines'] = 'Отступ между строками',
+  ['Rule between lines'] = 'Линия между строками',
+  ['Show how many are hidden'] = 'Показывать скрытые',
+  ['Upper case'] = 'Верхний регистр',
+  ['Number the lines'] = 'Нумеровать строки',
+  ['Spell the severity'] = 'Важность словом',
+  ['Grow with the window'] = 'Расти вместе с окном',
+  ['VR mode'] = 'Режим VR',
+  ['Celsius'] = 'Цельсий',
+  ['PSI'] = 'PSI',
+  ['Miles per hour'] = 'Мили в час',
+  ['Gallons'] = 'Галлоны',
+  ['Short lap times'] = 'Короткие времена',
+  ['Unit suffixes'] = 'Суффиксы единиц',
+  ['Save now'] = 'Сохранить',
+  ['Reset to defaults'] = 'Сбросить',
+  ['Default palette'] = 'Палитра по умолчанию',
+  ['settings are saved as you change them'] = 'настройки сохраняются сразу',
+  ['storage unavailable: settings last for this session'] =
+    'хранилище недоступно: настройки только на эту сессию',
+  ['everything'] = 'всё',
+  ['warnings and worse'] = 'предупреждения и хуже',
+  ['critical only'] = 'только критичное',
+  ['compact'] = 'плотно', ['normal'] = 'обычно', ['large'] = 'крупно',
+  ['SECTIONS'] = 'СЕКЦИИ', ['UNITS'] = 'ЕДИНИЦЫ', ['FORMAT'] = 'ФОРМАТ',
+  ['SHOW'] = 'ПОКАЗЫВАТЬ', ['LINES'] = 'СТРОКИ', ['MARKER'] = 'МАРКЕР',
+  ['ACCENT'] = 'АКЦЕНТ', ['PALETTE'] = 'ПАЛИТРА', ['SCREEN'] = 'ЭКРАН',
+  ['PRESSURE'] = 'ДАВЛЕНИЕ', ['COLUMNS'] = 'КОЛОНКИ', ['QUICK'] = 'БЫСТРО',
+  ['COMMAND'] = 'КОМАНДА', ['OUTPUT'] = 'ВЫВОД',
+  ['TYRE TEMPERATURE'] = 'ТЕМПЕРАТУРА ШИН',
+  ['BRAKE TEMPERATURE'] = 'ТЕМПЕРАТУРА ТОРМОЗОВ',
+  ['PER CORNER'] = 'ПО КОЛЁСАМ',
 }
 
---- The panel's language: what the application is running in, unless the driver
---- pinned one.
+--- The panel's language, which is the application's language.
+---
+--- No switch of its own: two places to set one thing is how they end up
+--- disagreeing, and the application is the one that already writes the advice.
 local function russian()
-  if settings.language == 'ru' then return true end
-  if settings.language == 'en' then return false end
   return bit.band(shown.flags, FLAG_RUSSIAN) ~= 0
 end
 
@@ -1413,6 +1497,7 @@ end
 --- callers is a global to them — which is how the developer tab came out as a
 --- heading with nothing underneath it.
 local function settingToggle(label, key)
+  label = tr(label)
   -- The box carries no label of its own: CSP draws widget text at its own font
   -- size, which cannot be scaled, and on a 4K screen that is a settings window
   -- nobody can read. The label is drawn beside it at the panel's size instead.
@@ -1439,6 +1524,7 @@ end
 
 --- A radio button with the same treatment.
 local function settingRadio(label, id, selected)
+  label = tr(label)
   local clicked = ui.radioButton('##' .. id, selected)
   ui.sameLine()
   say('body', label, selected and COLOR.text or COLOR.dim)
@@ -1461,14 +1547,14 @@ local QUICK = {
 local lastCommand = ''
 
 local function drawConsoleBody()
-  say('caption', 'QUICK', COLOR.label)
+  say('caption', tr('QUICK'), COLOR.label)
   for index, entry in ipairs(QUICK) do
     if ui.button(entry[1]) then runCommand(entry[2]) end
     if index % 4 ~= 0 and index < #QUICK then ui.sameLine() end
   end
 
   ui.separator()
-  say('caption', 'COMMAND', COLOR.label)
+  say('caption', tr('COMMAND'), COLOR.label)
   ui.setNextItemWidth(contentWidth())
   local typed, _, entered = ui.inputText('##acpeConsole', consoleInput)
   consoleInput = typed or consoleInput
@@ -1505,14 +1591,14 @@ end
 --- What is only worth seeing while working on the panel: the numbers behind
 --- the numbers, and the switches that make the panel lie on purpose.
 local function drawDevBody()
-  say('caption', 'DRAW WITHOUT A SESSION', COLOR.label)
+  say('caption', tr('DRAW WITHOUT A SESSION'), COLOR.label)
   settingToggle('Demo numbers', 'devDemo')
   settingToggle('Sample advice, all severities', 'devSampleAdvice')
   settingToggle('Ignore what the app asked for', 'devIgnoreFlags')
   settingToggle('Ignore version mismatch', 'devIgnoreVersion')
 
   ui.separator()
-  say('caption', 'INSPECT', COLOR.label)
+  say('caption', tr('INSPECT'), COLOR.label)
   settingToggle('Freeze the display', 'freezeDisplay')
   settingToggle('Outline the content', 'showDebugBounds')
 
@@ -1536,13 +1622,13 @@ local function drawDevBody()
   end
 
   ui.separator()
-  say('caption', 'FRAME', COLOR.label)
+  say('caption', tr('FRAME'), COLOR.label)
   row('sequence', tostring(shown.sequence))
   row('since change', string.format('%.2f s', secondsSinceChange))
   row('flags', string.format('0x%02X', shown.flags))
   row('version', string.format('%d / %d', shown.version, EXPECTED_VERSION))
 
-  say('caption', 'LAYOUT', COLOR.label)
+  say('caption', tr('LAYOUT'), COLOR.label)
   row('window scale', string.format('%.2fx', windowScale()))
   row('content width', string.format('%.0f px', contentWidth()))
   row('body text', string.format('%.1f px', textSize('body')))
@@ -1669,9 +1755,9 @@ function script.windowSettings(dt)
   -- settings nobody scrolled to.
   local styles, colors = pushLayoutStyle()
   ui.tabBar('acpeSettings', function()
-    ui.tabItem('Panel', function()
+    ui.tabItem(tr('Panel'), function()
       ui.tabBar('acpePanel', function()
-        ui.tabItem('Blocks', function()
+        ui.tabItem(tr('Blocks'), function()
           settingToggle('Speed and gear', 'showHeader')
           settingToggle('RPM bar', 'showRpmBar')
           settingToggle('Tyres and brakes', 'showTyres')
@@ -1693,13 +1779,13 @@ function script.windowSettings(dt)
           if shiftChanged then settings.shiftAt = shift / 100 end
         end)
 
-        ui.tabItem('Corners', function()
+        ui.tabItem(tr('Corners'), function()
           settingToggle('Tyre temperature', 'showTyreTemp')
           settingToggle('Brake temperature', 'showBrakeTemp')
           settingToggle('Wear', 'showWear')
 
           ui.separator()
-          say('caption', 'PRESSURE', COLOR.label)
+          say('caption', tr('PRESSURE'), COLOR.label)
           for decimals = 0, 2 do
             if ui.radioButton(string.format('%d decimal%s', decimals,
                 decimals == 1 and '' or 's'), settings.pressureDecimals == decimals) then
@@ -1709,8 +1795,8 @@ function script.windowSettings(dt)
           end
         end)
 
-        ui.tabItem('Limits', function()
-          say('caption', 'TYRE TEMPERATURE', COLOR.label)
+        ui.tabItem(tr('Limits'), function()
+          say('caption', tr('TYRE TEMPERATURE'), COLOR.label)
           local function limit(label, key, low, high, format)
             local value, changed = ui.slider('##' .. key, settings[key], low, high, format, true)
             if changed then settings[key] = value end
@@ -1720,13 +1806,13 @@ function script.windowSettings(dt)
           limit('over', 'tyreOver', 80, 160, 'overheating past  %.0f')
 
           ui.separator()
-          say('caption', 'BRAKE TEMPERATURE', COLOR.label)
+          say('caption', tr('BRAKE TEMPERATURE'), COLOR.label)
           limit('bcold', 'brakeCold', 50, 400, 'cold below  %.0f')
           limit('bhot', 'brakeHot', 200, 900, 'working to  %.0f')
           limit('bover', 'brakeOver', 400, 1200, 'overheating past  %.0f')
 
           ui.separator()
-          say('caption', 'WEAR', COLOR.label)
+          say('caption', tr('WEAR'), COLOR.label)
           limit('wwarn', 'wearWarn', 80, 100, 'good above  %.0f%%')
           limit('wbad', 'wearBad', 50, 99, 'worn below  %.0f%%')
 
@@ -1735,27 +1821,27 @@ function script.windowSettings(dt)
           say('caption', 'and a hard at 95 is stone cold', COLOR.dim)
         end)
 
-        ui.tabItem('Fields', function()
-          say('caption', 'TIMING', COLOR.label)
+        ui.tabItem(tr('Fields'), function()
+          say('caption', tr('TIMING'), COLOR.label)
           settingToggle('Delta', 'showDelta')
           settingToggle('Best lap', 'showBest')
           settingToggle('Last lap', 'showLast')
 
           ui.separator()
-          say('caption', 'FUEL', COLOR.label)
+          say('caption', tr('FUEL'), COLOR.label)
           settingToggle('In the tank', 'showFuelLitres')
           settingToggle('Laps left', 'showLapsLeft')
           settingToggle('Per lap', 'showPerLap')
 
           ui.separator()
-          say('caption', 'SESSION', COLOR.label)
+          say('caption', tr('SESSION'), COLOR.label)
           settingToggle('Position', 'showPosition')
           settingToggle('Lap number', 'showLapNumber')
           settingToggle('Current lap', 'showCurrentLap')
           settingToggle('Track conditions', 'showConditions')
 
           ui.separator()
-          say('caption', 'COLUMNS', COLOR.label)
+          say('caption', tr('COLUMNS'), COLOR.label)
           for _, option in ipairs({ { 'automatic', 0 }, { 'two', 2 }, { 'three', 3 } }) do
             if ui.radioButton(option[1], settings.columnsPerRow == option[2]) then
               settings.columnsPerRow = option[2]
@@ -1765,10 +1851,10 @@ function script.windowSettings(dt)
 
         -- Sections the application itself is suppressing. Without this the
         -- settings read as broken: a box is ticked and nothing appears.
-        ui.tabItem('State', function()
+        ui.tabItem(tr('State'), function()
           -- What the application is sending, flag by flag. "Nothing wrong" is
           -- an answer too, and an empty tab does not give it.
-          say('caption', 'THE APPLICATION IS SENDING', COLOR.label)
+          say('caption', tr('THE APPLICATION IS SENDING'), COLOR.label)
           for _, entry in ipairs(FLAG_NAMES) do
             local on = bit.band(shown.flags, entry[2]) ~= 0
             row(entry[1], on and 'on' or 'off', on and COLOR.good or COLOR.dim)
@@ -1787,7 +1873,7 @@ function script.windowSettings(dt)
       end)
     end)
 
-    ui.tabItem('Advice', function()
+    ui.tabItem(tr('Advice'), function()
       pushRole('caption')
       ui.textColored('LINES', COLOR.label)
       ui.popFont()
@@ -1814,7 +1900,7 @@ function script.windowSettings(dt)
       settingSlider('adviceChars', 'engineerMaxChars', 20, 64, 'line limit  %.0f chars', true)
 
       ui.separator()
-      say('caption', 'SHOW', COLOR.label)
+      say('caption', tr('SHOW'), COLOR.label)
       for index, name in ipairs({ 'everything', 'warnings and worse', 'critical only' }) do
         if settingRadio(name, 'sev' .. index, settings.engineerMinSeverity == index - 1) then
           settings.engineerMinSeverity = index - 1
@@ -1832,24 +1918,15 @@ function script.windowSettings(dt)
       settingSlider('advicePlate', 'engineerBackground', 0, 1, 'plate behind the advice  %.2f')
 
       ui.separator()
-      say('caption', 'LANGUAGE', COLOR.label)
-      for _, option in ipairs({ { 'follow the app', 'auto' }, { 'English', 'en' },
-          { 'Русский', 'ru' } }) do
-        if settingRadio(option[1], 'lang' .. option[2], settings.language == option[2]) then
-          settings.language = option[2]
-        end
-      end
-
-      ui.separator()
-      say('caption', 'FORMAT', COLOR.label)
+      say('caption', tr('FORMAT'), COLOR.label)
       settingToggle('Upper case', 'engineerUppercase')
       settingToggle('Number the lines', 'engineerNumbered')
       settingToggle('Spell the severity', 'engineerSeverityWord')
     end)
 
-    ui.tabItem('Look', function()
+    ui.tabItem(tr('Look'), function()
       ui.tabBar('acpeLook', function()
-        ui.tabItem('Screen', function()
+        ui.tabItem(tr('Screen'), function()
           -- Presets first: a panel that opens unreadable on a 4K screen is a
           -- panel nobody gets as far as configuring.
           for _, preset in ipairs(PRESETS) do
@@ -1866,7 +1943,7 @@ function script.windowSettings(dt)
             or 'fixed size and width', COLOR.dim)
         end)
 
-        ui.tabItem('Size', function()
+        ui.tabItem(tr('Size'), function()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
       settingSlider('scale', 'fontScale', 0.6, 3.0, 'text scale  %.2fx')
@@ -1887,8 +1964,8 @@ function script.windowSettings(dt)
           say('caption', 'largest text, thicker bar, more spacing', COLOR.dim)
         end)
 
-        ui.tabItem('Colour', function()
-          say('caption', 'ACCENT', COLOR.label)
+        ui.tabItem(tr('Colour'), function()
+          say('caption', tr('ACCENT'), COLOR.label)
           for _, name in ipairs(ACCENT_NAMES) do
             if settingRadio(name, 'accent' .. name, settings.accent == name) then
               settings.accent = name
@@ -1896,7 +1973,7 @@ function script.windowSettings(dt)
           end
 
           ui.separator()
-          say('caption', 'PALETTE', COLOR.label)
+          say('caption', tr('PALETTE'), COLOR.label)
           -- A colour button is a swatch, not a picker: clicking one does not
           -- open anything, which is why nothing happened. So the swatches
           -- choose, and one picker edits what was chosen.
@@ -1935,7 +2012,7 @@ function script.windowSettings(dt)
       end)
     end)
 
-    ui.tabItem('Units', function()
+    ui.tabItem(tr('Units'), function()
       if ui.checkbox('Celsius', settings.celsius) then
         settings.celsius = not settings.celsius
         formatFrame()
@@ -1954,7 +2031,7 @@ function script.windowSettings(dt)
       end
 
       ui.separator()
-      say('caption', 'FORMAT', COLOR.label)
+      say('caption', tr('FORMAT'), COLOR.label)
       if ui.checkbox('Short lap times', settings.shortLapTimes) then
         settings.shortLapTimes = not settings.shortLapTimes
         formatFrame()
@@ -1970,9 +2047,14 @@ function script.windowSettings(dt)
       ui.popFont()
 
       ui.separator()
-      say('caption', storageActive and 'settings are saved as you change them'
-        or 'storage unavailable: settings last for this session', 
-        storageActive and COLOR.dim or COLOR.warn)
+      if storageActive then
+        say('caption', tr('settings are saved as you change them'), COLOR.dim)
+      else
+        say('caption', tr('storage unavailable: settings last for this session'), COLOR.warn)
+        if storageError ~= nil then
+          say('caption', storageError, COLOR.dim)
+        end
+      end
       if ui.button('Save now') then saveSettings() end
       ui.sameLine()
       if ui.button('Reset to defaults') then
@@ -1985,7 +2067,7 @@ function script.windowSettings(dt)
     -- The same two panels that have windows of their own, here as tabs: one
     -- window to open when the question is "what is going on", rather than
     -- three entries to hunt for in the sidebar.
-    ui.tabItem('Console', drawConsoleBody)
+    ui.tabItem(tr('Console'), drawConsoleBody)
 
     -- Red, and only here when asked for. The raw frame and the link state live
     -- under it: they answer questions a driver does not have, and four tabs
@@ -1994,11 +2076,11 @@ function script.windowSettings(dt)
       ui.pushStyleColor(ui.StyleColor.Tab, rgbm(0.45, 0.12, 0.14, 1))
       ui.pushStyleColor(ui.StyleColor.TabHovered, rgbm(0.75, 0.20, 0.22, 1))
       ui.pushStyleColor(ui.StyleColor.TabActive, rgbm(0.62, 0.16, 0.18, 1))
-      ui.tabItem('Dev', function()
+      ui.tabItem(tr('Dev'), function()
         ui.tabBar('acpeDev', function()
-          ui.tabItem('Switches', drawDevBody)
-          ui.tabItem('Data', drawTelemetryBody)
-          ui.tabItem('Link', drawStatusBody)
+          ui.tabItem(tr('Switches'), drawDevBody)
+          ui.tabItem(tr('Data'), drawTelemetryBody)
+          ui.tabItem(tr('Link'), drawStatusBody)
         end)
       end)
       ui.popStyleColor(3)
