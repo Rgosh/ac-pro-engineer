@@ -23,19 +23,22 @@ config.defaults = {
   showFps = true,
   settingsOpen = false,      -- the app's settings window, as the gear opens it
   engineerOpen = true,       -- the advice window, its own window in game too
+  telemetryOpen = false,     -- the raw-frame window, also its own in game
 
   -- Where each window sits. Flat keys because the saved file is a table of
   -- scalars, and a window position is the one setting nobody wants to retype
   -- after every run.
   mainX = 24, mainY = 46,
   engineerX = 24, engineerY = 440,
+  telemetryX = 336, telemetryY = 46,
   settingsX = 336, settingsY = 46,
 
   -- Sizes too: in game the driver drags a window's corner and CSP remembers
   -- it, so the harness has to be able to answer "does it still read at that
   -- size" without a rebuild.
   engineerWidth = 280, engineerHeight = 150,
-  settingsWidth = 264, settingsHeight = 360,
+  telemetryWidth = 340, telemetryHeight = 480,
+  settingsWidth = 420, settingsHeight = 520,
   tab = 'Telemetry',
   devMode = false,           -- unlocks the simulation controls and the console
 }

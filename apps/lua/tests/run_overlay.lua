@@ -87,18 +87,14 @@ local w, e2 = pcall(script.windowMain, 0.016)
 if not w then print('windowMain FAILED: ' .. tostring(e2)); os.exit(1) end
 print('windowMain: OK')
 
--- The other windows are drawn by the same script and can break the same way,
--- so they get driven too.
-if script.windowEngineer ~= nil then
-  local e, e4 = pcall(script.windowEngineer, 0.016)
-  if not e then print('windowEngineer FAILED: ' .. tostring(e4)); os.exit(1) end
-  print('windowEngineer: OK')
-end
-
-if script.windowSettings ~= nil then
-  local s, e3 = pcall(script.windowSettings, 0.016)
-  if not s then print('windowSettings FAILED: ' .. tostring(e3)); os.exit(1) end
-  print('windowSettings: OK')
+-- Every window the script exposes, driven the same way CSP drives them: a
+-- new one that throws on its first frame should fail here, not in the pits.
+for _, name in ipairs({ 'windowEngineer', 'windowSettings', 'windowTelemetry', 'windowStatus' }) do
+  if script[name] ~= nil then
+    local drew, drawError = pcall(script[name], 0.016)
+    if not drew then print(name .. ' FAILED: ' .. tostring(drawError)); os.exit(1) end
+    print(name .. ': OK')
+  end
 end
 
 print('\nrendered ' .. #drawn .. ' pieces of text:')

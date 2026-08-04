@@ -24,6 +24,7 @@ local harness = {
   appStopped = false,
   settingsOpen = false,
   engineerOpen = true,
+  telemetryOpen = false,
   testFrames = 0,
   fps = 0,
   lastError = nil,
@@ -119,6 +120,7 @@ function love.load(args)
   harness.test = testMode or false
   harness.settingsOpen = S.settingsOpen
   harness.engineerOpen = S.engineerOpen
+  harness.telemetryOpen = S.telemetryOpen
 
   csp.install(function() return sim.frame end, 'app-settings.lua')
   ui = _G.ui
@@ -255,6 +257,21 @@ local windows = {
     end,
   },
   {
+    id = 'telemetry',
+    title = 'AC Pro Engineer — telemetry',
+    fn = 'windowTelemetry',
+    closable = true,
+    size = function() return S.telemetryWidth, S.telemetryHeight end,
+    resize = function(w, h) S.telemetryWidth, S.telemetryHeight = w, h end,
+    minimum = { 220, 160 },
+    isOpen = function() return harness.telemetryOpen end,
+    onClose = function()
+      harness.telemetryOpen = false
+      S.telemetryOpen = false
+      config.save()
+    end,
+  },
+  {
     id = 'settings',
     title = 'AC Pro Engineer — settings',
     fn = 'windowSettings',
@@ -273,7 +290,7 @@ local windows = {
 
 -- Back to front. Pressing anywhere in a window raises it, so the one being
 -- worked on is the one on top.
-local order = { 'main', 'engineer', 'settings' }
+local order = { 'main', 'engineer', 'telemetry', 'settings' }
 local drag = { id = nil, offsetX = 0, offsetY = 0 }
 local resize = { id = nil, offsetX = 0, offsetY = 0 }
 
@@ -637,6 +654,11 @@ local function harnessSettingsTab()
   if ui.checkbox('Advice window', harness.engineerOpen) then
     harness.engineerOpen = not harness.engineerOpen
     S.engineerOpen = harness.engineerOpen
+    config.save()
+  end
+  if ui.checkbox('Telemetry window', harness.telemetryOpen) then
+    harness.telemetryOpen = not harness.telemetryOpen
+    S.telemetryOpen = harness.telemetryOpen
     config.save()
   end
   if ui.checkbox('Settings window', harness.settingsOpen) then

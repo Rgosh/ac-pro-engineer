@@ -65,6 +65,10 @@ local DEFAULTS = {
   showFuel = true,
   showSession = true,
   showEngineer = true,
+  showLimiter = true,
+  showTyreTemp = true,
+  showBrakeTemp = true,
+  showWear = true,
 
   -- How the advice reads. The application decides how many lines it publishes;
   -- these decide how many of them are drawn and what they look like.
@@ -423,7 +427,7 @@ local function drawHeader()
   ui.popFont()
   ui.endGroup()
 
-  if hasFlag(FLAG_PIT_LIMITER) then
+  if settings.showLimiter and hasFlag(FLAG_PIT_LIMITER) then
     ui.sameLine()
     ui.pushFont(ui.Font.Small)
     ui.textColored('LIMITER', COLOR.limiter)
@@ -460,12 +464,19 @@ local function drawTyres()
 
       -- Temps
       pushRole('caption')
-      ui.textColored('T: ' .. tempText(shown.tyre_temp_c[i]), tyreTempColor(shown.tyre_temp_c[i]))
-      ui.sameLine()
-      ui.textColored('B: ' .. tempText(shown.brake_temp_c[i]), brakeColor(shown.brake_temp_c[i]))
+      if settings.showTyreTemp then
+        ui.textColored('T: ' .. tempText(shown.tyre_temp_c[i]), tyreTempColor(shown.tyre_temp_c[i]))
+      end
+      if settings.showBrakeTemp then
+        if settings.showTyreTemp then ui.sameLine() end
+        ui.textColored('B: ' .. tempText(shown.brake_temp_c[i]), brakeColor(shown.brake_temp_c[i]))
+      end
 
       -- Wear
-      ui.textColored(string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]), wearColor(shown.tyre_wear_percent[i]))
+      if settings.showWear then
+        ui.textColored(string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]),
+          wearColor(shown.tyre_wear_percent[i]))
+      end
       ui.popFont()
 
       ui.endGroup()
@@ -725,6 +736,126 @@ function script.windowEngineer(dt)
 end
 
 -- ---------------------------------------------------------------------------
+-- Telemetry window
+--
+-- Everything in the frame, as it arrived. The panel decides what is worth a
+-- driver's attention mid-corner; this is for the other question — whether a
+-- number is reaching the game at all — and it answers it without alt-tabbing.
+-- ---------------------------------------------------------------------------
+
+local FLAG_NAMES = {
+  { 'pit limiter', 1 },
+  { 'connected', 2 },
+  { 'telemetry', 4 },
+  { 'engineer', 8 },
+  { 'fuel warning', 16 },
+  { 'session', 32 },
+  { 'lap timing', 64 },
+  { 'fuel', 128 },
+}
+
+--- A label on the left, a value on the right, filling the width.
+local function row(label, value, color)
+  local width = contentWidth()
+  pushRole('caption')
+  ui.textColored(label, COLOR.dim)
+  ui.popFont()
+  ui.sameLine(width * 0.46)
+  pushRole('body')
+  ui.textColored(value, color or COLOR.text)
+  ui.popFont()
+end
+
+local function drawTelemetryBody()
+  if not isLive then
+    drawWaitingForApp()
+    return
+  end
+
+  sectionLabel('CAR')
+  row('speed', string.format('%.1f km/h', shown.speed_kmh))
+  row('rpm', string.format('%d / %d', shown.rpm, shown.max_rpm))
+  row('gear', gearText(shown.gear))
+
+  sectionLabel('FUEL')
+  row('in tank', string.format('%.2f L', shown.fuel_litres))
+  row('per lap', string.format('%.2f L', shown.fuel_per_lap))
+  row('laps left', string.format('%.1f', shown.fuel_laps_remaining))
+
+  sectionLabel('TIMING')
+  row('delta', string.format('%+.3f s', shown.delta_seconds))
+  row('best', lapTimeText(shown.best_lap_ms))
+  row('last', lapTimeText(shown.last_lap_ms))
+  row('current', lapTimeText(shown.current_lap_ms))
+
+  sectionLabel('SESSION')
+  row('position', string.format('P%d', shown.position))
+  row('lap', tostring(shown.lap_count))
+  row('air', tempText(shown.air_temp_c))
+  row('road', tempText(shown.road_temp_c))
+  row('grip', string.format('%.0f%%', shown.surface_grip * 100))
+
+  sectionLabel('CORNERS')
+  for i = 1, 4 do
+    row(TYRE_LABEL[i], string.format('%s  %s  %s  %.0f%%',
+      pressureText(shown.tyre_pressure_psi[i]),
+      tempText(shown.tyre_temp_c[i]),
+      tempText(shown.brake_temp_c[i]),
+      shown.tyre_wear_percent[i]))
+  end
+
+  sectionLabel('FLAGS')
+  for _, entry in ipairs(FLAG_NAMES) do
+    local on = hasFlag(entry[2])
+    row(entry[1], on and 'on' or 'off', on and COLOR.good or COLOR.dim)
+  end
+end
+
+function script.windowTelemetry(dt)
+  local styles = pushLayoutStyle()
+  drawTelemetryBody()
+  ui.popStyleVar(styles)
+end
+
+-- ---------------------------------------------------------------------------
+-- Status window
+--
+-- The questions asked when the panel is empty: is the mapping open, is anything
+-- arriving, and do the two sides agree about the shape of what arrives.
+-- ---------------------------------------------------------------------------
+
+local function drawStatusBody()
+  sectionLabel('LINK')
+  row('mapping', MMF_NAME, frame ~= nil and COLOR.good or COLOR.bad)
+  row('state', frame == nil and 'not opened' or (isLive and 'live' or 'stale'),
+    isLive and COLOR.good or COLOR.warn)
+  if openError ~= nil then
+    pushRole('caption')
+    ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
+    ui.textWrapped(openError)
+    ui.popStyleColor()
+    ui.popFont()
+  end
+
+  sectionLabel('FRAME')
+  row('sequence', tostring(shown.sequence))
+  row('since change', string.format('%.1f s', secondsSinceChange))
+  row('version', string.format('%d, expected %d', shown.version, EXPECTED_VERSION),
+    shown.version == EXPECTED_VERSION and COLOR.good or COLOR.bad)
+  row('advice lines', tostring(shown.message_count))
+
+  sectionLabel('PANEL')
+  row('text size', settings.vrMode and 'VR (large)' or settings.textSize)
+  row('units', (settings.celsius and 'C' or 'F') .. ' / ' .. (settings.psi and 'psi' or 'bar'))
+end
+
+function script.windowStatus(dt)
+  local styles = pushLayoutStyle()
+  drawStatusBody()
+  ui.popStyleVar(styles)
+end
+
+-- ---------------------------------------------------------------------------
 -- Settings window
 --
 -- CSP opens this from the app's own entry in the sidebar, and it is a separate
@@ -755,7 +886,7 @@ function script.windowSettings(dt)
   -- settings nobody scrolled to.
   local styles = pushLayoutStyle()
   ui.tabBar('acpeSettings', function()
-    ui.tabItem('Sections', function()
+    ui.tabItem('Panel', function()
       settingToggle('Speed and gear', 'showHeader')
       settingToggle('RPM bar', 'showRpmBar')
       settingToggle('Tyres and brakes', 'showTyres')
@@ -764,6 +895,15 @@ function script.windowSettings(dt)
       settingToggle('Session', 'showSession')
       settingToggle('Engineer advice', 'showEngineer')
       settingToggle('Section captions', 'sectionLabels')
+      settingToggle('LIMITER badge', 'showLimiter')
+
+      ui.separator()
+      pushRole('caption')
+      ui.textColored('PER CORNER', COLOR.label)
+      ui.popFont()
+      settingToggle('Tyre temperature', 'showTyreTemp')
+      settingToggle('Brake temperature', 'showBrakeTemp')
+      settingToggle('Wear', 'showWear')
 
       -- Sections the application itself is suppressing. Without this the
       -- settings read as broken: a box is ticked and nothing appears.
@@ -792,7 +932,7 @@ function script.windowSettings(dt)
       end
     end)
 
-    ui.tabItem('Engineer', function()
+    ui.tabItem('Advice', function()
       pushRole('caption')
       ui.textColored('LINES', COLOR.label)
       ui.popFont()
@@ -847,6 +987,12 @@ function script.windowSettings(dt)
         for key, value in pairs(DEFAULTS) do settings[key] = value end
       end
     end)
+
+    -- The same two panels that have windows of their own, here as tabs: one
+    -- window to open when the question is "what is going on", rather than
+    -- three entries to hunt for in the sidebar.
+    ui.tabItem('Data', drawTelemetryBody)
+    ui.tabItem('Link', drawStatusBody)
   end)
   ui.popStyleVar(styles)
 end
