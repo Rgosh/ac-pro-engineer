@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ac_core"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -26,7 +26,7 @@ dependencies = [
 
 [[package]]
 name = "ac_tui"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "ac_core",
  "anyhow",
@@ -1664,7 +1664,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shm-bridge"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1853,7 +1853,7 @@ dependencies = [
 
 [[package]]
 name = "tests_suite"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "ac_core",
  "ac_tui",
