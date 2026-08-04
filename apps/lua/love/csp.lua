@@ -497,9 +497,47 @@ function ui.slider(label, value, min, max, format, power)
   return value, changed
 end
 
+--- Text at an arbitrary size, which is how the panel survives a 4K screen:
+--- CSP has five font tiers and no way to scale them, but it can draw text at
+--- any size through DirectWrite.
+function ui.dwriteText(text, fontSize, color)
+  text = tostring(text)
+  fontSize = fontSize or 14
+  local key = math.max(6, math.floor(fontSize + 0.5))
+  L.dwriteFonts = L.dwriteFonts or {}
+  local f = L.dwriteFonts[key]
+  if f == nil then
+    f = gfx.newFont(key)
+    L.dwriteFonts[key] = f
+  end
+
+  setColor(color or topOf(styleColors, ui.StyleColor.Text))
+  gfx.setFont(f)
+  gfx.print(text, L.x, L.y)
+  itemSize(f:getWidth(text), f:getHeight())
+end
+
+function ui.measureDWriteText(text, fontSize)
+  local key = math.max(6, math.floor((fontSize or 14) + 0.5))
+  L.dwriteFonts = L.dwriteFonts or {}
+  local f = L.dwriteFonts[key] or gfx.newFont(key)
+  L.dwriteFonts[key] = f
+  return { x = f:getWidth(tostring(text)), y = f:getHeight() }
+end
+
+--- CSP's own text field: returns the value, whether it changed, and whether
+--- enter was pressed.
+function ui.inputText(label, str, _flags, _size)
+  csp.inputState = csp.inputState or { text = '' }
+  csp.inputState.text = str or csp.inputState.text
+  local focused = ui.inputTextBox(label, csp.inputState, 'type a command')
+  local entered = focused and csp.enterPressed or false
+  return csp.inputState.text, false, entered
+end
+
 --- A single-line text field. `state` is a table with a `text` field, which is
 --- where the typing lands; the caller owns it, the way immediate-mode UI wants.
-function ui.inputText(label, state, hint)
+function ui.inputTextBox(label, state, hint)
   local f = font()
   local h = f:getHeight() + 8
   local w = itemWidth(ui.availableSpaceX())

@@ -734,7 +734,7 @@ end
 local function advancedTab()
   ui.textColored('CONSOLE', csp.colors.textDim)
   csp.inputState = consoleState
-  ui.inputText('##console', consoleState, 'type --help and press enter')
+  ui.inputTextBox('##console', consoleState, 'type --help and press enter')
   if ui.button('Run') then
     runConsole(consoleState.text)
     consoleState.text = ''

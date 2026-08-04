@@ -71,6 +71,11 @@ ui = setmetatable({
   Font = { Small=1, Tiny=2, Monospace=3, Main=4, Italic=5, Title=6, Huge=7 },
   text = function(s) note('text'); drawn[#drawn+1] = tostring(s) end,
   textColored = function(s) note('textColored'); drawn[#drawn+1] = tostring(s) end,
+  -- The panel draws through DirectWrite so it can pick its own sizes; without
+  -- recording it here the harness sees an empty panel and says so.
+  dwriteText = function(s) note('dwriteText'); drawn[#drawn+1] = tostring(s) end,
+  textWrapped = function(s) note('textWrapped'); drawn[#drawn+1] = tostring(s) end,
+  measureDWriteText = function(s, size) return vec2(#tostring(s) * (size or 14) * 0.5, size or 14) end,
   availableSpace = function() return vec2(300, 380) end,
   availableSpaceX = function() return 300 end,
   getCursor = function() return vec2(0, 0) end,

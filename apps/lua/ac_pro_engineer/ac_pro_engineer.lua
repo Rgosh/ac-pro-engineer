@@ -82,8 +82,12 @@ local DEFAULTS = {
   engineerHighlight = true,
 
   sectionLabels = true,
+  devMode = false,
   contentWidth = 360,
   barHeight = 6,
+  fontScale = 1.0,        -- everything the panel draws, in one number
+  background = 0.0,       -- panel backing, 0 for none
+  accent = 'blue',
   celsius = true,
   psi = true,
 }
@@ -115,6 +119,30 @@ local BULLET_NAMES = { 'severity', '>', 'dot', 'none' }
 -- characters that read the same at a glance.
 local SEVERITY_MARK = { [0] = 'i  ', [1] = '!  ', [2] = '!! ' }
 local SEVERITY_COLOR = { [0] = COLOR.good, [1] = COLOR.warn, [2] = COLOR.bad }
+
+-- Base text sizes, multiplied by the driver's scale. CSP has five font tiers
+-- and no way to scale them, which on a 4K screen means a panel nobody can
+-- read; DirectWrite draws at any size, so that is what the panel uses.
+local TEXT_BASE = { caption = 11, body = 15, hero = 38, gear = 22 }
+local VR_BOOST = 1.35
+
+local function textSize(role)
+  local base = TEXT_BASE[role] or TEXT_BASE.body
+  local scale = settings.fontScale or 1
+  if settings.vrMode then scale = scale * VR_BOOST end
+  if settings.textSize == 'compact' then
+    scale = scale * 0.85
+  elseif settings.textSize == 'large' then
+    scale = scale * 1.25
+  end
+  return base * scale
+end
+
+--- Draw a piece of the panel's text. One call instead of push/draw/pop, and
+--- one place where the size of everything is decided.
+local function say(role, text, color)
+  ui.dwriteText(text, textSize(role), color)
+end
 
 local function pushRole(role)
   -- In a headset the panel is a metre away through lenses that blur the edges,
@@ -152,9 +180,7 @@ end
 --- A section caption, or nothing when the panel is set to run without them.
 local function sectionLabel(text)
   if not settings.sectionLabels then return end
-  pushRole('caption')
-  ui.textColored(text, COLOR.label)
-  ui.popFont()
+  say('caption', text, COLOR.label)
 end
 
 local frame = nil
@@ -345,12 +371,8 @@ end
 --- A label above a value, as its own column.
 local function stat(label, value, color)
   ui.beginGroup()
-  pushRole('caption')
-  ui.textColored(label, COLOR.label)
-  ui.popFont()
-  pushRole('body')
-  ui.textColored(value, color or COLOR.text)
-  ui.popFont()
+  say('caption', label, COLOR.label)
+  say('body', value, color or COLOR.text)
   ui.endGroup()
 end
 
@@ -374,6 +396,22 @@ local FRAME_PADDING = vec2(6, 3)
 -- default one — and it repainted every tab, checkbox and slider in this panel.
 -- The colours below are the harness's, so the thing being designed and the
 -- thing being driven are the same colour.
+-- Accent presets. The panel is looked at through a windscreen, so this is not
+-- decoration: a colour that disappears against the track is a readout nobody
+-- reads.
+local ACCENTS = {
+  blue   = rgbm(0.20, 0.72, 1.00, 1),
+  teal   = rgbm(0.20, 0.85, 0.75, 1),
+  amber  = rgbm(1.00, 0.72, 0.20, 1),
+  violet = rgbm(0.76, 0.44, 1.00, 1),
+  green  = rgbm(0.40, 0.90, 0.45, 1),
+}
+local ACCENT_NAMES = { 'blue', 'teal', 'amber', 'violet', 'green' }
+
+local function accentColor()
+  return ACCENTS[settings.accent] or ACCENTS.blue
+end
+
 local STYLE_COLORS = {
   { 'Tab', rgbm(0.13, 0.16, 0.20, 1) },
   { 'TabHovered', rgbm(0.20, 0.42, 0.60, 1) },
@@ -455,20 +493,14 @@ end
 
 local function drawHeader()
   ui.beginGroup()
-  pushRole('hero')
-  ui.textColored(string.format('%.0f', shown.speed_kmh), COLOR.text)
-  ui.popFont()
+  say('hero', string.format('%.0f', shown.speed_kmh), COLOR.text)
   ui.endGroup()
 
   ui.sameLine()
 
   ui.beginGroup()
-  pushRole('caption')
-  ui.textColored('KM/H', COLOR.label)
-  ui.popFont()
-  pushRole('gear')
-  ui.textColored(gearText(shown.gear), rpmColor(rpmRatio()))
-  ui.popFont()
+  say('caption', 'KM/H', COLOR.label)
+  say('gear', gearText(shown.gear), rpmColor(rpmRatio()))
   ui.endGroup()
 
   if settings.showLimiter and hasFlag(FLAG_PIT_LIMITER) then
@@ -495,33 +527,24 @@ local function drawTyres()
 
       ui.beginGroup()
 
-      -- Tyre Label
-      pushRole('caption')
-      ui.textColored(TYRE_LABEL[i], COLOR.dim)
-      ui.popFont()
+      say('caption', TYRE_LABEL[i], COLOR.dim)
       ui.sameLine()
+      say('body', pressureText(shown.tyre_pressure_psi[i]), COLOR.text)
 
-      -- Pressure
-      pushRole('body')
-      ui.textColored(pressureText(shown.tyre_pressure_psi[i]), COLOR.text)
-      ui.popFont()
-
-      -- Temps
-      pushRole('caption')
       if settings.showTyreTemp then
-        ui.textColored('T: ' .. tempText(shown.tyre_temp_c[i]), tyreTempColor(shown.tyre_temp_c[i]))
+        say('caption', 'T: ' .. tempText(shown.tyre_temp_c[i]),
+          tyreTempColor(shown.tyre_temp_c[i]))
       end
       if settings.showBrakeTemp then
         if settings.showTyreTemp then ui.sameLine() end
-        ui.textColored('B: ' .. tempText(shown.brake_temp_c[i]), brakeColor(shown.brake_temp_c[i]))
+        say('caption', 'B: ' .. tempText(shown.brake_temp_c[i]),
+          brakeColor(shown.brake_temp_c[i]))
       end
 
-      -- Wear
       if settings.showWear then
-        ui.textColored(string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]),
+        say('caption', string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]),
           wearColor(shown.tyre_wear_percent[i]))
       end
-      ui.popFont()
 
       ui.endGroup()
     end
@@ -578,13 +601,11 @@ local function drawSession()
   nextColumn(width, 1)
   stat('LAP', tostring(shown.lap_count), COLOR.text)
   nextColumn(width, 2)
-  stat('CURRENT', lapTimeText(shown.current_lap_ms), COLOR.accent)
+  stat('CURRENT', lapTimeText(shown.current_lap_ms), accentColor())
 
-  pushRole('caption')
-  ui.textColored(string.format('AIR %s   ROAD %s   GRIP %.0f%%',
+  say('caption', string.format('AIR %s   ROAD %s   GRIP %.0f%%',
     tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100),
     COLOR.dim)
-  ui.popFont()
 end
 
 --- The engineer's lines, drawn the way the settings ask for.
@@ -598,7 +619,6 @@ local function drawEngineerMessages(withLabel)
   local bullet = BULLETS[settings.engineerBullet] or ''
   local count = math.min(shown.message_count, settings.engineerLines, 4)
 
-  pushRole('body')
   for i = 1, count do
     if shown.messages[i] ~= '' then
       local level = shown.message_severity[i] or 0
@@ -609,7 +629,7 @@ local function drawEngineerMessages(withLabel)
       local textColor = settings.engineerHighlight and markColor or COLOR.text
 
       if bySeverity then
-        ui.textColored(mark, markColor)
+        say('body', mark, markColor)
         ui.sameLine()
       end
 
@@ -619,17 +639,14 @@ local function drawEngineerMessages(withLabel)
         ui.textWrapped(bySeverity and shown.messages[i] or (mark .. shown.messages[i]))
         ui.popStyleColor()
       else
-        ui.textColored(bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
+        say('body', bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
           bySeverity and COLOR.text or textColor)
       end
     end
   end
-  ui.popFont()
 
   if count == 0 and withLabel ~= false then
-    pushRole('caption')
-    ui.textColored('nothing to report', COLOR.dim)
-    ui.popFont()
+    say('caption', 'nothing to report', COLOR.dim)
   end
 end
 
@@ -703,6 +720,16 @@ function script.windowMain(dt)
   end
 
   local styles, colors = pushLayoutStyle()
+
+  -- The panel's own backing. CSP's window background is whatever the driver
+  -- set for every app; a readout over a bright sky needs its own.
+  if settings.background > 0.01 then
+    local origin = ui.getCursor()
+    local space = ui.availableSpace()
+    ui.drawRectFilled(vec2(origin.x - 6, origin.y - 4),
+      vec2(origin.x + contentWidth() + 6, origin.y + space.y),
+      rgbm(0.05, 0.06, 0.08, settings.background), 4)
+  end
 
   if settings.showHeader then
     drawHeader()
@@ -801,13 +828,113 @@ local FLAG_NAMES = {
 --- A label on the left, a value on the right, filling the width.
 local function row(label, value, color)
   local width = contentWidth()
-  pushRole('caption')
-  ui.textColored(label, COLOR.dim)
-  ui.popFont()
+  say('caption', label, COLOR.dim)
   ui.sameLine(width * 0.46)
-  pushRole('body')
-  ui.textColored(value, color or COLOR.text)
-  ui.popFont()
+  say('body', value, color or COLOR.text)
+end
+
+-- A console, with the same vocabulary as the harness's: settings that would
+-- otherwise need a mouse and four tabs can be typed, and the ones with no
+-- widget at all — like --dev-mode — have somewhere to live.
+local consoleInput = ''
+local consoleLines = { 'type --help' }
+
+local function consoleSay(line)
+  consoleLines[#consoleLines + 1] = line
+  while #consoleLines > 12 do table.remove(consoleLines, 1) end
+end
+
+local COMMANDS = {
+  ['--help'] = function()
+    consoleSay('--scale N   --width N   --bar N   --backing N')
+    consoleSay('--accent blue|teal|amber|violet|green')
+    consoleSay('--vr on|off   --dev-mode   --units c|f  --psi|--bar-units')
+    consoleSay('--lines N   --reset')
+  end,
+  ['--dev-mode'] = function()
+    settings.devMode = not settings.devMode
+    consoleSay('developer mode: ' .. (settings.devMode and 'on' or 'off'))
+  end,
+  ['--reset'] = function()
+    for key, value in pairs(DEFAULTS) do settings[key] = value end
+    consoleSay('settings reset')
+  end,
+}
+
+local NUMERIC = {
+  ['--scale'] = { 'fontScale', 0.5, 4 },
+  ['--width'] = { 'contentWidth', 200, 1200 },
+  ['--bar'] = { 'barHeight', 2, 40 },
+  ['--backing'] = { 'background', 0, 1 },
+  ['--lines'] = { 'engineerLines', 1, 4 },
+}
+
+local function runCommand(line)
+  local words = {}
+  for word in tostring(line):gmatch('%S+') do words[#words + 1] = word end
+  if #words == 0 then return end
+  consoleSay('> ' .. line)
+
+  local index = 1
+  while index <= #words do
+    local word = words[index]
+    local numeric = NUMERIC[word]
+    if COMMANDS[word] ~= nil then
+      COMMANDS[word]()
+    elseif numeric ~= nil then
+      local value = tonumber(words[index + 1])
+      if value ~= nil then
+        settings[numeric[1]] = math.max(numeric[2], math.min(numeric[3], value))
+        consoleSay(numeric[1] .. ' = ' .. tostring(settings[numeric[1]]))
+        index = index + 1
+      else
+        consoleSay(word .. ' needs a number')
+      end
+    elseif word == '--accent' then
+      local name = words[index + 1]
+      if ACCENTS[name] ~= nil then
+        settings.accent = name
+        index = index + 1
+      else
+        consoleSay('accents: blue teal amber violet green')
+      end
+    elseif word == '--vr' then
+      settings.vrMode = words[index + 1] ~= 'off'
+      index = index + 1
+    elseif word == '--units' then
+      settings.celsius = words[index + 1] ~= 'f'
+      index = index + 1
+    elseif word == '--psi' then
+      settings.psi = true
+    elseif word == '--bar-units' then
+      settings.psi = false
+    else
+      consoleSay('unknown: ' .. word)
+    end
+    index = index + 1
+  end
+end
+
+local function drawConsoleBody()
+  ui.setNextItemWidth(contentWidth())
+  local typed, _, entered = ui.inputText('##acpeConsole', consoleInput)
+  consoleInput = typed or consoleInput
+  if entered then
+    runCommand(consoleInput)
+    consoleInput = ''
+  end
+
+  if ui.button('Run') then
+    runCommand(consoleInput)
+    consoleInput = ''
+  end
+  ui.sameLine()
+  if ui.button('Clear') then consoleLines = {} end
+
+  ui.separator()
+  for _, line in ipairs(consoleLines) do
+    say('caption', line, COLOR.dim)
+  end
 end
 
 local function drawTelemetryBody()
@@ -1005,7 +1132,11 @@ function script.windowSettings(dt)
     ui.tabItem('Text', function()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
-      local width, widthChanged = ui.slider('##width', settings.contentWidth, 240, 640,
+      local scale, scaleChanged = ui.slider('##scale', settings.fontScale, 0.6, 3.0,
+        'text scale  %.2fx')
+      if scaleChanged then settings.fontScale = scale end
+
+      local width, widthChanged = ui.slider('##width', settings.contentWidth, 240, 900,
         'content width  %.0f px', true)
       if widthChanged then settings.contentWidth = width end
 
@@ -1018,6 +1149,16 @@ function script.windowSettings(dt)
         if ui.radioButton(size, settings.textSize == size) then
           settings.textSize = size
         end
+      end
+
+      local backing, backingChanged = ui.slider('##backing', settings.background, 0, 1,
+        'backing  %.2f')
+      if backingChanged then settings.background = backing end
+
+      ui.separator()
+      say('caption', 'ACCENT', COLOR.label)
+      for _, name in ipairs(ACCENT_NAMES) do
+        if ui.radioButton(name, settings.accent == name) then settings.accent = name end
       end
 
       ui.separator()
@@ -1046,6 +1187,7 @@ function script.windowSettings(dt)
     -- The same two panels that have windows of their own, here as tabs: one
     -- window to open when the question is "what is going on", rather than
     -- three entries to hunt for in the sidebar.
+    ui.tabItem('Console', drawConsoleBody)
     ui.tabItem('Data', drawTelemetryBody)
     ui.tabItem('Link', drawStatusBody)
   end)
