@@ -90,6 +90,9 @@ local DEFAULTS = {
   engineerScale = 1.0,    -- advice, sized on its own
   engineerMinSeverity = 0,-- 0 everything, 1 warnings up, 2 critical only
   engineerSpacing = false,
+  engineerMaxChars = 64,   -- a line longer than this is cut, not wrapped away
+  showDebugBounds = false,
+  freezeDisplay = false,
   background = 0.0,       -- panel backing, 0 for none
   accent = 'blue',
   celsius = true,
@@ -97,7 +100,12 @@ local DEFAULTS = {
 }
 
 local settings = {}
-for key, value in pairs(DEFAULTS) do settings[key] = value end
+local SETTING_KEYS = {}
+for key, value in pairs(DEFAULTS) do
+  settings[key] = value
+  SETTING_KEYS[#SETTING_KEYS + 1] = key
+end
+table.sort(SETTING_KEYS)
 
 if type(ac) == 'table' and type(ac.storage) == 'function' then
   local storageOk, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
@@ -328,6 +336,10 @@ local function readFrame()
 end
 
 function script.update(dt)
+  -- Frozen on purpose: a held frame is the only way to read a number that was
+  -- there for a tenth of a second.
+  if settings.freezeDisplay and frame ~= nil then return end
+
   if frame == nil then
     -- Keep trying, quietly. Once the application starts, the panel fills in on
     -- its own instead of needing the window closed and opened again.
@@ -673,6 +685,11 @@ end
 --- Advice, at its own size: it is the one thing read while the car is moving,
 --- and the one thing worth making bigger than everything else.
 local function sayAdvice(text, color)
+  -- A limit on the line, not just on how many of them: one long sentence can
+  -- push the rest of the panel off the bottom of a small window, and the first
+  -- forty characters are the ones that carry the advice.
+  local limit = settings.engineerMaxChars or 64
+  if #text > limit then text = text:sub(1, limit - 1) .. '…' end
   ui.dwriteText(text, textSize('body') * (settings.engineerScale or 1), color)
 end
 
@@ -794,6 +811,13 @@ function script.windowMain(dt)
     ui.drawRectFilled(vec2(origin.x - 6, origin.y - 4),
       vec2(origin.x + contentWidth() + 6, origin.y + space.y),
       rgbm(0.05, 0.06, 0.08, settings.background), 4)
+  end
+
+  if settings.showDebugBounds then
+    local origin = ui.getCursor()
+    local space = ui.availableSpace()
+    ui.drawRect(vec2(origin.x, origin.y),
+      vec2(origin.x + contentWidth(), origin.y + space.y), accentColor(), 2, 1)
   end
 
   if settings.showHeader then
@@ -1002,6 +1026,36 @@ local function drawConsoleBody()
   end
 end
 
+--- What is only worth seeing while working on the panel: the numbers behind
+--- the numbers, and the switches that make the panel lie on purpose.
+local function drawDevBody()
+  say('caption', 'FRAME', COLOR.label)
+  row('sequence', tostring(shown.sequence))
+  row('since change', string.format('%.2f s', secondsSinceChange))
+  row('flags', string.format('0x%02X', shown.flags))
+  row('version', string.format('%d / %d', shown.version, EXPECTED_VERSION))
+
+  say('caption', 'LAYOUT', COLOR.label)
+  row('window scale', string.format('%.2fx', windowScale()))
+  row('content width', string.format('%.0f px', contentWidth()))
+  row('body text', string.format('%.1f px', textSize('body')))
+  row('advice text', string.format('%.1f px',
+    textSize('body') * (settings.engineerScale or 1)))
+
+  ui.separator()
+  settingToggle('Freeze the display', 'freezeDisplay')
+  settingToggle('Outline the content', 'showDebugBounds')
+
+  ui.separator()
+  if ui.button('Dump settings to console') then
+    for _, key in ipairs(SETTING_KEYS) do
+      consoleSay(key .. ' = ' .. tostring(settings[key]))
+    end
+  end
+  ui.sameLine()
+  if ui.button('Leave developer mode') then settings.devMode = false end
+end
+
 local function drawTelemetryBody()
   if not isLive then
     drawWaitingForApp()
@@ -1190,10 +1244,13 @@ function script.windowSettings(dt)
       end
 
       ui.separator()
-      say('caption', 'SIZE', COLOR.label)
       local scale, scaleChanged = ui.slider('##adviceScale', settings.engineerScale, 0.6, 2.5,
         'advice scale  %.2fx')
       if scaleChanged then settings.engineerScale = scale end
+
+      local chars, charsChanged = ui.slider('##adviceChars', settings.engineerMaxChars, 20, 64,
+        'line limit  %.0f chars', true)
+      if charsChanged then settings.engineerMaxChars = chars end
 
       ui.separator()
       say('caption', 'SHOW', COLOR.label)
@@ -1209,24 +1266,26 @@ function script.windowSettings(dt)
       settingToggle('Space between lines', 'engineerSpacing')
     end)
 
-    ui.tabItem('Text', function()
-      -- Presets first: a panel that opens unreadable on a 4K screen is a panel
-      -- nobody gets as far as configuring.
-      say('caption', 'SCREEN', COLOR.label)
-      for _, preset in ipairs(PRESETS) do
-        if ui.button(preset[1]) then
-          for key, value in pairs(preset[2]) do settings[key] = value end
-        end
-        if preset[3] then ui.sameLine() end
-      end
+    ui.tabItem('Look', function()
+      ui.tabBar('acpeLook', function()
+        ui.tabItem('Screen', function()
+          -- Presets first: a panel that opens unreadable on a 4K screen is a
+          -- panel nobody gets as far as configuring.
+          for _, preset in ipairs(PRESETS) do
+            if ui.button(preset[1]) then
+              for key, value in pairs(preset[2]) do settings[key] = value end
+            end
+            if preset[3] then ui.sameLine() end
+          end
 
-      ui.separator()
-      settingToggle('Grow with the window', 'autoScale')
-      say('caption', settings.autoScale
-        and 'size follows the window; width is the window'
-        or 'fixed size and width', COLOR.dim)
+          ui.separator()
+          settingToggle('Grow with the window', 'autoScale')
+          say('caption', settings.autoScale
+            and 'size follows the window; width is the window'
+            or 'fixed size and width', COLOR.dim)
+        end)
 
-      ui.separator()
+        ui.tabItem('Size', function()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
       local scale, scaleChanged = ui.slider('##scale', settings.fontScale, 0.6, 3.0,
@@ -1241,29 +1300,30 @@ function script.windowSettings(dt)
         'rev bar  %.0f px', true)
       if barChanged then settings.barHeight = bar end
 
-      ui.separator()
-      for _, size in ipairs(TEXT_SIZES) do
-        if ui.radioButton(size, settings.textSize == size) then
-          settings.textSize = size
-        end
-      end
+          ui.separator()
+          for _, size in ipairs(TEXT_SIZES) do
+            if ui.radioButton(size, settings.textSize == size) then
+              settings.textSize = size
+            end
+          end
 
-      local backing, backingChanged = ui.slider('##backing', settings.background, 0, 1,
-        'backing  %.2f')
-      if backingChanged then settings.background = backing end
+          ui.separator()
+          settingToggle('VR mode', 'vrMode')
+          say('caption', 'largest text, thicker bar, more spacing', COLOR.dim)
+        end)
 
-      ui.separator()
-      say('caption', 'ACCENT', COLOR.label)
-      for _, name in ipairs(ACCENT_NAMES) do
-        if ui.radioButton(name, settings.accent == name) then settings.accent = name end
-      end
+        ui.tabItem('Colour', function()
+          for _, name in ipairs(ACCENT_NAMES) do
+            if ui.radioButton(name, settings.accent == name) then settings.accent = name end
+          end
 
-      ui.separator()
-      settingToggle('VR mode', 'vrMode')
-      pushRole('caption')
-      ui.textColored('largest text, thicker bar,', COLOR.dim)
-      ui.textColored('more spacing, two columns', COLOR.dim)
-      ui.popFont()
+          ui.separator()
+          local backing2, backingChanged2 = ui.slider('##backing2', settings.background, 0, 1,
+            'backing  %.2f')
+          if backingChanged2 then settings.background = backing2 end
+          say('caption', 'the panel\'s own plate, for a bright sky', COLOR.dim)
+        end)
+      end)
     end)
 
     ui.tabItem('Units', function()
@@ -1287,6 +1347,16 @@ function script.windowSettings(dt)
     ui.tabItem('Console', drawConsoleBody)
     ui.tabItem('Data', drawTelemetryBody)
     ui.tabItem('Link', drawStatusBody)
+
+    -- Red, and only here when asked for: everything on it can make the panel
+    -- show something the car is not doing.
+    if settings.devMode then
+      ui.pushStyleColor(ui.StyleColor.Tab, rgbm(0.45, 0.12, 0.14, 1))
+      ui.pushStyleColor(ui.StyleColor.TabHovered, rgbm(0.75, 0.20, 0.22, 1))
+      ui.pushStyleColor(ui.StyleColor.TabActive, rgbm(0.62, 0.16, 0.18, 1))
+      ui.tabItem('Dev', drawDevBody)
+      ui.popStyleColor(3)
+    end
   end)
   popLayoutStyle(styles, colors)
 end
