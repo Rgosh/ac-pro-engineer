@@ -726,87 +726,103 @@ function script.windowSettings(dt)
     ui.separator()
   end
 
-  pushRole('caption')
-  ui.textColored('SECTIONS', COLOR.label)
-  ui.popFont()
+  -- Four tabs rather than one long column: the window is as tall as the driver
+  -- left it, and a list that runs past the bottom edge hides the half of the
+  -- settings nobody scrolled to.
+  ui.tabBar('acpeSettings', function()
+    ui.tabItem('Sections', function()
+      settingToggle('Speed and gear', 'showHeader')
+      settingToggle('RPM bar', 'showRpmBar')
+      settingToggle('Tyres and brakes', 'showTyres')
+      settingToggle('Lap timing', 'showTiming')
+      settingToggle('Fuel', 'showFuel')
+      settingToggle('Session', 'showSession')
+      settingToggle('Engineer advice', 'showEngineer')
+      settingToggle('Section captions', 'sectionLabels')
 
-  settingToggle('Speed and gear', 'showHeader')
-  settingToggle('RPM bar', 'showRpmBar')
-  settingToggle('Tyres and brakes', 'showTyres')
-  settingToggle('Lap timing', 'showTiming')
-  settingToggle('Fuel', 'showFuel')
-  settingToggle('Session', 'showSession')
-  settingToggle('Engineer advice', 'showEngineer')
-  settingToggle('Section captions', 'sectionLabels')
+      -- Sections the application itself is suppressing. Without this the
+      -- settings read as broken: a box is ticked and nothing appears.
+      local held = not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER)
+        or not hasFlag(FLAG_SHOW_SESSION) or not hasFlag(FLAG_SHOW_TIMING)
+        or not hasFlag(FLAG_SHOW_FUEL)
+      if isLive and held then
+        ui.separator()
+        pushRole('caption')
+        if not hasFlag(FLAG_SHOW_TELEMETRY) then
+          ui.textColored('Telemetry is off in the desktop app', COLOR.warn)
+        end
+        if not hasFlag(FLAG_SHOW_ENGINEER) then
+          ui.textColored('Engineer advice is off in the desktop app', COLOR.warn)
+        end
+        if not hasFlag(FLAG_SHOW_SESSION) then
+          ui.textColored('Session block is off in the desktop app', COLOR.warn)
+        end
+        if not hasFlag(FLAG_SHOW_TIMING) then
+          ui.textColored('Lap timing is off in the desktop app', COLOR.warn)
+        end
+        if not hasFlag(FLAG_SHOW_FUEL) then
+          ui.textColored('Fuel block is off in the desktop app', COLOR.warn)
+        end
+        ui.popFont()
+      end
+    end)
 
-  ui.separator()
-  pushRole('caption')
-  ui.textColored('ENGINEER OUTPUT', COLOR.label)
-  ui.popFont()
+    ui.tabItem('Engineer', function()
+      pushRole('caption')
+      ui.textColored('LINES', COLOR.label)
+      ui.popFont()
+      for _, lines in ipairs({ 1, 2, 3, 4 }) do
+        if ui.radioButton(string.format('%d line%s', lines, lines > 1 and 's' or ''),
+            settings.engineerLines == lines) then
+          settings.engineerLines = lines
+        end
+      end
 
-  for _, lines in ipairs({ 1, 2, 3, 4 }) do
-    if ui.radioButton(string.format('%d line%s', lines, lines > 1 and 's' or ''),
-        settings.engineerLines == lines) then
-      settings.engineerLines = lines
-    end
-  end
+      ui.separator()
+      pushRole('caption')
+      ui.textColored('MARKER', COLOR.label)
+      ui.popFont()
+      for _, bullet in ipairs(BULLET_NAMES) do
+        if ui.radioButton(bullet, settings.engineerBullet == bullet) then
+          settings.engineerBullet = bullet
+        end
+      end
 
-  for _, bullet in ipairs(BULLET_NAMES) do
-    if ui.radioButton('bullet: ' .. bullet, settings.engineerBullet == bullet) then
-      settings.engineerBullet = bullet
-    end
-  end
+      ui.separator()
+      settingToggle('Wrap long lines', 'engineerWrap')
+      settingToggle('Highlight advice', 'engineerHighlight')
+    end)
 
-  settingToggle('Wrap long lines', 'engineerWrap')
-  settingToggle('Highlight advice', 'engineerHighlight')
+    ui.tabItem('Text', function()
+      for _, size in ipairs(TEXT_SIZES) do
+        if ui.radioButton(size, settings.textSize == size) then
+          settings.textSize = size
+        end
+      end
 
-  ui.separator()
-  pushRole('caption')
-  ui.textColored('READABILITY', COLOR.label)
-  ui.popFont()
+      ui.separator()
+      settingToggle('VR mode', 'vrMode')
+      pushRole('caption')
+      ui.textColored('largest text, thicker bar,', COLOR.dim)
+      ui.textColored('more spacing, two columns', COLOR.dim)
+      ui.popFont()
+    end)
 
-  for _, size in ipairs(TEXT_SIZES) do
-    if ui.radioButton(size, settings.textSize == size) then
-      settings.textSize = size
-    end
-  end
+    ui.tabItem('Units', function()
+      settingToggle('Celsius', 'celsius')
+      settingToggle('PSI', 'psi')
 
-  settingToggle('VR mode', 'vrMode')
-  pushRole('caption')
-  ui.textColored('largest text, thicker bar, more spacing', COLOR.dim)
-  ui.popFont()
+      pushRole('caption')
+      ui.textColored(settings.celsius and 'temperatures in °C' or 'temperatures in °F', COLOR.dim)
+      ui.textColored(settings.psi and 'pressures in psi' or 'pressures in bar', COLOR.dim)
+      ui.popFont()
 
-  ui.separator()
-  pushRole('caption')
-  ui.textColored('UNITS', COLOR.label)
-  ui.popFont()
-
-  settingToggle('Celsius', 'celsius')
-  settingToggle('PSI', 'psi')
-
-  pushRole('caption')
-  ui.textColored(settings.celsius and 'temperatures in °C' or 'temperatures in °F', COLOR.dim)
-  ui.textColored(settings.psi and 'pressures in psi' or 'pressures in bar', COLOR.dim)
-  ui.popFont()
-
-  ui.separator()
-  if ui.button('Reset to defaults') then
-    for key, value in pairs(DEFAULTS) do settings[key] = value end
-  end
-
-  -- Sections the application itself is suppressing. Without this the settings
-  -- read as broken: a box is ticked and nothing appears.
-  if not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER) then
-    ui.separator()
-    ui.pushFont(ui.Font.Tiny)
-    if not hasFlag(FLAG_SHOW_TELEMETRY) then
-      ui.textColored('Telemetry is switched off in the desktop app', COLOR.warn)
-    end
-    if not hasFlag(FLAG_SHOW_ENGINEER) then
-      ui.textColored('Engineer advice is switched off in the desktop app', COLOR.warn)
-    end
-    ui.popFont()
-  end
+      ui.separator()
+      if ui.button('Reset to defaults') then
+        for key, value in pairs(DEFAULTS) do settings[key] = value end
+      end
+    end)
+  end)
 end
 
 -- Exported for the LÖVE harness, which draws these on their own to compare
