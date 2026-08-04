@@ -425,6 +425,75 @@ mod tests {
         }
     }
 
+    /// The manifest must use keys CSP actually understands, and reference
+    /// files that exist.
+    ///
+    /// Unknown keys are ignored in silence — `SIZE_MIN` instead of `MIN_SIZE`
+    /// cost nothing visible — and a missing `ICON` leaves the app without an
+    /// entry in the sidebar, which reads as "the script did not load" rather
+    /// than as a missing file.
+    #[test]
+    fn the_app_manifest_matches_what_csp_expects() {
+        let app_dir = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../apps/lua/ac_pro_engineer"
+        ));
+        let manifest =
+            std::fs::read_to_string(app_dir.join("manifest.ini")).expect("the app manifest");
+
+        // Keys CSP's own bundled apps use. Anything outside this set is at
+        // best ignored.
+        const KNOWN: &[&str] = &[
+            "NAME",
+            "AUTHOR",
+            "VERSION",
+            "DESCRIPTION",
+            "LAZY",
+            "ID",
+            "ICON",
+            "FUNCTION_MAIN",
+            "FUNCTION_SETTINGS",
+            "FLAGS",
+            "MIN_SIZE",
+            "SIZE",
+            "SCRIPT",
+            "PERIOD",
+            "EVENT",
+        ];
+
+        for line in manifest.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(';') || line.starts_with('[') {
+                continue;
+            }
+            let Some(key) = line.split('=').next().map(str::trim) else {
+                continue;
+            };
+            assert!(
+                KNOWN.contains(&key),
+                "manifest key {key} is not one CSP recognises"
+            );
+        }
+
+        // Every file the manifest points at has to be there.
+        for line in manifest.lines() {
+            if let Some(icon) = line.trim().strip_prefix("ICON") {
+                let name = icon.trim_start_matches([' ', '=']).trim();
+                assert!(
+                    app_dir.join(name).exists(),
+                    "manifest references {name}, which is missing — the app then \
+                     has no sidebar entry"
+                );
+            }
+        }
+
+        // CSP finds the entry point by folder name.
+        assert!(
+            app_dir.join("ac_pro_engineer.lua").exists(),
+            "the main script must be named after its folder"
+        );
+    }
+
     /// Every `ui.*` the overlay app calls must exist in the installed CSP.
     ///
     /// A missing one is a nil call at draw time, which takes the app's window
