@@ -134,19 +134,23 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Style::default().fg(Color::DarkGray)
     };
 
+    // The rows read as a table, so they are left-aligned; the buttons are
+    // centred by hand rather than by centring the whole card and leaving
+    // "CSP installed" floating in the middle of it.
     lines.push(Line::from(vec![
+        Span::raw("        "),
         Span::styled(" [ INSTALL INTO THE GAME ] ", install_style),
         Span::raw("   "),
         Span::styled(" [ CLOSE ] ", close_style),
     ]));
-    lines.push(Line::from(Span::styled(
-        "D — do not show this at startup",
-        dim,
-    )));
+    lines.push(Line::from(vec![
+        Span::raw("            "),
+        Span::styled("D — do not show this at startup", dim),
+    ]));
 
     let p = Paragraph::new(lines)
         .block(block)
-        .alignment(Alignment::Center);
+        .alignment(Alignment::Left);
     f.render_widget(p, popup_area);
 }
 
