@@ -1489,53 +1489,100 @@ function script.windowSettings(dt)
   ui.tabBar('acpeSettings', function()
     ui.tabItem('Panel', function()
       ui.tabBar('acpePanel', function()
-      ui.tabItem('Blocks', function()
-      settingToggle('Speed and gear', 'showHeader')
-      settingToggle('RPM bar', 'showRpmBar')
-      settingToggle('Tyres and brakes', 'showTyres')
-      settingToggle('Lap timing', 'showTiming')
-      settingToggle('Fuel', 'showFuel')
-      settingToggle('Session', 'showSession')
-      settingToggle('Engineer advice', 'showEngineer')
-      settingToggle('Section captions', 'sectionLabels')
-      settingToggle('LIMITER badge', 'showLimiter')
+        ui.tabItem('Blocks', function()
+          settingToggle('Speed and gear', 'showHeader')
+          settingToggle('RPM bar', 'showRpmBar')
+          settingToggle('Tyres and brakes', 'showTyres')
+          settingToggle('Lap timing', 'showTiming')
+          settingToggle('Fuel', 'showFuel')
+          settingToggle('Session', 'showSession')
+          settingToggle('Engineer advice', 'showEngineer')
+          settingToggle('Section captions', 'sectionLabels')
+          settingToggle('LIMITER badge', 'showLimiter')
 
-      ui.separator()
-      pushRole('caption')
-      ui.textColored('PER CORNER', COLOR.label)
-      ui.popFont()
-      settingToggle('Tyre temperature', 'showTyreTemp')
-      settingToggle('Brake temperature', 'showBrakeTemp')
-      settingToggle('Wear', 'showWear')
+          ui.separator()
+          settingToggle('One-line mode', 'hudMode')
+          say('caption', 'speed, gear, delta, fuel — nothing else', COLOR.dim)
 
-      -- Sections the application itself is suppressing. Without this the
-      -- settings read as broken: a box is ticked and nothing appears.
-      local held = not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER)
-        or not hasFlag(FLAG_SHOW_SESSION) or not hasFlag(FLAG_SHOW_TIMING)
-        or not hasFlag(FLAG_SHOW_FUEL)
-      if isLive and held then
-        ui.separator()
-        pushRole('caption')
-        if not hasFlag(FLAG_SHOW_TELEMETRY) then
-          ui.textColored('Telemetry is off in the desktop app', COLOR.warn)
-        end
-        if not hasFlag(FLAG_SHOW_ENGINEER) then
-          ui.textColored('Engineer advice is off in the desktop app', COLOR.warn)
-        end
-        if not hasFlag(FLAG_SHOW_SESSION) then
-          ui.textColored('Session block is off in the desktop app', COLOR.warn)
-        end
-        if not hasFlag(FLAG_SHOW_TIMING) then
-          ui.textColored('Lap timing is off in the desktop app', COLOR.warn)
-        end
-        if not hasFlag(FLAG_SHOW_FUEL) then
-          ui.textColored('Fuel block is off in the desktop app', COLOR.warn)
-        end
-        ui.popFont()
-      elseif isLive then
-        say('caption', 'every block the app can send is on', COLOR.dim)
-      end
-      end)
+          ui.separator()
+          settingToggle('Shift light', 'shiftLight')
+          local shift, shiftChanged = ui.slider('##shiftAt', settings.shiftAt * 100, 80, 100,
+            'shift at  %.0f%% of the range')
+          if shiftChanged then settings.shiftAt = shift / 100 end
+        end)
+
+        ui.tabItem('Corners', function()
+          settingToggle('Tyre temperature', 'showTyreTemp')
+          settingToggle('Brake temperature', 'showBrakeTemp')
+          settingToggle('Wear', 'showWear')
+
+          ui.separator()
+          say('caption', 'PRESSURE', COLOR.label)
+          for decimals = 0, 2 do
+            if ui.radioButton(string.format('%d decimal%s', decimals,
+                decimals == 1 and '' or 's'), settings.pressureDecimals == decimals) then
+              settings.pressureDecimals = decimals
+              formatFrame()
+            end
+          end
+        end)
+
+        ui.tabItem('Fields', function()
+          say('caption', 'TIMING', COLOR.label)
+          settingToggle('Delta', 'showDelta')
+          settingToggle('Best lap', 'showBest')
+          settingToggle('Last lap', 'showLast')
+
+          ui.separator()
+          say('caption', 'FUEL', COLOR.label)
+          settingToggle('In the tank', 'showFuelLitres')
+          settingToggle('Laps left', 'showLapsLeft')
+          settingToggle('Per lap', 'showPerLap')
+
+          ui.separator()
+          say('caption', 'SESSION', COLOR.label)
+          settingToggle('Position', 'showPosition')
+          settingToggle('Lap number', 'showLapNumber')
+          settingToggle('Current lap', 'showCurrentLap')
+          settingToggle('Track conditions', 'showConditions')
+
+          ui.separator()
+          say('caption', 'COLUMNS', COLOR.label)
+          for _, option in ipairs({ { 'automatic', 0 }, { 'two', 2 }, { 'three', 3 } }) do
+            if ui.radioButton(option[1], settings.columnsPerRow == option[2]) then
+              settings.columnsPerRow = option[2]
+            end
+          end
+        end)
+
+        -- Sections the application itself is suppressing. Without this the
+        -- settings read as broken: a box is ticked and nothing appears.
+        ui.tabItem('State', function()
+          local held = not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER)
+            or not hasFlag(FLAG_SHOW_SESSION) or not hasFlag(FLAG_SHOW_TIMING)
+            or not hasFlag(FLAG_SHOW_FUEL)
+          if isLive and held then
+            if not hasFlag(FLAG_SHOW_TELEMETRY) then
+              say('caption', 'Telemetry is off in the desktop app', COLOR.warn)
+            end
+            if not hasFlag(FLAG_SHOW_ENGINEER) then
+              say('caption', 'Engineer advice is off in the desktop app', COLOR.warn)
+            end
+            if not hasFlag(FLAG_SHOW_SESSION) then
+              say('caption', 'Session block is off in the desktop app', COLOR.warn)
+            end
+            if not hasFlag(FLAG_SHOW_TIMING) then
+              say('caption', 'Lap timing is off in the desktop app', COLOR.warn)
+            end
+            if not hasFlag(FLAG_SHOW_FUEL) then
+              say('caption', 'Fuel block is off in the desktop app', COLOR.warn)
+            end
+          elseif isLive then
+            say('caption', 'every block the app can send is on', COLOR.dim)
+          else
+            say('caption', 'the desktop application is not running', COLOR.dim)
+          end
+        end)
       end)
     end)
 
