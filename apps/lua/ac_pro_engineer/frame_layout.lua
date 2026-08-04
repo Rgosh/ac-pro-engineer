@@ -27,7 +27,10 @@ local FRAME_LAYOUT = {
   position = ac.StructItem.int32(),
   flags = ac.StructItem.uint32(),
   message_count = ac.StructItem.uint32(),
-  messages = ac.StructItem.array(ac.StructItem.string(64), 4),
+  message_0 = ac.StructItem.string(64),
+  message_1 = ac.StructItem.string(64),
+  message_2 = ac.StructItem.string(64),
+  message_3 = ac.StructItem.string(64),
   message_severity = ac.StructItem.array(ac.StructItem.uint32(), 4),
 }
 

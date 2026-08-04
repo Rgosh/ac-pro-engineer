@@ -313,10 +313,14 @@ const FIELDS: &[(&str, &str)] = &[
     ("position", "ac.StructItem.int32()"),
     ("flags", "ac.StructItem.uint32()"),
     ("message_count", "ac.StructItem.uint32()"),
-    (
-        "messages",
-        "ac.StructItem.array(ac.StructItem.string(64), 4)",
-    ),
+    // Four fields rather than an array of them: CSP hands back raw cdata for an
+    // array of strings, which reaches the panel as `cdata<char (&)[64]>` where
+    // the engineer's advice should be. Same bytes, same offsets, and each one
+    // reads as a Lua string.
+    ("message_0", "ac.StructItem.string(64)"),
+    ("message_1", "ac.StructItem.string(64)"),
+    ("message_2", "ac.StructItem.string(64)"),
+    ("message_3", "ac.StructItem.string(64)"),
     (
         "message_severity",
         "ac.StructItem.array(ac.StructItem.uint32(), 4)",
@@ -378,16 +382,16 @@ mod tests {
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
-        // 20 scalars + 4 arrays + the message block + its severities = 26.
-        assert_eq!(FIELDS.len(), 26);
+        // 20 scalars + 4 arrays + four messages + their severities = 29.
+        assert_eq!(FIELDS.len(), 29);
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.
         let bytes: usize = FIELDS
             .iter()
             .map(|(_, kind)| {
-                if kind.contains("string(64), 4") {
-                    MESSAGE_BYTES * MESSAGE_SLOTS
+                if kind.contains("string(64)") {
+                    MESSAGE_BYTES
                 } else if kind.contains(", 4)") {
                     4 * 4
                 } else {
@@ -405,11 +409,15 @@ mod tests {
         let lua = lua_struct_declaration();
         assert!(lua.contains("ac.StructItem.explicit(4, 4)"));
         assert!(lua.contains("version = ac.StructItem.uint32()"));
-        assert!(lua.contains("messages = ac.StructItem.array(ac.StructItem.string(64), 4)"));
+        // Four named strings rather than an array of them: CSP hands back raw
+        // cdata for the array, which the panel cannot print.
+        assert!(lua.contains("message_0 = ac.StructItem.string(64)"));
+        assert!(lua.contains("message_3 = ac.StructItem.string(64)"));
+
         // Order matters as much as presence.
         let version_at = lua.find("version =").expect("version");
         let sequence_at = lua.find("sequence =").expect("sequence");
-        let messages_at = lua.find("messages =").expect("messages");
+        let messages_at = lua.find("message_0 =").expect("messages");
         assert!(version_at < sequence_at);
         assert!(sequence_at < messages_at);
 

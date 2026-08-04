@@ -44,6 +44,10 @@ ac = {
       if k == 'message_severity' then
         return setmetatable({}, { __index = function(_, i) return raw.message_severity[i] end })
       end
+      local slot = k:match('^message_(%d)$')
+      if slot ~= nil then
+        return ffi.string(raw.messages[tonumber(slot)])
+      end
       if k == 'messages' then
         return setmetatable({}, { __index = function(_, i) return ffi.string(raw.messages[i]) end })
       end

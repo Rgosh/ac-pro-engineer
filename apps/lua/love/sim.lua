@@ -80,6 +80,15 @@ local frame = {
   message_severity = { [0] = 0, 1, 0, 0 },
 }
 
+-- The panel reads the four messages by name, the way CSP hands them over.
+setmetatable(frame, {
+  __index = function(_, key)
+    local slot = tostring(key):match('^message_(%d)$')
+    if slot ~= nil then return rawget(frame, 'messages')[tonumber(slot)] end
+    return nil
+  end,
+})
+
 sim.frame = frame
 
 --- Advice lines, so the engineer section has something to cycle through.

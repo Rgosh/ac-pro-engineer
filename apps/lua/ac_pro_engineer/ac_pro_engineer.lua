@@ -43,6 +43,10 @@ local COLOR = {
 
 local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
+-- Four named fields, not an array: CSP returns raw cdata for an array of
+-- strings, and the advice reached the panel as `cdata<char (&)[64]>`.
+local MESSAGE_KEYS = { 'message_0', 'message_1', 'message_2', 'message_3' }
+
 -- ---------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------
@@ -78,6 +82,8 @@ local DEFAULTS = {
   engineerHighlight = true,
 
   sectionLabels = true,
+  contentWidth = 360,
+  barHeight = 6,
   celsius = true,
   psi = true,
 }
@@ -246,7 +252,7 @@ local function readFrame()
 
   local count = math.min(frame.message_count, 4)
   for i = 1, count do
-    shown.messages[i] = frame.messages[i - 1]
+    shown.messages[i] = frame[MESSAGE_KEYS[i]]
     shown.message_severity[i] = frame.message_severity[i - 1]
   end
   for i = count + 1, 4 do
@@ -364,19 +370,57 @@ local ITEM_SPACING = vec2(6, 3)
 local ITEM_SPACING_VR = vec2(8, 8)
 local FRAME_PADDING = vec2(6, 3)
 
---- Apply the panel's spacing. Returns how many style vars to pop.
+-- CSP's theme is whatever the driver picked for CSP — red accents, in the
+-- default one — and it repainted every tab, checkbox and slider in this panel.
+-- The colours below are the harness's, so the thing being designed and the
+-- thing being driven are the same colour.
+local STYLE_COLORS = {
+  { 'Tab', rgbm(0.13, 0.16, 0.20, 1) },
+  { 'TabHovered', rgbm(0.20, 0.42, 0.60, 1) },
+  { 'TabActive', rgbm(0.16, 0.34, 0.50, 1) },
+  { 'Header', rgbm(0.16, 0.34, 0.50, 0.8) },
+  { 'HeaderHovered', rgbm(0.20, 0.48, 0.70, 0.9) },
+  { 'HeaderActive', rgbm(0.20, 0.55, 0.80, 1) },
+  { 'CheckMark', rgbm(0.20, 0.72, 1.00, 1) },
+  { 'SliderGrab', rgbm(0.20, 0.60, 0.90, 1) },
+  { 'SliderGrabActive', rgbm(0.20, 0.72, 1.00, 1) },
+  { 'Button', rgbm(0.16, 0.17, 0.21, 1) },
+  { 'ButtonHovered', rgbm(0.22, 0.40, 0.56, 1) },
+  { 'ButtonActive', rgbm(0.20, 0.55, 0.80, 1) },
+  { 'FrameBg', rgbm(0.16, 0.17, 0.21, 1) },
+  { 'FrameBgHovered', rgbm(0.22, 0.24, 0.29, 1) },
+  { 'FrameBgActive', rgbm(0.20, 0.42, 0.60, 1) },
+  { 'Separator', rgbm(1.00, 1.00, 1.00, 0.10) },
+}
+
+--- Apply the panel's spacing and colours. Returns what to pop.
 local function pushLayoutStyle()
   ui.pushStyleVar(ui.StyleVar.ItemSpacing,
     settings.vrMode and ITEM_SPACING_VR or ITEM_SPACING)
   ui.pushStyleVar(ui.StyleVar.FramePadding, FRAME_PADDING)
-  return 2
+
+  local colors = 0
+  for _, entry in ipairs(STYLE_COLORS) do
+    local slot = ui.StyleColor[entry[1]]
+    if slot ~= nil then
+      ui.pushStyleColor(slot, entry[2])
+      colors = colors + 1
+    end
+  end
+  return 2, colors
+end
+
+local function popLayoutStyle(vars, colors)
+  if colors ~= nil and colors > 0 then ui.popStyleColor(colors) end
+  ui.popStyleVar(vars)
 end
 
 local MAX_CONTENT = 360
 local MAX_CONTENT_VR = 520
 
 local function contentWidth()
-  local limit = settings.vrMode and MAX_CONTENT_VR or MAX_CONTENT
+  local limit = settings.contentWidth or MAX_CONTENT
+  if settings.vrMode then limit = math.max(limit, MAX_CONTENT_VR) end
   return math.min(ui.availableSpaceX(), limit)
 end
 
@@ -397,7 +441,7 @@ local function rpmBar(width)
   local ratio = rpmRatio()
   -- Thin lines disappear at VR resolutions; this is the one element that is
   -- read peripherally, so it is the one that has to survive that.
-  local height = settings.vrMode and 14 or 6
+  local height = settings.vrMode and math.max(settings.barHeight, 12) or settings.barHeight
   local origin = ui.getCursor()
   local to = vec2(origin.x + width, origin.y + height)
 
@@ -658,7 +702,7 @@ function script.windowMain(dt)
     return
   end
 
-  local styles = pushLayoutStyle()
+  local styles, colors = pushLayoutStyle()
 
   if settings.showHeader then
     drawHeader()
@@ -697,7 +741,7 @@ function script.windowMain(dt)
     drawEngineerMessages()
   end
 
-  ui.popStyleVar(styles)
+  popLayoutStyle(styles, colors)
 end
 
 -- ---------------------------------------------------------------------------
@@ -730,9 +774,9 @@ function script.windowEngineer(dt)
     return
   end
 
-  local styles = pushLayoutStyle()
+  local styles, colors = pushLayoutStyle()
   drawEngineerMessages(false)
-  ui.popStyleVar(styles)
+  popLayoutStyle(styles, colors)
 end
 
 -- ---------------------------------------------------------------------------
@@ -812,9 +856,9 @@ local function drawTelemetryBody()
 end
 
 function script.windowTelemetry(dt)
-  local styles = pushLayoutStyle()
+  local styles, colors = pushLayoutStyle()
   drawTelemetryBody()
-  ui.popStyleVar(styles)
+  popLayoutStyle(styles, colors)
 end
 
 -- ---------------------------------------------------------------------------
@@ -850,9 +894,9 @@ local function drawStatusBody()
 end
 
 function script.windowStatus(dt)
-  local styles = pushLayoutStyle()
+  local styles, colors = pushLayoutStyle()
   drawStatusBody()
-  ui.popStyleVar(styles)
+  popLayoutStyle(styles, colors)
 end
 
 -- ---------------------------------------------------------------------------
@@ -884,7 +928,7 @@ function script.windowSettings(dt)
   -- Four tabs rather than one long column: the window is as tall as the driver
   -- left it, and a list that runs past the bottom edge hides the half of the
   -- settings nobody scrolled to.
-  local styles = pushLayoutStyle()
+  local styles, colors = pushLayoutStyle()
   ui.tabBar('acpeSettings', function()
     ui.tabItem('Panel', function()
       settingToggle('Speed and gear', 'showHeader')
@@ -959,6 +1003,17 @@ function script.windowSettings(dt)
     end)
 
     ui.tabItem('Text', function()
+      -- Sliders, because these are the two numbers worth nudging while looking
+      -- at the panel rather than picking from a list.
+      local width, widthChanged = ui.slider('##width', settings.contentWidth, 240, 640,
+        'content width  %.0f px', true)
+      if widthChanged then settings.contentWidth = width end
+
+      local bar, barChanged = ui.slider('##bar', settings.barHeight, 3, 24,
+        'rev bar  %.0f px', true)
+      if barChanged then settings.barHeight = bar end
+
+      ui.separator()
       for _, size in ipairs(TEXT_SIZES) do
         if ui.radioButton(size, settings.textSize == size) then
           settings.textSize = size
@@ -994,7 +1049,7 @@ function script.windowSettings(dt)
     ui.tabItem('Data', drawTelemetryBody)
     ui.tabItem('Link', drawStatusBody)
   end)
-  ui.popStyleVar(styles)
+  popLayoutStyle(styles, colors)
 end
 
 -- Exported for the LÖVE harness, which draws these on their own to compare
