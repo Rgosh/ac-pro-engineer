@@ -91,6 +91,9 @@ local DEFAULTS = {
   engineerMinSeverity = 0,-- 0 everything, 1 warnings up, 2 critical only
   engineerSpacing = false,
   engineerMaxChars = 64,   -- a line longer than this is cut, not wrapped away
+  engineerUppercase = false,
+  engineerNumbered = false,
+  engineerSeverityWord = false,
   showDebugBounds = false,
   freezeDisplay = false,
   devDemo = false,          -- plausible numbers with no application running
@@ -99,6 +102,12 @@ local DEFAULTS = {
   devSampleAdvice = false,  -- four lines, one of each severity, one very long
   background = 0.0,       -- panel backing, 0 for none
   accent = 'blue',
+  colorText = rgbm(0.88, 0.90, 0.94, 1),
+  colorLabel = rgbm(0.62, 0.66, 0.72, 1),
+  colorDim = rgbm(0.45, 0.48, 0.52, 1),
+  colorGood = rgbm(0.35, 0.85, 0.45, 1),
+  colorWarn = rgbm(1.00, 0.76, 0.20, 1),
+  colorBad = rgbm(1.00, 0.34, 0.34, 1),
   celsius = true,
   psi = true,
 }
@@ -134,6 +143,7 @@ local BULLET_NAMES = { 'severity', '>', 'dot', 'none' }
 -- uses in the terminal are not in CSP's font, so the marker is the two
 -- characters that read the same at a glance.
 local SEVERITY_MARK = { [0] = 'i  ', [1] = '!  ', [2] = '!! ' }
+local SEVERITY_WORD = { [0] = 'INFO ', [1] = 'WARN ', [2] = 'CRIT ' }
 local SEVERITY_COLOR = { [0] = COLOR.good, [1] = COLOR.warn, [2] = COLOR.bad }
 
 -- Base text sizes, multiplied by the driver's scale. CSP has five font tiers
@@ -502,11 +512,38 @@ local STYLE_COLORS = {
   { 'Separator', rgbm(1.00, 1.00, 1.00, 0.10) },
 }
 
+-- The palette is settings, not constants: a colour that works on a grey wall
+-- at Nordschleife is not the one that works against Bahrain at noon.
+local PALETTE = {
+  { 'text', 'colorText' },
+  { 'label', 'colorLabel' },
+  { 'dim', 'colorDim' },
+  { 'good', 'colorGood' },
+  { 'warn', 'colorWarn' },
+  { 'bad', 'colorBad' },
+}
+
+--- Copy the chosen colours into the preallocated table the draw path uses.
+--- Values, not references: `rgbm()` allocates, and the draw path must not.
+local function applyPalette()
+  for _, entry in ipairs(PALETTE) do
+    local chosen = settings[entry[2]]
+    local target = COLOR[entry[1]]
+    if chosen ~= nil and target ~= nil then
+      target.r, target.g, target.b, target.mult = chosen.r, chosen.g, chosen.b, chosen.mult
+    end
+  end
+  local accent = accentColor()
+  COLOR.accent.r, COLOR.accent.g = accent.r, accent.g
+  COLOR.accent.b, COLOR.accent.mult = accent.b, accent.mult
+end
+
 --- Apply the panel's spacing and colours, and take the window's measure.
 --- Returns what to pop.
 local function pushLayoutStyle()
   measureWindowScale()
   measureWindowWidth()
+  applyPalette()
   ui.pushStyleVar(ui.StyleVar.ItemSpacing,
     settings.vrMode and ITEM_SPACING_VR or ITEM_SPACING)
   ui.pushStyleVar(ui.StyleVar.FramePadding, FRAME_PADDING)
@@ -726,10 +763,14 @@ local function drawEngineerMessages(withLabel)
     local level = shown.message_severity[i] or 0
     if shown.messages[i] ~= '' and level >= (settings.engineerMinSeverity or 0) then
       local mark = bySeverity and (SEVERITY_MARK[level] or '') or bullet
+      if settings.engineerSeverityWord then mark = SEVERITY_WORD[level] or mark end
       -- The application colours the marker and leaves the sentence readable;
       -- doing the same here is the whole point of shipping severity across.
       local markColor = SEVERITY_COLOR[level] or COLOR.text
       local textColor = settings.engineerHighlight and markColor or COLOR.text
+      local line = shown.messages[i]
+      if settings.engineerUppercase then line = line:upper() end
+      if settings.engineerNumbered then line = i .. '. ' .. line end
 
       if bySeverity then
         sayAdvice(mark, markColor)
@@ -739,11 +780,10 @@ local function drawEngineerMessages(withLabel)
       if settings.engineerWrap then
         -- textWrapped takes the colour from the style stack, not an argument.
         ui.pushStyleColor(ui.StyleColor.Text, bySeverity and COLOR.text or textColor)
-        ui.textWrapped(bySeverity and shown.messages[i] or (mark .. shown.messages[i]))
+        ui.textWrapped(bySeverity and line or (mark .. line))
         ui.popStyleColor()
       else
-        sayAdvice(bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
-          bySeverity and COLOR.text or textColor)
+        sayAdvice(bySeverity and line or (mark .. line), bySeverity and COLOR.text or textColor)
       end
       if settings.engineerSpacing then gap(4) end
     end
@@ -992,7 +1032,7 @@ local COMMANDS = {
     consoleSay('--scale N   --width N   --bar N   --backing N')
     consoleSay('--accent blue|teal|amber|violet|green')
     consoleSay('--vr on|off   --dev-mode   --units c|f  --psi|--bar-units')
-    consoleSay('--lines N   --reset')
+    consoleSay('--lines N   --palette   --reset')
   end,
   ['--dev-mode'] = function()
     settings.devMode = not settings.devMode
@@ -1047,6 +1087,9 @@ local function runCommand(line)
     elseif word == '--units' then
       settings.celsius = words[index + 1] ~= 'f'
       index = index + 1
+    elseif word == '--palette' then
+      for _, entry in ipairs(PALETTE) do settings[entry[2]] = DEFAULTS[entry[2]] end
+      consoleSay('palette reset')
     elseif word == '--psi' then
       settings.psi = true
     elseif word == '--bar-units' then
@@ -1058,25 +1101,72 @@ local function runCommand(line)
   end
 end
 
+--- A checkbox bound to a settings field. `ui.checkbox` reports the click, not
+--- the new value, so the flip happens here.
+---
+--- Declared up here because every tab uses it, and a local declared after its
+--- callers is a global to them — which is how the developer tab came out as a
+--- heading with nothing underneath it.
+local function settingToggle(label, key)
+  if ui.checkbox(label, settings[key]) then
+    settings[key] = not settings[key]
+  end
+end
+
+-- One-press commands, so the common ones do not have to be typed at all. The
+-- console is for the ones with no widget; these are the ones worth reaching in
+-- a pit lane.
+local QUICK = {
+  { '4K', '--scale 2 --width 680 --bar 12' },
+  { '1080p', '--scale 1 --width 360 --bar 6' },
+  { 'VR', '--vr on --scale 1.6' },
+  { 'Bigger', '--scale 1.2' },
+  { 'Smaller', '--scale 0.85' },
+  { 'Dev', '--dev-mode' },
+  { 'Reset', '--reset' },
+}
+
+local lastCommand = ''
+
 local function drawConsoleBody()
+  say('caption', 'QUICK', COLOR.label)
+  for index, entry in ipairs(QUICK) do
+    if ui.button(entry[1]) then runCommand(entry[2]) end
+    if index % 4 ~= 0 and index < #QUICK then ui.sameLine() end
+  end
+
+  ui.separator()
+  say('caption', 'COMMAND', COLOR.label)
   ui.setNextItemWidth(contentWidth())
   local typed, _, entered = ui.inputText('##acpeConsole', consoleInput)
   consoleInput = typed or consoleInput
   if entered then
+    lastCommand = consoleInput
     runCommand(consoleInput)
     consoleInput = ''
   end
 
   if ui.button('Run') then
+    lastCommand = consoleInput
     runCommand(consoleInput)
     consoleInput = ''
   end
+  ui.sameLine()
+  if ui.button('Again') and lastCommand ~= '' then runCommand(lastCommand) end
+  ui.sameLine()
+  if ui.button('Help') then runCommand('--help') end
   ui.sameLine()
   if ui.button('Clear') then consoleLines = {} end
 
   ui.separator()
   for _, line in ipairs(consoleLines) do
-    say('caption', line, COLOR.dim)
+    local color = COLOR.dim
+    if line:sub(1, 1) == '>' then
+      color = COLOR.accent
+    elseif line:match('^unknown') or line:match('needs a number') then
+      color = COLOR.bad
+    end
+    say('caption', line, color)
   end
 end
 
@@ -1231,14 +1321,6 @@ end
 -- window from the panel: none of this runs while the overlay is being drawn.
 -- ---------------------------------------------------------------------------
 
---- A checkbox bound to a settings field. `ui.checkbox` reports the click, not
---- the new value, so the flip happens here.
-local function settingToggle(label, key)
-  if ui.checkbox(label, settings[key]) then
-    settings[key] = not settings[key]
-  end
-end
-
 function script.windowSettings(dt)
   -- The settings stay usable with the application closed — they are this
   -- machine's preferences, not the feed's — but the panel will not come back
@@ -1256,6 +1338,8 @@ function script.windowSettings(dt)
   local styles, colors = pushLayoutStyle()
   ui.tabBar('acpeSettings', function()
     ui.tabItem('Panel', function()
+      ui.tabBar('acpePanel', function()
+      ui.tabItem('Blocks', function()
       settingToggle('Speed and gear', 'showHeader')
       settingToggle('RPM bar', 'showRpmBar')
       settingToggle('Tyres and brakes', 'showTyres')
@@ -1298,7 +1382,11 @@ function script.windowSettings(dt)
           ui.textColored('Fuel block is off in the desktop app', COLOR.warn)
         end
         ui.popFont()
+      elseif isLive then
+        say('caption', 'every block the app can send is on', COLOR.dim)
       end
+      end)
+      end)
     end)
 
     ui.tabItem('Advice', function()
@@ -1343,6 +1431,12 @@ function script.windowSettings(dt)
       settingToggle('Wrap long lines', 'engineerWrap')
       settingToggle('Highlight advice', 'engineerHighlight')
       settingToggle('Space between lines', 'engineerSpacing')
+
+      ui.separator()
+      say('caption', 'FORMAT', COLOR.label)
+      settingToggle('Upper case', 'engineerUppercase')
+      settingToggle('Number the lines', 'engineerNumbered')
+      settingToggle('Spell the severity', 'engineerSeverityWord')
     end)
 
     ui.tabItem('Look', function()
@@ -1392,8 +1486,19 @@ function script.windowSettings(dt)
         end)
 
         ui.tabItem('Colour', function()
+          say('caption', 'ACCENT', COLOR.label)
           for _, name in ipairs(ACCENT_NAMES) do
             if ui.radioButton(name, settings.accent == name) then settings.accent = name end
+          end
+
+          ui.separator()
+          say('caption', 'PALETTE', COLOR.label)
+          for _, entry in ipairs(PALETTE) do
+            local picked = ui.colorPicker(entry[1], settings[entry[2]])
+            if picked ~= nil then settings[entry[2]] = picked end
+          end
+          if ui.button('Default palette') then
+            for _, entry in ipairs(PALETTE) do settings[entry[2]] = DEFAULTS[entry[2]] end
           end
 
           ui.separator()
