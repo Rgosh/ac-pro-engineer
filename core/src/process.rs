@@ -250,6 +250,10 @@ mod watcher_tests {
 
     /// The case that broke game detection: Proton hands us a Windows path,
     /// and matching only on `/` never sees it.
+    ///
+    /// `matches_process_name` parses /proc cmdlines, which only the non-Windows
+    /// implementation has.
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn a_wine_style_windows_path_is_matched() {
         assert!(matches_process_name(
@@ -259,6 +263,7 @@ mod watcher_tests {
         assert!(matches_process_name(r"z:\home\user\ac\acs.exe", "acs.exe"));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn a_unix_path_is_matched() {
         assert!(matches_process_name("/usr/bin/acs.exe", "acs.exe"));
@@ -266,6 +271,7 @@ mod watcher_tests {
     }
 
     /// A Linux build drops the .exe the callers ask for.
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn the_extensionless_linux_build_is_matched() {
         assert!(matches_process_name(
@@ -277,6 +283,7 @@ mod watcher_tests {
 
     /// ...but the name has to be a whole component, or an unrelated binary
     /// that merely ends with the same letters counts as the game running.
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn a_partial_component_is_not_matched() {
         assert!(!matches_process_name("/usr/bin/my_acs.exe", "acs.exe"));
@@ -284,6 +291,7 @@ mod watcher_tests {
         assert!(!matches_process_name("/usr/bin/steam", "acs.exe"));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn matching_ignores_case() {
         assert!(matches_process_name(r"C:\Games\AC\ACS.EXE", "acs.exe"));

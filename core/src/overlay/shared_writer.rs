@@ -18,6 +18,9 @@
 
 use crate::overlay::frame::{OVERLAY_MMF_NAME, OverlayFrame};
 use std::io;
+// Only the Linux path builds a path: Windows names its mapping rather than
+// backing it with a file.
+#[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
 /// Where the backing file lives on Linux. Wine sees this as `Z:\dev\shm\…`,
@@ -34,6 +37,9 @@ pub struct OverlayWriter {
     inner: Inner,
     /// Incremented by two per publish, so it is even between writes.
     sequence: u32,
+    /// Only the Linux path needs this: it locates the backing file. Windows
+    /// hands the name straight to `CreateFileMappingW` and keeps a handle.
+    #[cfg(not(target_os = "windows"))]
     name: String,
 }
 
@@ -52,6 +58,7 @@ impl OverlayWriter {
         Ok(Self {
             inner: Inner::open(name, size_of::<OverlayFrame>())?,
             sequence: 0,
+            #[cfg(not(target_os = "windows"))]
             name: name.to_string(),
         })
     }
@@ -237,7 +244,9 @@ impl Drop for Inner {
 #[cfg(target_os = "windows")]
 unsafe impl Send for Inner {}
 
-#[cfg(test)]
+// Every test here reads the block back through its backing file, which only
+// exists on the Linux path. The Windows mapping has no file to read.
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
     use crate::overlay::frame::OVERLAY_VERSION;
