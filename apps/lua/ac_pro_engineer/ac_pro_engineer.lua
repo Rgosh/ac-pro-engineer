@@ -149,13 +149,27 @@ end
 
 local frame = nil
 local openError = nil
-local ok, err = pcall(function()
-  frame = ac.readMemoryMappedFile(MMF_NAME, layout)
-end)
+local secondsSinceOpenAttempt = 0
 
-if not ok then
-  openError = tostring(err)
+--- Open the mapping the desktop application publishes.
+---
+--- Retried rather than attempted once: the game is usually started first, and
+--- a panel that decided at load time that there is no shared memory would stay
+--- wrong for the rest of the session — which is exactly what it did.
+local function openFrame()
+  local opened, err = pcall(function()
+    frame = ac.readMemoryMappedFile(MMF_NAME, layout)
+  end)
+  if opened then
+    openError = nil
+  else
+    frame = nil
+    openError = tostring(err)
+  end
+  return opened
 end
+
+openFrame()
 
 -- Last settled snapshot, allocated once and only ever overwritten.
 local shown = {
@@ -242,7 +256,16 @@ local function readFrame()
 end
 
 function script.update(dt)
-  if frame == nil then return end
+  if frame == nil then
+    -- Keep trying, quietly. Once the application starts, the panel fills in on
+    -- its own instead of needing the window closed and opened again.
+    secondsSinceOpenAttempt = secondsSinceOpenAttempt + dt
+    if secondsSinceOpenAttempt >= 2.0 then
+      secondsSinceOpenAttempt = 0
+      openFrame()
+    end
+    return
+  end
 
   if readFrame() then
     secondsSinceChange = 0
@@ -529,6 +552,23 @@ end
 --- are worse than no numbers, and a panel that looks broken sends people
 --- looking for the wrong problem. This says which problem it is.
 local function drawWaitingForApp()
+  if openError ~= nil then
+    pushRole('body')
+    ui.pushStyleColor(ui.StyleColor.Text, COLOR.bad)
+    ui.textWrapped('Waiting for AC Pro Engineer')
+    ui.popStyleColor()
+    ui.popFont()
+
+    pushRole('caption')
+    ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
+    ui.textWrapped('The shared mapping is not there yet. Start the desktop '
+      .. 'application — it creates the mapping, and this panel picks it up '
+      .. 'within a couple of seconds.')
+    ui.popStyleColor()
+    ui.popFont()
+    return
+  end
+
   -- Wrapped, not clipped: this text is wider than a narrow panel and the half
   -- of the sentence that fits is not the useful half.
   pushRole('body')
@@ -561,14 +601,6 @@ end
 -- ---------------------------------------------------------------------------
 
 function script.windowMain(dt)
-  if openError ~= nil then
-    ui.textColored('Shared memory unavailable', COLOR.bad)
-    pushRole('caption')
-    ui.textColored(openError, COLOR.dim)
-    ui.popFont()
-    return
-  end
-
   if not isLive then
     drawWaitingForApp()
     return
