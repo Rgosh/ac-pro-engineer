@@ -70,6 +70,9 @@ local DEFAULTS = {
   showSession = true,
   showEngineer = true,
   showLimiter = true,
+  shiftLight = true,
+  shiftAt = 0.95,          -- share of the rev range where the bar goes red
+  hudMode = false,         -- one line: speed, gear, delta, fuel
   showTyreTemp = true,
   showBrakeTemp = true,
   showWear = true,
@@ -548,9 +551,15 @@ local function readColorInto(text, target)
   target.mult = 1
 end
 
+local appliedPalette = {}
+
 local function applyPalette()
   for _, entry in ipairs(PALETTE) do
-    readColorInto(settings[entry[2]], COLOR[entry[1]])
+    local stored = settings[entry[2]]
+    if appliedPalette[entry[1]] ~= stored then
+      readColorInto(stored, COLOR[entry[1]])
+      appliedPalette[entry[1]] = stored
+    end
   end
   local accent = accentColor()
   COLOR.accent.r, COLOR.accent.g = accent.r, accent.g
@@ -628,6 +637,18 @@ local function rpmBar(width)
   if ratio > 0 then
     local filled = vec2(origin.x + width * ratio, origin.y + height)
     ui.drawRectFilled(origin, filled, rpmColor(ratio), 2)
+  end
+
+  -- The shift point, as a line on the bar and a full-width flash past it.
+  -- Peripheral vision reads a change in the whole bar long before it reads a
+  -- number, which is the entire reason this bar exists.
+  if settings.shiftLight then
+    local mark = origin.x + width * settings.shiftAt
+    ui.drawRectFilled(vec2(mark - 1, origin.y), vec2(mark + 1, origin.y + height),
+      COLOR.dim, 0)
+    if ratio >= settings.shiftAt then
+      ui.drawRectFilled(origin, to, COLOR.bad, 2)
+    end
   end
   ui.dummy(vec2(width, height))
 end
@@ -932,6 +953,28 @@ function script.windowMain(dt)
     local space = ui.availableSpace()
     ui.drawRect(vec2(origin.x, origin.y),
       vec2(origin.x + contentWidth(), origin.y + space.y), accentColor(), 2, 1)
+  end
+
+  -- One line, for a driver who wants the panel out of the way: speed, gear,
+  -- delta and fuel, and nothing else on screen.
+  if settings.hudMode then
+    say('hero', string.format('%.0f', shown.speed_kmh), COLOR.text)
+    ui.sameLine()
+    say('gear', gearText(shown.gear), rpmColor(rpmRatio()))
+    ui.sameLine()
+    local deltaColor = COLOR.text
+    if shown.delta_seconds < -0.001 then
+      deltaColor = COLOR.good
+    elseif shown.delta_seconds > 0.001 then
+      deltaColor = COLOR.bad
+    end
+    say('gear', string.format('%+.2f', shown.delta_seconds), deltaColor)
+    ui.sameLine()
+    say('gear', string.format('%.0f L', shown.fuel_litres),
+      hasFlag(FLAG_FUEL_WARNING) and COLOR.bad or COLOR.dim)
+    if settings.showRpmBar then rpmBar(contentWidth()) end
+    popLayoutStyle(styles, colors)
+    return
   end
 
   if settings.showHeader then
@@ -1514,10 +1557,13 @@ function script.windowSettings(dt)
           ui.separator()
           say('caption', 'PALETTE', COLOR.label)
           for _, entry in ipairs(PALETTE) do
+            -- The picker edits the colour in place and reports whether it
+            -- changed; it does not hand one back. Reading its return value as
+            -- a colour is why picking one did nothing at all.
             local current = COLOR[entry[1]]
-            local picked = ui.colorPicker(entry[1], current)
-            if picked ~= nil and picked.r ~= nil then
-              settings[entry[2]] = string.format('%.2f,%.2f,%.2f', picked.r, picked.g, picked.b)
+            if ui.colorPicker(entry[1], current) then
+              settings[entry[2]] =
+                string.format('%.3f,%.3f,%.3f', current.r, current.g, current.b)
             end
           end
           if ui.button('Default palette') then
@@ -1552,16 +1598,21 @@ function script.windowSettings(dt)
     -- window to open when the question is "what is going on", rather than
     -- three entries to hunt for in the sidebar.
     ui.tabItem('Console', drawConsoleBody)
-    ui.tabItem('Data', drawTelemetryBody)
-    ui.tabItem('Link', drawStatusBody)
 
-    -- Red, and only here when asked for: everything on it can make the panel
-    -- show something the car is not doing.
+    -- Red, and only here when asked for. The raw frame and the link state live
+    -- under it: they answer questions a driver does not have, and four tabs
+    -- nobody needs are four tabs in the way of the two they do.
     if settings.devMode then
       ui.pushStyleColor(ui.StyleColor.Tab, rgbm(0.45, 0.12, 0.14, 1))
       ui.pushStyleColor(ui.StyleColor.TabHovered, rgbm(0.75, 0.20, 0.22, 1))
       ui.pushStyleColor(ui.StyleColor.TabActive, rgbm(0.62, 0.16, 0.18, 1))
-      ui.tabItem('Dev', drawDevBody)
+      ui.tabItem('Dev', function()
+        ui.tabBar('acpeDev', function()
+          ui.tabItem('Switches', drawDevBody)
+          ui.tabItem('Data', drawTelemetryBody)
+          ui.tabItem('Link', drawStatusBody)
+        end)
+      end)
       ui.popStyleColor(3)
     end
   end)
