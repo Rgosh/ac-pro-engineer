@@ -678,10 +678,15 @@ ui.WindowFlags = {
   NoDecoration = 1 + 2 + 8 + 32,
 }
 
+-- CSP's numbering, so a var the panel pushes is a var the harness knows about.
 ui.StyleVar = {
-  Alpha = 1, WindowPadding = 2, WindowRounding = 3, WindowBorderSize = 4,
-  ChildRounding = 5, FramePadding = 6, FrameRounding = 7, ItemSpacing = 8,
-  IndentSpacing = 9, GrabRounding = 10,
+  Alpha = 0, WindowRounding = 1, WindowBorderSize = 2, ChildRounding = 3,
+  ChildBorderSize = 4, PopupRounding = 5, PopupBorderSize = 6, FrameBorderSize = 7,
+  IndentSpacing = 8, ScrollbarSize = 9, FrameRounding = 10, ScrollbarRounding = 11,
+  GrabMinSize = 12, GrabRounding = 13, TabRounding = 14, WindowPadding = 15,
+  WindowMinSize = 16, WindowTitleAlign = 17, FramePadding = 18, ItemSpacing = 19,
+  ItemInnerSpacing = 20, ButtonTextAlign = 21, SelectableTextAlign = 22,
+  SelectablePadding = 23, SliderTextAlign = 24,
 }
 
 ui.StyleColor = {
@@ -690,6 +695,9 @@ ui.StyleColor = {
 }
 
 local function pushStyle(store, order, id, value)
+  -- A style the harness does not model still has to push and pop in pairs, or
+  -- the counts the panel passes to popStyleVar stop matching.
+  if id == nil then id = '__unknown' end
   local stack = store[id]
   if stack == nil then
     stack = {}

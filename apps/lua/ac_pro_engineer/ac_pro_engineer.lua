@@ -86,6 +86,10 @@ local DEFAULTS = {
   contentWidth = 360,
   barHeight = 6,
   fontScale = 1.0,        -- everything the panel draws, in one number
+  autoScale = true,       -- and it follows the window, so stretching grows it
+  engineerScale = 1.0,    -- advice, sized on its own
+  engineerMinSeverity = 0,-- 0 everything, 1 warnings up, 2 critical only
+  engineerSpacing = false,
   background = 0.0,       -- panel backing, 0 for none
   accent = 'blue',
   celsius = true,
@@ -126,9 +130,41 @@ local SEVERITY_COLOR = { [0] = COLOR.good, [1] = COLOR.warn, [2] = COLOR.bad }
 local TEXT_BASE = { caption = 11, body = 15, hero = 38, gear = 22 }
 local VR_BOOST = 1.35
 
+-- What the layout was drawn against. A window twice that wide should show
+-- everything twice the size rather than the same numbers with a field of empty
+-- pixels beside them, which is what stretching used to do.
+local DESIGN_WIDTH = 360
+
+-- Measured once per window, not per item: `availableSpaceX` shrinks as the
+-- cursor moves right, so asking it inside a column made the second column half
+-- the size of the first.
+local frameScale = 1
+local frameWidth = 360
+
+local function measureWindowScale()
+  if not settings.autoScale then
+    frameScale = 1
+    return
+  end
+  local available = ui.availableSpaceX()
+  if available <= 0 then
+    frameScale = 1
+    return
+  end
+  frameScale = math.max(0.75, math.min(2.5, available / DESIGN_WIDTH))
+end
+
+local function measureWindowWidth()
+  frameWidth = math.max(120, ui.availableSpaceX())
+end
+
+local function windowScale()
+  return frameScale
+end
+
 local function textSize(role)
   local base = TEXT_BASE[role] or TEXT_BASE.body
-  local scale = settings.fontScale or 1
+  local scale = (settings.fontScale or 1) * windowScale()
   if settings.vrMode then scale = scale * VR_BOOST end
   if settings.textSize == 'compact' then
     scale = scale * 0.85
@@ -408,6 +444,15 @@ local ACCENTS = {
 }
 local ACCENT_NAMES = { 'blue', 'teal', 'amber', 'violet', 'green' }
 
+-- Starting points by screen, so the first thing a driver sees is legible.
+-- The third field keeps two buttons on a line.
+local PRESETS = {
+  { '1080p', { fontScale = 1.0, contentWidth = 360, barHeight = 6, textSize = 'normal' }, true },
+  { '1440p', { fontScale = 1.35, contentWidth = 460, barHeight = 8, textSize = 'normal' }, false },
+  { '4K', { fontScale = 2.0, contentWidth = 680, barHeight = 12, textSize = 'normal' }, true },
+  { 'VR', { fontScale = 1.6, contentWidth = 520, barHeight = 14, vrMode = true }, false },
+}
+
 local function accentColor()
   return ACCENTS[settings.accent] or ACCENTS.blue
 end
@@ -431,11 +476,19 @@ local STYLE_COLORS = {
   { 'Separator', rgbm(1.00, 1.00, 1.00, 0.10) },
 }
 
---- Apply the panel's spacing and colours. Returns what to pop.
+--- Apply the panel's spacing and colours, and take the window's measure.
+--- Returns what to pop.
 local function pushLayoutStyle()
+  measureWindowScale()
+  measureWindowWidth()
   ui.pushStyleVar(ui.StyleVar.ItemSpacing,
     settings.vrMode and ITEM_SPACING_VR or ITEM_SPACING)
   ui.pushStyleVar(ui.StyleVar.FramePadding, FRAME_PADDING)
+  ui.pushStyleVar(ui.StyleVar.FrameRounding, 3)
+  ui.pushStyleVar(ui.StyleVar.GrabRounding, 3)
+  ui.pushStyleVar(ui.StyleVar.TabRounding, 3)
+  ui.pushStyleVar(ui.StyleVar.ScrollbarRounding, 3)
+  ui.pushStyleVar(ui.StyleVar.ItemInnerSpacing, vec2(6, 3))
 
   local colors = 0
   for _, entry in ipairs(STYLE_COLORS) do
@@ -445,7 +498,7 @@ local function pushLayoutStyle()
       colors = colors + 1
     end
   end
-  return 2, colors
+  return 7, colors
 end
 
 local function popLayoutStyle(vars, colors)
@@ -457,6 +510,10 @@ local MAX_CONTENT = 360
 local MAX_CONTENT_VR = 520
 
 local function contentWidth()
+  -- With auto scale the content fills the window: the size grew with it, so
+  -- capping the width would only put the extra room back as emptiness. Taken
+  -- once for the same reason the scale is.
+  if settings.autoScale then return frameWidth end
   local limit = settings.contentWidth or MAX_CONTENT
   if settings.vrMode then limit = math.max(limit, MAX_CONTENT_VR) end
   return math.min(ui.availableSpaceX(), limit)
@@ -479,7 +536,8 @@ local function rpmBar(width)
   local ratio = rpmRatio()
   -- Thin lines disappear at VR resolutions; this is the one element that is
   -- read peripherally, so it is the one that has to survive that.
-  local height = settings.vrMode and math.max(settings.barHeight, 12) or settings.barHeight
+  local base = settings.vrMode and math.max(settings.barHeight, 12) or settings.barHeight
+  local height = math.max(2, math.floor(base * windowScale() + 0.5))
   local origin = ui.getCursor()
   local to = vec2(origin.x + width, origin.y + height)
 
@@ -612,6 +670,12 @@ end
 ---
 --- `withLabel` is false in the advice window, where the window's own title
 --- already says what this is.
+--- Advice, at its own size: it is the one thing read while the car is moving,
+--- and the one thing worth making bigger than everything else.
+local function sayAdvice(text, color)
+  ui.dwriteText(text, textSize('body') * (settings.engineerScale or 1), color)
+end
+
 local function drawEngineerMessages(withLabel)
   if withLabel ~= false then sectionLabel('ENGINEER') end
 
@@ -620,8 +684,8 @@ local function drawEngineerMessages(withLabel)
   local count = math.min(shown.message_count, settings.engineerLines, 4)
 
   for i = 1, count do
-    if shown.messages[i] ~= '' then
-      local level = shown.message_severity[i] or 0
+    local level = shown.message_severity[i] or 0
+    if shown.messages[i] ~= '' and level >= (settings.engineerMinSeverity or 0) then
       local mark = bySeverity and (SEVERITY_MARK[level] or '') or bullet
       -- The application colours the marker and leaves the sentence readable;
       -- doing the same here is the whole point of shipping severity across.
@@ -629,7 +693,7 @@ local function drawEngineerMessages(withLabel)
       local textColor = settings.engineerHighlight and markColor or COLOR.text
 
       if bySeverity then
-        say('body', mark, markColor)
+        sayAdvice(mark, markColor)
         ui.sameLine()
       end
 
@@ -639,9 +703,10 @@ local function drawEngineerMessages(withLabel)
         ui.textWrapped(bySeverity and shown.messages[i] or (mark .. shown.messages[i]))
         ui.popStyleColor()
       else
-        say('body', bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
+        sayAdvice(bySeverity and shown.messages[i] or (mark .. shown.messages[i]),
           bySeverity and COLOR.text or textColor)
       end
+      if settings.engineerSpacing then gap(4) end
     end
   end
 
@@ -1125,11 +1190,43 @@ function script.windowSettings(dt)
       end
 
       ui.separator()
+      say('caption', 'SIZE', COLOR.label)
+      local scale, scaleChanged = ui.slider('##adviceScale', settings.engineerScale, 0.6, 2.5,
+        'advice scale  %.2fx')
+      if scaleChanged then settings.engineerScale = scale end
+
+      ui.separator()
+      say('caption', 'SHOW', COLOR.label)
+      for index, name in ipairs({ 'everything', 'warnings and worse', 'critical only' }) do
+        if ui.radioButton(name, settings.engineerMinSeverity == index - 1) then
+          settings.engineerMinSeverity = index - 1
+        end
+      end
+
+      ui.separator()
       settingToggle('Wrap long lines', 'engineerWrap')
       settingToggle('Highlight advice', 'engineerHighlight')
+      settingToggle('Space between lines', 'engineerSpacing')
     end)
 
     ui.tabItem('Text', function()
+      -- Presets first: a panel that opens unreadable on a 4K screen is a panel
+      -- nobody gets as far as configuring.
+      say('caption', 'SCREEN', COLOR.label)
+      for _, preset in ipairs(PRESETS) do
+        if ui.button(preset[1]) then
+          for key, value in pairs(preset[2]) do settings[key] = value end
+        end
+        if preset[3] then ui.sameLine() end
+      end
+
+      ui.separator()
+      settingToggle('Grow with the window', 'autoScale')
+      say('caption', settings.autoScale
+        and 'size follows the window; width is the window'
+        or 'fixed size and width', COLOR.dim)
+
+      ui.separator()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
       local scale, scaleChanged = ui.slider('##scale', settings.fontScale, 0.6, 3.0,
