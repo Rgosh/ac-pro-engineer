@@ -48,6 +48,17 @@ ac = {
   end,
 }
 
+-- Anything the app reaches for that is not spelled out below: callable, so
+-- `ui.pushStyleVar(...)` works, and indexable, so `ui.StyleVar.WindowRounding`
+-- does too. A stub that is only one of the two turns a missing entry into a
+-- confusing error about indexing a function.
+local function stub(name)
+  return setmetatable({}, {
+    __call = function(_, ...) note(name); return 0 end,
+    __index = function() return 0 end,
+  })
+end
+
 ui = setmetatable({
   Font = { Small=1, Tiny=2, Monospace=3, Main=4, Italic=5, Title=6, Huge=7 },
   text = function(s) note('text'); drawn[#drawn+1] = tostring(s) end,
@@ -55,7 +66,7 @@ ui = setmetatable({
   availableSpace = function() return vec2(300, 380) end,
   availableSpaceX = function() return 300 end,
   getCursor = function() return vec2(0, 0) end,
-}, { __index = function(_, k) return function() note(k) end end })
+}, { __index = function(_, k) return stub(k) end })
 
 script = {}
 local ok, err = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
@@ -71,6 +82,14 @@ print('update: OK')
 local w, e2 = pcall(script.windowMain, 0.016)
 if not w then print('windowMain FAILED: ' .. tostring(e2)); os.exit(1) end
 print('windowMain: OK')
+
+-- The settings window is drawn by the same script and can break the same way,
+-- so it gets driven too.
+if script.windowSettings ~= nil then
+  local s, e3 = pcall(script.windowSettings, 0.016)
+  if not s then print('windowSettings FAILED: ' .. tostring(e3)); os.exit(1) end
+  print('windowSettings: OK')
+end
 
 print('\nrendered ' .. #drawn .. ' pieces of text:')
 for i = 1, math.min(#drawn, 16) do print('  ' .. drawn[i]) end
