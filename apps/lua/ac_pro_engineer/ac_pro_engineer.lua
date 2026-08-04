@@ -344,6 +344,20 @@ local function stat(label, value, color)
   ui.endGroup()
 end
 
+-- How wide the content is allowed to get, whatever the window does.
+--
+-- A CSP window is resized by the driver and can end up half a screen wide.
+-- Columns measured against the whole width then drift apart until a block of
+-- four tyres reads as four unrelated numbers, so the layout keeps to a column
+-- and lets the rest of the window be empty.
+local MAX_CONTENT = 360
+local MAX_CONTENT_VR = 520
+
+local function contentWidth()
+  local limit = settings.vrMode and MAX_CONTENT_VR or MAX_CONTENT
+  return math.min(ui.availableSpaceX(), limit)
+end
+
 --- Where column `index` of a row of stats begins.
 ---
 --- Three across normally. Two in VR, where the text is large enough that a
@@ -399,7 +413,7 @@ local function drawHeader()
   end
 
   if settings.showRpmBar then
-    rpmBar(ui.availableSpaceX())
+    rpmBar(contentWidth())
   end
 end
 
@@ -407,7 +421,7 @@ local function drawTyres()
   sectionLabel('TYRES & BRAKES')
 
   -- Two by two, the way they sit on the car
-  local columnWidth = ui.availableSpaceX() * 0.5
+  local columnWidth = contentWidth() * 0.5
   for row = 0, 1 do
     for col = 0, 1 do
       local i = row * 2 + col + 1
@@ -453,7 +467,7 @@ local function drawTiming()
   -- space left after each column gives the same answer every time — the cursor
   -- is back at the start of the line by then — and all three columns land on
   -- top of each other.
-  local width = ui.availableSpaceX()
+  local width = contentWidth()
 
   nextColumn(width, 0)
   stat('DELTA', string.format('%+.3f', shown.delta_seconds), deltaColor)
@@ -466,7 +480,7 @@ end
 local function drawFuel()
   local color = hasFlag(FLAG_FUEL_WARNING) and COLOR.bad or COLOR.text
 
-  local width = ui.availableSpaceX()
+  local width = contentWidth()
 
   nextColumn(width, 0)
   stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
@@ -485,7 +499,7 @@ end
 local function drawSession()
   sectionLabel('SESSION')
 
-  local width = ui.availableSpaceX()
+  local width = contentWidth()
   nextColumn(width, 0)
   stat('POS', shown.position > 0 and string.format('P%d', shown.position) or '--', COLOR.text)
   nextColumn(width, 1)
