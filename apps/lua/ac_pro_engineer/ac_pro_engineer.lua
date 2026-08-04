@@ -125,6 +125,16 @@ if type(ac) == 'table' and type(ac.storage) == 'function' then
   if storageOk and stored ~= nil then settings = stored end
 end
 
+-- Heal a palette that was saved invisible: reopening the window is then enough
+-- to get back, without hunting for a button that cannot be seen.
+for _, key in ipairs({ 'colorText', 'colorLabel', 'colorDim', 'colorGood', 'colorWarn',
+    'colorBad' }) do
+  local color = settings[key]
+  if type(color) == 'table' and (color.mult or 1) < 0.2 then
+    settings[key] = DEFAULTS[key]
+  end
+end
+
 -- Text size, as font tiers rather than a scale factor: CSP has no API for
 -- scaling a font, but it does give five of them, and stepping between tiers is
 -- what "bigger text" has to mean here.
@@ -525,12 +535,17 @@ local PALETTE = {
 
 --- Copy the chosen colours into the preallocated table the draw path uses.
 --- Values, not references: `rgbm()` allocates, and the draw path must not.
+-- No colour may be picked into invisibility. A settings screen that can hide
+-- itself is a trap: the way back out is a button nobody can see.
+local MIN_ALPHA = 0.35
+
 local function applyPalette()
   for _, entry in ipairs(PALETTE) do
     local chosen = settings[entry[2]]
     local target = COLOR[entry[1]]
     if chosen ~= nil and target ~= nil then
-      target.r, target.g, target.b, target.mult = chosen.r, chosen.g, chosen.b, chosen.mult
+      target.r, target.g, target.b = chosen.r, chosen.g, chosen.b
+      target.mult = math.max(MIN_ALPHA, chosen.mult or 1)
     end
   end
   local accent = accentColor()
