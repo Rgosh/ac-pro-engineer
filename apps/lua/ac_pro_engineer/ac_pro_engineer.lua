@@ -1,15 +1,12 @@
 -- AC Pro Engineer overlay.
---
 -- This script computes nothing. Every value it draws was calculated by the
 -- desktop application and published into shared memory; all that happens here
 -- is reading fields out of a struct and handing them to ImGui.
---
 -- That split is deliberate. This code runs on Assetto Corsa's render thread,
 -- where a millisecond is a sixth of the frame budget at 165 Hz, and LuaJIT
--- collects garbage mid-frame — so anything that parses text, builds tables or
+-- collects garbage mid-frame so anything that parses text, builds tables or
 -- formats strings every frame shows up as a stutter rather than as a lower
 -- average frame rate.
---
 -- The rules that keep it cheap:
 --   * nothing is allocated per frame that can be allocated once
 --   * `script.update` copies only the fields drawn, and only when the writer
@@ -21,17 +18,14 @@ local layout = require('frame_layout')
 
 -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
 local EXPECTED_VERSION = 1
-
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
-
 -- How long the sequence may stand still before the application is presumed
 -- gone. Two seconds rides out a stalled tick without letting anyone read
 -- frozen numbers as live ones.
 local LIVENESS_TIMEOUT = 2.0
 
--- Preallocated. `rgbm()` allocates, and building the same handful of colours
--- sixty times a second is exactly the garbage this design exists to avoid.
+-- Preallocated constants
 local COLOR = {
   dim       = rgbm(0.45, 0.48, 0.52, 1),
   label     = rgbm(0.62, 0.66, 0.72, 1),
@@ -47,14 +41,15 @@ local COLOR = {
   limiter   = rgbm(1.00, 0.62, 0.10, 1),
 }
 
+local WINDOW_PADDING = vec2(12, 12)
 local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
 local frame = nil
 local openError = nil
-
 local ok, err = pcall(function()
   frame = ac.readMemoryMappedFile(MMF_NAME, layout)
 end)
+
 if not ok then
   openError = tostring(err)
 end
@@ -89,12 +84,6 @@ local function hasFlag(flag)
 end
 
 --- Copy the struct into `shown`, but only if it is settled.
---
--- The writer keeps `sequence` odd while mid-write and bumps it by two per
--- update, so an odd value means we caught it in the middle, and a value that
--- moved across our read means it finished one while we copied. Either way the
--- previous snapshot is kept: skipping a frame at 60 Hz is invisible, a frame
--- spliced from two updates is a visible flicker.
 local function readFrame()
   local seq = frame.sequence
   if seq % 2 ~= 0 then return false end
@@ -127,7 +116,6 @@ local function readFrame()
   for i = count + 1, 4 do shown.messages[i] = '' end
 
   if frame.sequence ~= seq then return false end
-
   lastSequence = seq
   return true
 end
@@ -143,8 +131,6 @@ function script.update(dt)
   end
 
   -- The sequence standing still is how the application's absence is detected.
-  -- No separate heartbeat is needed: the thing that proves it is alive is the
-  -- thing it already sends.
   if secondsSinceChange > LIVENESS_TIMEOUT then
     isLive = false
   end
@@ -236,6 +222,7 @@ local function drawHeader()
   ui.endGroup()
 
   ui.sameLine()
+
   ui.beginGroup()
   ui.pushFont(ui.Font.Tiny)
   ui.textColored('KM/H', COLOR.label)
@@ -257,11 +244,10 @@ end
 
 local function drawTyres()
   ui.pushFont(ui.Font.Tiny)
-  ui.textColored('TYRES', COLOR.label)
+  ui.textColored('TYRES & BRAKES', COLOR.label)
   ui.popFont()
 
-  -- Two by two, the way they sit on the car, so a hot corner is where you
-  -- expect it rather than third in a list.
+  -- Two by two, the way they sit on the car
   local columnWidth = ui.availableSpaceX() * 0.5
   for row = 0, 1 do
     for col = 0, 1 do
@@ -269,33 +255,29 @@ local function drawTyres()
       if col == 1 then ui.sameLine(columnWidth) end
 
       ui.beginGroup()
+
+      -- Tyre Label
       ui.pushFont(ui.Font.Tiny)
       ui.textColored(TYRE_LABEL[i], COLOR.dim)
       ui.popFont()
-
       ui.sameLine()
-      ui.textColored(string.format('%.1f', shown.tyre_pressure_psi[i]),
-        tyreTempColor(shown.tyre_temp_c[i]))
 
+      -- Pressure
+      ui.textColored(string.format('%.1f psi', shown.tyre_pressure_psi[i]), COLOR.text)
+
+      -- Temps
       ui.pushFont(ui.Font.Tiny)
-      ui.textColored(string.format('%.0f°  %.0f%%',
-        shown.tyre_temp_c[i], shown.tyre_wear_percent[i]),
-        wearColor(shown.tyre_wear_percent[i]))
+      ui.textColored(string.format('T: %.0f°C', shown.tyre_temp_c[i]), tyreTempColor(shown.tyre_temp_c[i]))
+      ui.sameLine()
+      ui.textColored(string.format('B: %.0f°C', shown.brake_temp_c[i]), brakeColor(shown.brake_temp_c[i]))
+
+      -- Wear
+      ui.textColored(string.format('Wear: %.0f%%', shown.tyre_wear_percent[i]), wearColor(shown.tyre_wear_percent[i]))
       ui.popFont()
+
       ui.endGroup()
     end
   end
-end
-
-local function drawBrakes()
-  ui.pushFont(ui.Font.Tiny)
-  ui.textColored('BRAKES', COLOR.label)
-  for i = 1, 4 do
-    ui.textColored(string.format('%s %.0f°', TYRE_LABEL[i], shown.brake_temp_c[i]),
-      brakeColor(shown.brake_temp_c[i]))
-    if i < 4 then ui.sameLine() end
-  end
-  ui.popFont()
 end
 
 local function drawTiming()
@@ -315,6 +297,7 @@ end
 
 local function drawFuel()
   local color = hasFlag(FLAG_FUEL_WARNING) and COLOR.bad or COLOR.text
+
   stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
   ui.sameLine(ui.availableSpaceX() * 0.42)
   stat('LAPS LEFT',
@@ -326,71 +309,58 @@ local function drawFuel()
     COLOR.dim)
 end
 
-local function drawAdvice()
+local function drawEngineerMessages()
   ui.pushFont(ui.Font.Tiny)
   ui.textColored('ENGINEER', COLOR.label)
   ui.popFont()
-  for i = 1, math.min(shown.message_count, 4) do
+
+  local count = math.min(shown.message_count, 4)
+  for i = 1, count do
     if shown.messages[i] ~= '' then
-      ui.textColored('• ' .. shown.messages[i], COLOR.warn)
+      ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
+      ui.textWrapped('> ' .. shown.messages[i])
+      ui.popStyleColor()
     end
   end
 end
 
---- What to show when there is nothing to show.
-local function drawIdle(message, detail)
-  local space = ui.availableSpace()
-  ui.offsetCursorY(math.max(0, space.y * 0.35))
-  ui.pushFont(ui.Font.Small)
-  ui.textColored(message, COLOR.dim)
-  if detail ~= nil then
-    ui.pushFont(ui.Font.Tiny)
-    ui.textColored(detail, COLOR.dim)
-    ui.popFont()
-  end
-  ui.popFont()
-end
+-- Главная точка входа рендеринга
+function ac.onRenderWidget()
+  -- Если бэкенд отвалился — ничего не рендерим
+  if not isLive then return end
 
-function script.windowMain(dt)
-  if openError ~= nil then
-    ui.textColored('Shared memory unavailable', COLOR.bad)
-    ui.pushFont(ui.Font.Tiny)
-    ui.textColored(openError, COLOR.dim)
-    ui.popFont()
-    return
-  end
+  -- Настройка стилей
+  ui.pushStyleVar(ui.StyleVar.WindowRounding, 8)
+  ui.pushStyleVar(ui.StyleVar.WindowPadding, WINDOW_PADDING)
+  ui.pushStyleColor(ui.StyleColor.WindowBg, COLOR.panel)
 
-  if not isLive then
-    -- Deliberately quiet. A panel of stale numbers is worse than an empty one.
-    drawIdle('AC Pro Engineer is not running', 'Start the desktop app to see telemetry')
-    return
-  end
-
-  if shown.version ~= EXPECTED_VERSION then
-    ui.textColored('Version mismatch', COLOR.bad)
-    ui.pushFont(ui.Font.Tiny)
-    ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
-      COLOR.dim)
-    ui.popFont()
-    return
-  end
+  -- Окно
+  local flags = bit.bor(ui.WindowFlags.NoTitleBar, ui.WindowFlags.NoScrollbar)
+  ui.begin('AC Pro Engineer', flags)
 
   drawHeader()
-  ui.offsetCursorY(4)
+  ui.offsetCursorY(6)
 
   if hasFlag(FLAG_SHOW_TELEMETRY) then
     drawTyres()
-    ui.offsetCursorY(2)
-    drawBrakes()
-    ui.offsetCursorY(4)
+    ui.offsetCursorY(6)
+    drawTiming()
+    ui.offsetCursorY(6)
+    drawFuel()
   end
-
-  drawTiming()
-  ui.offsetCursorY(2)
-  drawFuel()
 
   if hasFlag(FLAG_SHOW_ENGINEER) and shown.message_count > 0 then
-    ui.offsetCursorY(4)
-    drawAdvice()
+    ui.offsetCursorY(8)
+    drawEngineerMessages()
   end
+
+  ui['end']()
+
+  ui.popStyleColor()
+  ui.popStyleVar(2)
 end
+
+-- Экспорт для дебаг-лаунчера
+script.drawHeader = drawHeader
+script.drawTyres = drawTyres
+script.windowMain = ac.onRenderWidget
