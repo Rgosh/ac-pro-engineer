@@ -135,6 +135,7 @@ local DEFAULTS = {
   colorBad = '1.00,0.34,0.34',
   celsius = true,
   psi = true,
+  language = 'auto',      -- auto follows the application, en and ru pin it
   mph = false,
   gallons = false,
   shortLapTimes = false,
@@ -239,6 +240,10 @@ local DESIGN_WIDTH = 360
 -- Measured once per window, not per item: `availableSpaceX` shrinks as the
 -- cursor moves right, so asking it inside a column made the second column half
 -- the size of the first.
+-- Declared here, defined once the snapshot and the flags exist: the drawing
+-- helpers below all speak through it.
+local tr
+
 local frameScale = 1
 local frameWidth = 360
 
@@ -358,7 +363,7 @@ end
 --- A section caption, or nothing when the panel is set to run without them.
 local function sectionLabel(text)
   if not settings.sectionLabels then return end
-  say('caption', text, COLOR.label)
+  say('caption', tr(text), COLOR.label)
 end
 
 local frame = nil
@@ -436,6 +441,7 @@ local FLAG_FUEL_WARNING  = 16
 local FLAG_SHOW_SESSION  = 32
 local FLAG_SHOW_TIMING   = 64
 local FLAG_SHOW_FUEL     = 128
+local FLAG_RUSSIAN       = 256
 
 local function hasFlag(flag)
   -- Developer mode can answer yes to every section: the layout has to be
@@ -443,6 +449,56 @@ local function hasFlag(flag)
   -- it at once.
   if settings.devIgnoreFlags and flag >= FLAG_SHOW_TELEMETRY then return true end
   return bit.band(shown.flags, flag) ~= 0
+end
+
+-- The panel's own words. The advice already arrives translated — the
+-- application writes it in whichever language it runs in — and it read badly
+-- next to English captions, so the captions follow the same language.
+local RUSSIAN = {
+  ['KM/H'] = 'КМ/Ч',
+  ['MPH'] = 'МИЛЬ/Ч',
+  ['LIMITER'] = 'ЛИМИТЕР',
+  ['TYRES & BRAKES'] = 'ШИНЫ И ТОРМОЗА',
+  ['BRAKES'] = 'ТОРМОЗА',
+  ['DELTA'] = 'ДЕЛЬТА',
+  ['BEST'] = 'ЛУЧШИЙ',
+  ['LAST'] = 'ПОСЛЕДНИЙ',
+  ['FUEL'] = 'ТОПЛИВО',
+  ['LAPS LEFT'] = 'КРУГОВ',
+  ['PER LAP'] = 'НА КРУГ',
+  ['SESSION'] = 'СЕССИЯ',
+  ['POS'] = 'МЕСТО',
+  ['LAP'] = 'КРУГ',
+  ['CURRENT'] = 'ТЕКУЩИЙ',
+  ['ENGINEER'] = 'ИНЖЕНЕР',
+  ['nothing to report'] = 'без замечаний',
+  ['AC Pro Engineer is not running'] = 'AC Pro Engineer не запущен',
+  ['Start the desktop application to see telemetry.'] =
+    'Запусти приложение, чтобы увидеть телеметрию.',
+  ['Nothing has been published yet.'] = 'Данные ещё не публиковались.',
+  ['Shared memory unavailable'] = 'Общая память недоступна',
+  ['Version mismatch'] = 'Версии не совпадают',
+  ['Waiting for AC Pro Engineer'] = 'Жду AC Pro Engineer',
+  ['CAR'] = 'МАШИНА',
+  ['TIMING'] = 'ВРЕМЯ КРУГА',
+  ['CORNERS'] = 'КОЛЁСА',
+  ['FLAGS'] = 'ФЛАГИ',
+  ['LINK'] = 'СВЯЗЬ',
+  ['FRAME'] = 'КАДР',
+  ['PANEL'] = 'ПАНЕЛЬ',
+}
+
+--- The panel's language: what the application is running in, unless the driver
+--- pinned one.
+local function russian()
+  if settings.language == 'ru' then return true end
+  if settings.language == 'en' then return false end
+  return bit.band(shown.flags, FLAG_RUSSIAN) ~= 0
+end
+
+function tr(text)
+  if not russian() then return text end
+  return RUSSIAN[text] or text
 end
 
 --- Copy the struct into `shown`, but only if it is settled.
@@ -606,7 +662,7 @@ end
 --- A label above a value, as its own column.
 local function stat(label, value, color)
   ui.beginGroup()
-  say('caption', label, COLOR.label)
+  say('caption', tr(label), COLOR.label)
   say('body', value, color or COLOR.text)
   ui.endGroup()
 end
@@ -815,7 +871,7 @@ local function drawHeader()
   ui.sameLine()
 
   ui.beginGroup()
-  say('caption', settings.mph and 'MPH' or 'KM/H', COLOR.label)
+  say('caption', tr(settings.mph and 'MPH' or 'KM/H'), COLOR.label)
   say('gear', text.gear, rpmColor(rpmRatio()))
   ui.endGroup()
 
@@ -1015,7 +1071,7 @@ local function drawEngineerMessages(withLabel)
   end
 
   if count == 0 and withLabel ~= false then
-    say('caption', 'nothing to report', COLOR.dim)
+    say('caption', tr('nothing to report'), COLOR.dim)
   elseif settings.engineerShowCount then
     say('caption', string.format('%d of %d shown', count, shown.message_count), COLOR.dim)
   end
@@ -1062,7 +1118,7 @@ local function drawWaitingForApp()
   if openError ~= nil then
     pushRole('body')
     ui.pushStyleColor(ui.StyleColor.Text, COLOR.bad)
-    ui.textWrapped('Waiting for AC Pro Engineer')
+    ui.textWrapped(tr('Waiting for AC Pro Engineer'))
     ui.popStyleColor()
     ui.popFont()
 
@@ -1086,9 +1142,9 @@ local function drawWaitingForApp()
 
   pushRole('caption')
   ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
-  ui.textWrapped('Start the desktop application to see telemetry.')
+  ui.textWrapped(tr('Start the desktop application to see telemetry.'))
   if shown.sequence == 0 then
-    ui.textWrapped('Nothing has been published yet.')
+    ui.textWrapped(tr('Nothing has been published yet.'))
   else
     ui.textWrapped(string.format('Last frame %.0f s ago.', secondsSinceChange))
   end
@@ -1114,7 +1170,7 @@ function script.windowMain(dt)
   end
 
   if shown.version ~= EXPECTED_VERSION and not settings.devIgnoreVersion then
-    ui.textColored('Version mismatch', COLOR.bad)
+    ui.textColored(tr('Version mismatch'), COLOR.bad)
     pushRole('caption')
     ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
       COLOR.dim)
@@ -1774,6 +1830,15 @@ function script.windowSettings(dt)
       settingToggle('Show how many are hidden', 'engineerShowCount')
 
       settingSlider('advicePlate', 'engineerBackground', 0, 1, 'plate behind the advice  %.2f')
+
+      ui.separator()
+      say('caption', 'LANGUAGE', COLOR.label)
+      for _, option in ipairs({ { 'follow the app', 'auto' }, { 'English', 'en' },
+          { 'Русский', 'ru' } }) do
+        if settingRadio(option[1], 'lang' .. option[2], settings.language == option[2]) then
+          settings.language = option[2]
+        end
+      end
 
       ui.separator()
       say('caption', 'FORMAT', COLOR.label)

@@ -129,6 +129,11 @@ pub mod flags {
     pub const SHOW_TIMING: u32 = 1 << 6;
     /// The user asked for the fuel block.
     pub const SHOW_FUEL: u32 = 1 << 7;
+    /// The application is running in Russian, so the panel should be too.
+    ///
+    /// A flag rather than a field: the application has two languages, and the
+    /// panel's own words should follow the ones it already receives translated.
+    pub const RUSSIAN: u32 = 1 << 8;
 }
 
 impl Default for OverlayFrame {

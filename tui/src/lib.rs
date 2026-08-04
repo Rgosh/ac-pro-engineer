@@ -942,6 +942,10 @@ impl AppState {
         );
         frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
         frame.set_flag(flags::SHOW_TIMING, self.config.overlay.show_timing);
+        frame.set_flag(
+            flags::RUSSIAN,
+            self.config.language == ac_core::config::Language::Russian,
+        );
         frame.set_flag(flags::SHOW_FUEL, self.config.overlay.show_fuel);
         frame.set_flag(
             flags::FUEL_WARNING,
