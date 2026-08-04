@@ -87,6 +87,9 @@ local DEFAULTS = {
   showCurrentLap = true,
   showConditions = true,
   pressureDecimals = 1,
+  tyreCold = 70, tyreHot = 95, tyreOver = 105,
+  brakeCold = 150, brakeHot = 550, brakeOver = 750,
+  wearWarn = 96, wearBad = 85,
   columnsPerRow = 0,       -- 0 follows the layout, 2 or 3 force it
 
   -- How the advice reads. The application decides how many lines it publishes;
@@ -499,23 +502,25 @@ local function rpmColor(ratio)
   return COLOR.good
 end
 
+-- The thresholds are settings, not constants. A slick at 95°C is in its window
+-- and a hard at 95°C is cold, and the panel cannot know which is on the car.
 local function tyreTempColor(temp)
-  if temp < 70 then return COLOR.cold end
-  if temp < 95 then return COLOR.good end
-  if temp < 105 then return COLOR.warn end
+  if temp < settings.tyreCold then return COLOR.cold end
+  if temp < settings.tyreHot then return COLOR.good end
+  if temp < settings.tyreOver then return COLOR.warn end
   return COLOR.bad
 end
 
 local function wearColor(wear)
-  if wear >= 96 then return COLOR.good end
-  if wear >= 85 then return COLOR.warn end
+  if wear >= settings.wearWarn then return COLOR.good end
+  if wear >= settings.wearBad then return COLOR.warn end
   return COLOR.bad
 end
 
 local function brakeColor(temp)
-  if temp < 150 then return COLOR.cold end
-  if temp < 550 then return COLOR.good end
-  if temp < 750 then return COLOR.warn end
+  if temp < settings.brakeCold then return COLOR.cold end
+  if temp < settings.brakeHot then return COLOR.good end
+  if temp < settings.brakeOver then return COLOR.warn end
   return COLOR.bad
 end
 
@@ -1527,6 +1532,32 @@ function script.windowSettings(dt)
           end
         end)
 
+        ui.tabItem('Limits', function()
+          say('caption', 'TYRE TEMPERATURE', COLOR.label)
+          local function limit(label, key, low, high, format)
+            local value, changed = ui.slider('##' .. key, settings[key], low, high, format, true)
+            if changed then settings[key] = value end
+          end
+          limit('cold', 'tyreCold', 40, 100, 'cold below  %.0f')
+          limit('hot', 'tyreHot', 60, 130, 'working to  %.0f')
+          limit('over', 'tyreOver', 80, 160, 'overheating past  %.0f')
+
+          ui.separator()
+          say('caption', 'BRAKE TEMPERATURE', COLOR.label)
+          limit('bcold', 'brakeCold', 50, 400, 'cold below  %.0f')
+          limit('bhot', 'brakeHot', 200, 900, 'working to  %.0f')
+          limit('bover', 'brakeOver', 400, 1200, 'overheating past  %.0f')
+
+          ui.separator()
+          say('caption', 'WEAR', COLOR.label)
+          limit('wwarn', 'wearWarn', 80, 100, 'good above  %.0f%%')
+          limit('wbad', 'wearBad', 50, 99, 'worn below  %.0f%%')
+
+          ui.separator()
+          say('caption', 'the colours are yours; a slick at 95 is in its window', COLOR.dim)
+          say('caption', 'and a hard at 95 is stone cold', COLOR.dim)
+        end)
+
         ui.tabItem('Fields', function()
           say('caption', 'TIMING', COLOR.label)
           settingToggle('Delta', 'showDelta')
@@ -1558,29 +1589,22 @@ function script.windowSettings(dt)
         -- Sections the application itself is suppressing. Without this the
         -- settings read as broken: a box is ticked and nothing appears.
         ui.tabItem('State', function()
-          local held = not hasFlag(FLAG_SHOW_TELEMETRY) or not hasFlag(FLAG_SHOW_ENGINEER)
-            or not hasFlag(FLAG_SHOW_SESSION) or not hasFlag(FLAG_SHOW_TIMING)
-            or not hasFlag(FLAG_SHOW_FUEL)
-          if isLive and held then
-            if not hasFlag(FLAG_SHOW_TELEMETRY) then
-              say('caption', 'Telemetry is off in the desktop app', COLOR.warn)
-            end
-            if not hasFlag(FLAG_SHOW_ENGINEER) then
-              say('caption', 'Engineer advice is off in the desktop app', COLOR.warn)
-            end
-            if not hasFlag(FLAG_SHOW_SESSION) then
-              say('caption', 'Session block is off in the desktop app', COLOR.warn)
-            end
-            if not hasFlag(FLAG_SHOW_TIMING) then
-              say('caption', 'Lap timing is off in the desktop app', COLOR.warn)
-            end
-            if not hasFlag(FLAG_SHOW_FUEL) then
-              say('caption', 'Fuel block is off in the desktop app', COLOR.warn)
-            end
-          elseif isLive then
-            say('caption', 'every block the app can send is on', COLOR.dim)
+          -- What the application is sending, flag by flag. "Nothing wrong" is
+          -- an answer too, and an empty tab does not give it.
+          say('caption', 'THE APPLICATION IS SENDING', COLOR.label)
+          for _, entry in ipairs(FLAG_NAMES) do
+            local on = bit.band(shown.flags, entry[2]) ~= 0
+            row(entry[1], on and 'on' or 'off', on and COLOR.good or COLOR.dim)
+          end
+
+          ui.separator()
+          if not isLive then
+            say('caption', 'the desktop application is not running', COLOR.warn)
+          elseif settings.devIgnoreFlags then
+            say('caption', 'developer mode is drawing every block anyway', COLOR.warn)
           else
-            say('caption', 'the desktop application is not running', COLOR.dim)
+            say('caption', 'a block needs its flag here and its switch in Blocks',
+              COLOR.dim)
           end
         end)
       end)
@@ -1690,16 +1714,22 @@ function script.windowSettings(dt)
 
           ui.separator()
           say('caption', 'PALETTE', COLOR.label)
-          for _, entry in ipairs(PALETTE) do
-            -- The picker edits the colour in place and reports whether it
-            -- changed; it does not hand one back. Reading its return value as
-            -- a colour is why picking one did nothing at all.
+          -- Swatches, not six open pickers stacked down the window: a colour
+          -- button opens the picker where it is clicked and closes again. Both
+          -- edit the colour in place and report whether it changed — they do
+          -- not hand one back, which is why reading the return value as a
+          -- colour did nothing at all.
+          for index, entry in ipairs(PALETTE) do
             local current = COLOR[entry[1]]
-            if ui.colorPicker(entry[1], current) then
+            if ui.colorButton(entry[1] .. '##swatch', current) then
               settings[entry[2]] =
                 string.format('%.3f,%.3f,%.3f', current.r, current.g, current.b)
             end
+            ui.sameLine()
+            say('caption', entry[1], COLOR.label)
+            if index % 2 == 0 then ui.newLine() else ui.sameLine() end
           end
+          ui.newLine()
           if ui.button('Default palette') then
             for _, entry in ipairs(PALETTE) do settings[entry[2]] = DEFAULTS[entry[2]] end
           end
