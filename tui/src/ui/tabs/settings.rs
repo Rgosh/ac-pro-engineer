@@ -131,7 +131,7 @@ impl SettingsState {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
-            SettingsCategory::Overlay => 3,
+            SettingsCategory::Overlay => 6,
         }
     }
 
@@ -230,6 +230,12 @@ impl SettingsState {
                 }
                 2 if delta.abs() > 0.0 => {
                     config.overlay.show_session = !config.overlay.show_session
+                }
+                3 if delta.abs() > 0.0 => config.overlay.show_timing = !config.overlay.show_timing,
+                4 if delta.abs() > 0.0 => config.overlay.show_fuel = !config.overlay.show_fuel,
+                5 => {
+                    let next = config.overlay.engineer_lines as i32 + delta.signum() as i32;
+                    config.overlay.engineer_lines = next.clamp(0, 4) as u8;
                 }
                 _ => {}
             },
@@ -366,6 +372,27 @@ impl SettingsState {
                         "Показывать позицию, круг и условия трассы в оверлее."
                     } else {
                         "Show position, lap and track conditions in the overlay."
+                    }
+                }
+                3 => {
+                    if is_ru {
+                        "Показывать дельту и времена кругов в оверлее."
+                    } else {
+                        "Show delta and lap times in the overlay."
+                    }
+                }
+                4 => {
+                    if is_ru {
+                        "Показывать топливо и остаток кругов в оверлее."
+                    } else {
+                        "Show fuel and remaining laps in the overlay."
+                    }
+                }
+                5 => {
+                    if is_ru {
+                        "Сколько строк инженера уходит в оверлей (0-4)."
+                    } else {
+                        "How many engineer lines reach the overlay (0-4)."
                     }
                 }
                 _ => "",
@@ -694,6 +721,33 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             },
             if overlay.show_session { "ON" } else { "OFF" }.to_string(),
             true,
+        ),
+        (
+            if is_ru {
+                "Тайминги в оверлее".to_string()
+            } else {
+                "Lap timing section".to_string()
+            },
+            if overlay.show_timing { "ON" } else { "OFF" }.to_string(),
+            true,
+        ),
+        (
+            if is_ru {
+                "Топливо в оверлее".to_string()
+            } else {
+                "Fuel section".to_string()
+            },
+            if overlay.show_fuel { "ON" } else { "OFF" }.to_string(),
+            true,
+        ),
+        (
+            if is_ru {
+                "Строк инженера".to_string()
+            } else {
+                "Engineer lines".to_string()
+            },
+            overlay.engineer_lines.to_string(),
+            false,
         ),
     ];
 

@@ -30,6 +30,12 @@ config.defaults = {
   mainX = 24, mainY = 46,
   engineerX = 24, engineerY = 440,
   settingsX = 336, settingsY = 46,
+
+  -- Sizes too: in game the driver drags a window's corner and CSP remembers
+  -- it, so the harness has to be able to answer "does it still read at that
+  -- size" without a rebuild.
+  engineerWidth = 280, engineerHeight = 150,
+  settingsWidth = 264, settingsHeight = 360,
   tab = 'Telemetry',
 }
 

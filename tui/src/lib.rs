@@ -894,13 +894,21 @@ impl AppState {
             self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
         );
         frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
+        frame.set_flag(flags::SHOW_TIMING, self.config.overlay.show_timing);
+        frame.set_flag(flags::SHOW_FUEL, self.config.overlay.show_fuel);
         frame.set_flag(
             flags::FUEL_WARNING,
             self.engineer.stats.fuel_laps_remaining > 0.0
                 && self.engineer.stats.fuel_laps_remaining < self.config.alerts.fuel_warning_laps,
         );
 
-        frame.set_messages(&self.recommendations);
+        // Capped here rather than in the panel: the number is a setting on
+        // this side, and publishing four lines to draw one is work the render
+        // thread does not need to do.
+        frame.set_messages_capped(
+            &self.recommendations,
+            self.config.overlay.engineer_lines as usize,
+        );
 
         writer.publish(&frame);
     }

@@ -39,6 +39,8 @@ local FLAG = {
   SHOW_ENGINEER = 8,
   FUEL_WARNING = 16,
   SHOW_SESSION = 32,
+  SHOW_TIMING = 64,
+  SHOW_FUEL = 128,
 }
 
 sim.FLAG = FLAG
@@ -64,7 +66,8 @@ local frame = {
   best_lap_ms = 91380,
   current_lap_ms = 0,
   position = 4,
-  flags = FLAG.CONNECTED + FLAG.SHOW_TELEMETRY + FLAG.SHOW_ENGINEER + FLAG.SHOW_SESSION,
+  flags = FLAG.CONNECTED + FLAG.SHOW_TELEMETRY + FLAG.SHOW_ENGINEER + FLAG.SHOW_SESSION
+    + FLAG.SHOW_TIMING + FLAG.SHOW_FUEL,
   message_count = 2,
   tyre_pressure_psi = { [0] = 27.4, 27.6, 26.9, 27.1 },
   tyre_temp_c = { [0] = 82, 84, 88, 90 },

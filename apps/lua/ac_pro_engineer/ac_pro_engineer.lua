@@ -65,6 +65,14 @@ local DEFAULTS = {
   showFuel = true,
   showSession = true,
   showEngineer = true,
+
+  -- How the advice reads. The application decides how many lines it publishes;
+  -- these decide how many of them are drawn and what they look like.
+  engineerLines = 4,
+  engineerBullet = '>',   -- > | dot | none
+  engineerWrap = true,
+  engineerHighlight = true,
+
   sectionLabels = true,
   celsius = true,
   psi = true,
@@ -88,6 +96,8 @@ local FONT_TIERS = {
 }
 
 local TEXT_SIZES = { 'compact', 'normal', 'large' }
+local BULLETS = { ['>'] = '> ', dot = '• ', none = '' }
+local BULLET_NAMES = { '>', 'dot', 'none' }
 
 local function pushRole(role)
   -- In a headset the panel is a metre away through lenses that blur the edges,
@@ -167,6 +177,8 @@ local FLAG_SHOW_TELEMETRY = 4
 local FLAG_SHOW_ENGINEER = 8
 local FLAG_FUEL_WARNING  = 16
 local FLAG_SHOW_SESSION  = 32
+local FLAG_SHOW_TIMING   = 64
+local FLAG_SHOW_FUEL     = 128
 
 local function hasFlag(flag)
   return bit.band(shown.flags, flag) ~= 0
@@ -451,16 +463,36 @@ local function drawSession()
   ui.popFont()
 end
 
-local function drawEngineerMessages()
-  sectionLabel('ENGINEER')
+--- The engineer's lines, drawn the way the settings ask for.
+---
+--- `withLabel` is false in the advice window, where the window's own title
+--- already says what this is.
+local function drawEngineerMessages(withLabel)
+  if withLabel ~= false then sectionLabel('ENGINEER') end
 
-  local count = math.min(shown.message_count, 4)
+  local bullet = BULLETS[settings.engineerBullet] or ''
+  local color = settings.engineerHighlight and COLOR.warn or COLOR.text
+  local count = math.min(shown.message_count, settings.engineerLines, 4)
+
+  pushRole('body')
   for i = 1, count do
     if shown.messages[i] ~= '' then
-      ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
-      ui.textWrapped('> ' .. shown.messages[i])
-      ui.popStyleColor()
+      if settings.engineerWrap then
+        -- textWrapped takes the colour from the style stack, not an argument.
+        ui.pushStyleColor(ui.StyleColor.Text, color)
+        ui.textWrapped(bullet .. shown.messages[i])
+        ui.popStyleColor()
+      else
+        ui.textColored(bullet .. shown.messages[i], color)
+      end
     end
+  end
+  ui.popFont()
+
+  if count == 0 and withLabel ~= false then
+    pushRole('caption')
+    ui.textColored('nothing to report', COLOR.dim)
+    ui.popFont()
   end
 end
 
@@ -532,14 +564,16 @@ function script.windowMain(dt)
       drawTyres()
       gap(6)
     end
-    if settings.showTiming then
-      drawTiming()
-      gap(6)
-    end
-    if settings.showFuel then
-      drawFuel()
-      gap(6)
-    end
+  end
+
+  if hasFlag(FLAG_SHOW_TIMING) and settings.showTiming then
+    drawTiming()
+    gap(6)
+  end
+
+  if hasFlag(FLAG_SHOW_FUEL) and settings.showFuel then
+    drawFuel()
+    gap(6)
   end
 
   if hasFlag(FLAG_SHOW_SESSION) and settings.showSession then
@@ -576,7 +610,7 @@ function script.windowEngineer(dt)
     return
   end
 
-  local count = math.min(shown.message_count, 4)
+  local count = math.min(shown.message_count, settings.engineerLines, 4)
   if count == 0 then
     pushRole('caption')
     ui.textColored('Nothing to report', COLOR.dim)
@@ -584,15 +618,7 @@ function script.windowEngineer(dt)
     return
   end
 
-  pushRole('body')
-  for i = 1, count do
-    if shown.messages[i] ~= '' then
-      ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
-      ui.textWrapped('> ' .. shown.messages[i])
-      ui.popStyleColor()
-    end
-  end
-  ui.popFont()
+  drawEngineerMessages(false)
 end
 
 -- ---------------------------------------------------------------------------
@@ -633,6 +659,27 @@ function script.windowSettings(dt)
   settingToggle('Session', 'showSession')
   settingToggle('Engineer advice', 'showEngineer')
   settingToggle('Section captions', 'sectionLabels')
+
+  ui.separator()
+  pushRole('caption')
+  ui.textColored('ENGINEER OUTPUT', COLOR.label)
+  ui.popFont()
+
+  for _, lines in ipairs({ 1, 2, 3, 4 }) do
+    if ui.radioButton(string.format('%d line%s', lines, lines > 1 and 's' or ''),
+        settings.engineerLines == lines) then
+      settings.engineerLines = lines
+    end
+  end
+
+  for _, bullet in ipairs(BULLET_NAMES) do
+    if ui.radioButton('bullet: ' .. bullet, settings.engineerBullet == bullet) then
+      settings.engineerBullet = bullet
+    end
+  end
+
+  settingToggle('Wrap long lines', 'engineerWrap')
+  settingToggle('Highlight advice', 'engineerHighlight')
 
   ui.separator()
   pushRole('caption')

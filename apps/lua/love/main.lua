@@ -208,6 +208,8 @@ local windows = {
     fn = 'windowMain',
     gear = true,
     size = function() return S.panelWidth, S.panelHeight end,
+    resize = function(w, h) S.panelWidth, S.panelHeight = w, h end,
+    minimum = { 200, 120 },   -- MIN_SIZE from the manifest
     isOpen = function() return true end,
   },
   {
@@ -215,7 +217,9 @@ local windows = {
     title = 'AC Pro Engineer — advice',
     fn = 'windowEngineer',
     closable = true,
-    size = function() return 280, 150 end,
+    size = function() return S.engineerWidth, S.engineerHeight end,
+    resize = function(w, h) S.engineerWidth, S.engineerHeight = w, h end,
+    minimum = { 160, 70 },
     isOpen = function() return harness.engineerOpen end,
     onClose = function()
       harness.engineerOpen = false
@@ -228,7 +232,9 @@ local windows = {
     title = 'AC Pro Engineer — settings',
     fn = 'windowSettings',
     closable = true,
-    size = function() return 264, 360 end,
+    size = function() return S.settingsWidth, S.settingsHeight end,
+    resize = function(w, h) S.settingsWidth, S.settingsHeight = w, h end,
+    minimum = { 200, 140 },
     isOpen = function() return harness.settingsOpen end,
     onClose = function()
       harness.settingsOpen = false
@@ -242,6 +248,10 @@ local windows = {
 -- worked on is the one on top.
 local order = { 'main', 'engineer', 'settings' }
 local drag = { id = nil, offsetX = 0, offsetY = 0 }
+local resize = { id = nil, offsetX = 0, offsetY = 0 }
+
+-- The grip in the bottom-right corner, the same one CSP puts there.
+local GRIP = 14
 
 local function windowById(id)
   for _, window in ipairs(windows) do
@@ -297,6 +307,44 @@ local function beginDrag(window, x, y, w)
   end
 end
 
+--- Start a resize when the press lands on the grip in the bottom-right corner.
+local function beginResize(window, x, y, w, h)
+  local input = csp.input
+  if resize.id ~= nil or drag.id ~= nil or not input.pressed then return end
+  if window.resize == nil then return end
+
+  local onGrip = input.x >= x + w - GRIP and input.x <= x + w
+    and input.y >= y + h - GRIP and input.y <= y + h
+  if onGrip then
+    resize.id = window.id
+    resize.offsetX = x + w - input.x
+    resize.offsetY = y + h - input.y
+  end
+end
+
+--- Follow the pointer, and save the size once the button comes up.
+local function updateResize()
+  local input = csp.input
+  if resize.id == nil then return end
+
+  local window = windowById(resize.id)
+  if window == nil then
+    resize.id = nil
+    return
+  end
+
+  if input.down then
+    local x, y = positionOf(resize.id)
+    local minimum = window.minimum or { 120, 80 }
+    local w = math.max(minimum[1], math.floor(input.x + resize.offsetX - x))
+    local h = math.max(minimum[2], math.floor(input.y + resize.offsetY - y - csp.TITLE_HEIGHT))
+    window.resize(w, h)
+  else
+    config.save()
+    resize.id = nil
+  end
+end
+
 --- Follow the pointer, and save the position once the button comes up: the
 --- layout is a setting, and losing it on every restart is the thing that makes
 --- arranging windows feel like work.
@@ -337,6 +385,17 @@ local function drawWindow(window)
   })
 
   beginDrag(window, x, y, w)
+  beginResize(window, x, y, w, h)
+
+  -- The grip, drawn last so it sits over the contents.
+  local hotGrip = csp.input.x >= x + w - GRIP and csp.input.x <= x + w
+    and csp.input.y >= y + h - GRIP and csp.input.y <= y + h
+  local gripAlpha = (hotGrip or resize.id == window.id) and 0.75 or 0.28
+  love.graphics.setColor(0.62, 0.66, 0.72, gripAlpha)
+  for line = 1, 3 do
+    local offset = line * 4
+    love.graphics.line(x + w - offset, y + h - 2, x + w - 2, y + h - offset)
+  end
 
   if frame.settings then
     harness.settingsOpen = not harness.settingsOpen
@@ -443,6 +502,8 @@ local function telemetryTab()
     { 'Telemetry section', sim.FLAG.SHOW_TELEMETRY },
     { 'Engineer section', sim.FLAG.SHOW_ENGINEER },
     { 'Session section', sim.FLAG.SHOW_SESSION },
+    { 'Lap timing section', sim.FLAG.SHOW_TIMING },
+    { 'Fuel section', sim.FLAG.SHOW_FUEL },
     { 'Pit limiter', sim.FLAG.PIT_LIMITER },
     { 'Fuel warning', sim.FLAG.FUEL_WARNING },
   }) do
@@ -518,10 +579,15 @@ local function harnessSettingsTab()
     config.save()
   end
 
-  local w, wChanged = slider('Width', S.panelWidth, 180, 700, '%.0f px', true)
+  local w, wChanged = slider('Panel width', S.panelWidth, 180, 700, '%.0f px', true)
   if wChanged then S.panelWidth = w; config.save() end
-  local h, hChanged = slider('Height', S.panelHeight, 120, 900, '%.0f px', true)
+  local h, hChanged = slider('Panel height', S.panelHeight, 120, 900, '%.0f px', true)
   if hChanged then S.panelHeight = h; config.save() end
+
+  local ew, ewChanged = slider('Advice width', S.engineerWidth, 160, 700, '%.0f px', true)
+  if ewChanged then S.engineerWidth = ew; config.save() end
+  local eh, ehChanged = slider('Advice height', S.engineerHeight, 70, 600, '%.0f px', true)
+  if ehChanged then S.engineerHeight = eh; config.save() end
 
   ui.separator()
   ui.textColored('WINDOWS', csp.colors.textDim)
@@ -535,11 +601,15 @@ local function harnessSettingsTab()
     S.settingsOpen = harness.settingsOpen
     config.save()
   end
-  ui.textColored('drag a title bar to move a window', csp.colors.textDim)
-  if ui.button('Reset positions') then
-    S.mainX, S.mainY = config.defaults.mainX, config.defaults.mainY
-    S.engineerX, S.engineerY = config.defaults.engineerX, config.defaults.engineerY
-    S.settingsX, S.settingsY = config.defaults.settingsX, config.defaults.settingsY
+  ui.textColored('drag a title bar to move, a corner to resize', csp.colors.textDim)
+  if ui.button('Reset layout') then
+    for _, key in ipairs({
+      'mainX', 'mainY', 'engineerX', 'engineerY', 'settingsX', 'settingsY',
+      'panelWidth', 'panelHeight', 'engineerWidth', 'engineerHeight',
+      'settingsWidth', 'settingsHeight',
+    }) do
+      S[key] = config.defaults[key]
+    end
     config.save()
   end
 
@@ -644,6 +714,7 @@ function love.draw()
 
   drawWindows()
   updateDrag()
+  updateResize()
 
   if S.showFps then
     love.graphics.setColor(0.45, 0.48, 0.52, 1)

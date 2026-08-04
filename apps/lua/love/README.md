@@ -11,9 +11,10 @@ loaded from its own directory, so what is on screen is what would be installed.
 ```
 
 `F5` reloads the app script, `space` pauses, `F2` opens the settings window,
-`escape` quits. **Windows are dragged by their title bars** and remember where
-they were put — same as in game, where the driver arranges them once and CSP
-keeps the layout.
+`escape` quits. **Windows are dragged by their title bars and resized from the
+grip in the bottom-right corner**, and both are remembered — same as in game,
+where the driver arranges the windows once and CSP keeps the layout. Sizes are
+also on sliders in the Harness tab, and `Reset layout` puts everything back.
 
 ## Why
 
@@ -53,7 +54,7 @@ The app declares two in its manifest, and CSP opens a third from the gear:
 |---|---|---|
 | AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel, session |
 | AC Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
-| settings | `FUNCTION_SETTINGS` | every section on or off, text size, VR mode, units |
+| settings | `FUNCTION_SETTINGS` | every section on or off, engineer output, text size, VR mode, units |
 
 Each is a separate entry in CSP's sidebar in game, moved and sized separately.
 The harness draws all three through the same chrome, so what is arranged here
@@ -71,6 +72,19 @@ is what can be arranged there.
 - **Harness** — font scale, panel size, backdrop (dark, checkerboard for
   translucency, or green), content outline. Saved and reused next run.
 - **Log** — what loaded, what threw, and which CSP calls the emulation ignored.
+
+## What the application controls, live
+
+Seven of the panel's decisions are made on the desktop side and published as
+flags on every frame, so changing one in the TUI's **Settings → ОВЕРЛЕЙ [F]**
+reaches the panel on the next tick — no restart, no reload:
+
+telemetry, engineer advice, session, lap timing and fuel blocks, the fuel
+warning threshold, and how many engineer lines are published at all (0–4).
+
+The panel has its own switch for each block, and both have to agree: the flag
+means "there is nothing worth showing", the app's setting means "the driver
+does not want to see it".
 
 ## Nothing without the application
 

@@ -111,6 +111,10 @@ pub mod flags {
     pub const FUEL_WARNING: u32 = 1 << 4;
     /// The user asked for the session block: position, lap, conditions.
     pub const SHOW_SESSION: u32 = 1 << 5;
+    /// The user asked for the lap timing block.
+    pub const SHOW_TIMING: u32 = 1 << 6;
+    /// The user asked for the fuel block.
+    pub const SHOW_FUEL: u32 = 1 << 7;
 }
 
 impl Default for OverlayFrame {
@@ -174,10 +178,20 @@ impl OverlayFrame {
     /// in half would leave the Lua side with invalid UTF-8, and Russian advice
     /// is two bytes per character throughout.
     pub fn set_messages(&mut self, recommendations: &[Recommendation]) {
-        self.messages = [[0; MESSAGE_BYTES]; MESSAGE_SLOTS];
-        let taken = recommendations.len().min(MESSAGE_SLOTS);
+        self.set_messages_capped(recommendations, MESSAGE_SLOTS);
+    }
 
-        for (slot, rec) in self.messages.iter_mut().zip(recommendations) {
+    /// As [`Self::set_messages`], but publishing at most `limit` of them.
+    ///
+    /// The cap is a setting rather than a property of the data: four lines is
+    /// a paragraph in a headset and a glance on a monitor, and the overlay
+    /// cannot make that call — it does not know how the panel is being read.
+    pub fn set_messages_capped(&mut self, recommendations: &[Recommendation], limit: usize) {
+        self.messages = [[0; MESSAGE_BYTES]; MESSAGE_SLOTS];
+        let limit = limit.min(MESSAGE_SLOTS);
+        let taken = recommendations.len().min(limit);
+
+        for (slot, rec) in self.messages.iter_mut().take(limit).zip(recommendations) {
             let text = truncate_on_boundary(&rec.message, MESSAGE_BYTES);
             slot[..text.len()].copy_from_slice(text.as_bytes());
         }
@@ -600,6 +614,39 @@ mod tests {
         assert_eq!(
             frame.sequence, 0,
             "a mapping that exists but was never filled must not draw"
+        );
+    }
+
+    /// The cap is a setting, and a setting that only takes effect on the next
+    /// launch is a setting people stop trusting.
+    #[test]
+    fn capped_messages_publish_only_what_was_asked_for() {
+        let all = [
+            advice("one"),
+            advice("two"),
+            advice("three"),
+            advice("four"),
+        ];
+        let mut frame = OverlayFrame::empty();
+
+        frame.set_messages_capped(&all, 2);
+        assert_eq!(frame.message_count, 2);
+        assert!(
+            frame.messages[2].iter().all(|b| *b == 0),
+            "the third slot stays empty"
+        );
+
+        frame.set_messages_capped(&all, 0);
+        assert_eq!(frame.message_count, 0);
+        assert!(
+            frame.messages[0].iter().all(|b| *b == 0),
+            "nothing is left over from the previous cap"
+        );
+
+        frame.set_messages_capped(&all, 9);
+        assert_eq!(
+            frame.message_count, 4,
+            "a cap past the slot count is clamped"
         );
     }
 

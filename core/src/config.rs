@@ -138,6 +138,9 @@ fn default_target_hot_pressure_front() -> f32 {
 fn default_target_hot_pressure_rear() -> f32 {
     27.0
 }
+fn default_engineer_lines() -> u8 {
+    4
+}
 fn default_data_path() -> PathBuf {
     app_dir()
 }
@@ -156,6 +159,13 @@ pub struct OverlayConfig {
     pub show_engineer: bool,
     #[serde(default = "default_true")]
     pub show_session: bool,
+    #[serde(default = "default_true")]
+    pub show_timing: bool,
+    #[serde(default = "default_true")]
+    pub show_fuel: bool,
+    /// How many engineer lines reach the overlay at once, 0 to 4.
+    #[serde(default = "default_engineer_lines")]
+    pub engineer_lines: u8,
 }
 
 impl Default for OverlayConfig {
@@ -164,6 +174,9 @@ impl Default for OverlayConfig {
             show_telemetry: true,
             show_engineer: true,
             show_session: true,
+            show_timing: true,
+            show_fuel: true,
+            engineer_lines: default_engineer_lines(),
         }
     }
 }
