@@ -110,14 +110,84 @@ What did not survive is anything installed **into the prefix**, notably the
 .NET Framework that Content Manager needs. CM now fails with ".NET 4.5.2 is not
 installed" and a WPF `TypeInitializationException`.
 
-Fix:
+### The diagnosis above is wrong — corrected 2026-08-04 18:30
 
-```bash
-protontricks 244210 dotnet48
+The prefix was **not** wiped and .NET 4.8 was **not** removed. Proton's 9.0
+wineboot ran over the existing install and replaced exactly three files with
+Wine's own fake DLLs:
+
+- `Microsoft.NET/Framework{,64}/v4.0.30319/mscorlib.dll` (752 KB stub instead
+  of the real 5.4 MB assembly)
+- the matching `csc.exe`
+- `InstallUtil.exe`
+
+A stubbed `mscorlib` is why CM reported ".NET 4.5.2 is not installed" — and why
+CM was actually running under **wine-mono**, visible in the old stack traces as
+`mono_generic_class_init` frames.
+
+`protontricks 244210 dotnet48` does **not** fix this: winetricks sees `dotnet48`
+in `pfx/winetricks.log` and skips. Forcing it (`protontricks 244210 --force
+dotnet48`) makes things worse — the verb calls `dotnet40` first, whose MSI dies
+under Proton 9.0's wine with
+
+```
+err:msi:extract_cabinet FDICopy failed
+err:msi:ACTION_InstallFiles Failed to extract cabinet: L"netfx_core.mzz"
 ```
 
-`dotnet472` also works. Expect several minutes and a few installer windows.
-Re-run CM afterwards.
+and the rollback then deletes `mscoree.dll`, the CRT DLLs and the whole
+`HKLM\Software\Microsoft\.NETFramework` registry branch.
+
+### What was repaired by hand
+
+Files pulled straight out of the cached installers
+(`~/.cache/winetricks/dotnet4{0,8}/*.exe`, `7z x` then `cabextract`) and copied
+into the prefix:
+
+| From | To |
+|---|---|
+| `netfx_Core.mzz` → `_003_mscoree_dll_{amd64,x86}` | `system32/`, `syswow64/` `mscoree.dll` |
+| `netfx_Full.mzz` → `mscorlib_dll_*`, `csc.exe_*` | `Framework{,64}/v4.0.30319/` |
+| `netfx_Full.mzz` → `{msvcp,msvcr}120_clr0400`, `msvcp140_clr0400`, `ucrtbase_clr0400`, `vcruntime140_clr0400`, `msvcp_clr`, `msvcr_clr`, `WPFFontCache_v0400.exe` | `Framework{,64}/v4.0.30319/` and its `WPF/` subdir |
+
+Registry rebuilt (`protontricks -c` + `wine reg add`), both 32- and 64-bit views:
+
+- `HKLM\Software\Microsoft\.NETFramework\InstallRoot` → `C:\windows\Microsoft.NET\Framework{,64}\`
+- `…\policy\v4.0` `"30319"="30319-30319"`, `…\policy\v2.0` `"50727"="50727-50727"`
+- `HKCU\Software\Wine\DllOverrides` `"mscoree"="native"`
+
+Also: `protontricks 244210 win10` (the aborted install left the prefix in
+**winxp64**, which would have broken AC too) and `protontricks 244210 vcrun2015
+d3dcompiler_43`.
+
+Effect: CM now runs on the real .NET Framework — the mono frames are gone and
+the ".NET is not installed" box no longer appears. It got as far as
+`MS.Internal.NativeWPFDLLLoader.LoadCommonDLLsAndDwrite()` failing with
+`FileNotFoundException`; the CRT DLLs above are that function's dependencies
+(`objdump`/`strings` on `wpfgfx_v0400.dll` lists `MSVCP140_CLR0400`,
+`ucrtbase_clr0400`, `VCRUNTIME140_CLR0400`, `D3DCOMPILER_47`, `WindowsCodecs`).
+
+**Still not working.** After the CRT files went in, CM stops writing its own log
+(`AppData/Local/AcTools Content Manager/Logs/`, last entry 18:06) and exits
+silently after ~100 s with no window and no wine backtrace. So the WPF crash may
+be fixed and something later is failing, or the hand-restored install is subtly
+inconsistent — unverified either way.
+
+### Recommended next move
+
+Don't keep patching this prefix. Either
+
+1. rebuild it (`rm -rf steamapps/compatdata/244210/pfx`, launch AC once, then
+   `protontricks 244210 dotnet48`) — note the `dotnet40` cabinet bug above may
+   bite again on Proton 9.0's wine, or
+2. give CM its **own** prefix under a newer wine (its .NET 4.8 install worked
+   fine on Proton 11 at 03:09 today), and symlink that prefix's
+   `Documents/Assetto Corsa` at the Steam prefix's copy. AC and CSP keep using
+   the Proton 9.0 prefix; only CM moves.
+
+`Documents/Assetto Corsa`, the game folder and CSP are untouched by all of this.
+A copy of CM named `Content Manager Safe.exe` (the `Safe` suffix disables
+hardware acceleration) sits next to the original in `~/projects/`.
 
 ## Not yet seen
 
