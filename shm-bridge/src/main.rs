@@ -35,7 +35,27 @@ const ACC_FILES: &[&str] = &[
     "acpmf_static",
     "acpmf_physics",
     "acpmf_graphics",
+    // Runs the other way to the rest: the desktop application writes this one
+    // and the in-game Lua overlay reads it. The mechanism is identical — a
+    // file under /dev/shm wrapped in a Win32 named mapping — only the
+    // direction differs, so it costs one more entry rather than a second
+    // bridge.
+    OVERLAY_FILE,
 ];
+
+/// Shared block the Lua overlay reads. Must match
+/// `ac_core::overlay::frame::OVERLAY_MMF_NAME`; the `AcTools.CSP.Limited.`
+/// prefix is what lets a CSP script without IO permission open it.
+const OVERLAY_FILE: &str = "AcTools.CSP.Limited.ACPE.v1";
+
+/// Size of `ac_core::overlay::frame::OverlayFrame`.
+///
+/// Hardcoded because shm-bridge deliberately does not depend on ac_core — it
+/// is a tiny Windows binary that runs under Wine, and pulling in the whole
+/// telemetry crate to learn one number would be a poor trade. The mapping only
+/// has to be at least struct-sized, so this is checked against the real value
+/// by a test in ac_core rather than kept in step by hand.
+const OVERLAY_FILE_SIZE: usize = 400;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = LONG_ABOUT)]
@@ -44,6 +64,7 @@ struct Cli {}
 fn file_size(name: &str) -> usize {
     match name {
         "acpmf_crewchief" => 15660,
+        OVERLAY_FILE => OVERLAY_FILE_SIZE,
         _ => 2048,
     }
 }
