@@ -216,6 +216,69 @@ mod tests {
         );
     }
 
+    /// Run the overlay app under a real LuaJIT with the CSP API stubbed.
+    ///
+    /// Syntax checks and the SDK conformance tests prove the calls exist;
+    /// this proves the script actually runs — that no field is nil, no
+    /// arithmetic lands on a string, and every draw path completes. The only
+    /// alternative is launching the game.
+    ///
+    /// Skipped where luajit is not installed, so CI is unaffected. Linux only:
+    /// the harness reads the published frame back through its backing file,
+    /// and only the Linux writer has one.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn the_overlay_app_runs_under_luajit() {
+        if std::process::Command::new("luajit")
+            .arg("-v")
+            .output()
+            .is_err()
+        {
+            eprintln!("luajit not installed; skipping overlay runtime check");
+            return;
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // The harness reads a published frame; write one somewhere private so
+        // it cannot collide with a running application.
+        let frame_path = std::env::temp_dir().join("acpe-luajit-harness");
+        let mut writer = crate::overlay::shared_writer::OverlayWriter::open_named(
+            frame_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("acpe-luajit-harness"),
+        )
+        .expect("publish a frame for the harness");
+        let mut frame = crate::overlay::frame::OverlayFrame::empty();
+        frame.speed_kmh = 214.0;
+        frame.gear = 4;
+        frame.max_rpm = 8000;
+        frame.rpm = 6000;
+        writer.publish(&frame);
+
+        let output = std::process::Command::new("luajit")
+            .arg(root.join("apps/lua/tests/run_overlay.lua"))
+            .env("ACPE_FRAME", writer.backing_path())
+            .output()
+            .expect("run the harness");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "the overlay app failed under luajit:\n{stdout}\n{stderr}"
+        );
+        assert!(
+            stdout.contains("windowMain: OK"),
+            "draw path ran:\n{stdout}"
+        );
+        assert!(
+            stdout.contains("214"),
+            "the published speed reached the draw path:\n{stdout}"
+        );
+    }
+
     #[test]
     fn nothing_is_installed_when_no_game_is_found() {
         // A path that cannot exist stands in for "no installation".
