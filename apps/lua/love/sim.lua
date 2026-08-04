@@ -38,6 +38,7 @@ local FLAG = {
   SHOW_TELEMETRY = 4,
   SHOW_ENGINEER = 8,
   FUEL_WARNING = 16,
+  SHOW_SESSION = 32,
 }
 
 sim.FLAG = FLAG
@@ -63,7 +64,7 @@ local frame = {
   best_lap_ms = 91380,
   current_lap_ms = 0,
   position = 4,
-  flags = FLAG.CONNECTED + FLAG.SHOW_TELEMETRY + FLAG.SHOW_ENGINEER,
+  flags = FLAG.CONNECTED + FLAG.SHOW_TELEMETRY + FLAG.SHOW_ENGINEER + FLAG.SHOW_SESSION,
   message_count = 2,
   tyre_pressure_psi = { [0] = 27.4, 27.6, 26.9, 27.1 },
   tyre_temp_c = { [0] = 82, 84, 88, 90 },
@@ -129,6 +130,10 @@ local function advanceSimulation(dt, speedFactor)
     frame.flags = bit.band(frame.flags, bit.bnot(FLAG.PIT_LIMITER))
   end
 
+  frame.air_temp_c = 22 + math.sin(t * 0.05) * 1.5
+  frame.road_temp_c = 31 + math.sin(t * 0.04) * 3
+  frame.surface_grip = 0.96 + math.sin(t * 0.03) * 0.03
+  frame.position = 4
   frame.delta_seconds = math.sin(t * 0.35) * 0.8
   frame.current_lap_ms = math.floor(lapTime * 1000)
 
@@ -234,6 +239,11 @@ sim.controls = {
   { 'Laps left', 'fuel_laps_remaining', 0, 40, '%.1f' },
   { 'Per lap', 'fuel_per_lap', 0, 8, '%.2f L' },
   { 'Delta', 'delta_seconds', -3, 3, '%+.3f s' },
+  { 'Position', 'position', 1, 24, 'P%.0f', true },
+  { 'Lap', 'lap_count', 0, 60, '%.0f', true },
+  { 'Air', 'air_temp_c', -5, 45, '%.0f C' },
+  { 'Road', 'road_temp_c', -5, 65, '%.0f C' },
+  { 'Grip', 'surface_grip', 0, 1, '%.2f' },
 }
 
 --- Per-corner fields, driven as a set of four.

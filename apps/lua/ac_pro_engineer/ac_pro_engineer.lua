@@ -57,10 +57,13 @@ local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
 local DEFAULTS = {
   textSize = 'normal',   -- compact | normal | large
+  vrMode = false,        -- bigger text, thicker bar, more air between blocks
+  showHeader = true,
   showRpmBar = true,
   showTyres = true,
   showTiming = true,
   showFuel = true,
+  showSession = true,
   showEngineer = true,
   sectionLabels = true,
   celsius = true,
@@ -87,8 +90,19 @@ local FONT_TIERS = {
 local TEXT_SIZES = { 'compact', 'normal', 'large' }
 
 local function pushRole(role)
-  local tier = FONT_TIERS[settings.textSize] or FONT_TIERS.normal
+  -- In a headset the panel is a metre away through lenses that blur the edges,
+  -- so VR does not get its own layout — it gets the largest one, unless the
+  -- driver has already asked for something larger still.
+  local size = settings.textSize
+  if settings.vrMode and size ~= 'large' then size = 'large' end
+  local tier = FONT_TIERS[size] or FONT_TIERS.normal
   ui.pushFont(ui.Font[tier[role]] or ui.Font.Main)
+end
+
+--- Vertical air between blocks. Doubled in VR, where things that touch each
+--- other read as one thing.
+local function gap(pixels)
+  ui.offsetCursorY(settings.vrMode and pixels * 2 or pixels)
 end
 
 -- Colours are decided from the real Celsius and psi values; only the text that
@@ -131,7 +145,9 @@ local shown = {
   version = 0, sequence = 0,
   speed_kmh = 0, rpm = 0, max_rpm = 0, gear = 0,
   fuel_litres = 0, fuel_laps_remaining = 0, fuel_per_lap = 0,
-  delta_seconds = 0, best_lap_ms = 0, last_lap_ms = 0,
+  delta_seconds = 0, best_lap_ms = 0, last_lap_ms = 0, current_lap_ms = 0,
+  air_temp_c = 0, road_temp_c = 0, surface_grip = 0,
+  lap_count = 0, position = 0,
   flags = 0, message_count = 0,
   tyre_pressure_psi = { 0, 0, 0, 0 },
   tyre_temp_c = { 0, 0, 0, 0 },
@@ -150,6 +166,7 @@ local FLAG_CONNECTED     = 2
 local FLAG_SHOW_TELEMETRY = 4
 local FLAG_SHOW_ENGINEER = 8
 local FLAG_FUEL_WARNING  = 16
+local FLAG_SHOW_SESSION  = 32
 
 local function hasFlag(flag)
   return bit.band(shown.flags, flag) ~= 0
@@ -173,6 +190,12 @@ local function readFrame()
   shown.delta_seconds = frame.delta_seconds
   shown.best_lap_ms = frame.best_lap_ms
   shown.last_lap_ms = frame.last_lap_ms
+  shown.current_lap_ms = frame.current_lap_ms
+  shown.air_temp_c = frame.air_temp_c
+  shown.road_temp_c = frame.road_temp_c
+  shown.surface_grip = frame.surface_grip
+  shown.lap_count = frame.lap_count
+  shown.position = frame.position
   shown.flags = frame.flags
   shown.message_count = frame.message_count
 
@@ -272,11 +295,24 @@ local function stat(label, value, color)
   ui.endGroup()
 end
 
+--- Where column `index` of a row of stats begins.
+---
+--- Three across normally. Two in VR, where the text is large enough that a
+--- third column runs into its neighbour — the wrap happens by itself, since a
+--- stat leaves the cursor at the start of the next line.
+local function nextColumn(width, index)
+  local perRow = settings.vrMode and 2 or 3
+  local column = index % perRow
+  if column > 0 then ui.sameLine(width / perRow * column) end
+end
+
 --- The RPM bar. Drawn by hand rather than with progressBar so the redline
 --- segment can be shaded separately.
 local function rpmBar(width)
   local ratio = rpmRatio()
-  local height = 6
+  -- Thin lines disappear at VR resolutions; this is the one element that is
+  -- read peripherally, so it is the one that has to survive that.
+  local height = settings.vrMode and 14 or 6
   local origin = ui.getCursor()
   local to = vec2(origin.x + width, origin.y + height)
 
@@ -370,10 +406,11 @@ local function drawTiming()
   -- top of each other.
   local width = ui.availableSpaceX()
 
+  nextColumn(width, 0)
   stat('DELTA', string.format('%+.3f', shown.delta_seconds), deltaColor)
-  ui.sameLine(width * 0.38)
+  nextColumn(width, 1)
   stat('BEST', lapTimeText(shown.best_lap_ms), COLOR.purple)
-  ui.sameLine(width * 0.69)
+  nextColumn(width, 2)
   stat('LAST', lapTimeText(shown.last_lap_ms), COLOR.text)
 end
 
@@ -382,15 +419,36 @@ local function drawFuel()
 
   local width = ui.availableSpaceX()
 
+  nextColumn(width, 0)
   stat('FUEL', string.format('%.1f L', shown.fuel_litres), color)
-  ui.sameLine(width * 0.38)
+  nextColumn(width, 1)
   stat('LAPS LEFT',
     shown.fuel_laps_remaining > 0 and string.format('%.1f', shown.fuel_laps_remaining) or '--',
     color)
-  ui.sameLine(width * 0.69)
+  nextColumn(width, 2)
   stat('PER LAP',
     shown.fuel_per_lap > 0 and string.format('%.2f L', shown.fuel_per_lap) or '--',
     COLOR.dim)
+end
+
+--- Where the session is: position, lap, the lap running now, and the
+--- conditions that explain why the tyres are behaving as they are.
+local function drawSession()
+  sectionLabel('SESSION')
+
+  local width = ui.availableSpaceX()
+  nextColumn(width, 0)
+  stat('POS', shown.position > 0 and string.format('P%d', shown.position) or '--', COLOR.text)
+  nextColumn(width, 1)
+  stat('LAP', tostring(shown.lap_count), COLOR.text)
+  nextColumn(width, 2)
+  stat('CURRENT', lapTimeText(shown.current_lap_ms), COLOR.accent)
+
+  pushRole('caption')
+  ui.textColored(string.format('AIR %s   ROAD %s   GRIP %.0f%%',
+    tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100),
+    COLOR.dim)
+  ui.popFont()
 end
 
 local function drawEngineerMessages()
@@ -404,6 +462,26 @@ local function drawEngineerMessages()
       ui.popStyleColor()
     end
   end
+end
+
+--- What every window shows while the desktop application is not publishing.
+---
+--- Nothing else is drawn in that state on purpose: numbers from a dead feed
+--- are worse than no numbers, and a panel that looks broken sends people
+--- looking for the wrong problem. This says which problem it is.
+local function drawWaitingForApp()
+  pushRole('body')
+  ui.textColored('AC Pro Engineer is not running', COLOR.warn)
+  ui.popFont()
+
+  pushRole('caption')
+  ui.textColored('Start the desktop application to see telemetry.', COLOR.dim)
+  if shown.sequence == 0 then
+    ui.textColored('Nothing has been published yet.', COLOR.dim)
+  else
+    ui.textColored(string.format('Last frame %.0f s ago.', secondsSinceChange), COLOR.dim)
+  end
+  ui.popFont()
 end
 
 -- ---------------------------------------------------------------------------
@@ -427,10 +505,7 @@ function script.windowMain(dt)
   end
 
   if not isLive then
-    -- Deliberately quiet. A panel of stale numbers is worse than an empty one.
-    pushRole('caption')
-    ui.textColored('AC Pro Engineer is not running', COLOR.dim)
-    ui.popFont()
+    drawWaitingForApp()
     return
   end
 
@@ -443,30 +518,38 @@ function script.windowMain(dt)
     return
   end
 
-  drawHeader()
-  ui.offsetCursorY(6)
+  if settings.showHeader then
+    drawHeader()
+    gap(6)
+  end
 
   -- Two gates on each section, and they mean different things: the flag is the
   -- application saying it has nothing to show, the setting is the driver
-  -- saying they do not want to see it.
+  -- saying they do not want to see it. Everything here can be switched off —
+  -- a panel in the corner of a windscreen earns its space or loses it.
   if hasFlag(FLAG_SHOW_TELEMETRY) then
     if settings.showTyres then
       drawTyres()
-      ui.offsetCursorY(6)
+      gap(6)
     end
     if settings.showTiming then
       drawTiming()
-      ui.offsetCursorY(6)
+      gap(6)
     end
     if settings.showFuel then
       drawFuel()
+      gap(6)
     end
+  end
+
+  if hasFlag(FLAG_SHOW_SESSION) and settings.showSession then
+    drawSession()
   end
 
   -- The advice also has a window of its own; this block is for keeping it in
   -- the corner of the eye without a second window on screen.
   if hasFlag(FLAG_SHOW_ENGINEER) and settings.showEngineer and shown.message_count > 0 then
-    ui.offsetCursorY(8)
+    gap(8)
     drawEngineerMessages()
   end
 end
@@ -482,9 +565,7 @@ end
 
 function script.windowEngineer(dt)
   if not isLive then
-    pushRole('caption')
-    ui.textColored('AC Pro Engineer is not running', COLOR.dim)
-    ui.popFont()
+    drawWaitingForApp()
     return
   end
 
@@ -530,20 +611,32 @@ local function settingToggle(label, key)
 end
 
 function script.windowSettings(dt)
+  -- The settings stay usable with the application closed — they are this
+  -- machine's preferences, not the feed's — but the panel will not come back
+  -- until it publishes, and saying so here saves a hunt through the checkboxes.
+  if not isLive then
+    pushRole('caption')
+    ui.textColored('Panel hidden: AC Pro Engineer is not running', COLOR.warn)
+    ui.popFont()
+    ui.separator()
+  end
+
   pushRole('caption')
   ui.textColored('SECTIONS', COLOR.label)
   ui.popFont()
 
+  settingToggle('Speed and gear', 'showHeader')
   settingToggle('RPM bar', 'showRpmBar')
   settingToggle('Tyres and brakes', 'showTyres')
   settingToggle('Lap timing', 'showTiming')
   settingToggle('Fuel', 'showFuel')
+  settingToggle('Session', 'showSession')
   settingToggle('Engineer advice', 'showEngineer')
   settingToggle('Section captions', 'sectionLabels')
 
   ui.separator()
   pushRole('caption')
-  ui.textColored('TEXT SIZE', COLOR.label)
+  ui.textColored('READABILITY', COLOR.label)
   ui.popFont()
 
   for _, size in ipairs(TEXT_SIZES) do
@@ -551,6 +644,11 @@ function script.windowSettings(dt)
       settings.textSize = size
     end
   end
+
+  settingToggle('VR mode', 'vrMode')
+  pushRole('caption')
+  ui.textColored('largest text, thicker bar, more spacing', COLOR.dim)
+  ui.popFont()
 
   ui.separator()
   pushRole('caption')

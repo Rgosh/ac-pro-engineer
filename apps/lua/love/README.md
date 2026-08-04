@@ -51,9 +51,9 @@ The app declares two in its manifest, and CSP opens a third from the gear:
 
 | Window | `FUNCTION_MAIN` | |
 |---|---|---|
-| AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel |
+| AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel, session |
 | AC Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
-| settings | `FUNCTION_SETTINGS` | sections, text size, units |
+| settings | `FUNCTION_SETTINGS` | every section on or off, text size, VR mode, units |
 
 Each is a separate entry in CSP's sidebar in game, moved and sized separately.
 The harness draws all three through the same chrome, so what is arranged here
@@ -71,6 +71,17 @@ is what can be arranged there.
 - **Harness** — font scale, panel size, backdrop (dark, checkerboard for
   translucency, or green), content outline. Saved and reused next run.
 - **Log** — what loaded, what threw, and which CSP calls the emulation ignored.
+
+## Nothing without the application
+
+Every window shows one thing while the desktop app is not publishing: *AC Pro
+Engineer is not running*, why it thinks so, and how long ago the last frame
+arrived. No stale numbers, no half-drawn panel — a feed that died two minutes
+ago looks exactly like a live one if the numbers stay on screen.
+
+The Telemetry tab's **Stop desktop app** button freezes the sequence counter,
+which is precisely what a closed application looks like from the panel's side.
+That is the state worth checking before a race weekend, and it is one click.
 
 ## Telemetry sources
 

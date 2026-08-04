@@ -893,6 +893,7 @@ impl AppState {
             flags::SHOW_ENGINEER,
             self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
         );
+        frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
         frame.set_flag(
             flags::FUEL_WARNING,
             self.engineer.stats.fuel_laps_remaining > 0.0

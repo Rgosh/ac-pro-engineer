@@ -154,6 +154,8 @@ pub struct OverlayConfig {
     pub show_telemetry: bool,
     #[serde(default = "default_true")]
     pub show_engineer: bool,
+    #[serde(default = "default_true")]
+    pub show_session: bool,
 }
 
 impl Default for OverlayConfig {
@@ -161,6 +163,7 @@ impl Default for OverlayConfig {
         Self {
             show_telemetry: true,
             show_engineer: true,
+            show_session: true,
         }
     }
 }

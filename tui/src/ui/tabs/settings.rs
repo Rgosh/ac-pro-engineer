@@ -131,7 +131,7 @@ impl SettingsState {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
-            SettingsCategory::Overlay => 2,
+            SettingsCategory::Overlay => 3,
         }
     }
 
@@ -227,6 +227,9 @@ impl SettingsState {
                 }
                 1 if delta.abs() > 0.0 => {
                     config.overlay.show_engineer = !config.overlay.show_engineer
+                }
+                2 if delta.abs() > 0.0 => {
+                    config.overlay.show_session = !config.overlay.show_session
                 }
                 _ => {}
             },
@@ -356,6 +359,13 @@ impl SettingsState {
                         "Показывать советы инженера в игровом оверлее."
                     } else {
                         "Show engineer advice in the in-game overlay."
+                    }
+                }
+                2 => {
+                    if is_ru {
+                        "Показывать позицию, круг и условия трассы в оверлее."
+                    } else {
+                        "Show position, lap and track conditions in the overlay."
                     }
                 }
                 _ => "",
@@ -674,6 +684,15 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
                 "Engineer section".to_string()
             },
             if overlay.show_engineer { "ON" } else { "OFF" }.to_string(),
+            true,
+        ),
+        (
+            if is_ru {
+                "Блок сессии в оверлее".to_string()
+            } else {
+                "Session section".to_string()
+            },
+            if overlay.show_session { "ON" } else { "OFF" }.to_string(),
             true,
         ),
     ];

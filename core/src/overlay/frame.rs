@@ -109,6 +109,8 @@ pub mod flags {
     pub const SHOW_ENGINEER: u32 = 1 << 3;
     /// Fuel is below the configured warning threshold.
     pub const FUEL_WARNING: u32 = 1 << 4;
+    /// The user asked for the session block: position, lap, conditions.
+    pub const SHOW_SESSION: u32 = 1 << 5;
 }
 
 impl Default for OverlayFrame {

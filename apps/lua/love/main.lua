@@ -21,6 +21,7 @@ local app = {
 
 local harness = {
   test = false,
+  appStopped = false,
   settingsOpen = false,
   engineerOpen = true,
   testFrames = 0,
@@ -145,7 +146,7 @@ function love.update(dt)
   csp.input.x, csp.input.y = love.mouse.getPosition()
   harness.fps = love.timer.getFPS()
 
-  if not S.paused then
+  if not S.paused and not harness.appStopped then
     sim.update(dt, S.source, { speed = S.simSpeed, path = S.shmPath })
   end
 
@@ -422,6 +423,12 @@ local function telemetryTab()
     if changed then S.simSpeed = speed; config.save() end
   end
 
+  -- Freezing the sequence is exactly what a closed desktop app looks like from
+  -- the panel's side, and it is the state most worth checking.
+  if ui.button(harness.appStopped and 'Start desktop app' or 'Stop desktop app') then
+    harness.appStopped = not harness.appStopped
+  end
+  ui.sameLine()
   if ui.button(S.paused and 'Resume  (space)' or 'Pause  (space)') then
     S.paused = not S.paused
     config.save()
@@ -435,6 +442,7 @@ local function telemetryTab()
     { 'Connected', sim.FLAG.CONNECTED },
     { 'Telemetry section', sim.FLAG.SHOW_TELEMETRY },
     { 'Engineer section', sim.FLAG.SHOW_ENGINEER },
+    { 'Session section', sim.FLAG.SHOW_SESSION },
     { 'Pit limiter', sim.FLAG.PIT_LIMITER },
     { 'Fuel warning', sim.FLAG.FUEL_WARNING },
   }) do
@@ -645,13 +653,13 @@ function love.draw()
   end
 
   -- A screenshot of the harness itself, for a README or a bug report. Taken
-  -- after a few frames so the tab bar has its labels and the simulation has
-  -- moved off its starting values.
+  -- three seconds in, so the tab bar has its labels, the simulation has moved
+  -- off its starting values, and a frozen feed has had time to time out.
   if config.shot ~= nil then
     harness.shotFrames = (harness.shotFrames or 0) + 1
-    if harness.shotFrames == 45 then
+    if harness.shotFrames == 180 then
       love.graphics.captureScreenshot(config.shot)
-    elseif harness.shotFrames > 50 then
+    elseif harness.shotFrames > 190 then
       print('screenshot: ' .. love.filesystem.getSaveDirectory() .. '/' .. config.shot)
       love.event.quit(0)
     end
