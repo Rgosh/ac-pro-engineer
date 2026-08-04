@@ -146,9 +146,30 @@ for key, value in pairs(DEFAULTS) do
 end
 table.sort(SETTING_KEYS)
 
+local storageActive = false
+
 if type(ac) == 'table' and type(ac.storage) == 'function' then
   local storageOk, stored = pcall(ac.storage, DEFAULTS, 'acpe.')
-  if storageOk and stored ~= nil then settings = stored end
+  if storageOk and stored ~= nil then
+    settings = stored
+    storageActive = true
+  end
+end
+
+--- Write every setting back through the storage proxy.
+---
+--- Storage persists on write, so a value only reaches the disk if something
+--- assigns it. Assigning all of them is how a settings screen that was edited
+--- while storage was unavailable — or a default that was never touched — ends
+--- up saved anyway.
+local function saveSettings()
+  if not storageActive then return false end
+  local ok = pcall(function()
+    for _, key in ipairs(SETTING_KEYS) do
+      settings[key] = settings[key]
+    end
+  end)
+  return ok
 end
 
 -- Anything but a string here is a palette saved by an older build, or one that
@@ -1307,9 +1328,36 @@ end
 --- callers is a global to them — which is how the developer tab came out as a
 --- heading with nothing underneath it.
 local function settingToggle(label, key)
-  if ui.checkbox(label, settings[key]) then
+  -- The box carries no label of its own: CSP draws widget text at its own font
+  -- size, which cannot be scaled, and on a 4K screen that is a settings window
+  -- nobody can read. The label is drawn beside it at the panel's size instead.
+  if ui.checkbox('##' .. key, settings[key]) then
     settings[key] = not settings[key]
+    saveSettings()
   end
+  ui.sameLine()
+  say('body', label, COLOR.text)
+end
+
+--- A radio button with the same treatment.
+--- A slider bound to a settings field, labelled at the panel's size and saved
+--- when it moves.
+local function settingSlider(id, key, low, high, format, integer)
+  ui.setNextItemWidth(contentWidth())
+  local value, changed = ui.slider('##' .. id, settings[key], low, high, format, integer)
+  if changed then
+    settings[key] = value
+    saveSettings()
+  end
+  return changed
+end
+
+--- A radio button with the same treatment.
+local function settingRadio(label, id, selected)
+  local clicked = ui.radioButton('##' .. id, selected)
+  ui.sameLine()
+  say('body', label, selected and COLOR.text or COLOR.dim)
+  return clicked
 end
 
 -- One-press commands, so the common ones do not have to be typed at all. The
@@ -1659,8 +1707,8 @@ function script.windowSettings(dt)
       ui.textColored('LINES', COLOR.label)
       ui.popFont()
       for _, lines in ipairs({ 1, 2, 3, 4 }) do
-        if ui.radioButton(string.format('%d line%s', lines, lines > 1 and 's' or ''),
-            settings.engineerLines == lines) then
+        if settingRadio(string.format('%d line%s', lines, lines > 1 and 's' or ''),
+            'lines' .. lines, settings.engineerLines == lines) then
           settings.engineerLines = lines
         end
       end
@@ -1670,24 +1718,20 @@ function script.windowSettings(dt)
       ui.textColored('MARKER', COLOR.label)
       ui.popFont()
       for _, bullet in ipairs(BULLET_NAMES) do
-        if ui.radioButton(bullet, settings.engineerBullet == bullet) then
+        if settingRadio(bullet, 'bullet' .. bullet, settings.engineerBullet == bullet) then
           settings.engineerBullet = bullet
         end
       end
 
       ui.separator()
-      local scale, scaleChanged = ui.slider('##adviceScale', settings.engineerScale, 0.6, 2.5,
-        'advice scale  %.2fx')
-      if scaleChanged then settings.engineerScale = scale end
+      settingSlider('adviceScale', 'engineerScale', 0.6, 2.5, 'advice scale  %.2fx')
 
-      local chars, charsChanged = ui.slider('##adviceChars', settings.engineerMaxChars, 20, 64,
-        'line limit  %.0f chars', true)
-      if charsChanged then settings.engineerMaxChars = chars end
+      settingSlider('adviceChars', 'engineerMaxChars', 20, 64, 'line limit  %.0f chars', true)
 
       ui.separator()
       say('caption', 'SHOW', COLOR.label)
       for index, name in ipairs({ 'everything', 'warnings and worse', 'critical only' }) do
-        if ui.radioButton(name, settings.engineerMinSeverity == index - 1) then
+        if settingRadio(name, 'sev' .. index, settings.engineerMinSeverity == index - 1) then
           settings.engineerMinSeverity = index - 1
         end
       end
@@ -1696,15 +1740,11 @@ function script.windowSettings(dt)
       settingToggle('Wrap long lines', 'engineerWrap')
       settingToggle('Highlight advice', 'engineerHighlight')
       settingToggle('Space between lines', 'engineerSpacing')
-      local lineGap, gapChanged = ui.slider('##adviceGap', settings.engineerLineGap, 0, 20,
-        'gap  %.0f px', true)
-      if gapChanged then settings.engineerLineGap = lineGap end
+      settingSlider('adviceGap', 'engineerLineGap', 0, 20, 'gap  %.0f px', true)
       settingToggle('Rule between lines', 'engineerSeparator')
       settingToggle('Show how many are hidden', 'engineerShowCount')
 
-      local plate, plateChanged = ui.slider('##advicePlate', settings.engineerBackground, 0, 1,
-        'plate behind the advice  %.2f')
-      if plateChanged then settings.engineerBackground = plate end
+      settingSlider('advicePlate', 'engineerBackground', 0, 1, 'plate behind the advice  %.2f')
 
       ui.separator()
       say('caption', 'FORMAT', COLOR.label)
@@ -1735,21 +1775,15 @@ function script.windowSettings(dt)
         ui.tabItem('Size', function()
       -- Sliders, because these are the two numbers worth nudging while looking
       -- at the panel rather than picking from a list.
-      local scale, scaleChanged = ui.slider('##scale', settings.fontScale, 0.6, 3.0,
-        'text scale  %.2fx')
-      if scaleChanged then settings.fontScale = scale end
+      settingSlider('scale', 'fontScale', 0.6, 3.0, 'text scale  %.2fx')
 
-      local width, widthChanged = ui.slider('##width', settings.contentWidth, 240, 900,
-        'content width  %.0f px', true)
-      if widthChanged then settings.contentWidth = width end
+      settingSlider('width', 'contentWidth', 240, 900, 'content width  %.0f px', true)
 
-      local bar, barChanged = ui.slider('##bar', settings.barHeight, 3, 24,
-        'rev bar  %.0f px', true)
-      if barChanged then settings.barHeight = bar end
+      settingSlider('bar', 'barHeight', 3, 24, 'rev bar  %.0f px', true)
 
           ui.separator()
           for _, size in ipairs(TEXT_SIZES) do
-            if ui.radioButton(size, settings.textSize == size) then
+            if settingRadio(size, 'text' .. size, settings.textSize == size) then
               settings.textSize = size
             end
           end
@@ -1762,7 +1796,9 @@ function script.windowSettings(dt)
         ui.tabItem('Colour', function()
           say('caption', 'ACCENT', COLOR.label)
           for _, name in ipairs(ACCENT_NAMES) do
-            if ui.radioButton(name, settings.accent == name) then settings.accent = name end
+            if settingRadio(name, 'accent' .. name, settings.accent == name) then
+              settings.accent = name
+            end
           end
 
           ui.separator()
@@ -1840,8 +1876,15 @@ function script.windowSettings(dt)
       ui.popFont()
 
       ui.separator()
+      say('caption', storageActive and 'settings are saved as you change them'
+        or 'storage unavailable: settings last for this session', 
+        storageActive and COLOR.dim or COLOR.warn)
+      if ui.button('Save now') then saveSettings() end
+      ui.sameLine()
       if ui.button('Reset to defaults') then
         for key, value in pairs(DEFAULTS) do settings[key] = value end
+        saveSettings()
+        formatFrame()
       end
     end)
 
