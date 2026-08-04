@@ -102,12 +102,12 @@ local DEFAULTS = {
   devSampleAdvice = false,  -- four lines, one of each severity, one very long
   background = 0.0,       -- panel backing, 0 for none
   accent = 'blue',
-  colorText = rgbm(0.88, 0.90, 0.94, 1),
-  colorLabel = rgbm(0.62, 0.66, 0.72, 1),
-  colorDim = rgbm(0.45, 0.48, 0.52, 1),
-  colorGood = rgbm(0.35, 0.85, 0.45, 1),
-  colorWarn = rgbm(1.00, 0.76, 0.20, 1),
-  colorBad = rgbm(1.00, 0.34, 0.34, 1),
+  colorText = '0.88,0.90,0.94',
+  colorLabel = '0.62,0.66,0.72',
+  colorDim = '0.45,0.48,0.52',
+  colorGood = '0.35,0.85,0.45',
+  colorWarn = '1.00,0.76,0.20',
+  colorBad = '1.00,0.34,0.34',
   celsius = true,
   psi = true,
 }
@@ -125,14 +125,13 @@ if type(ac) == 'table' and type(ac.storage) == 'function' then
   if storageOk and stored ~= nil then settings = stored end
 end
 
--- Heal a palette that was saved invisible: reopening the window is then enough
--- to get back, without hunting for a button that cannot be seen.
+-- Anything but a string here is a palette saved by an older build, or one that
+-- came back from storage as something the panel cannot read. Either way the
+-- default is the only safe answer: a palette that throws takes every window
+-- down with it, and the way back would be a button nobody can see.
 for _, key in ipairs({ 'colorText', 'colorLabel', 'colorDim', 'colorGood', 'colorWarn',
     'colorBad' }) do
-  local color = settings[key]
-  if type(color) == 'table' and (color.mult or 1) < 0.2 then
-    settings[key] = DEFAULTS[key]
-  end
+  if type(settings[key]) ~= 'string' then settings[key] = DEFAULTS[key] end
 end
 
 -- Text size, as font tiers rather than a scale factor: CSP has no API for
@@ -539,14 +538,19 @@ local PALETTE = {
 -- itself is a trap: the way back out is a button nobody can see.
 local MIN_ALPHA = 0.35
 
+--- Read "r,g,b" into an existing colour. No allocation, no new table, and a
+--- malformed value leaves the colour alone rather than blanking it.
+local function readColorInto(text, target)
+  if type(text) ~= 'string' or target == nil then return end
+  local r, g, b = text:match('^%s*([%d%.]+)%s*,%s*([%d%.]+)%s*,%s*([%d%.]+)%s*$')
+  if r == nil then return end
+  target.r, target.g, target.b = tonumber(r), tonumber(g), tonumber(b)
+  target.mult = 1
+end
+
 local function applyPalette()
   for _, entry in ipairs(PALETTE) do
-    local chosen = settings[entry[2]]
-    local target = COLOR[entry[1]]
-    if chosen ~= nil and target ~= nil then
-      target.r, target.g, target.b = chosen.r, chosen.g, chosen.b
-      target.mult = math.max(MIN_ALPHA, chosen.mult or 1)
-    end
+    readColorInto(settings[entry[2]], COLOR[entry[1]])
   end
   local accent = accentColor()
   COLOR.accent.r, COLOR.accent.g = accent.r, accent.g
@@ -558,7 +562,8 @@ end
 local function pushLayoutStyle()
   measureWindowScale()
   measureWindowWidth()
-  applyPalette()
+  -- Guarded: a palette is a setting, and no setting is worth an empty panel.
+  pcall(applyPalette)
   ui.pushStyleVar(ui.StyleVar.ItemSpacing,
     settings.vrMode and ITEM_SPACING_VR or ITEM_SPACING)
   ui.pushStyleVar(ui.StyleVar.FramePadding, FRAME_PADDING)
@@ -1509,8 +1514,11 @@ function script.windowSettings(dt)
           ui.separator()
           say('caption', 'PALETTE', COLOR.label)
           for _, entry in ipairs(PALETTE) do
-            local picked = ui.colorPicker(entry[1], settings[entry[2]])
-            if picked ~= nil then settings[entry[2]] = picked end
+            local current = COLOR[entry[1]]
+            local picked = ui.colorPicker(entry[1], current)
+            if picked ~= nil and picked.r ~= nil then
+              settings[entry[2]] = string.format('%.2f,%.2f,%.2f', picked.r, picked.g, picked.b)
+            end
           end
           if ui.button('Default palette') then
             for _, entry in ipairs(PALETTE) do settings[entry[2]] = DEFAULTS[entry[2]] end
