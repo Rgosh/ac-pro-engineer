@@ -1,0 +1,10 @@
+# The Lua overlay is embedded into the binary with include_bytes! and compared
+# byte for byte against what the generator produces, so its line endings are
+# part of the contract. Without this, a Windows checkout converts them to CRLF
+# and the comparison fails — which is exactly what happened.
+*.lua text eol=lf
+*.ini text eol=lf
+
+# Binary, never converted.
+*.png binary
+*.svg text eol=lf
