@@ -1962,10 +1962,12 @@ if type(ui) == 'table' and type(ui.addSettings) == 'function' then
     icon = ui.Icons and ui.Icons.Settings or nil,
     name = 'AC Pro Engineer',
     id = 'acpe.settings',
+    -- Twice the old default: this is read through on a 4K screen, where a
+    -- 560-wide window is a column of text in the corner of a wall.
     size = {
-      default = vec2(560, 680),
-      min = vec2(280, 220),
-      max = vec2(1600, 1400),
+      default = vec2(1120, 1240),
+      min = vec2(300, 240),
+      max = vec2(2400, 2000),
       automatic = false,
     },
   }, function() script.windowSettings(0) end)
