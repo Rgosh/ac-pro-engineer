@@ -17,7 +17,7 @@
 local layout = require('frame_layout')
 
 -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-local EXPECTED_VERSION = 2
+local EXPECTED_VERSION = 3
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
 -- How long the sequence may stand still before the application is presumed
@@ -76,6 +76,7 @@ local DEFAULTS = {
   showTyreTemp = true,
   showBrakeTemp = true,
   showWear = true,
+  showPressureTarget = true,
   showDelta = true,
   showBest = true,
   showLast = true,
@@ -415,6 +416,7 @@ local shown = {
   delta_seconds = 0, best_lap_ms = 0, last_lap_ms = 0, current_lap_ms = 0,
   air_temp_c = 0, road_temp_c = 0, surface_grip = 0,
   lap_count = 0, position = 0,
+  target_pressure_front = 0, target_pressure_rear = 0,
   flags = 0, message_count = 0,
   tyre_pressure_psi = { 0, 0, 0, 0 },
   tyre_temp_c = { 0, 0, 0, 0 },
@@ -441,6 +443,7 @@ local text = {
   brakeTemp = { '', '', '', '' },
   wear = { '', '', '', '' },
   delta = '+0.000', best = '', last = '', current = '',
+  pressureDelta = { '', '', '', '' },
   fuel = '', lapsLeft = '', perLap = '',
   position = '', lap = '', conditions = '',
 }
@@ -526,6 +529,7 @@ local RUSSIAN = {
   ['Tyre temperature'] = 'Температура шин',
   ['Brake temperature'] = 'Температура тормозов',
   ['Wear'] = 'Износ',
+  ['Distance from target'] = 'Отклонение от цели',
   ['Delta'] = 'Дельта',
   ['Best lap'] = 'Лучший круг',
   ['Last lap'] = 'Последний круг',
@@ -609,6 +613,8 @@ local function readFrame()
   shown.surface_grip = frame.surface_grip
   shown.lap_count = frame.lap_count
   shown.position = frame.position
+  shown.target_pressure_front = frame.target_pressure_front
+  shown.target_pressure_rear = frame.target_pressure_rear
   shown.flags = frame.flags
   shown.message_count = frame.message_count
 
@@ -644,6 +650,14 @@ local function formatFrame()
 
   for i = 1, 4 do
     text.pressure[i] = pressureText(shown.tyre_pressure_psi[i])
+
+    local target = i <= 2 and shown.target_pressure_front or shown.target_pressure_rear
+    if target > 0 then
+      local difference = shown.tyre_pressure_psi[i] - target
+      text.pressureDelta[i] = string.format('%+.1f', difference)
+    else
+      text.pressureDelta[i] = ''
+    end
     text.tyreTemp[i] = 'T: ' .. tempText(shown.tyre_temp_c[i])
     text.brakeTemp[i] = 'B: ' .. tempText(shown.brake_temp_c[i])
     text.wear[i] = string.format('Wear: %.0f%%', shown.tyre_wear_percent[i])
@@ -727,6 +741,19 @@ local function tyreTempColor(temp)
   if temp < settings.tyreCold then return COLOR.cold end
   if temp < settings.tyreHot then return COLOR.good end
   if temp < settings.tyreOver then return COLOR.warn end
+  return COLOR.bad
+end
+
+--- How far a corner is from the pressure it is meant to be at.
+---
+--- Half a psi either way is a setup that works; a psi is a car that does not
+--- turn or does not stop.
+local function pressureDeltaColor(corner)
+  local target = corner <= 2 and shown.target_pressure_front or shown.target_pressure_rear
+  if target <= 0 then return COLOR.dim end
+  local difference = math.abs(shown.tyre_pressure_psi[corner] - target)
+  if difference <= 0.5 then return COLOR.good end
+  if difference <= 1.0 then return COLOR.warn end
   return COLOR.bad
 end
 
@@ -986,6 +1013,13 @@ local function drawTyres()
       say('caption', TYRE_LABEL[i], COLOR.dim)
       ui.sameLine()
       say('body', text.pressure[i], COLOR.text)
+
+      -- What it should be, next to what it is. The number on its own is a
+      -- reading; the difference is a decision.
+      if settings.showPressureTarget and text.pressureDelta[i] ~= '' then
+        ui.sameLine()
+        say('caption', text.pressureDelta[i], pressureDeltaColor(i))
+      end
 
       if settings.showTyreTemp then
         say('caption', text.tyreTemp[i], tyreTempColor(shown.tyre_temp_c[i]))
@@ -1783,6 +1817,7 @@ function script.windowSettings(dt)
           settingToggle('Tyre temperature', 'showTyreTemp')
           settingToggle('Brake temperature', 'showBrakeTemp')
           settingToggle('Wear', 'showWear')
+          settingToggle('Distance from target', 'showPressureTarget')
 
           ui.separator()
           say('caption', tr('PRESSURE'), COLOR.label)

@@ -21,7 +21,7 @@ use crate::session_info::SessionInfo;
 
 /// Bumped whenever the layout changes. The overlay refuses to draw a version
 /// it does not recognise rather than misreading a struct from another release.
-pub const OVERLAY_VERSION: u32 = 2;
+pub const OVERLAY_VERSION: u32 = 3;
 
 /// Shared memory name. The `AcTools.CSP.Limited.` prefix matters: CSP allows
 /// scripts without IO permission to open shared memory only when the name
@@ -94,6 +94,14 @@ pub struct OverlayFrame {
     /// Engineer advice, most severe first. UTF-8, NUL-padded, truncated on a
     /// character boundary.
     pub messages: [[u8; MESSAGE_BYTES]; MESSAGE_SLOTS],
+
+    /// Hot pressure the driver is aiming for, front and rear, in psi.
+    ///
+    /// The panel showed what the pressure is; this is what it should be. The
+    /// question in the car is the difference between them, and only the
+    /// application knows the target — it is a setting, not a measurement.
+    pub target_pressure_front: f32,
+    pub target_pressure_rear: f32,
 
     /// How serious each message is: 0 info, 1 warning, 2 critical.
     ///
@@ -175,6 +183,8 @@ impl OverlayFrame {
             flags: 0,
             message_count: 0,
             messages: [[0; MESSAGE_BYTES]; MESSAGE_SLOTS],
+            target_pressure_front: 0.0,
+            target_pressure_rear: 0.0,
             message_severity: [0; MESSAGE_SLOTS],
         }
     }
@@ -322,6 +332,8 @@ const FIELDS: &[(&str, &str)] = &[
     // array of strings, which reaches the panel as `cdata<char (&)[64]>` where
     // the engineer's advice should be. Same bytes, same offsets, and each one
     // reads as a Lua string.
+    ("target_pressure_front", "ac.StructItem.float()"),
+    ("target_pressure_rear", "ac.StructItem.float()"),
     ("message_0", "ac.StructItem.string(64)"),
     ("message_1", "ac.StructItem.string(64)"),
     ("message_2", "ac.StructItem.string(64)"),
@@ -371,9 +383,9 @@ mod tests {
         assert_eq!(align_of::<OverlayFrame>(), 4);
 
         // Counted rather than hardcoded, so adding a field updates this
-        // deliberately: 20 scalars + 16 array floats + the message block.
-        // 2 header + 8 floats + 8 integers + 2 trailing counters = 20.
-        let scalars = 20 * 4;
+        // deliberately: 22 scalars + 16 array floats + the message block.
+        // 2 header + 8 floats + 8 integers + 2 counters + 2 targets = 22.
+        let scalars = 22 * 4;
         let arrays = 16 * 4;
         let messages = MESSAGE_SLOTS * MESSAGE_BYTES;
         let severities = MESSAGE_SLOTS * 4;
@@ -387,8 +399,8 @@ mod tests {
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
-        // 20 scalars + 4 arrays + four messages + their severities = 29.
-        assert_eq!(FIELDS.len(), 29);
+        // 22 scalars + 4 arrays + four messages + their severities = 31.
+        assert_eq!(FIELDS.len(), 31);
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.

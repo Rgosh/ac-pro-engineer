@@ -630,12 +630,17 @@ async fn main() -> Result<(), anyhow::Error> {
                             // The overlay category has an action, not just
                             // values: pushing the panel into the game folder
                             // is a thing you do, not a number you set.
-                            if matches!(key.code, KeyCode::Char('i') | KeyCode::Char('I'))
-                                && app_lock.ui_state.settings.category
-                                    == ac_tui::ui::tabs::settings::SettingsCategory::Overlay
+                            if app_lock.ui_state.settings.category
+                                == ac_tui::ui::tabs::settings::SettingsCategory::Overlay
                             {
-                                app_lock.install_overlay_now();
-                                continue;
+                                if matches!(key.code, KeyCode::Char('i') | KeyCode::Char('I')) {
+                                    app_lock.install_overlay_now();
+                                    continue;
+                                }
+                                if matches!(key.code, KeyCode::Char('u') | KeyCode::Char('U')) {
+                                    app_lock.uninstall_overlay_now();
+                                    continue;
+                                }
                             }
 
                             let changed = {

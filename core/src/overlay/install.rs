@@ -147,6 +147,34 @@ pub fn describe(configured_install: Option<&Path>) -> InstallReport {
     }
 }
 
+/// Take the overlay back out of the game folder.
+///
+/// Only the files this installer wrote, and the folder itself if nothing else
+/// ended up in it. Anything a driver put there stays, and so does everything
+/// CSP keeps elsewhere — the panel's own settings live in CSP's storage, not
+/// here, so installing again brings them back exactly as they were.
+pub fn uninstall(configured_install: Option<&Path>) -> io::Result<usize> {
+    let Some(target) = install_path(configured_install) else {
+        return Ok(0);
+    };
+
+    let mut removed = 0;
+    for (name, _) in FILES {
+        let path = target.join(name);
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+
+    // Only if it is empty: a folder with someone else's file in it is not ours
+    // to delete.
+    let _ = std::fs::remove_dir(&target);
+
+    Ok(removed)
+}
+
 /// Where the overlay app would be installed, for diagnostics.
 pub fn install_path(configured_install: Option<&Path>) -> Option<PathBuf> {
     ac_paths::ac_install_root(configured_install)
@@ -268,6 +296,28 @@ mod tests {
     /// The launcher's card is only as good as this: it tells people whether
     /// the panel is in the game folder, and being wrong about that sends them
     /// looking for the problem inside the game.
+    #[test]
+    fn uninstalling_removes_what_was_installed_and_nothing_else() {
+        let temp = std::env::temp_dir().join("acpe-uninstall-test");
+        let app = temp.join("apps").join("lua").join(APP_DIR);
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&app).expect("temp app folder");
+
+        install_into(&app).expect("install");
+        let theirs = app.join("driver-notes.txt");
+        std::fs::write(&theirs, b"mine").expect("a file the installer did not write");
+
+        let removed = uninstall(Some(&temp)).expect("uninstall");
+        assert_eq!(removed, FILES.len(), "every installed file goes");
+        assert!(
+            theirs.exists(),
+            "a file we did not write stays, and so does its folder"
+        );
+        assert!(!describe(Some(&temp)).current);
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
     #[test]
     fn describing_a_folder_with_the_app_in_it_reports_it_current() {
         let temp = std::env::temp_dir().join("acpe-describe-test");

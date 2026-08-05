@@ -24,6 +24,7 @@ typedef struct {
   float tyre_pressure_psi[4], tyre_temp_c[4], tyre_wear_percent[4], brake_temp_c[4];
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
+  float target_pressure_front, target_pressure_rear;
   char messages[4][64];
   uint32_t message_severity[4];
 } AcpeFrame;
@@ -50,7 +51,7 @@ sim.FLAG = FLAG
 --- app indexes them — it speaks the struct's dialect, not Lua's.
 local frame = {
   -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-  version = 2,
+  version = 3,
   sequence = 2,
   speed_kmh = 0,
   fuel_litres = 45,
@@ -78,6 +79,8 @@ local frame = {
   messages = { [0] = 'Fuel is fine for the stint', 'Rear tyres are going off', '', '' },
   -- 0 info, 1 warning, 2 critical — as ac_core::overlay::frame::severity.
   message_severity = { [0] = 0, 1, 0, 0 },
+  target_pressure_front = 27.5,
+  target_pressure_rear = 27.0,
 }
 
 -- The panel reads the four messages by name, the way CSP hands them over.
@@ -220,6 +223,8 @@ local function readSharedMemory(path)
   frame.current_lap_ms = raw.current_lap_ms
   frame.position = raw.position
   frame.flags = raw.flags
+  frame.target_pressure_front = raw.target_pressure_front
+  frame.target_pressure_rear = raw.target_pressure_rear
   frame.message_count = raw.message_count
 
   for i = 0, 3 do

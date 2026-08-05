@@ -27,6 +27,7 @@ typedef struct {
   float tyre_pressure_psi[4], tyre_temp_c[4], tyre_wear_percent[4], brake_temp_c[4];
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
+  float target_pressure_front, target_pressure_rear;
   char messages[4][64];
   uint32_t message_severity[4];
 } F;]]

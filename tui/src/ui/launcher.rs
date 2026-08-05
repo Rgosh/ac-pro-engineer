@@ -116,7 +116,11 @@ fn render_overlay_offer(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Span::styled(" [ NOT NOW ] ", no),
     ]));
     lines.push(Line::from(Span::styled(
-        "      it can be installed later from Settings → OVERLAY [I]",
+        "      installed later with [I] in Settings → OVERLAY, and removed",
+        dim,
+    )));
+    lines.push(Line::from(Span::styled(
+        "      with [U] whenever you like — four files, nothing else touched",
         dim,
     )));
 
@@ -183,6 +187,14 @@ fn render_overlay_tips(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  Everything in the panel can be switched off. Nothing is required.",
+        dim,
+    )));
+    lines.push(Line::from(Span::styled(
+        "  Remove it any time with [U] in Settings → OVERLAY. Four files go;",
+        dim,
+    )));
+    lines.push(Line::from(Span::styled(
+        "  your settings stay, so putting it back finds them where they were.",
         dim,
     )));
     lines.push(Line::from(""));

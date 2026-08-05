@@ -442,6 +442,20 @@ impl AppState {
         let _ = self.config.save();
     }
 
+    /// Take the overlay back out of the game folder.
+    ///
+    /// The panel's settings are CSP's, kept outside the app folder, so this is
+    /// reversible: installing again finds them where they were.
+    pub fn uninstall_overlay_now(&mut self) {
+        self.overlay_install_status =
+            match ac_core::overlay::install::uninstall(self.config.ac_install_override()) {
+                Ok(0) => "nothing to remove".to_string(),
+                Ok(removed) => format!("removed, {removed} file(s) — settings kept"),
+                Err(error) => format!("could not remove: {error}"),
+            };
+        self.refresh_overlay_report();
+    }
+
     /// Write the overlay app into the game folder now, and say what happened.
     ///
     /// The application already does this at startup; this is the button for
@@ -950,6 +964,9 @@ impl AppState {
         frame.fuel_laps_remaining = self.engineer.stats.fuel_laps_remaining;
         frame.fuel_per_lap = self.engineer.stats.fuel_consumption_rate;
         frame.delta_seconds = self.engineer.stats.current_delta;
+
+        frame.target_pressure_front = self.config.target_hot_pressure_front;
+        frame.target_pressure_rear = self.config.target_hot_pressure_rear;
 
         frame.apply_session(&self.session_info);
 

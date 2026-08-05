@@ -400,9 +400,9 @@ impl SettingsState {
                 }
                 6 => {
                     if is_ru {
-                        "Показывать карточку оверлея при запуске. [I] — установить сейчас."
+                        "Карточка при запуске. [I] — установить, [U] — удалить из игры."
                     } else {
-                        "Show the overlay card at startup. [I] installs it right now."
+                        "The startup card. [I] installs it, [U] removes it from the game."
                     }
                 }
                 _ => "",
@@ -761,9 +761,9 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         ),
         (
             if is_ru {
-                "Карточка при запуске  [I] — установить".to_string()
+                "Карточка при запуске  [I] ставит, [U] удаляет".to_string()
             } else {
-                "Startup card  [I] to install now".to_string()
+                "Startup card  [I] installs, [U] removes".to_string()
             },
             if overlay.startup_card { "ON" } else { "OFF" }.to_string(),
             true,
