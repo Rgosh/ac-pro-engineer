@@ -320,6 +320,16 @@ pub struct AppState {
     pub show_overlay_card: bool,
     pub overlay_card_selection: usize,
     pub overlay_report: ac_core::overlay::install::InstallReport,
+    /// Which `shm-bridge.exe` is serving the mapping, and whether it can.
+    ///
+    /// The third of the three pieces that have to agree about a frame, and the
+    /// one that used to be unknowable: a bridge older than the struct maps too
+    /// few bytes, CSP silently refuses to open it, and the panel sits saying
+    /// "waiting for AC Pro Engineer" beside a mapping that is right there.
+    pub bridge_status: ac_core::overlay::bridge::BridgeStatus,
+    /// What the last fetch-a-newer-bridge attempt said. Empty until one is
+    /// asked for.
+    pub bridge_fetch_status: String,
     pub overlay_install_status: String,
     /// A result worth showing: the install or removal was asked for from the
     /// Settings tab, where a status line at the bottom of a card nobody is
@@ -426,7 +436,10 @@ impl AppState {
                 current: false,
                 csp_present: false,
                 panel_version: None,
+                panel_release: None,
             },
+            bridge_status: ac_core::overlay::bridge::BridgeStatus::NotRunning,
+            bridge_fetch_status: String::new(),
             overlay_install_status: String::new(),
             overlay_result_popup: false,
             overlay_confirm: None,
@@ -453,6 +466,68 @@ impl AppState {
     pub fn refresh_overlay_report(&mut self) {
         self.overlay_report =
             ac_core::overlay::install::describe(self.config.ac_install_override());
+        self.bridge_status = ac_core::overlay::bridge::status(ac_core::updater::CURRENT_VERSION);
+    }
+
+    /// Fetch the published `shm-bridge.exe` and put it where this application
+    /// looks for one.
+    ///
+    /// Blocking, and deliberately: it is one small file behind an explicit
+    /// keystroke, and a spinner on a card that exists for ten seconds buys
+    /// nothing. The card says what happened when it returns.
+    ///
+    /// Nothing here starts the bridge. Replacing a binary that is running is
+    /// how you get a half-written executable, and the user has to restart it
+    /// through protontricks anyway.
+    pub fn fetch_bridge_now(&mut self) {
+        use ac_core::overlay::bridge;
+        use ac_core::overlay::bridge_update;
+
+        if cfg!(target_os = "windows") {
+            self.bridge_fetch_status =
+                "Windows makes the mapping itself — there is no bridge to fetch".to_string();
+            return;
+        }
+
+        let remote = match bridge_update::latest_published() {
+            Ok(remote) => remote,
+            Err(error) => {
+                self.bridge_fetch_status = format!("could not check GitHub: {error}");
+                return;
+            }
+        };
+
+        // Where the one already here is, or where one would go: beside the
+        // running executable, which is where the release bundle puts it.
+        let destination = bridge::installed_executable().or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.join(bridge::BRIDGE_EXE)))
+        });
+        let Some(destination) = destination else {
+            self.bridge_fetch_status = "could not work out where to put the bridge".to_string();
+            return;
+        };
+
+        let local = bridge::version_in_executable(&destination);
+        if !bridge_update::is_worth_fetching(&remote.version, local.as_deref()) {
+            self.bridge_fetch_status = format!(
+                "the bridge here is v{} and the newest published is v{} — nothing to fetch",
+                local.as_deref().unwrap_or("?"),
+                remote.version
+            );
+            return;
+        }
+
+        self.bridge_fetch_status = match bridge_update::download_to(&remote, &destination) {
+            Ok(path) => format!(
+                "fetched shm-bridge v{} into {} — restart it to pick it up",
+                remote.version,
+                path.display()
+            ),
+            Err(error) => format!("could not fetch v{}: {error}", remote.version),
+        };
+        self.refresh_overlay_report();
     }
 
     /// Remember that the offer has been made, whichever way it was answered.

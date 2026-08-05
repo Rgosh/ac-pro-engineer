@@ -220,9 +220,6 @@ fn render_overlay_tips(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 /// loud, because an overlay that silently did or did not appear is the thing
 /// people spend an evening on before finding out CSP was never installed.
 fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let popup_area = center_rect(area, 66, 15);
-    f.render_widget(Clear, popup_area);
-
     let report = &app.overlay_report;
 
     let block = Block::default()
@@ -284,8 +281,9 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         },
     ]));
 
-    // Three pieces have to agree on the shape of a frame; this is the one that
-    // can be checked from here.
+    // Three pieces have to agree on the shape of a frame. All three are named
+    // here, because "which one is old" is the question, and the answer used to
+    // require reading files in two directories and a Wine prefix.
     let expected = ac_core::overlay::frame::OVERLAY_VERSION;
     lines.push(Line::from(vec![
         Span::styled("frame    ", dim),
@@ -300,6 +298,35 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             None => Span::styled(format!("v{expected} from this app"), dim),
         },
     ]));
+
+    // The release, not the frame number. Most releases leave the struct alone,
+    // so a matching frame version says nothing about how old the panel is.
+    let app_version = ac_core::updater::CURRENT_VERSION;
+    lines.push(Line::from(vec![
+        Span::styled("release  ", dim),
+        match report.panel_release.as_deref() {
+            Some(panel) if panel == app_version => {
+                Span::styled(format!("app and panel both v{panel}"), good)
+            }
+            Some(panel) => Span::styled(
+                format!("app v{app_version}, panel v{panel} — press ENTER to refresh it"),
+                warn,
+            ),
+            None => Span::styled(format!("app v{app_version}, no panel installed"), dim),
+        },
+    ]));
+
+    lines.push(Line::from(vec![
+        Span::styled("bridge   ", dim),
+        bridge_span(&app.bridge_status, good, warn, bad, dim),
+    ]));
+
+    if !app.bridge_fetch_status.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("         {}", app.bridge_fetch_status),
+            Style::default().fg(Color::White),
+        )));
+    }
 
     if !app.overlay_install_status.is_empty() {
         lines.push(Line::from(""));
@@ -341,11 +368,91 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Span::raw("            "),
         Span::styled("D — do not show this at startup", dim),
     ]));
+    // Only where a bridge is a thing. On Windows the application creates the
+    // named mapping itself, and offering to download one would send people
+    // looking for a component they do not have.
+    if !matches!(
+        app.bridge_status,
+        ac_core::overlay::bridge::BridgeStatus::NotRequired
+    ) {
+        lines.push(Line::from(vec![
+            Span::raw("            "),
+            Span::styled("B — fetch the published shm-bridge.exe", dim),
+        ]));
+    }
+
+    // Sized to what there is to say, rather than to a number that was right
+    // when the card had five rows. A bridge complaint names two byte counts and
+    // a remedy, and a fixed 66x15 clipped it to the half without the remedy.
+    //
+    // Wrapped as well as measured: the paths and the GitHub errors in here are
+    // arbitrary length, and a wrapped sentence is worth more than a tidy box.
+    let width = 78.min(area.width);
+    let wrapped: usize = lines
+        .iter()
+        .map(|line| {
+            let cells = line.width().max(1);
+            cells.div_ceil(width.saturating_sub(2).max(1) as usize)
+        })
+        .sum();
+    let height = (wrapped as u16 + 2).min(area.height);
+
+    let popup_area = center_rect(area, width, height);
+    f.render_widget(Clear, popup_area);
 
     let p = Paragraph::new(lines)
         .block(block)
+        .wrap(Wrap { trim: false })
         .alignment(Alignment::Left);
     f.render_widget(p, popup_area);
+}
+
+/// One line about the bridge, in the colour that says how worried to be.
+///
+/// `Behind` is yellow rather than red on purpose: a bridge from another release
+/// that maps the right bytes under the right name works, and colouring it as a
+/// fault is how a check stops being read.
+fn bridge_span<'a>(
+    status: &ac_core::overlay::bridge::BridgeStatus,
+    good: Style,
+    warn: Style,
+    bad: Style,
+    dim: Style,
+) -> Span<'a> {
+    use ac_core::overlay::bridge::BridgeStatus;
+
+    match status {
+        BridgeStatus::NotRequired => Span::styled("not needed — Windows maps this directly", dim),
+        BridgeStatus::NotRunning => Span::styled(
+            "not running — start shm-bridge.exe in the Proton prefix",
+            warn,
+        ),
+        // Red, not yellow: this one is running and the overlay still cannot
+        // work, and telling the driver to start it sends them to start the
+        // same broken bridge again.
+        BridgeStatus::Unannounced => Span::styled(
+            "running but too old to serve the overlay — press B, or rebuild it",
+            bad,
+        ),
+        BridgeStatus::Unreadable(why) => Span::styled(format!("cannot be read: {why}"), warn),
+        BridgeStatus::Incompatible { info, complaint } => Span::styled(
+            format!("v{} {} — press B", info.version, complaint.describe()),
+            bad,
+        ),
+        BridgeStatus::Behind {
+            info,
+            expected_version,
+        } => Span::styled(
+            format!(
+                "v{} running, this app is v{expected_version} — works, B to update",
+                info.version
+            ),
+            warn,
+        ),
+        BridgeStatus::Current(info) => {
+            Span::styled(format!("v{} running, matching", info.version), good)
+        }
+    }
 }
 
 fn render_first_run_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -1072,4 +1179,138 @@ fn is_legacy_version(v: &str) -> bool {
         return patch < 4;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppStage;
+    use ac_core::overlay::bridge::{BridgeInfo, BridgeStatus, Complaint};
+    use ac_core::overlay::frame::{OVERLAY_MMF_NAME, OverlayFrame};
+    use ratatui::backend::TestBackend;
+
+    /// Draw the launcher with the overlay card up and read the cells back.
+    ///
+    /// The card is the only place most people will ever see a version
+    /// mismatch, and until this existed the only way to know it drew the
+    /// sentence rather than the first 64 columns of it was to run the
+    /// application and look.
+    fn card_text(status: BridgeStatus, width: u16, height: u16) -> String {
+        let mut app = AppState::new(ac_core::overlay::OverlayMode::External);
+        app.stage = AppStage::Launcher;
+        app.onboarding = OverlayOnboarding::Done;
+        app.show_first_run_prompt = false;
+        app.show_overlay_card = true;
+        app.bridge_status = status;
+
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test terminal");
+        terminal
+            .draw(|f| render(f, f.size(), &app))
+            .expect("the card draws");
+
+        let buffer = terminal.backend().buffer().clone();
+        let mut rows: Vec<String> = Vec::new();
+        for y in 0..height {
+            let mut row = String::new();
+            for x in 0..width {
+                row.push_str(buffer.get(x, y).symbol());
+            }
+            rows.push(row);
+        }
+
+        // Only what is inside the card's own borders. The launcher draws a
+        // menu to its left, so joining whole rows would splice unrelated text
+        // into the middle of a wrapped sentence.
+        let mut card = String::new();
+        for row in &rows {
+            let cells: Vec<usize> = row
+                .char_indices()
+                .filter(|(_, c)| *c == '\u{2551}')
+                .map(|(i, _)| i)
+                .collect();
+            if let (Some(first), Some(last)) = (cells.first(), cells.last())
+                && last > first
+            {
+                card.push_str(row[first + '\u{2551}'.len_utf8()..*last].trim_end());
+                card.push('\n');
+            }
+        }
+
+        // Wrapping means a sentence can arrive over two rows, and a test for
+        // "the whole thing is on screen" should not care which. Row breaks
+        // become spaces; runs of spaces collapse.
+        card.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn stale_bridge() -> BridgeStatus {
+        BridgeStatus::Incompatible {
+            info: Box::new(BridgeInfo {
+                protocol: 1,
+                version: "0.2.9".to_string(),
+                frame_bytes: 376,
+                mmf: OVERLAY_MMF_NAME.to_string(),
+                pid: 32,
+            }),
+            complaint: Complaint::FrameBytes {
+                found: 376,
+                expected: size_of::<OverlayFrame>(),
+            },
+        }
+    }
+
+    /// The whole sentence, not the half that fitted. A fixed 66-column card
+    /// cut this diagnostic before it reached the part naming the remedy.
+    #[test]
+    fn a_bridge_complaint_is_drawn_whole() {
+        let screen = card_text(stale_bridge(), 140, 40);
+        assert!(screen.contains("376"), "the size it maps:\n{screen}");
+        assert!(
+            screen.contains("CSP will not open it"),
+            "the consequence, which is past column 66:\n{screen}"
+        );
+        assert!(
+            screen.contains("press B"),
+            "and the remedy, which is past that:\n{screen}"
+        );
+        assert!(
+            screen.contains("maps 376 bytes, this build's frame is 424"),
+            "the two numbers belong in one sentence:\n{screen}"
+        );
+    }
+
+    /// A bridge running but too old to announce itself needs the opposite
+    /// advice to one that is not running, and getting them the wrong way round
+    /// sends the driver to start the bridge that is already the problem.
+    #[test]
+    fn an_unannounced_bridge_is_not_reported_as_absent() {
+        let screen = card_text(BridgeStatus::Unannounced, 140, 40);
+        assert!(
+            screen.contains("too old"),
+            "an unannounced bridge is old, not missing:\n{screen}"
+        );
+        assert!(
+            !screen.contains("not running"),
+            "it is running, and saying otherwise is the wrong remedy:\n{screen}"
+        );
+    }
+
+    /// Windows has no bridge, so the card must not offer to fetch one.
+    #[test]
+    fn windows_is_not_offered_a_bridge_to_fetch() {
+        let screen = card_text(BridgeStatus::NotRequired, 140, 40);
+        assert!(screen.contains("not needed"), "{screen}");
+        assert!(
+            !screen.contains("B — fetch"),
+            "there is nothing to fetch on Windows:\n{screen}"
+        );
+    }
+
+    /// The card is sized from its content, so it has to survive a terminal
+    /// smaller than the content it wants to draw rather than panicking.
+    #[test]
+    fn the_card_survives_a_terminal_too_small_for_it() {
+        for (width, height) in [(20u16, 6u16), (40, 10), (80, 24)] {
+            let _ = card_text(stale_bridge(), width, height);
+        }
+    }
 }

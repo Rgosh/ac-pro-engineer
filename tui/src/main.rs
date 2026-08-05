@@ -302,6 +302,10 @@ async fn main() -> Result<(), anyhow::Error> {
                             let _ = app.config.save();
                             app.show_overlay_card = false;
                         }
+                        // Its own key rather than a third button: the two
+                        // buttons are the common path, and a bridge is fetched
+                        // once, on the machine where it is wrong.
+                        KeyCode::Char('b') | KeyCode::Char('B') => app.fetch_bridge_now(),
                         KeyCode::Esc => app.show_overlay_card = false,
                         _ => {}
                     }
