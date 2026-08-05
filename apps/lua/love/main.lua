@@ -73,15 +73,25 @@ local function loadApp()
   end
 
   _G.script = {}
+  -- A panel that does not load is the worst outcome there is — every window
+  -- draws the error instead of the panel — and it used to be the one the
+  -- harness stayed silent about. `--test` counted errors thrown by `update`
+  -- and by the draw calls, and a script that never got as far as defining
+  -- them threw none of those, so it printed "0 errors" and exited 0 while the
+  -- window on screen showed the failure. Load failures are errors.
   local chunk, err = loadfile(app.path)
   if chunk == nil then
     app.loaded, app.error = false, err
+    harness.lastError = 'load: ' .. tostring(err)
+    harness.errorCount = harness.errorCount + 1
     return
   end
 
   local ok, runError = pcall(chunk)
   if not ok then
     app.loaded, app.error = false, tostring(runError)
+    harness.lastError = 'load: ' .. tostring(runError)
+    harness.errorCount = harness.errorCount + 1
     return
   end
 

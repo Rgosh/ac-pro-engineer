@@ -2243,9 +2243,26 @@ end
 -- of our choosing, so it opens big enough to read and still takes a drag.
 --
 -- Guarded: an older CSP without the call simply keeps the manifest's window.
+--
+-- The icon is resolved before the call, and carefully, because the table below
+-- is built *before* `pcall` receives it — an error while constructing an
+-- argument is not caught by the pcall it is being passed to. This runs at load
+-- time, at file scope, so anything thrown here takes the whole script down and
+-- every window draws the error instead of the panel. That is what
+-- `ui.Icons and ui.Icons.Settings` did: `ui.Icons` only has to be *truthy* for
+-- that to index it, and a build where it is a function rather than a table
+-- makes it "attempt to index field 'Icons' (a function value)".
+--
+-- `ui.Icons` is a table in the CSP this was written against. The panel does not
+-- own that name, so it checks rather than assumes.
+local settingsIcon = nil
+if type(ui) == 'table' and type(ui.Icons) == 'table' then
+  settingsIcon = ui.Icons.Settings
+end
+
 if type(ui) == 'table' and type(ui.addSettings) == 'function' then
   pcall(ui.addSettings, {
-    icon = ui.Icons and ui.Icons.Settings or nil,
+    icon = settingsIcon,
     name = 'AC Pro Engineer',
     id = 'acpe.settings',
     -- Twice the old default: this is read through on a 4K screen, where a

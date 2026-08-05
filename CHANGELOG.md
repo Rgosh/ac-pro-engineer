@@ -48,6 +48,23 @@ overlay at all, which is the reason this release exists.
 
 ### 🐞 Bug Fixes
 
+- **The panel failed to load outright, and both harnesses said it was fine.**
+  `icon = ui.Icons and ui.Icons.Settings or nil` sits at file scope, and the
+  table it is in is built *before* `pcall` receives it — an error constructing
+  an argument is not caught by the pcall it is being passed to. `ui.Icons` only
+  has to be truthy for that to index it, so where it is not a table the script
+  died at load and every window drew "attempt to index field 'Icons' (a
+  function value)" in place of the panel. Resolved defensively and before the
+  call now.
+
+  Neither harness reported it. LuaJIT's stub answers unknown names with
+  something both callable and indexable, so the index quietly succeeded; LÖVE's
+  hands back a bare function and did throw — but `--test` only counted errors
+  from `update` and the draw calls, and a script that never got as far as
+  defining them throws none of those. It printed "0 errors" and exited 0 with
+  the failure on screen. Load failures are errors now, and the LÖVE harness
+  runs in `cargo test` alongside the LuaJIT one, because the difference between
+  their stubs is exactly what catches this class.
 - **Both developer switches took the panel down.** `applyDemo` and
   `DEMO_ADVICE` sat below `script.update` and the advice block that use them,
   which makes them globals to their callers — that is, `nil`. Turning on "Demo

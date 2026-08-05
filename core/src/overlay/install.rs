@@ -536,6 +536,52 @@ mod tests {
         );
     }
 
+    /// Run the panel under LÖVE as well as under LuaJIT.
+    ///
+    /// Not redundant: the two harnesses stub CSP differently, and the
+    /// difference is the point. The LuaJIT stub answers every unknown name with
+    /// something both callable and indexable, which is forgiving by design —
+    /// and forgiving enough to hide `ui.Icons.Settings` succeeding against a
+    /// value that is not a table. LÖVE's stub hands back a bare function, the
+    /// index throws, and because that line sits at file scope the whole script
+    /// fails to load and every window draws the error.
+    ///
+    /// That is the failure this catches and the other cannot, and it reached a
+    /// tagged release before anyone looked at a screenshot.
+    ///
+    /// Skipped where love is not installed, so CI is unaffected.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn the_overlay_app_runs_under_love() {
+        if std::process::Command::new("love")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            eprintln!("love not installed; skipping the LÖVE harness");
+            return;
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let output = std::process::Command::new("love")
+            .arg(root.join("apps/lua/love"))
+            .arg("--test")
+            .arg("--settings")
+            .output()
+            .expect("run the LÖVE harness");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "the overlay app failed under LÖVE:\n{stdout}\n{stderr}"
+        );
+        assert!(
+            stdout.contains("0 errors"),
+            "the harness reported errors:\n{stdout}\n{stderr}"
+        );
+    }
+
     #[test]
     fn nothing_is_installed_when_no_game_is_found() {
         // A path that cannot exist stands in for "no installation".
