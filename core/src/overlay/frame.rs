@@ -91,10 +91,6 @@ pub struct OverlayFrame {
     /// How many of [`Self::messages`] are populated.
     pub message_count: u32,
 
-    /// Engineer advice, most severe first. UTF-8, NUL-padded, truncated on a
-    /// character boundary.
-    pub messages: [[u8; MESSAGE_BYTES]; MESSAGE_SLOTS],
-
     /// Hot pressure the driver is aiming for, front and rear, in psi.
     ///
     /// The panel showed what the pressure is; this is what it should be. The
@@ -102,6 +98,10 @@ pub struct OverlayFrame {
     /// application knows the target — it is a setting, not a measurement.
     pub target_pressure_front: f32,
     pub target_pressure_rear: f32,
+
+    /// Engineer advice, most severe first. UTF-8, NUL-padded, truncated on a
+    /// character boundary.
+    pub messages: [[u8; MESSAGE_BYTES]; MESSAGE_SLOTS],
 
     /// How serious each message is: 0 info, 1 warning, 2 critical.
     ///
@@ -393,6 +393,44 @@ mod tests {
             size_of::<OverlayFrame>(),
             scalars + arrays + messages + severities
         );
+    }
+
+    /// The struct's order and the generator's list have to be the same order.
+    ///
+    /// Size and count both matched while the targets sat after the messages in
+    /// one and before them in the other, and the panel read eight bytes of a
+    /// sentence as two pressures.
+    #[test]
+    fn the_generator_lists_the_fields_in_the_struct_s_order() {
+        use std::mem::offset_of;
+
+        let mut offset = 0usize;
+        for (name, kind) in FIELDS {
+            let size = if kind.contains("string(64)") {
+                MESSAGE_BYTES
+            } else if kind.contains(", 4)") {
+                16
+            } else {
+                4
+            };
+
+            let expected = match *name {
+                "version" => Some(offset_of!(OverlayFrame, version)),
+                "sequence" => Some(offset_of!(OverlayFrame, sequence)),
+                "flags" => Some(offset_of!(OverlayFrame, flags)),
+                "message_count" => Some(offset_of!(OverlayFrame, message_count)),
+                "target_pressure_front" => Some(offset_of!(OverlayFrame, target_pressure_front)),
+                "target_pressure_rear" => Some(offset_of!(OverlayFrame, target_pressure_rear)),
+                "messages" | "message_0" => Some(offset_of!(OverlayFrame, messages)),
+                "message_severity" => Some(offset_of!(OverlayFrame, message_severity)),
+                _ => None,
+            };
+
+            if let Some(expected) = expected {
+                assert_eq!(offset, expected, "{name} is declared at the wrong offset");
+            }
+            offset += size;
+        }
     }
 
     /// Every field must be listed for the generator, or the Lua side silently
