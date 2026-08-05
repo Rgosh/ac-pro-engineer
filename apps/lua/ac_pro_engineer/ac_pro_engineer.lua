@@ -652,7 +652,11 @@ local function formatFrame()
     text.pressure[i] = pressureText(shown.tyre_pressure_psi[i])
 
     local target = i <= 2 and shown.target_pressure_front or shown.target_pressure_rear
-    if target > 0 then
+    -- A frame from an older application has something else at this offset, and
+    -- it comes out as -1.7e27. Anything outside the range a tyre is ever run at
+    -- is not a target, it is a mismatch, and the panel says nothing rather than
+    -- showing nonsense next to a real reading.
+    if target > 10 and target < 45 then
       local difference = shown.tyre_pressure_psi[i] - target
       text.pressureDelta[i] = string.format('%+.1f', difference)
     else
@@ -750,7 +754,7 @@ end
 --- turn or does not stop.
 local function pressureDeltaColor(corner)
   local target = corner <= 2 and shown.target_pressure_front or shown.target_pressure_rear
-  if target <= 0 then return COLOR.dim end
+  if target <= 10 or target >= 45 then return COLOR.dim end
   local difference = math.abs(shown.tyre_pressure_psi[corner] - target)
   if difference <= 0.5 then return COLOR.good end
   if difference <= 1.0 then return COLOR.warn end
@@ -1126,9 +1130,12 @@ end
 local function sayAdvice(text, color)
   -- A limit on the line, not just on how many of them: one long sentence can
   -- push the rest of the panel off the bottom of a small window, and the first
-  -- forty characters are the ones that carry the advice.
+  -- forty characters are the ones that carry the advice. With wrapping on the
+  -- line has already been broken up, so nothing is cut.
   local limit = settings.engineerMaxChars or 64
-  if #text > limit then text = text:sub(1, limit - 1) .. '…' end
+  if not settings.engineerWrap and #text > limit then
+    text = text:sub(1, limit - 1) .. '…'
+  end
   ui.dwriteText(text, textSize('body') * (settings.engineerScale or 1), color)
 end
 
@@ -1175,14 +1182,20 @@ local function drawEngineerMessages(withLabel)
         ui.sameLine()
       end
 
+      -- Wrapped here rather than by `ui.textWrapped`, which draws in CSP's own
+      -- font: a marker at the panel's size beside a sentence at CSP's size is
+      -- the mismatch that made the advice look like a footnote.
+      local body = bySeverity and line or (mark .. line)
+      local color = bySeverity and COLOR.text or textColor
       if settings.engineerWrap then
-        -- textWrapped takes the colour from the style stack, not an argument.
-        ui.pushStyleColor(ui.StyleColor.Text, bySeverity and COLOR.text or textColor)
-        ui.textWrapped(bySeverity and line or (mark .. line))
-        ui.popStyleColor()
-      else
-        sayAdvice(bySeverity and line or (mark .. line), bySeverity and COLOR.text or textColor)
+        local limit = settings.engineerMaxChars or 64
+        while #body > limit do
+          local cut = body:sub(1, limit):match('^.*()%s') or limit
+          sayAdvice(body:sub(1, cut - 1), color)
+          body = body:sub(cut + 1)
+        end
       end
+      sayAdvice(body, color)
       if settings.engineerSeparator then ui.separator() end
       if settings.engineerSpacing then gap(settings.engineerLineGap or 4) end
     end

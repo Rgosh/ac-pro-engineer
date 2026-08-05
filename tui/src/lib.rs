@@ -141,6 +141,13 @@ impl AppTab {
     }
 }
 
+/// What a confirmation is about to do to the game folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayAction {
+    Install,
+    Uninstall,
+}
+
 /// The first-run overlay offer: ask once, install if wanted, then say how to
 /// use it. Anything past that is the ordinary status card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +325,11 @@ pub struct AppState {
     /// Settings tab, where a status line at the bottom of a card nobody is
     /// looking at is the same as no answer at all.
     pub overlay_result_popup: bool,
+    /// Asked for, not yet done. Writing into someone's game folder is worth a
+    /// second keystroke — [U] and [I] are neighbours on the keyboard, and one
+    /// of them deletes.
+    pub overlay_confirm: Option<OverlayAction>,
+    pub overlay_confirm_selection: usize,
     pub mock_physics: Option<AcPhysics>,
     pub mock_graphics: Option<AcGraphics>,
     pub mock_static: Option<AcStatic>,
@@ -416,6 +428,8 @@ impl AppState {
             },
             overlay_install_status: String::new(),
             overlay_result_popup: false,
+            overlay_confirm: None,
+            overlay_confirm_selection: 1,
             show_help: false,
             show_overlay_menu: false,
             perf: PerfStats::default(),

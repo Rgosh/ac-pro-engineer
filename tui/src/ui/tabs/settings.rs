@@ -412,6 +412,139 @@ impl SettingsState {
     }
 }
 
+/// Ask before touching the game folder.
+pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let Some(action) = app.overlay_confirm else {
+        return;
+    };
+
+    let width = 64.min(area.width.saturating_sub(4));
+    let height = 11;
+    let popup = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, popup);
+
+    let is_ru = app.config.language == Language::Russian;
+    let removing = action == crate::OverlayAction::Uninstall;
+
+    let colour = if removing {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(colour).bg(Color::Black))
+        .title(if removing {
+            if is_ru {
+                " УДАЛИТЬ ОВЕРЛЕЙ? "
+            } else {
+                " REMOVE THE OVERLAY? "
+            }
+        } else if is_ru {
+            " УСТАНОВИТЬ ОВЕРЛЕЙ? "
+        } else {
+            " INSTALL THE OVERLAY? "
+        })
+        .title_alignment(Alignment::Center);
+
+    let dim = Style::default().fg(Color::DarkGray);
+    let white = Style::default().fg(Color::White);
+
+    let mut lines = vec![Line::from("")];
+    lines.push(Line::from(Span::styled(
+        if removing {
+            if is_ru {
+                "  Из папки игры уйдут четыре файла панели."
+            } else {
+                "  Four files of the panel leave the game folder."
+            }
+        } else if is_ru {
+            "  Четыре файла лягут в папку игры."
+        } else {
+            "  Four files go into the game folder."
+        },
+        white,
+    )));
+
+    if let Some(path) = app.overlay_report.app_path.as_ref() {
+        let text = path.display().to_string();
+        let shown = if text.len() > (width as usize).saturating_sub(6) {
+            format!("…{}", &text[text.len() - (width as usize - 7)..])
+        } else {
+            text
+        };
+        lines.push(Line::from(Span::styled(format!("  {shown}"), dim)));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "  Настройки панели хранятся отдельно и не пострадают."
+        } else {
+            "  The panel's settings live elsewhere and are not touched."
+        },
+        dim,
+    )));
+    lines.push(Line::from(""));
+
+    let yes = if app.overlay_confirm_selection == 0 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(colour)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let no = if app.overlay_confirm_selection == 1 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    lines.push(Line::from(vec![
+        Span::raw("      "),
+        Span::styled(
+            if removing {
+                if is_ru {
+                    " [ ДА, УДАЛИТЬ ] "
+                } else {
+                    " [ YES, REMOVE ] "
+                }
+            } else if is_ru {
+                " [ ДА, УСТАНОВИТЬ ] "
+            } else {
+                " [ YES, INSTALL ] "
+            },
+            yes,
+        ),
+        Span::raw("     "),
+        Span::styled(
+            if is_ru {
+                " [ ОТМЕНА ] "
+            } else {
+                " [ CANCEL ] "
+            },
+            no,
+        ),
+    ]));
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Left),
+        popup,
+    );
+}
+
 /// What the last install or removal did, over the settings that asked for it.
 pub fn render_result_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let width = 62.min(area.width.saturating_sub(4));

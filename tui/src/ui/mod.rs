@@ -158,6 +158,10 @@ impl UIRenderer {
                     self.render_main_app(f, app);
                 }
 
+                if app.overlay_confirm.is_some() {
+                    tabs::settings::render_confirm_popup(f, f.size(), app);
+                }
+
                 if app.overlay_result_popup {
                     tabs::settings::render_result_popup(f, f.size(), app);
                 }

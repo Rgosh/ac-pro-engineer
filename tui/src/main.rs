@@ -637,17 +637,44 @@ async fn main() -> Result<(), anyhow::Error> {
                                 continue;
                             }
 
+                            // [I] and [U] are neighbours, and one of them
+                            // deletes: neither happens without a second key.
+                            if let Some(action) = app_lock.overlay_confirm {
+                                match key.code {
+                                    KeyCode::Left => app_lock.overlay_confirm_selection = 0,
+                                    KeyCode::Right => app_lock.overlay_confirm_selection = 1,
+                                    KeyCode::Enter => {
+                                        if app_lock.overlay_confirm_selection == 0 {
+                                            match action {
+                                                ac_tui::OverlayAction::Install => {
+                                                    app_lock.install_overlay_now()
+                                                }
+                                                ac_tui::OverlayAction::Uninstall => {
+                                                    app_lock.uninstall_overlay_now()
+                                                }
+                                            }
+                                            app_lock.overlay_result_popup = true;
+                                        }
+                                        app_lock.overlay_confirm = None;
+                                    }
+                                    KeyCode::Esc => app_lock.overlay_confirm = None,
+                                    _ => {}
+                                }
+                                continue;
+                            }
+
                             if app_lock.ui_state.settings.category
                                 == ac_tui::ui::tabs::settings::SettingsCategory::Overlay
                             {
                                 if matches!(key.code, KeyCode::Char('i') | KeyCode::Char('I')) {
-                                    app_lock.install_overlay_now();
-                                    app_lock.overlay_result_popup = true;
+                                    app_lock.overlay_confirm = Some(ac_tui::OverlayAction::Install);
+                                    app_lock.overlay_confirm_selection = 1;
                                     continue;
                                 }
                                 if matches!(key.code, KeyCode::Char('u') | KeyCode::Char('U')) {
-                                    app_lock.uninstall_overlay_now();
-                                    app_lock.overlay_result_popup = true;
+                                    app_lock.overlay_confirm =
+                                        Some(ac_tui::OverlayAction::Uninstall);
+                                    app_lock.overlay_confirm_selection = 1;
                                     continue;
                                 }
                             }
