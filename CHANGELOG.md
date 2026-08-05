@@ -6,174 +6,65 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.3.4] - 2026-08-05
 
-> ### ⚠️ The in-game overlay in this release is a DEMO
+> ### ⚠️ Оверлей в этом релизе — ДЕМО
 >
-> **This is a preview, not the finished feature.** It is published so it can be
-> tested on real machines — which is the one thing that cannot be done from
-> here. Expect rough edges, expect to report them, and do not assume a lap is
-> safe because the panel says something.
+> Превью, а не готовая функция. Публикуется, чтобы его можно было проверить на
+> живых машинах — это единственное, чего нельзя сделать при разработке.
 >
-> Known limits of this preview, stated plainly:
+> - **На Windows не запускалось ни разу.** Тесты проходят кросс-компиляцией,
+>   clippy чист под Windows-таргет, но ни одна строка там не выполнялась.
+> - **Внутри игры автором изменений не проверялось.** Панель прогоняется под
+>   LuaJIT и LÖVE, каждый её вызов `ui.*` сверяется с установленным CSP — это
+>   не то же самое, что сессия.
+> - Часть подписей консоли и префиксы `Wear:`, `T:`, `B:` пока не переведены.
 >
-> - **Nothing has ever been run on Windows.** The whole suite passes
->   cross-compiled and clippy is clean for the Windows target, but no line of
->   this has executed on a Windows machine. The Windows path is the simpler one
->   — no bridge is involved, the application creates the named mapping itself —
->   but "compiles and passes tests" is not "works".
-> - **Nothing has been run inside the game by the author of these changes.**
->   The panel is exercised under LuaJIT and under LÖVE, against a real published
->   frame, and every `ui.*` call it makes is checked against the installed CSP.
->   That is not the same as a session.
-> - Some of the settings console's labels are still English in Russian, as are
->   the `Wear:`, `T:` and `B:` prefixes in the panel.
->
-> The official, supported release follows once this has been through real
-> sessions on both systems. Please report what breaks — the panel's status
-> window now names every version involved, which is what a useful report needs.
+> Официальный релиз — после реальных заездов на обеих системах. Сообщайте, что
+> сломалось: окно статуса панели теперь показывает все версии сразу.
 
-Getting the in-game Lua overlay to the point where it can be handed to someone
-else. Three components have to agree about a frame — the application, the panel
-and `shm-bridge.exe` — and until now only two of them could be checked. Checking
-the third found that no published release contains a bridge that can serve the
-overlay at all, which is the reason this release exists.
+**Главное:** до этого релиза оверлей на Linux не мог работать ни у кого.
+v0.3.3 был затегирован за одиннадцать минут до коммита, научившего
+`shm-bridge` маппингу оверлея, поэтому все опубликованные мосты создавали
+только собственные страницы AC. Проверено сканированием артефакта.
 
-### ⚠️ Breaking
+### ⚠️ Ломающее
 
-- **The overlay frame is version 4.** It gained the application's release string
-  so the panel can tell whether it is the copy the running application ships.
-  The field is last in the struct, so nothing before it moves — but the panel,
-  the application and `shm-bridge.exe` all have to come from this release
-  together. Updating the application installs the matching panel by itself; the
-  bridge is the one to replace by hand, or with **[B]** on the overlay card.
+- **Кадр оверлея — версия 4**: добавилась версия приложения, чтобы панель
+  понимала, что игра рисует её старую копию. Поле последнее, смещения не
+  сдвинулись. Приложение, панель и `shm-bridge.exe` должны быть из одного
+  релиза; панель ставится сама, мост — по **[B]** на карточке оверлея.
 
-### 🐞 Bug Fixes
+### 🐞 Исправлено
 
-- **The panel failed to load outright, and both harnesses said it was fine.**
-  `icon = ui.Icons and ui.Icons.Settings or nil` sits at file scope, and the
-  table it is in is built *before* `pcall` receives it — an error constructing
-  an argument is not caught by the pcall it is being passed to. `ui.Icons` only
-  has to be truthy for that to index it, so where it is not a table the script
-  died at load and every window drew "attempt to index field 'Icons' (a
-  function value)" in place of the panel. Resolved defensively and before the
-  call now.
+- **Панель не загружалась вовсе.** `ui.Icons and ui.Icons.Settings` на уровне
+  файла: `ui.Icons` достаточно быть truthy, чтобы его проиндексировали, а
+  таблица-аргумент строится до `pcall`, так что тот её не защищает. Все окна
+  рисовали текст ошибки вместо панели.
+- **Оба переключателя dev-режима падали в nil.** `applyDemo` и `DEMO_ADVICE`
+  стояли ниже вызывающих, то есть были для них глобалами. Четвёртый случай
+  этой ловушки здесь.
+- **Обе версии панели врали.** `manifest.ini` показывал `1.0` одиннадцать
+  релизов подряд, собственной версии у панели не было.
+- **Оба харнесса рапортовали OK на сломанной панели** — LuaJIT рисовал 27
+  строк вместо 140, LÖVE не считал ошибкой падение при загрузке.
+- **Карточка оверлея обрезала свою же диагностику** на 66 колонках.
 
-  Neither harness reported it. LuaJIT's stub answers unknown names with
-  something both callable and indexable, so the index quietly succeeded; LÖVE's
-  hands back a bare function and did throw — but `--test` only counted errors
-  from `update` and the draw calls, and a script that never got as far as
-  defining them throws none of those. It printed "0 errors" and exited 0 with
-  the failure on screen. Load failures are errors now, and the LÖVE harness
-  runs in `cargo test` alongside the LuaJIT one, because the difference between
-  their stubs is exactly what catches this class.
-- **Both developer switches took the panel down.** `applyDemo` and
-  `DEMO_ADVICE` sat below `script.update` and the advice block that use them,
-  which makes them globals to their callers — that is, `nil`. Turning on "Demo
-  numbers" called nil; turning on "Sample advice" indexed it. Neither is on by
-  default, which is why every harness passed for as long as this was there, and
-  why driving the windows could never find it. This is the fourth time a local
-  declared after its callers has cost something here, so the harness now
-  compiles the panel and fails on any name read from the global table that is
-  not CSP's API or the standard library — verified by putting the bug back and
-  watching it get caught.
-- **No published `shm-bridge.exe` can serve the overlay.** v0.3.3 was tagged
-  eleven minutes before the commit that added the overlay's mapping to the
-  bridge's list, so the released binary maps AC's four `acpmf_*` pages and
-  nothing else. It starts, reports no error, and the overlay mapping is never
-  created — which on Linux is indistinguishable, from the driver's seat, from
-  the application not running. Confirmed by scanning the published artifact: it
-  does not contain `AcTools.CSP.Limited.ACPE.v1` anywhere. **This needs a
-  release cut from a commit at or after `187b914`**; no code change can fix a
-  binary that is already published. What is fixed is that the application now
-  detects it, says so, and refuses to install one.
-- **The panel's version was `1.0` through eleven releases.** `manifest.ini`
-  carried a number that had never been updated, and the panel had no version of
-  its own at all — only the frame-layout version, which most releases leave
-  alone and which therefore says nothing about how old an installed panel is.
-  Both now track the crate version, and two tests fail the build if they drift.
-- **The LuaJIT harness reported OK for a panel that drew nothing.** With no
-  application publishing, `readMemoryMappedFile` threw, every window took its
-  "waiting for AC Pro Engineer" branch, and the check documented as the thing to
-  run after every panel edit exercised none of the drawing — 27 strings rendered
-  where a live panel renders 140. It now synthesises a frame when none is
-  published and fails if the speed never reaches the screen.
-- **The overlay card clipped whatever it had to say.** It was a fixed 66×15 with
-  no wrapping, sized when it had five rows; anything longer than 64 columns lost
-  its second half, which for a diagnostic is the half naming the remedy. It is
-  now measured against its content and wraps.
+### 🚀 Добавлено
 
-### 🚀 New Features
+- **Мост сообщает, кто он.** Пишет `/dev/shm/acpe-bridge.info` и вкомпиливает
+  свою версию в бинарник, чтобы его можно было опознать и не запуская.
+- **Карточка судит все три части**, а **[B]** качает опубликованный мост,
+  проверяя его перед заменой. Старый сохраняется как `.previous`.
+- **Проверка обновления моста при старте** — только смотрит; качает по клавише.
+  Версия самого приложения этим путём не трогается.
+- **Панель говорит, что игра держит её старую копию**, и предлагает
+  перезапустить AC. Отключается в Panel → Blocks.
+- **`bridge_probe`** — какой мост на диске, какой запущен, заработает ли оверлей.
+- **`--export-overlay <папка>`** — выгрузить панель для ручной установки.
+- **`proton-setup.sh` в архиве** — команды `protontricks`, без которых CSP не
+  грузится вовсе. Шрифтов в архиве нет и быть не может: терминал рисует своим
+  шрифтом, панель — через DirectWrite от CSP, а шрифты ставятся в префикс
+  (`corefonts`), что и делает скрипт.
 
-- **The bridge says who it is.** `shm-bridge.exe` writes
-  `/dev/shm/acpe-bridge.info` naming its version, the bridge protocol, the bytes
-  it mapped and under what name, and removes it on a clean exit. It also
-  compiles `ACPE-SHM-BRIDGE-VERSION=<version>;` into its own binary, so a bridge
-  on disk and not running can still be identified — there is no running a
-  Windows binary from Linux to ask it. A test asserts the marker survives a real
-  release cross-build, because `#[used]` surviving LTO is not something to
-  assume.
-- **The launcher card judges all three pieces.** Frame version, release, and the
-  bridge's version, protocol and mapped size, each against what this build
-  needs. A bridge from another release that still maps enough bytes is reported
-  as working, in yellow, rather than as a fault — a check that cries wolf stops
-  being read. A bridge running without an announcement gets its own case and its
-  own remedy: telling that driver to "start the bridge" sends them to start the
-  same broken one again.
-- **[B] fetches the published bridge.** It finds the asset dist actually
-  publishes — `shm-bridge-x86_64-pc-windows-gnu.zip`, not the bare `.exe` that
-  only v0.2.2 ever had — unpacks it, and verifies it before it replaces
-  anything: a PE header, the overlay mapping's name in its bytes, and a version
-  marker that agrees with the release tag. The previous bridge is kept as
-  `shm-bridge.exe.previous`. Matching only `shm-bridge.exe` would have found
-  nothing newer than v0.2.2 and offered that as an update.
-- **`cargo run -p ac_core --example bridge_probe`.** Which bridge is on disk,
-  which is running, and whether the overlay can work at all — the first thing to
-  run when the panel waits with the mapping right there.
-- **The panel reports its own version.** In the status window, the developer
-  tab, the version-mismatch screen and the waiting screen, which is where a beta
-  tester's screenshot is taken from. The waiting screen also names the bridge,
-  because on Linux that is the missing piece as often as the application is.
-- **The panel says when the game is drawing an old copy of it.** The application
-  rewrites the panel's files at startup, but a game that was already running
-  keeps the copy it loaded — and nothing on either side could see that: the
-  files on disk are current, the frame version still matches, and the panel
-  carries on. Every frame now carries the application's release, so the panel
-  compares it against its own and says "restart Assetto Corsa to load it". It
-  is one line, and it can be turned off in Panel → Blocks for anyone who cannot
-  restart mid-session.
-- **The application checks for a newer bridge at startup, and asks.** One
-  background look at the release page; if there is a bridge worth taking, the
-  card says so and **[B]** is what fetches it. Nothing is downloaded and no
-  binary is replaced without a keystroke — and the application's *own* version
-  is never touched by this, only the bridge. A bridge that cannot serve the
-  overlay also forces the card up even for someone who turned it off with [D]:
-  that preference means "stop telling me things are fine", not "stay quiet
-  while the panel is broken".
-- **`proton-setup.sh` ships in the Linux archive.** The four `protontricks`
-  commands CSP needs — `vcrun2019`, `corefonts`, `d3dcompiler_47`, `dwrite` —
-  in the order they have to run, with the checks that catch the two ways it
-  goes wrong: protontricks missing, and the prefix not created because the game
-  has never been launched. Without these CSP does not load at all, which reads
-  as "the overlay broke my game".
-- **`ac_pro_engineer --export-overlay <dir>`** writes the panel out for a manual
-  install, for when the automatic one cannot work: an unwritable game folder, an
-  install in a place the path search does not find, a second copy of AC. The
-  files come out of the binary, so what lands is exactly the panel this build's
-  frame is shaped for.
-
-  A flag rather than a folder in the release archive, and not by choice: the
-  panel's folder must be named `ac_pro_engineer` for CSP to find its entry
-  point, and that is also the name of the Linux binary. Shipping both in one
-  archive is a collision, and it failed the first v0.3.4 build outright with
-  `File exists (os error 17)` — on Linux only, because the Windows binary has an
-  `.exe` on the end.
-
-### 📝 Note on fonts
-
-No font files are shipped, and none can be. The desktop side is a terminal
-application and draws with the terminal's own font; the in-game panel draws
-through CSP's DirectWrite. The font step for Linux is `corefonts` **inside the
-Proton prefix**, which is what `proton-setup.sh` runs — a font in a release
-archive would not be where either of them looks.
 
 ## [v0.3.2] - 2026-08-04
 
