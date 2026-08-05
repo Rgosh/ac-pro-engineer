@@ -48,6 +48,16 @@ overlay at all, which is the reason this release exists.
 
 ### 🐞 Bug Fixes
 
+- **Both developer switches took the panel down.** `applyDemo` and
+  `DEMO_ADVICE` sat below `script.update` and the advice block that use them,
+  which makes them globals to their callers — that is, `nil`. Turning on "Demo
+  numbers" called nil; turning on "Sample advice" indexed it. Neither is on by
+  default, which is why every harness passed for as long as this was there, and
+  why driving the windows could never find it. This is the fourth time a local
+  declared after its callers has cost something here, so the harness now
+  compiles the panel and fails on any name read from the global table that is
+  not CSP's API or the standard library — verified by putting the bug back and
+  watching it get caught.
 - **No published `shm-bridge.exe` can serve the overlay.** v0.3.3 was tagged
   eleven minutes before the commit that added the overlay's mapping to the
   bridge's list, so the released binary maps AC's four `acpmf_*` pages and
@@ -127,11 +137,18 @@ overlay at all, which is the reason this release exists.
   goes wrong: protontricks missing, and the prefix not created because the game
   has never been launched. Without these CSP does not load at all, which reads
   as "the overlay broke my game".
-- **The release archives carry a loose copy of the Lua panel.** It is embedded
-  in the binary and installed automatically, so this copy is for when that
-  fails — an unwritable game folder, an install in an unusual place, a second
-  copy of AC. Dropping the folder into `assettocorsa/apps/lua/` is the whole
-  remedy.
+- **`ac_pro_engineer --export-overlay <dir>`** writes the panel out for a manual
+  install, for when the automatic one cannot work: an unwritable game folder, an
+  install in a place the path search does not find, a second copy of AC. The
+  files come out of the binary, so what lands is exactly the panel this build's
+  frame is shaped for.
+
+  A flag rather than a folder in the release archive, and not by choice: the
+  panel's folder must be named `ac_pro_engineer` for CSP to find its entry
+  point, and that is also the name of the Linux binary. Shipping both in one
+  archive is a collision, and it failed the first v0.3.4 build outright with
+  `File exists (os error 17)` — on Linux only, because the Windows binary has an
+  `.exe` on the end.
 
 ### 📝 Note on fonts
 

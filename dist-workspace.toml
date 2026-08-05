@@ -24,20 +24,23 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 # xz would mean linking a C liblzma into the app. Windows keeps .zip, which the
 # updater reads with the pure-Rust `zip` crate.
 unix-archive = ".tar.gz"
-# Everything a user needs when the automatic path does not work, in the archive
-# rather than in a document they would have to find.
+# The prefix setup, which is what stands between a fresh Linux machine and CSP
+# loading at all.
 #
-# The Lua panel is embedded in the binary and installed at startup, so this copy
-# is for the case that fails: an unwritable game folder, an install Steam put
-# somewhere unusual, a second copy of AC. Dropping the folder into
-# `assettocorsa/apps/lua/` by hand is then the whole remedy.
+# Deliberately just this one file. Two things that look like they belong here
+# do not:
+#
+# * **The Lua panel.** Its folder must be named `ac_pro_engineer` for CSP to
+#   find its entry point, and that is also the name of the Linux binary — one
+#   archive cannot hold both, and trying to is what failed the first v0.3.4
+#   build with `File exists (os error 17)`. `ac_pro_engineer --export-overlay
+#   <dir>` writes it out instead, from the copy embedded in the binary, which
+#   is the one shaped for this build's frame.
+# * **CHANGELOG.md, README.md, LICENSE.** dist adds these itself via
+#   auto-includes; naming them again is the same collision by another route.
 #
 # There are no fonts here and there cannot be. The desktop side is a terminal
 # program and uses the terminal's font; the panel draws through CSP's
 # DirectWrite. The font step is `corefonts` inside the Proton prefix, which is
 # what proton-setup.sh runs.
-include = [
-    "apps/lua/ac_pro_engineer/",
-    "packaging/proton-setup.sh",
-    "CHANGELOG.md",
-]
+include = ["packaging/proton-setup.sh"]

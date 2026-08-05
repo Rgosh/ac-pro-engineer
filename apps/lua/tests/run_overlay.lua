@@ -167,6 +167,49 @@ for _, name in ipairs({ 'windowEngineer', 'windowSettings', 'windowTelemetry', '
   end
 end
 
+-- A local declared after its callers is a global to them -- that is, nil -- and
+-- the file still loads, so nothing above catches it. It has now happened four
+-- times: the developer tab, the harness's control panel, the console, and
+-- `applyDemo`/`DEMO_ADVICE`, where turning on either developer switch called or
+-- indexed a nil. Every one of them was in a path that is off by default, which
+-- is exactly why driving the windows does not find them.
+--
+-- So: compile the panel and look at which names it reads from the global table.
+-- Anything outside this list is either a typo or a local declared too late.
+local ALLOWED_GLOBALS = {
+  -- CSP's API, and the two constructors it exposes as bare globals.
+  ac = true, ui = true, script = true, vec2 = true, rgbm = true,
+  -- LuaJIT's bit library, and the standard library the panel uses.
+  bit = true, ipairs = true, pairs = true, math = true, string = true,
+  table = true, pcall = true, require = true, tonumber = true,
+  tostring = true, type = true,
+}
+
+local pipe = io.popen('luajit -bl ' .. appDir .. 'ac_pro_engineer.lua 2>/dev/null')
+if pipe ~= nil then
+  local bytecode = pipe:read('*a')
+  pipe:close()
+
+  local stray = {}
+  for name in bytecode:gmatch('GGET%s+%d+%s+%d+%s*;%s*"([^"]+)"') do
+    if not ALLOWED_GLOBALS[name] then stray[name] = true end
+  end
+
+  local names = {}
+  for name in pairs(stray) do names[#names + 1] = name end
+  table.sort(names)
+
+  if #names > 0 then
+    print('\nFAILED: the panel reads ' .. #names .. ' name(s) from the global table:')
+    for _, name in ipairs(names) do print('  ' .. name) end
+    print('Each is either a typo or a local declared below something that calls')
+    print('it. A local declared after its callers is nil to them, and the file')
+    print('still loads, so only this check finds it.')
+    os.exit(1)
+  end
+  print('globals: OK')
+end
+
 -- Every check above passes while the panel draws its "waiting for the
 -- application" screen in every window, and that is a state with no readouts,
 -- no advice and no tyre grid in it. Insist the numbers reached the screen, or

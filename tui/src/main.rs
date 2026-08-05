@@ -89,6 +89,64 @@ struct AppArgs {
         help = "Run in live simulation mode with realistic telemetry data"
     )]
     demo: bool,
+
+    /// Write the in-game Lua panel somewhere, and exit.
+    ///
+    /// The application installs it into Assetto Corsa by itself at startup, so
+    /// this is for when that cannot work: a game folder it may not write to, an
+    /// install in a place `ac_paths` does not find, a second copy of AC. The
+    /// files come out of this binary, so what lands is exactly the panel this
+    /// build's frame is shaped for — which a copy downloaded separately would
+    /// not be.
+    ///
+    /// A flag rather than a folder in the release archive: the panel's folder
+    /// has to be named `ac_pro_engineer` for CSP to find its entry point, and
+    /// that is also the name of this binary. Shipping both in one archive is a
+    /// collision, and it is the one that failed the v0.3.4 build.
+    #[arg(
+        long = "export-overlay",
+        value_name = "DIR",
+        help = "Write the in-game Lua panel into DIR/ac_pro_engineer and exit"
+    )]
+    export_overlay: Option<PathBuf>,
+}
+
+/// Write the embedded Lua panel into `dir/ac_pro_engineer` and say what to do
+/// with it.
+///
+/// Prints rather than logs: this is a command run in a terminal by someone who
+/// is already having trouble, and the answer belongs on their screen.
+fn export_overlay(dir: &std::path::Path) -> Result<(), anyhow::Error> {
+    use ac_core::overlay::install::{APP_DIR, InstallOutcome, install_into};
+
+    let target = dir.join(APP_DIR);
+    match install_into(&target) {
+        Ok(InstallOutcome::Installed { updated }) => {
+            println!("Wrote {updated} file(s) to {}", target.display());
+        }
+        Ok(InstallOutcome::AlreadyCurrent) => {
+            println!("{} is already up to date", target.display());
+        }
+        Ok(InstallOutcome::NoGameFound) => {
+            // install_into never returns this; matched so a future variant
+            // cannot be silently ignored.
+            println!("Nothing was written to {}", target.display());
+        }
+        Err(error) => {
+            eprintln!("Could not write {}: {error}", target.display());
+            return Err(error.into());
+        }
+    }
+
+    println!(
+        "\nThis is the panel for AC Pro Engineer v{}. Copy the whole\n\
+         {APP_DIR} folder into:\n\n    \
+         <Assetto Corsa>/apps/lua/\n\n\
+         then enable \"AC Pro Engineer\" in CSP's app sidebar. The panel reads\n\
+         from the running application, so keep that open too.",
+        ac_core::updater::CURRENT_VERSION
+    );
+    Ok(())
 }
 
 #[tokio::main]
@@ -107,6 +165,13 @@ async fn main() -> Result<(), anyhow::Error> {
     }));
 
     let args = AppArgs::parse();
+
+    // Before anything that needs a terminal, a config or a game: this writes
+    // four files and exits, and it has to work on a machine where the rest of
+    // the application cannot start.
+    if let Some(target) = args.export_overlay.as_deref() {
+        return export_overlay(target);
+    }
 
     // Started from a file manager or a desktop entry, there is no terminal to
     // draw on: raw mode fails and the process dies before showing anything.

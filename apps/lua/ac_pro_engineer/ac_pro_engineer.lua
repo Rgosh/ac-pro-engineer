@@ -742,6 +742,46 @@ local function formatFrame()
     tempText(shown.air_temp_c), tempText(shown.road_temp_c), shown.surface_grip * 100)
 end
 
+-- Numbers that look like a car on a warm lap. Only reachable from developer
+-- mode, and the panel says so, so nobody mistakes them for telemetry.
+--
+-- Declared here, above `script.update` and `drawEngineerBody`, because both
+-- call into it. Sitting below them made `applyDemo` and `DEMO_ADVICE` globals
+-- to their callers -- that is, nil -- so turning on either developer switch
+-- took the panel down: "Demo numbers" called nil, "Sample advice" indexed it.
+-- Neither is on by default, which is why every harness passed for as long as
+-- this was here.
+local DEMO_ADVICE = {
+  'Fuel is fine for the stint',
+  'Rear tyres are going off, ease the traction',
+  'Box this lap',
+  'Front-left pressure is 0.4 psi low and the corner is running cold in sector two',
+}
+
+local function applyDemo()
+  shown.version = EXPECTED_VERSION
+  shown.app_version = PANEL_VERSION
+  shown.speed_kmh = 214
+  shown.rpm, shown.max_rpm, shown.gear = 7400, 8500, 5
+  shown.fuel_litres, shown.fuel_per_lap, shown.fuel_laps_remaining = 41.2, 3.1, 13.3
+  shown.delta_seconds = -0.284
+  shown.best_lap_ms, shown.last_lap_ms, shown.current_lap_ms = 91380, 92450, 34120
+  shown.position, shown.lap_count = 4, 7
+  shown.air_temp_c, shown.road_temp_c, shown.surface_grip = 22, 31, 0.97
+  for i = 1, 4 do
+    shown.tyre_pressure_psi[i] = 26.8 + i * 0.2
+    shown.tyre_temp_c[i] = 78 + i * 7
+    shown.tyre_wear_percent[i] = 99 - i * 3
+    shown.brake_temp_c[i] = 320 + i * 90
+  end
+  shown.flags = 2 + 4 + 8 + 32 + 64 + 128
+  shown.message_count = 4
+  for i = 1, 4 do
+    shown.messages[i] = DEMO_ADVICE[i]
+    shown.message_severity[i] = (i - 1) % 3
+  end
+end
+
 function script.update(dt)
 
   -- Frozen on purpose: a held frame is the only way to read a number that was
@@ -1264,39 +1304,6 @@ local function drawEngineerMessages(withLabel)
     say('caption', tr('nothing to report'), COLOR.dim)
   elseif settings.engineerShowCount then
     say('caption', string.format('%d of %d shown', count, shown.message_count), COLOR.dim)
-  end
-end
-
--- Numbers that look like a car on a warm lap. Only reachable from developer
--- mode, and the panel says so, so nobody mistakes them for telemetry.
-local DEMO_ADVICE = {
-  'Fuel is fine for the stint',
-  'Rear tyres are going off, ease the traction',
-  'Box this lap',
-  'Front-left pressure is 0.4 psi low and the corner is running cold in sector two',
-}
-
-local function applyDemo()
-  shown.version = EXPECTED_VERSION
-  shown.app_version = PANEL_VERSION
-  shown.speed_kmh = 214
-  shown.rpm, shown.max_rpm, shown.gear = 7400, 8500, 5
-  shown.fuel_litres, shown.fuel_per_lap, shown.fuel_laps_remaining = 41.2, 3.1, 13.3
-  shown.delta_seconds = -0.284
-  shown.best_lap_ms, shown.last_lap_ms, shown.current_lap_ms = 91380, 92450, 34120
-  shown.position, shown.lap_count = 4, 7
-  shown.air_temp_c, shown.road_temp_c, shown.surface_grip = 22, 31, 0.97
-  for i = 1, 4 do
-    shown.tyre_pressure_psi[i] = 26.8 + i * 0.2
-    shown.tyre_temp_c[i] = 78 + i * 7
-    shown.tyre_wear_percent[i] = 99 - i * 3
-    shown.brake_temp_c[i] = 320 + i * 90
-  end
-  shown.flags = 2 + 4 + 8 + 32 + 64 + 128
-  shown.message_count = 4
-  for i = 1, 4 do
-    shown.messages[i] = DEMO_ADVICE[i]
-    shown.message_severity[i] = (i - 1) % 3
   end
 end
 
