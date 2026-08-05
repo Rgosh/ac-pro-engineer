@@ -32,13 +32,57 @@ typedef struct {
   uint32_t message_severity[4];
 } F;]]
 
+-- A frame the panel will treat as live, built here rather than read from disk.
+--
+-- Without this the harness only ever ran the "waiting for AC Pro Engineer"
+-- screen: with no application publishing, `readMemoryMappedFile` threw, the
+-- panel took the branch it takes when there is nothing to draw, and the check
+-- documented as the thing to run after every panel edit exercised none of the
+-- drawing. It reported OK for a panel whose every readout was dead.
+--
+-- `version` and `sequence` are what make the panel call it live; the rest are
+-- plausible numbers so a format string that cannot take them fails here.
+local function synthesise(b)
+  local f = b[0]
+  f.version = 3            -- EXPECTED_VERSION; a mismatch draws the error page
+  f.sequence = 2           -- even: settled. Zero reads as "never written"
+  f.speed_kmh = 214.0
+  f.rpm, f.max_rpm, f.gear = 6000, 8000, 4
+  f.fuel_litres, f.fuel_per_lap, f.fuel_laps_remaining = 41.2, 3.1, 13.3
+  f.delta_seconds = -0.284
+  f.best_lap_ms, f.last_lap_ms, f.current_lap_ms = 91380, 92450, 34120
+  f.air_temp_c, f.road_temp_c, f.surface_grip = 22, 31, 0.97
+  f.lap_count, f.position = 7, 4
+  f.target_pressure_front, f.target_pressure_rear = 27.0, 26.5
+  for i = 0, 3 do
+    f.tyre_pressure_psi[i] = 26.8 + i * 0.2
+    f.tyre_temp_c[i] = 78 + i * 7
+    f.tyre_wear_percent[i] = 99 - i * 3
+    f.brake_temp_c[i] = 320 + i * 90
+    f.message_severity[i] = i % 3
+  end
+  -- Every section on, so no draw path is skipped: connected, telemetry,
+  -- engineer, session, timing, fuel.
+  f.flags = 2 + 4 + 8 + 32 + 64 + 128
+  f.message_count = 2
+  ffi.copy(f.messages[0], 'Fuel is fine for the stint')
+  ffi.copy(f.messages[1], 'Rear tyres are going off, ease the traction')
+end
+
 ac = {
   StructItem = setmetatable({}, { __index = function() return function() return 0 end end }),
   readMemoryMappedFile = function(name, layout)
-    local fh = assert(io.open(os.getenv('ACPE_FRAME') or '/dev/shm/acpe-luacheck', 'rb'),
-      'demo frame not published; run: cargo run -p ac_core --example publish_demo_frame')
-    local d = fh:read('*a'); fh:close()
-    local b = ffi.new('F[1]'); ffi.copy(b, d, ffi.sizeof('F'))
+    local b = ffi.new('F[1]')
+    -- A real published frame when one is there — that is what the cargo test
+    -- drives, and it proves the offsets as well as the draw paths. A made-up
+    -- one otherwise, so the harness is worth running on its own.
+    local fh = io.open(os.getenv('ACPE_FRAME') or '/dev/shm/acpe-luacheck', 'rb')
+    if fh ~= nil then
+      local d = fh:read('*a'); fh:close()
+      ffi.copy(b, d, math.min(#d, ffi.sizeof('F')))
+    else
+      synthesise(b)
+    end
     -- Wrap so `messages[i]` yields a Lua string, as CSP's string() type does.
     local raw = b[0]
     return setmetatable({}, { __index = function(_, k)
@@ -107,5 +151,22 @@ for _, name in ipairs({ 'windowEngineer', 'windowSettings', 'windowTelemetry', '
   end
 end
 
+-- Every check above passes while the panel draws its "waiting for the
+-- application" screen in every window, and that is a state with no readouts,
+-- no advice and no tyre grid in it. Insist the numbers reached the screen, or
+-- this reports OK for a panel that draws nothing.
+local screen = table.concat(drawn, '\n')
+if not screen:find('214', 1, true) then
+  print('\nFAILED: the speed never reached the screen. Every window took its '
+    .. '"waiting for AC Pro Engineer" branch, so no drawing was checked.')
+  print('rendered ' .. #drawn .. ' pieces of text:')
+  for i = 1, math.min(#drawn, 24) do print('  ' .. drawn[i]) end
+  os.exit(1)
+end
+print('live draw path: OK')
+
+-- Sixteen is enough to see the panel came up; ACPE_ALL=1 prints the lot, which
+-- is how a wrong unit or an untranslated caption is spotted without the game.
+local show = os.getenv('ACPE_ALL') and #drawn or math.min(#drawn, 16)
 print('\nrendered ' .. #drawn .. ' pieces of text:')
-for i = 1, math.min(#drawn, 16) do print('  ' .. drawn[i]) end
+for i = 1, show do print('  ' .. drawn[i]) end
