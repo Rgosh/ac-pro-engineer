@@ -141,6 +141,15 @@ impl AppTab {
     }
 }
 
+/// The first-run overlay offer: ask once, install if wanted, then say how to
+/// use it. Anything past that is the ordinary status card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayOnboarding {
+    Offer,
+    Tips,
+    Done,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppStage {
     Launcher,
@@ -299,6 +308,8 @@ pub struct AppState {
 
     /// The overlay install card shown at startup: what was found in the game
     /// folder, and what the last install attempt did.
+    /// Where the first-run overlay offer has got to.
+    pub onboarding: OverlayOnboarding,
     pub show_overlay_card: bool,
     pub overlay_card_selection: usize,
     pub overlay_report: ac_core::overlay::install::InstallReport,
@@ -390,6 +401,7 @@ impl AppState {
             show_update_success: show_success,
             show_first_run_prompt: is_first_run,
             first_run_selection: 0,
+            onboarding: OverlayOnboarding::Done,
             show_overlay_card: false,
             overlay_card_selection: 0,
             overlay_report: ac_core::overlay::install::InstallReport {
@@ -406,7 +418,14 @@ impl AppState {
         };
 
         state.refresh_overlay_report();
-        state.show_overlay_card = state.config.overlay.startup_card;
+
+        // A new install gets the offer; everyone else gets the status card, if
+        // they have left it on.
+        if state.config.overlay.onboarding_done {
+            state.show_overlay_card = state.config.overlay.startup_card;
+        } else {
+            state.onboarding = OverlayOnboarding::Offer;
+        }
         state
     }
 
@@ -414,6 +433,13 @@ impl AppState {
     pub fn refresh_overlay_report(&mut self) {
         self.overlay_report =
             ac_core::overlay::install::describe(self.config.ac_install_override());
+    }
+
+    /// Remember that the offer has been made, whichever way it was answered.
+    pub fn finish_onboarding(&mut self) {
+        self.onboarding = OverlayOnboarding::Done;
+        self.config.overlay.onboarding_done = true;
+        let _ = self.config.save();
     }
 
     /// Write the overlay app into the game folder now, and say what happened.

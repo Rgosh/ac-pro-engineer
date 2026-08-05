@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::ui::localization::tr;
+use crate::{AppState, OverlayOnboarding};
 use ac_core::config::Language;
 use ac_core::updater::UpdateStatus;
 use ratatui::{prelude::*, widgets::*};
@@ -32,9 +32,174 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     if app.show_first_run_prompt {
         render_first_run_popup(f, area, app);
+    } else if app.onboarding == OverlayOnboarding::Offer {
+        render_overlay_offer(f, area, app);
+    } else if app.onboarding == OverlayOnboarding::Tips {
+        render_overlay_tips(f, area, app);
     } else if app.show_overlay_card {
         render_overlay_card(f, area, app);
     }
+}
+
+/// The offer, made once: there is an overlay, and it can be in the game in a
+/// second. Asked here rather than buried in Settings, because a feature nobody
+/// is told about is a feature nobody has.
+fn render_overlay_offer(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let popup_area = center_rect(area, 70, 16);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(Color::Cyan).bg(Color::Black))
+        .title(" IN-GAME OVERLAY ")
+        .title_alignment(Alignment::Center);
+
+    let dim = Style::default().fg(Color::DarkGray);
+    let white = Style::default().fg(Color::White);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "There is a panel that draws all of this inside the car.",
+            white,
+        )),
+        Line::from(Span::styled(
+            "Speed, revs, four corners, fuel, lap times and the engineer's",
+            dim,
+        )),
+        Line::from(Span::styled(
+            "advice — on the windscreen, while you drive.",
+            dim,
+        )),
+        Line::from(""),
+    ];
+
+    match app.overlay_report.game_root.as_ref() {
+        Some(_) if app.overlay_report.csp_present => lines.push(Line::from(Span::styled(
+            "Assetto Corsa and CSP are both here. Shall I install it?",
+            Style::default().fg(Color::Green),
+        ))),
+        Some(_) => lines.push(Line::from(Span::styled(
+            "Assetto Corsa is here, but CSP is not — the panel needs it.",
+            Style::default().fg(Color::Yellow),
+        ))),
+        None => lines.push(Line::from(Span::styled(
+            "No Assetto Corsa found yet — set the path in Settings first.",
+            Style::default().fg(Color::Red),
+        ))),
+    }
+
+    lines.push(Line::from(""));
+
+    let yes = if app.overlay_card_selection == 0 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let no = if app.overlay_card_selection == 1 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    lines.push(Line::from(vec![
+        Span::raw("      "),
+        Span::styled(" [ YES, INSTALL IT ] ", yes),
+        Span::raw("     "),
+        Span::styled(" [ NOT NOW ] ", no),
+    ]));
+    lines.push(Line::from(Span::styled(
+        "      it can be installed later from Settings → OVERLAY [I]",
+        dim,
+    )));
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Left),
+        popup_area,
+    );
+}
+
+/// What to do with it now that it is installed. Six lines, once.
+fn render_overlay_tips(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let popup_area = center_rect(area, 72, 17);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(Color::Green).bg(Color::Black))
+        .title(" THE OVERLAY IS IN THE GAME ")
+        .title_alignment(Alignment::Center);
+
+    let dim = Style::default().fg(Color::DarkGray);
+    let key = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let white = Style::default().fg(Color::White);
+
+    let tip = |k: &'static str, text: &'static str| {
+        Line::from(vec![
+            Span::styled(format!("  {k:<22}"), key),
+            Span::styled(text, white),
+        ])
+    };
+
+    let mut lines = vec![Line::from("")];
+    if !app.overlay_install_status.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", app.overlay_install_status),
+            Style::default().fg(Color::Green),
+        )));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(tip(
+        "in game",
+        "open it from CSP's app sidebar, on the right",
+    ));
+    lines.push(tip(
+        "three windows",
+        "the panel, the advice, and the settings",
+    ));
+    lines.push(tip(
+        "the gear",
+        "opens the settings on the panel's title bar",
+    ));
+    lines.push(tip("first thing", "Look → Screen, pick your resolution"));
+    lines.push(tip("this app", "keep it running — the panel reads from it"));
+    lines.push(tip(
+        "Settings → [F]",
+        "choose what the panel is allowed to show",
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Everything in the panel can be switched off. Nothing is required.",
+        dim,
+    )));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "                     [ ENTER TO CONTINUE ]",
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Left),
+        popup_area,
+    );
 }
 
 /// What was found in the game folder, and what the overlay's state is.

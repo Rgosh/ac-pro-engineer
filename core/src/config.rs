@@ -169,6 +169,9 @@ pub struct OverlayConfig {
     /// Show what was found and installed when the application starts.
     #[serde(default = "default_true")]
     pub startup_card: bool,
+    /// The overlay has been offered once. Nobody wants to be asked twice.
+    #[serde(default)]
+    pub onboarding_done: bool,
 }
 
 impl Default for OverlayConfig {
@@ -181,6 +184,7 @@ impl Default for OverlayConfig {
             show_fuel: true,
             engineer_lines: default_engineer_lines(),
             startup_card: true,
+            onboarding_done: false,
         }
     }
 }

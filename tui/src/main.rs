@@ -257,6 +257,35 @@ async fn main() -> Result<(), anyhow::Error> {
                     break 'outer;
                 }
 
+                if app.onboarding == ac_tui::OverlayOnboarding::Offer && !app.show_first_run_prompt
+                {
+                    match key.code {
+                        KeyCode::Left => app.overlay_card_selection = 0,
+                        KeyCode::Right => app.overlay_card_selection = 1,
+                        KeyCode::Enter => {
+                            if app.overlay_card_selection == 0 {
+                                app.install_overlay_now();
+                                app.onboarding = ac_tui::OverlayOnboarding::Tips;
+                            } else {
+                                app.finish_onboarding();
+                            }
+                        }
+                        KeyCode::Esc => app.finish_onboarding(),
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                if app.onboarding == ac_tui::OverlayOnboarding::Tips {
+                    match key.code {
+                        KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ') => {
+                            app.finish_onboarding()
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 if app.show_overlay_card && !app.show_first_run_prompt {
                     match key.code {
                         KeyCode::Left => app.overlay_card_selection = 0,
