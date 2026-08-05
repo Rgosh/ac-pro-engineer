@@ -4,11 +4,47 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.3.4] - 2026-08-05
+
+> ### ⚠️ The in-game overlay in this release is a DEMO
+>
+> **This is a preview, not the finished feature.** It is published so it can be
+> tested on real machines — which is the one thing that cannot be done from
+> here. Expect rough edges, expect to report them, and do not assume a lap is
+> safe because the panel says something.
+>
+> Known limits of this preview, stated plainly:
+>
+> - **Nothing has ever been run on Windows.** The whole suite passes
+>   cross-compiled and clippy is clean for the Windows target, but no line of
+>   this has executed on a Windows machine. The Windows path is the simpler one
+>   — no bridge is involved, the application creates the named mapping itself —
+>   but "compiles and passes tests" is not "works".
+> - **Nothing has been run inside the game by the author of these changes.**
+>   The panel is exercised under LuaJIT and under LÖVE, against a real published
+>   frame, and every `ui.*` call it makes is checked against the installed CSP.
+>   That is not the same as a session.
+> - Some of the settings console's labels are still English in Russian, as are
+>   the `Wear:`, `T:` and `B:` prefixes in the panel.
+>
+> The official, supported release follows once this has been through real
+> sessions on both systems. Please report what breaks — the panel's status
+> window now names every version involved, which is what a useful report needs.
+
 Getting the in-game Lua overlay to the point where it can be handed to someone
 else. Three components have to agree about a frame — the application, the panel
 and `shm-bridge.exe` — and until now only two of them could be checked. Checking
 the third found that no published release contains a bridge that can serve the
-overlay at all.
+overlay at all, which is the reason this release exists.
+
+### ⚠️ Breaking
+
+- **The overlay frame is version 4.** It gained the application's release string
+  so the panel can tell whether it is the copy the running application ships.
+  The field is last in the struct, so nothing before it moves — but the panel,
+  the application and `shm-bridge.exe` all have to come from this release
+  together. Updating the application installs the matching panel by itself; the
+  bridge is the one to replace by hand, or with **[B]** on the overlay card.
 
 ### 🐞 Bug Fixes
 
@@ -69,6 +105,41 @@ overlay at all.
   tab, the version-mismatch screen and the waiting screen, which is where a beta
   tester's screenshot is taken from. The waiting screen also names the bridge,
   because on Linux that is the missing piece as often as the application is.
+- **The panel says when the game is drawing an old copy of it.** The application
+  rewrites the panel's files at startup, but a game that was already running
+  keeps the copy it loaded — and nothing on either side could see that: the
+  files on disk are current, the frame version still matches, and the panel
+  carries on. Every frame now carries the application's release, so the panel
+  compares it against its own and says "restart Assetto Corsa to load it". It
+  is one line, and it can be turned off in Panel → Blocks for anyone who cannot
+  restart mid-session.
+- **The application checks for a newer bridge at startup, and asks.** One
+  background look at the release page; if there is a bridge worth taking, the
+  card says so and **[B]** is what fetches it. Nothing is downloaded and no
+  binary is replaced without a keystroke — and the application's *own* version
+  is never touched by this, only the bridge. A bridge that cannot serve the
+  overlay also forces the card up even for someone who turned it off with [D]:
+  that preference means "stop telling me things are fine", not "stay quiet
+  while the panel is broken".
+- **`proton-setup.sh` ships in the Linux archive.** The four `protontricks`
+  commands CSP needs — `vcrun2019`, `corefonts`, `d3dcompiler_47`, `dwrite` —
+  in the order they have to run, with the checks that catch the two ways it
+  goes wrong: protontricks missing, and the prefix not created because the game
+  has never been launched. Without these CSP does not load at all, which reads
+  as "the overlay broke my game".
+- **The release archives carry a loose copy of the Lua panel.** It is embedded
+  in the binary and installed automatically, so this copy is for when that
+  fails — an unwritable game folder, an install in an unusual place, a second
+  copy of AC. Dropping the folder into `assettocorsa/apps/lua/` is the whole
+  remedy.
+
+### 📝 Note on fonts
+
+No font files are shipped, and none can be. The desktop side is a terminal
+application and draws with the terminal's own font; the in-game panel draws
+through CSP's DirectWrite. The font step for Linux is `corefonts` **inside the
+Proton prefix**, which is what `proton-setup.sh` runs — a font in a release
+archive would not be where either of them looks.
 
 ## [v0.3.2] - 2026-08-04
 

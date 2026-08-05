@@ -24,3 +24,20 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 # xz would mean linking a C liblzma into the app. Windows keeps .zip, which the
 # updater reads with the pure-Rust `zip` crate.
 unix-archive = ".tar.gz"
+# Everything a user needs when the automatic path does not work, in the archive
+# rather than in a document they would have to find.
+#
+# The Lua panel is embedded in the binary and installed at startup, so this copy
+# is for the case that fails: an unwritable game folder, an install Steam put
+# somewhere unusual, a second copy of AC. Dropping the folder into
+# `assettocorsa/apps/lua/` by hand is then the whole remedy.
+#
+# There are no fonts here and there cannot be. The desktop side is a terminal
+# program and uses the terminal's font; the panel draws through CSP's
+# DirectWrite. The font step is `corefonts` inside the Proton prefix, which is
+# what proton-setup.sh runs.
+include = [
+    "apps/lua/ac_pro_engineer/",
+    "packaging/proton-setup.sh",
+    "CHANGELOG.md",
+]

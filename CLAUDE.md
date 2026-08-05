@@ -18,7 +18,7 @@ in the draw path.
 
 ## The frame contract
 
-`core/src/overlay/frame.rs` owns a 424-byte `#[repr(C)]` `OverlayFrame` and the
+`core/src/overlay/frame.rs` owns a 440-byte `#[repr(C)]` `OverlayFrame` and the
 generator that emits its Lua declaration. Three artefacts encode it:
 
 1. the application, which writes it,
@@ -50,6 +50,7 @@ Four numbers, and confusing them wastes an evening:
 | Number | Where | Changes when |
 |---|---|---|
 | `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves |
+| `app_version` in the frame | filled by `OverlayFrame::empty` | every release, on its own |
 | `BRIDGE_PROTOCOL` | `bridge.rs`, `shm-bridge/src/main.rs` | the bridge's note gains a key |
 | `PANEL_VERSION`, manifest `VERSION` | the panel, `manifest.ini` | every release |
 | Cargo `version` | `Cargo.toml` | every release |
@@ -62,6 +63,12 @@ files together.
 The frame version says nothing about how old a panel is — most releases leave
 the struct alone — which is why `PANEL_VERSION` exists and why the launcher card
 shows both.
+
+The frame also carries the *application's* release, so the panel can notice that
+the game loaded an older copy of it than the one now on disk. That case is
+invisible from every other angle: the files are current, the frame version
+matches, and the panel keeps drawing. Only the panel knows which copy the game
+has in memory, and only if it is told what the current version is.
 
 ## The bridge is the third piece, and it is checkable now
 

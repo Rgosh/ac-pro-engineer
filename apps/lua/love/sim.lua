@@ -27,6 +27,7 @@ typedef struct {
   float target_pressure_front, target_pressure_rear;
   char messages[4][64];
   uint32_t message_severity[4];
+  char app_version[16];
 } AcpeFrame;
 ]]
 
@@ -51,7 +52,7 @@ sim.FLAG = FLAG
 --- app indexes them — it speaks the struct's dialect, not Lua's.
 local frame = {
   -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-  version = 3,
+  version = 4,
   sequence = 2,
   speed_kmh = 0,
   fuel_litres = 45,
@@ -81,6 +82,10 @@ local frame = {
   message_severity = { [0] = 0, 1, 0, 0 },
   target_pressure_front = 27.5,
   target_pressure_rear = 27.0,
+  -- The release the application claims to be. Matching the panel's own means
+  -- the harness does not draw the "restart the game" notice by default; set it
+  -- to something else to see that path.
+  app_version = '0.3.4',
 }
 
 -- The panel reads the four messages by name, the way CSP hands them over.
@@ -205,6 +210,7 @@ local function readSharedMemory(path)
   local raw = buffer[0]
 
   frame.version = raw.version
+  frame.app_version = ffi.string(raw.app_version)
   frame.sequence = raw.sequence
   frame.speed_kmh = raw.speed_kmh
   frame.fuel_litres = raw.fuel_litres

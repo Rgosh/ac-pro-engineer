@@ -21,7 +21,7 @@ use crate::session_info::SessionInfo;
 
 /// Bumped whenever the layout changes. The overlay refuses to draw a version
 /// it does not recognise rather than misreading a struct from another release.
-pub const OVERLAY_VERSION: u32 = 3;
+pub const OVERLAY_VERSION: u32 = 4;
 
 /// Shared memory name. The `AcTools.CSP.Limited.` prefix matters: CSP allows
 /// scripts without IO permission to open shared memory only when the name
@@ -34,6 +34,13 @@ pub const MESSAGE_BYTES: usize = 64;
 /// How many advice lines fit. Four is what the overlay has room to draw
 /// without covering the track.
 pub const MESSAGE_SLOTS: usize = 4;
+
+/// Room for the application's version string, e.g. `0.3.4`. NUL-padded.
+///
+/// Sixteen rather than eight: a prerelease tag like `0.4.0-beta.10` is
+/// thirteen characters, and a version that arrives truncated is worse than no
+/// version at all — the panel would report an update that does not exist.
+pub const VERSION_BYTES: usize = 16;
 
 /// One frame of everything the overlay draws.
 ///
@@ -109,6 +116,26 @@ pub struct OverlayFrame {
     /// severity and the overlay has to be able to do the same, or the same
     /// sentence means one thing on the desktop and another in the car.
     pub message_severity: [u32; MESSAGE_SLOTS],
+
+    /// The application's release, e.g. `0.3.4`. UTF-8, NUL-padded.
+    ///
+    /// So the panel can tell whether it is the one this application ships.
+    /// The application installs the panel at startup, but a game that was
+    /// already running has the previous copy loaded and will keep drawing it
+    /// until it restarts — which is invisible from both sides otherwise, and
+    /// is exactly when someone reports a bug against a version that is no
+    /// longer installed.
+    ///
+    /// A field rather than a flag, unlike everything else that could have been
+    /// one: a flag could say "you are old" but not *what to expect*, and the
+    /// application cannot compute the comparison itself — it does not know
+    /// which copy of the panel the game happens to have in memory. Only the
+    /// panel knows that, and only if it is told what the current version is.
+    ///
+    /// Last in the struct, so every offset before it is unchanged: a panel or
+    /// a bridge that is one version behind misreads nothing, it simply does
+    /// not see this field.
+    pub app_version: [u8; VERSION_BYTES],
 }
 
 /// Severity as it travels in [`OverlayFrame::message_severity`].
@@ -151,14 +178,20 @@ impl Default for OverlayFrame {
 }
 
 impl OverlayFrame {
-    /// A frame with nothing in it but a version.
+    /// A frame with nothing in it but the versions.
     ///
     /// `sequence` starts at zero, which reads as "never written" to the
     /// overlay — so a mapping that exists but has never been filled does not
     /// draw stale zeroes.
+    ///
+    /// `app_version` is filled here rather than by the caller: every frame
+    /// carries it, and a publisher that had to remember to set it would
+    /// eventually publish one that did not — which the panel would read as a
+    /// version mismatch and refuse to draw.
     pub const fn empty() -> Self {
         Self {
             version: OVERLAY_VERSION,
+            app_version: version_bytes(),
             sequence: 0,
             speed_kmh: 0.0,
             fuel_litres: 0.0,
@@ -240,6 +273,31 @@ impl OverlayFrame {
         self.max_rpm = session.max_rpm;
         self.lap_count = session.lap_count;
     }
+}
+
+/// This crate's version as a NUL-padded fixed array.
+///
+/// `const` so [`OverlayFrame::empty`] stays `const` and every frame carries it
+/// without a runtime copy. Written as a byte loop because `copy_from_slice` is
+/// not available in a const context.
+const fn version_bytes() -> [u8; VERSION_BYTES] {
+    let source = env!("CARGO_PKG_VERSION").as_bytes();
+    let mut out = [0u8; VERSION_BYTES];
+    let mut index = 0;
+    // Truncating rather than failing to build: a version longer than this is a
+    // release-naming problem, and a panel that shows a clipped version is a
+    // smaller one than a workspace that will not compile.
+    while index < source.len() && index < VERSION_BYTES {
+        out[index] = source[index];
+        index += 1;
+    }
+    out
+}
+
+/// Read a NUL-padded fixed array back as a string.
+pub fn read_fixed_string(bytes: &[u8]) -> &str {
+    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+    std::str::from_utf8(&bytes[..end]).unwrap_or("")
 }
 
 /// Longest prefix of `text` that fits in `limit` bytes without splitting a
@@ -342,7 +400,34 @@ const FIELDS: &[(&str, &str)] = &[
         "message_severity",
         "ac.StructItem.array(ac.StructItem.uint32(), 4)",
     ),
+    ("app_version", "ac.StructItem.string(16)"),
 ];
+
+/// How many bytes an `ac.StructItem` declaration occupies.
+///
+/// Parsed from the declaration rather than matched against known spellings: the
+/// version string is `string(16)` where the advice is `string(64)`, and a size
+/// table that recognised only the latter counted the new field as four bytes
+/// and agreed with itself about a layout that was twelve bytes short.
+///
+/// Only the layout tests need this — the generator emits the declarations
+/// verbatim and never has to know how wide they are.
+#[cfg(test)]
+fn declared_size(kind: &str) -> usize {
+    if let Some(rest) = kind.split("string(").nth(1)
+        && let Some(count) = rest.split(')').next()
+        && let Ok(count) = count.parse::<usize>()
+    {
+        return count;
+    }
+    if let Some(rest) = kind.split("), ").nth(1)
+        && let Some(count) = rest.split(')').next()
+        && let Ok(count) = count.trim().parse::<usize>()
+    {
+        return count * 4;
+    }
+    4
+}
 
 #[cfg(test)]
 mod tests {
@@ -391,7 +476,15 @@ mod tests {
         let severities = MESSAGE_SLOTS * 4;
         assert_eq!(
             size_of::<OverlayFrame>(),
-            scalars + arrays + messages + severities
+            scalars + arrays + messages + severities + VERSION_BYTES
+        );
+
+        // Last in the struct on purpose: a panel or bridge one version behind
+        // must misread nothing, it must simply not see this field.
+        assert_eq!(
+            offset_of!(OverlayFrame, app_version),
+            size_of::<OverlayFrame>() - VERSION_BYTES,
+            "app_version has to stay last, or every offset after it moves"
         );
     }
 
@@ -406,13 +499,7 @@ mod tests {
 
         let mut offset = 0usize;
         for (name, kind) in FIELDS {
-            let size = if kind.contains("string(64)") {
-                MESSAGE_BYTES
-            } else if kind.contains(", 4)") {
-                16
-            } else {
-                4
-            };
+            let size = declared_size(kind);
 
             let expected = match *name {
                 "version" => Some(offset_of!(OverlayFrame, version)),
@@ -423,6 +510,7 @@ mod tests {
                 "target_pressure_rear" => Some(offset_of!(OverlayFrame, target_pressure_rear)),
                 "messages" | "message_0" => Some(offset_of!(OverlayFrame, messages)),
                 "message_severity" => Some(offset_of!(OverlayFrame, message_severity)),
+                "app_version" => Some(offset_of!(OverlayFrame, app_version)),
                 _ => None,
             };
 
@@ -437,23 +525,13 @@ mod tests {
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
-        // 22 scalars + 4 arrays + four messages + their severities = 31.
-        assert_eq!(FIELDS.len(), 31);
+        // 22 scalars + 4 arrays + four messages + their severities + the
+        // application's version = 32.
+        assert_eq!(FIELDS.len(), 32);
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.
-        let bytes: usize = FIELDS
-            .iter()
-            .map(|(_, kind)| {
-                if kind.contains("string(64)") {
-                    MESSAGE_BYTES
-                } else if kind.contains(", 4)") {
-                    4 * 4
-                } else {
-                    4
-                }
-            })
-            .sum();
+        let bytes: usize = FIELDS.iter().map(|(_, kind)| declared_size(kind)).sum();
         assert_eq!(bytes, size_of::<OverlayFrame>());
     }
 

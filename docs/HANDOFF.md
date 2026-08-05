@@ -11,7 +11,7 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warn
 
 ## The shape of the thing
 
-The desktop application computes everything and publishes a 424-byte
+The desktop application computes everything and publishes a 440-byte
 `#[repr(C)]` `OverlayFrame` once per tick. A CSP Lua app reads fields and calls
 ImGui. Lua runs on AC's render thread where LuaJIT collects garbage mid-frame,
 so the panel formats text when a frame *arrives*, not when one is drawn, and
@@ -118,7 +118,14 @@ font tiers cannot be scaled and a 4K screen needs more than the largest.
 - A `str.replace` with no anchor is a silent no-op — two "split this tab into
   sub-tabs" edits did nothing and the tests still passed.
 
-## The one thing blocking a beta
+## Where this stands: v0.3.4 is a demo release
+
+Cut and published deliberately as a preview, because the two things that
+remained could only be done on someone else's machine: running it on Windows,
+and running it inside a session. The changelog states both limits at the top of
+the release, so nobody reads a rough edge as a promise.
+
+## The one thing that blocked a beta, and how v0.3.4 answers it
 
 **No published release contains a bridge that can serve the overlay.** v0.3.3
 was tagged at 04:15 and `187b914`, the commit that added the overlay mapping to
@@ -131,8 +138,8 @@ Confirmed by scanning the published artifact — it does not contain the string
 `AcTools.CSP.Limited.ACPE.v1` anywhere, and the bridge built from this checkout
 does.
 
-Nothing in the code can fix this; a release has to be cut from a commit at or
-after `187b914`. Everything else is in place for it:
+Nothing in the code could fix this; a release had to be cut from a commit at or
+after `187b914`, and v0.3.4 is it. Everything else was already in place:
 
 - `bridge_update` finds the asset dist actually publishes
   (`shm-bridge-x86_64-pc-windows-gnu.zip`, not the bare `.exe` that only v0.2.2

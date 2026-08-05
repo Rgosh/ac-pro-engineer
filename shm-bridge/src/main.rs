@@ -55,7 +55,7 @@ const OVERLAY_FILE: &str = "AcTools.CSP.Limited.ACPE.v1";
 /// telemetry crate to learn one number would be a poor trade. The mapping only
 /// has to be at least struct-sized, so this is checked against the real value
 /// by a test in ac_core rather than kept in step by hand.
-const OVERLAY_FILE_SIZE: usize = 424;
+const OVERLAY_FILE_SIZE: usize = 440;
 
 /// Shape of the note this bridge leaves behind — see [`BRIDGE_INFO_FILE`].
 ///

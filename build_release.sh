@@ -79,6 +79,39 @@ if [ -f "README.txt" ]; then
     echo "  - README.txt copied to all release folders."
 fi
 
+# Everything needed when the automatic path does not work, in the bundle rather
+# than in a document nobody opens until the game is already broken.
+for doc in README.md CHANGELOG.md LICENSE; do
+    if [ -f "${doc}" ]; then
+        cp "${doc}" "${BUNDLE_DIR}/"
+    fi
+done
+
+# The Lua panel, loose. It is embedded in the binary and installed at startup,
+# so this copy is for the case that fails: an unwritable game folder, an install
+# Steam put somewhere unusual, a second copy of AC. Dropping the folder into
+# assettocorsa/apps/lua/ by hand is then the whole remedy.
+if [ -d "apps/lua/ac_pro_engineer" ]; then
+    mkdir -p "${BUNDLE_DIR}/overlay"
+    cp -r "apps/lua/ac_pro_engineer" "${BUNDLE_DIR}/overlay/"
+    echo "  - Lua overlay copied for manual installation."
+fi
+
+# The prefix setup, next to the bridge it tells people to launch. CSP loads
+# through Windows libraries Proton ships only as stubs — including the fonts,
+# which is why there are no font files in this bundle and cannot be: they go
+# into the prefix (corefonts), not into an archive.
+if [ -f "packaging/proton-setup.sh" ]; then
+    cp "packaging/proton-setup.sh" "${LIN_DIR}/"
+    chmod +x "${LIN_DIR}/proton-setup.sh"
+    echo "  - proton-setup.sh copied to the Linux folder."
+fi
+
+if [ -f "packaging/ac-pro-engineer.desktop" ]; then
+    cp "packaging/ac-pro-engineer.desktop" "${LIN_DIR}/"
+    echo "  - desktop entry copied to the Linux folder."
+fi
+
 echo ""
 echo "[5/5] Packaging tar.gz release archive..."
 cd "${RELEASE_DIR}"

@@ -22,7 +22,7 @@ local layout = require('frame_layout')
 -- stays put when everything else does, which is why it is a small integer and
 -- not a version string: the only question it answers is whether this panel and
 -- the application that wrote the frame agree about where the fields are.
-local EXPECTED_VERSION = 3
+local EXPECTED_VERSION = 4
 
 -- The release this panel was shipped in, matching the workspace's Cargo
 -- version and the manifest's VERSION.
@@ -33,7 +33,7 @@ local EXPECTED_VERSION = 3
 -- worth ruling out when something in the game looks wrong. Checked against the
 -- crate by `cargo test -p ac_core the_panel_announces`, so it cannot be left
 -- behind at release time.
-local PANEL_VERSION = '0.3.3'
+local PANEL_VERSION = '0.3.4'
 
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
@@ -121,6 +121,10 @@ local DEFAULTS = {
   engineerHighlight = true,
 
   sectionLabels = true,
+  -- A newer panel sitting on disk is worth one line, and worth being
+  -- able to turn off: a driver who cannot restart mid-session should not
+  -- be told about it every lap.
+  showUpdateNotice = true,
   devMode = false,
   contentWidth = 360,
   barHeight = 6,
@@ -428,6 +432,9 @@ openFrame()
 -- Last settled snapshot, allocated once and only ever overwritten.
 local shown = {
   version = 0, sequence = 0,
+  -- The release the *application* is on. Compared against PANEL_VERSION to
+  -- notice a panel the game loaded before the application was updated.
+  app_version = '',
   speed_kmh = 0, rpm = 0, max_rpm = 0, gear = 0,
   fuel_litres = 0, fuel_laps_remaining = 0, fuel_per_lap = 0,
   delta_seconds = 0, best_lap_ms = 0, last_lap_ms = 0, current_lap_ms = 0,
@@ -525,6 +532,10 @@ local RUSSIAN = {
   ['PANEL'] = 'ПАНЕЛЬ',
   ['panel'] = 'панель',
   ['frame'] = 'кадр',
+  ['Panel %s is installed — restart Assetto Corsa to load it'] =
+    'Установлена панель %s — перезапусти Assetto Corsa, чтобы она загрузилась',
+  ['Tell me when a newer panel is installed'] =
+    'Сообщать об установке новой панели',
 
   -- The settings window, so the tabs and the switches read in one language.
   ['Panel'] = 'Панель', ['Advice'] = 'Советы', ['Look'] = 'Вид',
@@ -608,6 +619,34 @@ function tr(text)
   return RUSSIAN[text] or text
 end
 
+--- Is the panel the game has loaded older than the one the application ships?
+---
+--- The application rewrites the panel's files at startup, but a game that was
+--- already running keeps drawing the copy it loaded. Nothing on either side can
+--- see that: the files on disk are current, the frame version still matches, and
+--- the panel carries on. This is the only place the two versions meet.
+---
+--- Empty means the application predates the field, which is not a mismatch —
+--- an older application with a newer panel is not something to nag about.
+local function panelIsStale()
+  if not settings.showUpdateNotice then return false end
+  local running = shown.app_version
+  if running == nil or running == '' then return false end
+  return running ~= PANEL_VERSION
+end
+
+--- Say so, once, at the top of whichever window is being drawn.
+local function drawUpdateNotice()
+  if not panelIsStale() then return end
+  pushRole('caption')
+  ui.pushStyleColor(ui.StyleColor.Text, COLOR.accent)
+  ui.textWrapped(string.format(
+    tr('Panel %s is installed — restart Assetto Corsa to load it'),
+    shown.app_version))
+  ui.popStyleColor()
+  ui.popFont()
+end
+
 --- Copy the struct into `shown`, but only if it is settled.
 local function readFrame()
   local seq = frame.sequence
@@ -616,6 +655,7 @@ local function readFrame()
 
   shown.version = frame.version
   shown.sequence = seq
+  shown.app_version = frame.app_version
   shown.speed_kmh = frame.speed_kmh
   shown.rpm = frame.rpm
   shown.max_rpm = frame.max_rpm
@@ -1238,6 +1278,7 @@ local DEMO_ADVICE = {
 
 local function applyDemo()
   shown.version = EXPECTED_VERSION
+  shown.app_version = PANEL_VERSION
   shown.speed_kmh = 214
   shown.rpm, shown.max_rpm, shown.gear = 7400, 8500, 5
   shown.fuel_litres, shown.fuel_per_lap, shown.fuel_laps_remaining = 41.2, 3.1, 13.3
@@ -1341,6 +1382,8 @@ function script.windowMain(dt)
   end
 
   local styles, colors = pushLayoutStyle()
+
+  drawUpdateNotice()
 
   -- The panel's own backing. CSP's window background is whatever the driver
   -- set for every app; a readout over a bright sky needs its own.
@@ -1805,7 +1848,10 @@ local function drawStatusBody()
   -- version of this is installed" is the question every report starts with,
   -- and the answer used to require reading the file in the game folder.
   row('panel version', PANEL_VERSION)
+  row('app version', shown.app_version ~= '' and shown.app_version or '--',
+    panelIsStale() and COLOR.warn or COLOR.good)
   row('frame version', tostring(EXPECTED_VERSION))
+  drawUpdateNotice()
   row('text size', settings.vrMode and 'VR (large)' or settings.textSize)
   row('units', (settings.celsius and 'C' or 'F') .. ' / ' .. (settings.psi and 'psi' or 'bar'))
 end
@@ -1851,6 +1897,7 @@ function script.windowSettings(dt)
           settingToggle('Engineer advice', 'showEngineer')
           settingToggle('Section captions', 'sectionLabels')
           settingToggle('LIMITER badge', 'showLimiter')
+          settingToggle('Tell me when a newer panel is installed', 'showUpdateNotice')
 
           ui.separator()
           settingToggle('One-line mode', 'hudMode')

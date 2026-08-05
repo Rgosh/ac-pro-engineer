@@ -20,7 +20,8 @@ use ac_core::updater::Updater;
 use clap::ValueEnum;
 use std::fs::{self, File};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Instant;
 use tracing::metadata::LevelFilter;
 use tracing::{error, info};
@@ -330,6 +331,13 @@ pub struct AppState {
     /// What the last fetch-a-newer-bridge attempt said. Empty until one is
     /// asked for.
     pub bridge_fetch_status: String,
+    /// A bridge on the release page worth taking, found by the startup check.
+    ///
+    /// Filled by a background thread and never acted on by one: the check is
+    /// automatic, the download is not. Pressing [B] is what spends bandwidth
+    /// and replaces a binary, and doing that unasked to a file the user cannot
+    /// rebuild is not a thing to do quietly.
+    pub bridge_offer: Arc<Mutex<Option<ac_core::overlay::bridge_update::RemoteBridge>>>,
     pub overlay_install_status: String,
     /// A result worth showing: the install or removal was asked for from the
     /// Settings tab, where a status line at the bottom of a card nobody is
@@ -440,6 +448,7 @@ impl AppState {
             },
             bridge_status: ac_core::overlay::bridge::BridgeStatus::NotRunning,
             bridge_fetch_status: String::new(),
+            bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_result_popup: false,
             overlay_confirm: None,
@@ -451,6 +460,7 @@ impl AppState {
         };
 
         state.refresh_overlay_report();
+        state.check_for_bridge_update();
 
         // A new install gets the offer; everyone else gets the status card, if
         // they have left it on.
@@ -458,6 +468,18 @@ impl AppState {
             state.show_overlay_card = state.config.overlay.startup_card;
         } else {
             state.onboarding = OverlayOnboarding::Offer;
+        }
+
+        // A bridge that cannot serve the overlay overrides "do not show this at
+        // startup". That preference means "stop telling me things are fine";
+        // it cannot reasonably mean "stay quiet while the panel is broken", and
+        // the alternative is a driver hunting through the game for a fault that
+        // is not there.
+        if !state.bridge_status.is_workable()
+            && state.overlay_report.current
+            && state.onboarding == OverlayOnboarding::Done
+        {
+            state.show_overlay_card = true;
         }
         state
     }
@@ -467,6 +489,61 @@ impl AppState {
         self.overlay_report =
             ac_core::overlay::install::describe(self.config.ac_install_override());
         self.bridge_status = ac_core::overlay::bridge::status(ac_core::updater::CURRENT_VERSION);
+    }
+
+    /// Ask the release page whether there is a bridge worth taking.
+    ///
+    /// Runs once at startup, on its own thread, and only *looks*. The overlay
+    /// is dead on Linux without a bridge that matches the frame, and expecting
+    /// people to know that and to check by hand is how a beta produces reports
+    /// about a panel that never appears. Nothing is downloaded here — the card
+    /// says what it found and [B] is what acts on it.
+    ///
+    /// Skipped on Windows, where there is no bridge, and skipped when the one
+    /// already running is current — the common case should cost nothing.
+    pub fn check_for_bridge_update(&self) {
+        use ac_core::overlay::bridge::{self, BridgeStatus};
+        use ac_core::overlay::bridge_update;
+
+        if cfg!(target_os = "windows") || matches!(self.bridge_status, BridgeStatus::NotRequired) {
+            return;
+        }
+
+        // A bridge from this release, running and serving: nothing to offer,
+        // and no reason to reach the network for it.
+        if matches!(&self.bridge_status, BridgeStatus::Current(_)) {
+            return;
+        }
+
+        let offer = self.bridge_offer.clone();
+        thread::spawn(move || {
+            let Ok(remote) = bridge_update::latest_published() else {
+                // Offline, rate-limited, no release with a bridge in it. None
+                // of those is worth a message on a card about the overlay.
+                return;
+            };
+
+            let local = bridge::installed_executable()
+                .as_deref()
+                .and_then(bridge::version_in_executable);
+
+            if bridge_update::is_worth_fetching(&remote.version, local.as_deref()) {
+                info!(
+                    "A published shm-bridge v{} is newer than the one here ({})",
+                    remote.version,
+                    local.as_deref().unwrap_or("unknown")
+                );
+                *offer.lock().unwrap_or_else(|e| e.into_inner()) = Some(remote);
+            }
+        });
+    }
+
+    /// The bridge the startup check found worth taking, if it found one.
+    pub fn bridge_offer(&self) -> Option<ac_core::overlay::bridge_update::RemoteBridge> {
+        self.bridge_offer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Fetch the published `shm-bridge.exe` and put it where this application

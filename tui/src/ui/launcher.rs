@@ -321,6 +321,22 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         bridge_span(&app.bridge_status, good, warn, bad, dim),
     ]));
 
+    // Found by the startup check, which looks without downloading. Shown
+    // whether or not the bridge in place works: a newer one is worth knowing
+    // about before it becomes the reason nothing appears.
+    if let Some(offer) = app.bridge_offer() {
+        lines.push(Line::from(vec![
+            Span::styled("update   ", dim),
+            Span::styled(
+                format!(
+                    "shm-bridge v{} is published — press B to fetch it",
+                    offer.version
+                ),
+                Style::default().fg(Color::Cyan),
+            ),
+        ]));
+    }
+
     if !app.bridge_fetch_status.is_empty() {
         lines.push(Line::from(Span::styled(
             format!("         {}", app.bridge_fetch_status),
@@ -1273,7 +1289,13 @@ mod tests {
             "and the remedy, which is past that:\n{screen}"
         );
         assert!(
-            screen.contains("maps 376 bytes, this build's frame is 424"),
+            // Derived, not written out: the frame's size is a thing that
+            // changes, and a test that hardcodes it fails for the wrong reason
+            // the next time a field is added.
+            screen.contains(&format!(
+                "maps 376 bytes, this build's frame is {}",
+                size_of::<OverlayFrame>()
+            )),
             "the two numbers belong in one sentence:\n{screen}"
         );
     }

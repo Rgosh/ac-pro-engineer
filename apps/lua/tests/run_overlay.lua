@@ -30,7 +30,19 @@ typedef struct {
   float target_pressure_front, target_pressure_rear;
   char messages[4][64];
   uint32_t message_severity[4];
+  char app_version[16];
 } F;]]
+
+--- PANEL_VERSION as the app under test declares it.
+---
+--- Read from the source rather than written here twice: a copy in the harness
+--- is a copy that goes stale, and a stale one makes every run draw the update
+--- notice, which is the state the notice exists to make unusual.
+local function currentPanelVersion()
+  local fh = assert(io.open(appDir .. 'ac_pro_engineer.lua', 'r'))
+  local text = fh:read('*a'); fh:close()
+  return text:match("local PANEL_VERSION%s*=%s*'([^']+)'") or '0.0.0'
+end
 
 -- A frame the panel will treat as live, built here rather than read from disk.
 --
@@ -44,7 +56,7 @@ typedef struct {
 -- plausible numbers so a format string that cannot take them fails here.
 local function synthesise(b)
   local f = b[0]
-  f.version = 3            -- EXPECTED_VERSION; a mismatch draws the error page
+  f.version = 4            -- EXPECTED_VERSION; a mismatch draws the error page
   f.sequence = 2           -- even: settled. Zero reads as "never written"
   f.speed_kmh = 214.0
   f.rpm, f.max_rpm, f.gear = 6000, 8000, 4
@@ -67,6 +79,9 @@ local function synthesise(b)
   f.message_count = 2
   ffi.copy(f.messages[0], 'Fuel is fine for the stint')
   ffi.copy(f.messages[1], 'Rear tyres are going off, ease the traction')
+  -- ACPE_APP_VERSION lets a run pretend the application is on another release,
+  -- which is the only way to reach the "restart the game" notice from here.
+  ffi.copy(f.app_version, os.getenv('ACPE_APP_VERSION') or currentPanelVersion())
 end
 
 ac = {
@@ -89,6 +104,7 @@ ac = {
       if k == 'message_severity' then
         return setmetatable({}, { __index = function(_, i) return raw.message_severity[i] end })
       end
+      if k == 'app_version' then return ffi.string(raw.app_version) end
       local slot = k:match('^message_(%d)$')
       if slot ~= nil then
         return ffi.string(raw.messages[tonumber(slot)])
