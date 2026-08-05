@@ -158,6 +158,10 @@ impl UIRenderer {
                     self.render_main_app(f, app);
                 }
 
+                if app.overlay_result_popup {
+                    tabs::settings::render_result_popup(f, f.size(), app);
+                }
+
                 if app.show_help {
                     let tab_idx = match app.active_tab {
                         AppTab::Dashboard => 0,

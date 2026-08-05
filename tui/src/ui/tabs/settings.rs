@@ -412,6 +412,102 @@ impl SettingsState {
     }
 }
 
+/// What the last install or removal did, over the settings that asked for it.
+pub fn render_result_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let width = 62.min(area.width.saturating_sub(4));
+    let height = 9;
+    let popup = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, popup);
+
+    let removed = app.overlay_install_status.starts_with("removed")
+        || app.overlay_install_status.starts_with("nothing to remove");
+    let colour = if app.overlay_install_status.contains("could not")
+        || app.overlay_install_status.contains("no Assetto")
+    {
+        Color::Red
+    } else if removed {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+
+    let is_ru = app.config.language == Language::Russian;
+    let title = if removed {
+        if is_ru {
+            " ОВЕРЛЕЙ УДАЛЁН "
+        } else {
+            " OVERLAY REMOVED "
+        }
+    } else if is_ru {
+        " ОВЕРЛЕЙ УСТАНОВЛЕН "
+    } else {
+        " OVERLAY INSTALLED "
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(colour).bg(Color::Black))
+        .title(title)
+        .title_alignment(Alignment::Center);
+
+    let dim = Style::default().fg(Color::DarkGray);
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {}", app.overlay_install_status),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+    ];
+
+    if let Some(path) = app.overlay_report.app_path.as_ref() {
+        let text = path.display().to_string();
+        let shown = if text.len() > (width as usize).saturating_sub(6) {
+            format!("…{}", &text[text.len() - (width as usize - 7)..])
+        } else {
+            text
+        };
+        lines.push(Line::from(Span::styled(format!("  {shown}"), dim)));
+    }
+
+    lines.push(Line::from(Span::styled(
+        if removed {
+            if is_ru {
+                "  Настройки панели сохранены — [I] вернёт всё как было."
+            } else {
+                "  Your settings are kept — [I] puts it back as it was."
+            }
+        } else if is_ru {
+            "  Удалить в любой момент — [U]. Настройки останутся."
+        } else {
+            "  Remove it any time with [U]. Your settings stay."
+        },
+        dim,
+    )));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "  Любая клавиша — закрыть"
+        } else {
+            "  Any key to close"
+        },
+        dim,
+    )));
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Left),
+        popup,
+    );
+}
+
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
 

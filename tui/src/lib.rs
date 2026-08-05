@@ -314,6 +314,10 @@ pub struct AppState {
     pub overlay_card_selection: usize,
     pub overlay_report: ac_core::overlay::install::InstallReport,
     pub overlay_install_status: String,
+    /// A result worth showing: the install or removal was asked for from the
+    /// Settings tab, where a status line at the bottom of a card nobody is
+    /// looking at is the same as no answer at all.
+    pub overlay_result_popup: bool,
     pub mock_physics: Option<AcPhysics>,
     pub mock_graphics: Option<AcGraphics>,
     pub mock_static: Option<AcStatic>,
@@ -411,6 +415,7 @@ impl AppState {
                 csp_present: false,
             },
             overlay_install_status: String::new(),
+            overlay_result_popup: false,
             show_help: false,
             show_overlay_menu: false,
             perf: PerfStats::default(),
