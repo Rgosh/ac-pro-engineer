@@ -28,8 +28,8 @@ typedef struct {
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
   float target_pressure_front, target_pressure_rear;
-  char messages[4][64];
-  uint32_t message_severity[4];
+  char messages[8][64];
+  uint32_t message_severity[8];
   char app_version[16];
 } F;]]
 
@@ -56,7 +56,7 @@ end
 -- plausible numbers so a format string that cannot take them fails here.
 local function synthesise(b)
   local f = b[0]
-  f.version = 4            -- EXPECTED_VERSION; a mismatch draws the error page
+  f.version = 5            -- EXPECTED_VERSION; a mismatch draws the error page
   f.sequence = 2           -- even: settled. Zero reads as "never written"
   f.speed_kmh = 214.0
   f.rpm, f.max_rpm, f.gear = 6000, 8000, 4
@@ -71,14 +71,26 @@ local function synthesise(b)
     f.tyre_temp_c[i] = 78 + i * 7
     f.tyre_wear_percent[i] = 99 - i * 3
     f.brake_temp_c[i] = 320 + i * 90
-    f.message_severity[i] = i % 3
   end
+  for i = 0, 7 do f.message_severity[i] = i % 3 end
   -- Every section on, so no draw path is skipped: connected, telemetry,
   -- engineer, session, timing, fuel.
   f.flags = 2 + 4 + 8 + 32 + 64 + 128
-  f.message_count = 2
-  ffi.copy(f.messages[0], 'Fuel is fine for the stint')
-  ffi.copy(f.messages[1], 'Rear tyres are going off, ease the traction')
+  -- More lines than the panel draws by default, so the "there are more than
+  -- you asked for" path runs. With two the cap was never reached and a slot
+  -- past the fourth could have been unreadable without anything noticing.
+  f.message_count = 8
+  local advice = {
+    'Fuel is fine for the stint',
+    'Rear tyres are going off, ease the traction',
+    'Box this lap',
+    'Front-left pressure is low and the corner is cold',
+    'Front brakes are past 700 C, open the ducts',
+    'You are coasting into turn 4, brake later',
+    'Rear camber is too negative for this compound',
+    'Traction control is cutting on corner exit',
+  }
+  for i = 1, 8 do ffi.copy(f.messages[i - 1], advice[i]) end
   -- ACPE_APP_VERSION lets a run pretend the application is on another release,
   -- which is the only way to reach the "restart the game" notice from here.
   ffi.copy(f.app_version, os.getenv('ACPE_APP_VERSION') or currentPanelVersion())

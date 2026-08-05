@@ -235,7 +235,11 @@ impl SettingsState {
                 4 if delta.abs() > 0.0 => config.overlay.show_fuel = !config.overlay.show_fuel,
                 5 => {
                     let next = config.overlay.engineer_lines as i32 + delta.signum() as i32;
-                    config.overlay.engineer_lines = next.clamp(0, 4) as u8;
+                    // The frame's slot count, not a literal: this used to say
+                    // 4 in one place and MESSAGE_SLOTS in another, and the
+                    // setting silently refused to go past the older number.
+                    let slots = ac_core::overlay::frame::MESSAGE_SLOTS as i32;
+                    config.overlay.engineer_lines = next.clamp(0, slots) as u8;
                 }
                 6 if delta.abs() > 0.0 => {
                     config.overlay.startup_card = !config.overlay.startup_card
@@ -393,9 +397,11 @@ impl SettingsState {
                 }
                 5 => {
                     if is_ru {
-                        "Сколько строк инженера уходит в оверлей (0-4)."
+                        "Сколько строк инженера уходит в оверлей (0-8). Панель \
+                         может показать меньше — у неё свой ползунок."
                     } else {
-                        "How many engineer lines reach the overlay (0-4)."
+                        "How many engineer lines reach the overlay (0-8). The \
+                         panel may draw fewer — it has a slider of its own."
                     }
                 }
                 6 => {

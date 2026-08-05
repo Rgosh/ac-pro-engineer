@@ -25,8 +25,8 @@ typedef struct {
   int32_t rpm, max_rpm, gear, lap_count, last_lap_ms, best_lap_ms, current_lap_ms, position;
   uint32_t flags, message_count;
   float target_pressure_front, target_pressure_rear;
-  char messages[4][64];
-  uint32_t message_severity[4];
+  char messages[8][64];
+  uint32_t message_severity[8];
   char app_version[16];
 } AcpeFrame;
 ]]
@@ -52,7 +52,7 @@ sim.FLAG = FLAG
 --- app indexes them — it speaks the struct's dialect, not Lua's.
 local frame = {
   -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-  version = 4,
+  version = 5,
   sequence = 2,
   speed_kmh = 0,
   fuel_litres = 45,
@@ -72,14 +72,16 @@ local frame = {
   position = 4,
   flags = FLAG.CONNECTED + FLAG.SHOW_TELEMETRY + FLAG.SHOW_ENGINEER + FLAG.SHOW_SESSION
     + FLAG.SHOW_TIMING + FLAG.SHOW_FUEL,
-  message_count = 2,
+  message_count = 4,
   tyre_pressure_psi = { [0] = 27.4, 27.6, 26.9, 27.1 },
   tyre_temp_c = { [0] = 82, 84, 88, 90 },
   tyre_wear_percent = { [0] = 98, 97, 95, 94 },
   brake_temp_c = { [0] = 420, 430, 380, 375 },
-  messages = { [0] = 'Fuel is fine for the stint', 'Rear tyres are going off', '', '' },
+  messages = { [0] = 'Fuel is fine for the stint', 'Rear tyres are going off',
+    'Front brakes are past 700 C, open the ducts', 'Box this lap',
+    '', '', '', '' },
   -- 0 info, 1 warning, 2 critical — as ac_core::overlay::frame::severity.
-  message_severity = { [0] = 0, 1, 0, 0 },
+  message_severity = { [0] = 0, 1, 2, 1, 0, 0, 0, 0 },
   target_pressure_front = 27.5,
   target_pressure_rear = 27.0,
   -- The release the application claims to be. Matching the panel's own means
@@ -88,7 +90,7 @@ local frame = {
   app_version = '0.3.4',
 }
 
--- The panel reads the four messages by name, the way CSP hands them over.
+-- The panel reads the messages by name, the way CSP hands them over.
 setmetatable(frame, {
   __index = function(_, key)
     local slot = tostring(key):match('^message_(%d)$')
@@ -166,13 +168,15 @@ local function advanceSimulation(dt, speedFactor)
     frame.lap_count = frame.lap_count + 1
     frame.last_lap_ms = 90000 + math.floor(math.random() * 4000)
     if frame.last_lap_ms < frame.best_lap_ms then frame.best_lap_ms = frame.last_lap_ms end
-    -- Rotate the advice so the engineer block changes over a session.
+    -- Rotate the advice so the engineer block changes over a session. Four
+    -- lines rather than two: the frame carries eight now, and a harness that
+    -- only ever fills two cannot show what a full block looks like.
     local first = math.floor(t / 12) % #ADVICE
-    frame.messages[0] = ADVICE[first + 1]
-    frame.messages[1] = ADVICE[(first + 2) % #ADVICE + 1]
-    frame.message_severity[0] = first % 3
-    frame.message_severity[1] = (first + 2) % 3
-    frame.message_count = 2
+    for slot = 0, 3 do
+      frame.messages[slot] = ADVICE[(first + slot) % #ADVICE + 1]
+      frame.message_severity[slot] = (first + slot) % 3
+    end
+    frame.message_count = 4
   end
 
   -- The writer bumps the sequence by two per update; the overlay uses that to
@@ -238,6 +242,10 @@ local function readSharedMemory(path)
     frame.tyre_temp_c[i] = raw.tyre_temp_c[i]
     frame.tyre_wear_percent[i] = raw.tyre_wear_percent[i]
     frame.brake_temp_c[i] = raw.brake_temp_c[i]
+  end
+  -- The corners are four; the advice slots are eight, and copying only the
+  -- first four left the rest holding whatever the last frame had.
+  for i = 0, 7 do
     frame.messages[i] = ffi.string(raw.messages[i])
     frame.message_severity[i] = raw.message_severity[i]
   end

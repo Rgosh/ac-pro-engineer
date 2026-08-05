@@ -21,7 +21,7 @@ use crate::session_info::SessionInfo;
 
 /// Bumped whenever the layout changes. The overlay refuses to draw a version
 /// it does not recognise rather than misreading a struct from another release.
-pub const OVERLAY_VERSION: u32 = 4;
+pub const OVERLAY_VERSION: u32 = 5;
 
 /// Shared memory name. The `AcTools.CSP.Limited.` prefix matters: CSP allows
 /// scripts without IO permission to open shared memory only when the name
@@ -31,9 +31,17 @@ pub const OVERLAY_MMF_NAME: &str = "AcTools.CSP.Limited.ACPE.v1";
 /// Longest advice line carried to the overlay, in bytes. UTF-8, NUL-padded.
 pub const MESSAGE_BYTES: usize = 64;
 
-/// How many advice lines fit. Four is what the overlay has room to draw
-/// without covering the track.
-pub const MESSAGE_SLOTS: usize = 4;
+/// How many advice lines fit.
+///
+/// Four for eleven releases, because four is what a panel in the corner of a
+/// windscreen has room for. That was the wrong place to make the decision: a
+/// driver on a triple-screen setup, or one who keeps the advice window open on
+/// a second monitor, has room for more, and the panel already has a control for
+/// how many to draw — it was simply pinned to the number of slots in the wire
+/// format. Eight is the cap now; how many of them are actually published is a
+/// setting on the application's side and how many are drawn is one on the
+/// panel's.
+pub const MESSAGE_SLOTS: usize = 8;
 
 /// Room for the application's version string, e.g. `0.3.4`. NUL-padded.
 ///
@@ -246,7 +254,7 @@ impl OverlayFrame {
 
     /// As [`Self::set_messages`], but publishing at most `limit` of them.
     ///
-    /// The cap is a setting rather than a property of the data: four lines is
+    /// The cap is a setting rather than a property of the data: eight lines is
     /// a paragraph in a headset and a glance on a monitor, and the overlay
     /// cannot make that call — it does not know how the panel is being read.
     pub fn set_messages_capped(&mut self, recommendations: &[Recommendation], limit: usize) {
@@ -386,19 +394,25 @@ const FIELDS: &[(&str, &str)] = &[
     ("position", "ac.StructItem.int32()"),
     ("flags", "ac.StructItem.uint32()"),
     ("message_count", "ac.StructItem.uint32()"),
-    // Four fields rather than an array of them: CSP hands back raw cdata for an
-    // array of strings, which reaches the panel as `cdata<char (&)[64]>` where
-    // the engineer's advice should be. Same bytes, same offsets, and each one
-    // reads as a Lua string.
+    // Named fields rather than an array of them: CSP hands back raw cdata for
+    // an array of strings, which reaches the panel as `cdata<char (&)[64]>`
+    // where the engineer's advice should be. Same bytes, same offsets, and each
+    // one reads as a Lua string. One line per slot, so `MESSAGE_SLOTS` and this
+    // list have to be changed together — `the_generator_lists_every_field`
+    // fails if they are not.
     ("target_pressure_front", "ac.StructItem.float()"),
     ("target_pressure_rear", "ac.StructItem.float()"),
     ("message_0", "ac.StructItem.string(64)"),
     ("message_1", "ac.StructItem.string(64)"),
     ("message_2", "ac.StructItem.string(64)"),
     ("message_3", "ac.StructItem.string(64)"),
+    ("message_4", "ac.StructItem.string(64)"),
+    ("message_5", "ac.StructItem.string(64)"),
+    ("message_6", "ac.StructItem.string(64)"),
+    ("message_7", "ac.StructItem.string(64)"),
     (
         "message_severity",
-        "ac.StructItem.array(ac.StructItem.uint32(), 4)",
+        "ac.StructItem.array(ac.StructItem.uint32(), 8)",
     ),
     ("app_version", "ac.StructItem.string(16)"),
 ];
@@ -525,9 +539,9 @@ mod tests {
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
-        // 22 scalars + 4 arrays + four messages + their severities + the
-        // application's version = 32.
-        assert_eq!(FIELDS.len(), 32);
+        // 22 scalars + 4 arrays + MESSAGE_SLOTS messages + their severities +
+        // the application's version.
+        assert_eq!(FIELDS.len(), 22 + 4 + MESSAGE_SLOTS + 1 + 1);
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.
@@ -542,10 +556,16 @@ mod tests {
         let lua = lua_struct_declaration();
         assert!(lua.contains("ac.StructItem.explicit(4, 4)"));
         assert!(lua.contains("version = ac.StructItem.uint32()"));
-        // Four named strings rather than an array of them: CSP hands back raw
-        // cdata for the array, which the panel cannot print.
-        assert!(lua.contains("message_0 = ac.StructItem.string(64)"));
-        assert!(lua.contains("message_3 = ac.StructItem.string(64)"));
+        // Named strings rather than an array of them: CSP hands back raw
+        // cdata for the array, which the panel cannot print. Every slot, not
+        // just the first and the last: a generator that stopped emitting the
+        // middle ones would still satisfy those two.
+        for slot in 0..MESSAGE_SLOTS {
+            assert!(
+                lua.contains(&format!("message_{slot} = ac.StructItem.string(64)")),
+                "message_{slot} is missing from the generated layout"
+            );
+        }
 
         // Order matters as much as presence.
         let version_at = lua.find("version =").expect("version");

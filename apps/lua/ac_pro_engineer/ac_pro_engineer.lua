@@ -22,7 +22,7 @@ local layout = require('frame_layout')
 -- stays put when everything else does, which is why it is a small integer and
 -- not a version string: the only question it answers is whether this panel and
 -- the application that wrote the frame agree about where the fields are.
-local EXPECTED_VERSION = 4
+local EXPECTED_VERSION = 5
 
 -- The release this panel was shipped in, matching the workspace's Cargo
 -- version and the manifest's VERSION.
@@ -60,9 +60,17 @@ local COLOR = {
 
 local TYRE_LABEL = { 'FL', 'FR', 'RL', 'RR' }
 
--- Four named fields, not an array: CSP returns raw cdata for an array of
--- strings, and the advice reached the panel as `cdata<char (&)[64]>`.
-local MESSAGE_KEYS = { 'message_0', 'message_1', 'message_2', 'message_3' }
+-- Named fields, not an array: CSP returns raw cdata for an array of strings,
+-- and the advice reached the panel as `cdata<char (&)[64]>`.
+--
+-- `#MESSAGE_KEYS` is the panel's only statement of how many slots the frame
+-- has — everything below counts from it rather than from a literal 4, which is
+-- what had to be found in six places when the frame grew to eight.
+local MESSAGE_KEYS = {
+  'message_0', 'message_1', 'message_2', 'message_3',
+  'message_4', 'message_5', 'message_6', 'message_7',
+}
+local MESSAGE_SLOTS = #MESSAGE_KEYS
 
 -- ---------------------------------------------------------------------------
 -- Settings
@@ -446,9 +454,15 @@ local shown = {
   tyre_temp_c = { 0, 0, 0, 0 },
   tyre_wear_percent = { 0, 0, 0, 0 },
   brake_temp_c = { 0, 0, 0, 0 },
-  messages = { '', '', '', '' },
-  message_severity = { 0, 0, 0, 0 },
+  -- Sized from the frame, not written out: a table one shorter than the frame
+  -- reads the last slot as nil and the advice quietly stops at seven lines.
+  messages = {},
+  message_severity = {},
 }
+for i = 1, MESSAGE_SLOTS do
+  shown.messages[i] = ''
+  shown.message_severity[i] = 0
+end
 
 local lastSequence = -1
 local secondsSinceChange = 0
@@ -684,12 +698,12 @@ local function readFrame()
     shown.brake_temp_c[i] = frame.brake_temp_c[i - 1]
   end
 
-  local count = math.min(frame.message_count, 4)
+  local count = math.min(frame.message_count, MESSAGE_SLOTS)
   for i = 1, count do
     shown.messages[i] = frame[MESSAGE_KEYS[i]]
     shown.message_severity[i] = frame.message_severity[i - 1]
   end
-  for i = count + 1, 4 do
+  for i = count + 1, MESSAGE_SLOTS do
     shown.messages[i] = ''
     shown.message_severity[i] = 0
   end
@@ -751,11 +765,18 @@ end
 -- took the panel down: "Demo numbers" called nil, "Sample advice" indexed it.
 -- Neither is on by default, which is why every harness passed for as long as
 -- this was here.
+-- One per slot, so developer mode shows the panel at its fullest rather than
+-- half of it: "eight lines fits" is a layout question, and four lines cannot
+-- answer it.
 local DEMO_ADVICE = {
   'Fuel is fine for the stint',
   'Rear tyres are going off, ease the traction',
   'Box this lap',
   'Front-left pressure is 0.4 psi low and the corner is running cold in sector two',
+  'Front brakes are past 700 C, open the ducts',
+  'You are coasting into turn 4, brake later',
+  'Rear camber is too negative for this compound',
+  'Traction control is cutting on corner exit',
 }
 
 local function applyDemo()
@@ -775,8 +796,8 @@ local function applyDemo()
     shown.brake_temp_c[i] = 320 + i * 90
   end
   shown.flags = 2 + 4 + 8 + 32 + 64 + 128
-  shown.message_count = 4
-  for i = 1, 4 do
+  shown.message_count = MESSAGE_SLOTS
+  for i = 1, MESSAGE_SLOTS do
     shown.messages[i] = DEMO_ADVICE[i]
     shown.message_severity[i] = (i - 1) % 3
   end
@@ -1252,8 +1273,8 @@ local function drawEngineerMessages(withLabel)
   end
 
   if settings.devSampleAdvice then
-    shown.message_count = 4
-    for i = 1, 4 do
+    shown.message_count = MESSAGE_SLOTS
+    for i = 1, MESSAGE_SLOTS do
       shown.messages[i] = DEMO_ADVICE[i]
       shown.message_severity[i] = (i - 1) % 3
     end
@@ -1261,7 +1282,7 @@ local function drawEngineerMessages(withLabel)
 
   local bySeverity = settings.engineerBullet == 'severity'
   local bullet = BULLETS[settings.engineerBullet] or ''
-  local count = math.min(shown.message_count, settings.engineerLines, 4)
+  local count = math.min(shown.message_count, settings.engineerLines, MESSAGE_SLOTS)
 
   for i = 1, count do
     local level = shown.message_severity[i] or 0
@@ -1493,7 +1514,7 @@ function script.windowEngineer(dt)
     return
   end
 
-  local count = math.min(shown.message_count, settings.engineerLines, 4)
+  local count = math.min(shown.message_count, settings.engineerLines, MESSAGE_SLOTS)
   if count == 0 then
     pushRole('caption')
     ui.textColored('Nothing to report', COLOR.dim)

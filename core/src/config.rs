@@ -163,7 +163,12 @@ pub struct OverlayConfig {
     pub show_timing: bool,
     #[serde(default = "default_true")]
     pub show_fuel: bool,
-    /// How many engineer lines reach the overlay at once, 0 to 4.
+    /// How many engineer lines reach the overlay at once, 0 to
+    /// [`crate::overlay::frame::MESSAGE_SLOTS`].
+    ///
+    /// The default stays at four, which is what fits in the corner of a
+    /// windscreen. Anyone with the advice window on a second monitor can ask
+    /// for all eight.
     #[serde(default = "default_engineer_lines")]
     pub engineer_lines: u8,
     /// Show what was found and installed when the application starts.

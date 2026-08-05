@@ -613,13 +613,13 @@ local function telemetryTab()
 
   ui.separator()
   ui.textColored('ENGINEER MESSAGES', csp.colors.textDim)
-  for i = 0, 3 do
+  for i = 0, 7 do
     local text = sim.frame.messages[i]
     if text ~= nil and text ~= '' then
       ui.textColored(string.format('%d  %s', i + 1, text), csp.colors.text)
     end
   end
-  local count, changed = slider('Shown', sim.frame.message_count, 0, 4, '%.0f', true)
+  local count, changed = slider('Shown', sim.frame.message_count, 0, 8, '%.0f', true)
   if changed then sim.frame.message_count = count end
 end
 

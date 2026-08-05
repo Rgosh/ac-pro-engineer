@@ -33,7 +33,11 @@ local FRAME_LAYOUT = {
   message_1 = ac.StructItem.string(64),
   message_2 = ac.StructItem.string(64),
   message_3 = ac.StructItem.string(64),
-  message_severity = ac.StructItem.array(ac.StructItem.uint32(), 4),
+  message_4 = ac.StructItem.string(64),
+  message_5 = ac.StructItem.string(64),
+  message_6 = ac.StructItem.string(64),
+  message_7 = ac.StructItem.string(64),
+  message_severity = ac.StructItem.array(ac.StructItem.uint32(), 8),
   app_version = ac.StructItem.string(16),
 }
 

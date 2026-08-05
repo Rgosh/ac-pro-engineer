@@ -333,6 +333,52 @@ mod tests {
         );
     }
 
+    /// The panel has to read the frame this build writes.
+    ///
+    /// `frame_layout.lua` is generated and checked, and `PANEL_VERSION` is
+    /// checked, but the one number that decides whether the panel draws at all
+    /// was not: `EXPECTED_VERSION` is written by hand in the panel and compared
+    /// against the frame's `version` field at runtime. Leaving it behind after
+    /// a layout change gives a panel that loads, reads the right offsets, and
+    /// refuses to draw anything but "Version mismatch" — which reads as the
+    /// install being broken rather than as a number nobody bumped.
+    #[test]
+    fn the_panel_reads_the_frame_this_build_writes() {
+        let source = embedded("ac_pro_engineer.lua");
+        let declared = source
+            .lines()
+            .find(|line| line.trim_start().starts_with("local EXPECTED_VERSION"))
+            .and_then(|line| line.split('=').nth(1))
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .expect("the panel declares an EXPECTED_VERSION");
+
+        assert_eq!(
+            declared,
+            crate::overlay::frame::OVERLAY_VERSION,
+            "EXPECTED_VERSION in apps/lua/ac_pro_engineer/ac_pro_engineer.lua is stale; \
+             set it to {}",
+            crate::overlay::frame::OVERLAY_VERSION
+        );
+    }
+
+    /// And it has to read every advice slot the frame carries.
+    ///
+    /// The panel names the message fields one by one, because CSP hands back
+    /// raw cdata for an array of strings. A list one entry short is not an
+    /// error anywhere: the panel simply stops at the second-to-last line, and
+    /// the setting that asks for all of them quietly does nothing.
+    #[test]
+    fn the_panel_names_every_advice_slot() {
+        let source = embedded("ac_pro_engineer.lua");
+        for slot in 0..crate::overlay::frame::MESSAGE_SLOTS {
+            let field = format!("'message_{slot}'");
+            assert!(
+                source.contains(&field),
+                "the panel's MESSAGE_KEYS is missing {field}"
+            );
+        }
+    }
+
     /// CSP shows the manifest's VERSION in its apps list, which makes it the
     /// version a driver can read without opening a file.
     #[test]
