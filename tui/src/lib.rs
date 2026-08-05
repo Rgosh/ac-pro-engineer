@@ -425,6 +425,7 @@ impl AppState {
                 app_path: None,
                 current: false,
                 csp_present: false,
+                panel_version: None,
             },
             overlay_install_status: String::new(),
             overlay_result_popup: false,

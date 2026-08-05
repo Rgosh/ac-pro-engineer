@@ -115,6 +115,22 @@ pub struct InstallReport {
     /// Custom Shaders Patch is installed. Without it the game has no Lua apps
     /// at all, and a perfectly installed overlay will never appear.
     pub csp_present: bool,
+    /// The frame version the installed panel expects, if one is installed.
+    ///
+    /// Three pieces have to agree — this application, the bridge, and the panel
+    /// — and a panel left over from an older install reads every field after
+    /// the change at the wrong offset. Better to say so here than to let the
+    /// driver work it out from nonsense on the windscreen.
+    pub panel_version: Option<u32>,
+}
+
+/// The `EXPECTED_VERSION` an installed panel was written against.
+fn installed_panel_version(app_path: &Path) -> Option<u32> {
+    let source = std::fs::read_to_string(app_path.join("ac_pro_engineer.lua")).ok()?;
+    let line = source
+        .lines()
+        .find(|line| line.trim_start().starts_with("local EXPECTED_VERSION"))?;
+    line.split('=').nth(1)?.trim().parse().ok()
 }
 
 /// Look at the game folder and report what is there.
@@ -139,11 +155,14 @@ pub fn describe(configured_install: Option<&Path>) -> InstallReport {
             .exists()
     });
 
+    let panel_version = app_path.as_deref().and_then(installed_panel_version);
+
     InstallReport {
         game_root,
         app_path,
         current,
         csp_present,
+        panel_version,
     }
 }
 

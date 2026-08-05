@@ -284,6 +284,23 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         },
     ]));
 
+    // Three pieces have to agree on the shape of a frame; this is the one that
+    // can be checked from here.
+    let expected = ac_core::overlay::frame::OVERLAY_VERSION;
+    lines.push(Line::from(vec![
+        Span::styled("frame    ", dim),
+        match report.panel_version {
+            Some(version) if version == expected => {
+                Span::styled(format!("v{version}, matching"), good)
+            }
+            Some(version) => Span::styled(
+                format!("panel speaks v{version}, this app writes v{expected} — press ENTER"),
+                bad,
+            ),
+            None => Span::styled(format!("v{expected} from this app"), dim),
+        },
+    ]));
+
     if !app.overlay_install_status.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
