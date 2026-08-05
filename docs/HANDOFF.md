@@ -53,8 +53,10 @@ failure that cost an evening was one of them being older than the others:
   the same thing, and size and field-count checks do **not** catch it.
   `the_generator_lists_the_fields_in_the_struct_s_order` now does.
 
-The launcher card reports the installed panel's frame version against the
-application's. The bridge is not checked yet — see what is left.
+All three are checked now. The launcher card reports the installed panel's frame
+version *and* its release against the application's, and the bridge's version,
+protocol and mapped size against what this build needs — see "the one thing
+blocking a beta" below for what that check found.
 
 ## Checks that exist
 
@@ -74,9 +76,17 @@ cargo run --bin simulator
 cargo run -p ac_core --example engineer_probe
 ```
 
-The probe is how the engineer's "four tyres WORN OUT: 0.0%" was found: AC counts
-wear down from 100, so all four corners at zero is a session that has not
-published wear, not four destroyed tyres.
+```bash
+cargo run -p ac_core --example bridge_probe
+```
+
+The engineer probe is how "four tyres WORN OUT: 0.0%" was found: AC counts wear
+down from 100, so all four corners at zero is a session that has not published
+wear, not four destroyed tyres.
+
+The bridge probe is the first thing to run when the panel says "waiting for AC
+Pro Engineer" and `/dev/shm` has the file at the right size. It names the bridge
+on disk, the bridge running, and which of them is the problem.
 
 ## What the panel does
 
@@ -108,22 +118,53 @@ font tiers cannot be scaled and a 4K screen needs more than the largest.
 - A `str.replace` with no anchor is a silent no-op — two "split this tab into
   sub-tabs" edits did nothing and the tests still passed.
 
+## The one thing blocking a beta
+
+**No published release contains a bridge that can serve the overlay.** v0.3.3
+was tagged at 04:15 and `187b914`, the commit that added the overlay mapping to
+`ACC_FILES`, landed at 04:26. The published `shm-bridge.exe` therefore maps AC's
+four `acpmf_*` pages and nothing else: it starts, reports no error, and the
+overlay mapping is never created, so on Linux the panel waits forever with the
+application running and the file sitting in `/dev/shm`.
+
+Confirmed by scanning the published artifact — it does not contain the string
+`AcTools.CSP.Limited.ACPE.v1` anywhere, and the bridge built from this checkout
+does.
+
+Nothing in the code can fix this; a release has to be cut from a commit at or
+after `187b914`. Everything else is in place for it:
+
+- `bridge_update` finds the asset dist actually publishes
+  (`shm-bridge-x86_64-pc-windows-gnu.zip`, not the bare `.exe` that only v0.2.2
+  had), unpacks it, and **refuses** a bridge that does not carry the overlay
+  mapping's name — so pressing [B] today downloads v0.3.3, inspects it, and says
+  why it will not install it, rather than installing a downgrade into this bug.
+- the launcher card and `bridge_probe` both name the state.
+
 ## What is left
 
-1. **Version-check the bridge.** The application cannot tell that
-   `shm-bridge.exe` is older than its frame. Have the bridge write its size
-   somewhere the app can read, or ship it beside the binary and compare
-   modification times.
-2. **Package the bridge.** It has to be built by hand and placed next to the
-   application; the README does not say so.
-3. **Windows.** Clippy is clean for the Windows target and the installer uses
-   `ac_paths`, but nothing has been *run* there. The bridge is a Linux concern
-   only — on Windows the application writes the mapping directly.
-4. **The rest of the suggestions**: tyre temperature window from the application
+1. **Windows.** Clippy is clean for the Windows target, the test suite passes
+   cross-compiled, and the installer uses `ac_paths` — but nothing has been
+   *run* there. The bridge is a Linux concern only; on Windows the application
+   creates the named mapping itself and `bridge::status` reports `NotRequired`.
+2. **The rest of the suggestions**: tyre temperature window from the application
    (two fields, same shape as the pressure targets), sector times, and a small
    history plot in the panel.
-5. The panel's strings are translated; the console's settings labels are only
-   partly.
+3. The panel's strings are translated; the console's settings labels are only
+   partly, and `Wear:`, `T:` and `B:` in `formatFrame` are English in both
+   languages.
+4. `fetch_bridge_now` blocks the UI thread for the length of a download. One
+   small file behind an explicit keystroke, so it has not been worth a thread —
+   revisit if the asset grows.
+
+## Done since the last handoff
+
+1. ~~**Version-check the bridge.**~~ It writes `/dev/shm/acpe-bridge.info` and
+   compiles its version into its own binary; `bridge::status` judges both, and
+   `cargo run -p ac_core --example bridge_probe` prints the verdict. Verified
+   end-to-end under Wine, including the incompatible and behind cases.
+2. ~~**Package the bridge.**~~ dist already publishes it; [B] on the launcher
+   card fetches and verifies it.
 
 ## The environment
 

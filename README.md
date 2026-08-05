@@ -251,6 +251,39 @@ Reading Assetto Corsa shared memory on Linux under Wine/Proton uses the included
    ```
 2. Run `ac_pro_engineer` before starting `acs.exe`.
 
+### The bridge and the in-game panel
+
+The bridge is not optional for the overlay on Linux. The application writes the
+panel's frame into `/dev/shm` itself, but only `shm-bridge.exe` — running inside
+the game's Proton prefix — gives that file the Win32 name CSP is able to open.
+Without it the panel waits forever beside a mapping that is right there.
+
+```bash
+protontricks-launch --appid 244210 shm-bridge.exe
+```
+
+Start it before the game and leave it running. To find out which bridge is in
+play and whether the overlay can work at all:
+
+```bash
+cargo run -p ac_core --example bridge_probe
+```
+
+It reports the bridge on disk, the bridge running, and the version, protocol and
+mapped size of each against what this build needs. The launcher's overlay card
+shows the same verdict in one line, and **[B]** on that card fetches the
+published bridge — verifying it before it replaces anything, and keeping the
+previous one as `shm-bridge.exe.previous`.
+
+> **A bridge older than the overlay maps AC's own pages and nothing else.** It
+> starts, reports no error, and no overlay mapping is ever created. Every release
+> up to and including v0.3.3 published one of those, so until a newer release is
+> cut the only bridge that works is one built from this checkout:
+>
+> ```bash
+> cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu
+> ```
+
 ### Getting Assetto Corsa, CSP and Content Manager to run under Proton
 
 Translated from the crib sheet kept in the game folder, and the reason the

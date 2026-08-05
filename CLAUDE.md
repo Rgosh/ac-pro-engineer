@@ -43,6 +43,53 @@ is not enough, and a mismatch reads eight bytes of one field as another
 Adding a bit to `flags` costs nothing: no layout change, no version bump.
 Prefer that to a new field when the answer is yes-or-no.
 
+## Versions, and which one answers which question
+
+Four numbers, and confusing them wastes an evening:
+
+| Number | Where | Changes when |
+|---|---|---|
+| `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves |
+| `BRIDGE_PROTOCOL` | `bridge.rs`, `shm-bridge/src/main.rs` | the bridge's note gains a key |
+| `PANEL_VERSION`, manifest `VERSION` | the panel, `manifest.ini` | every release |
+| Cargo `version` | `Cargo.toml` | every release |
+
+The last two must be **the same string**, and tests fail if they are not:
+`the_panel_announces_this_builds_version` and
+`the_manifest_announces_this_builds_version`. Bump `Cargo.toml` and both Lua
+files together.
+
+The frame version says nothing about how old a panel is — most releases leave
+the struct alone — which is why `PANEL_VERSION` exists and why the launcher card
+shows both.
+
+## The bridge is the third piece, and it is checkable now
+
+`shm-bridge.exe` writes `/dev/shm/acpe-bridge.info` naming its version, the
+bridge protocol, the bytes it mapped and under what name; it removes the file on
+a clean exit. It also compiles `ACPE-SHM-BRIDGE-VERSION=<version>;` into its own
+binary, so a bridge sitting on disk and not running can still be identified —
+there is no running a Windows binary from Linux to ask it.
+
+```bash
+cargo run -p ac_core --example bridge_probe
+```
+
+Says which bridge is on disk, which is running, and whether the overlay can work
+at all. Run this **before** looking anywhere else when the panel says "waiting
+for AC Pro Engineer" with the mapping right there in `/dev/shm`.
+
+A bridge older than the frame maps too few bytes, CSP silently refuses to open
+the mapping, and nothing reports an error. A bridge older than the overlay maps
+AC's four `acpmf_*` pages and never creates the overlay mapping at all — that is
+what every release up to and including v0.3.3 published, because v0.3.3 was
+tagged eleven minutes before the commit that added it.
+
+`bridge_update` fetches a published bridge and **refuses one that does not carry
+`AcTools.CSP.Limited.ACPE.v1` in its bytes**, so it cannot install a downgrade
+into that bug. Until a release ships a bridge built after `187b914`, the only
+working bridge is one built here.
+
 ## Verify before claiming
 
 Nothing about the overlay can be confirmed by reading code. Four checks, in
@@ -54,6 +101,12 @@ luajit apps/lua/tests/run_overlay.lua
 
 Drives every `script.window*` the panel exposes under a real LuaJIT with the CSP
 API stubbed. Catches nil calls, arithmetic on strings, and dead draw paths.
+
+It synthesises a live frame when no application is publishing, and **fails if the
+speed never reaches the screen**. Without both it only ever ran the "waiting for
+AC Pro Engineer" branch and reported OK for a panel that drew nothing —
+27 strings instead of 140. `ACPE_ALL=1` prints every one of them, which is how a
+wrong unit or an untranslated caption is caught without launching the game.
 
 ```bash
 love apps/lua/love --test --settings

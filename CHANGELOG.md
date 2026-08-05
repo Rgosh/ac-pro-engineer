@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+Getting the in-game Lua overlay to the point where it can be handed to someone
+else. Three components have to agree about a frame — the application, the panel
+and `shm-bridge.exe` — and until now only two of them could be checked. Checking
+the third found that no published release contains a bridge that can serve the
+overlay at all.
+
+### 🐞 Bug Fixes
+
+- **No published `shm-bridge.exe` can serve the overlay.** v0.3.3 was tagged
+  eleven minutes before the commit that added the overlay's mapping to the
+  bridge's list, so the released binary maps AC's four `acpmf_*` pages and
+  nothing else. It starts, reports no error, and the overlay mapping is never
+  created — which on Linux is indistinguishable, from the driver's seat, from
+  the application not running. Confirmed by scanning the published artifact: it
+  does not contain `AcTools.CSP.Limited.ACPE.v1` anywhere. **This needs a
+  release cut from a commit at or after `187b914`**; no code change can fix a
+  binary that is already published. What is fixed is that the application now
+  detects it, says so, and refuses to install one.
+- **The panel's version was `1.0` through eleven releases.** `manifest.ini`
+  carried a number that had never been updated, and the panel had no version of
+  its own at all — only the frame-layout version, which most releases leave
+  alone and which therefore says nothing about how old an installed panel is.
+  Both now track the crate version, and two tests fail the build if they drift.
+- **The LuaJIT harness reported OK for a panel that drew nothing.** With no
+  application publishing, `readMemoryMappedFile` threw, every window took its
+  "waiting for AC Pro Engineer" branch, and the check documented as the thing to
+  run after every panel edit exercised none of the drawing — 27 strings rendered
+  where a live panel renders 140. It now synthesises a frame when none is
+  published and fails if the speed never reaches the screen.
+- **The overlay card clipped whatever it had to say.** It was a fixed 66×15 with
+  no wrapping, sized when it had five rows; anything longer than 64 columns lost
+  its second half, which for a diagnostic is the half naming the remedy. It is
+  now measured against its content and wraps.
+
+### 🚀 New Features
+
+- **The bridge says who it is.** `shm-bridge.exe` writes
+  `/dev/shm/acpe-bridge.info` naming its version, the bridge protocol, the bytes
+  it mapped and under what name, and removes it on a clean exit. It also
+  compiles `ACPE-SHM-BRIDGE-VERSION=<version>;` into its own binary, so a bridge
+  on disk and not running can still be identified — there is no running a
+  Windows binary from Linux to ask it. A test asserts the marker survives a real
+  release cross-build, because `#[used]` surviving LTO is not something to
+  assume.
+- **The launcher card judges all three pieces.** Frame version, release, and the
+  bridge's version, protocol and mapped size, each against what this build
+  needs. A bridge from another release that still maps enough bytes is reported
+  as working, in yellow, rather than as a fault — a check that cries wolf stops
+  being read. A bridge running without an announcement gets its own case and its
+  own remedy: telling that driver to "start the bridge" sends them to start the
+  same broken one again.
+- **[B] fetches the published bridge.** It finds the asset dist actually
+  publishes — `shm-bridge-x86_64-pc-windows-gnu.zip`, not the bare `.exe` that
+  only v0.2.2 ever had — unpacks it, and verifies it before it replaces
+  anything: a PE header, the overlay mapping's name in its bytes, and a version
+  marker that agrees with the release tag. The previous bridge is kept as
+  `shm-bridge.exe.previous`. Matching only `shm-bridge.exe` would have found
+  nothing newer than v0.2.2 and offered that as an update.
+- **`cargo run -p ac_core --example bridge_probe`.** Which bridge is on disk,
+  which is running, and whether the overlay can work at all — the first thing to
+  run when the panel waits with the mapping right there.
+- **The panel reports its own version.** In the status window, the developer
+  tab, the version-mismatch screen and the waiting screen, which is where a beta
+  tester's screenshot is taken from. The waiting screen also names the bridge,
+  because on Linux that is the missing piece as often as the application is.
+
 ## [v0.3.2] - 2026-08-04
 
 A small follow-up to v0.3.1. Four pieces of functionality that were fully
