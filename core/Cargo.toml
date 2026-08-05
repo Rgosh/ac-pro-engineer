@@ -24,16 +24,19 @@ reqwest = { workspace = true, features = ["blocking", "json"] }
 discord-rich-presence = { workspace = true }
 tracing = { workspace = true }
 memmap2 = { workspace = true }
+# Unconditional, unlike the tar/gzip pair below. It was Windows-only when the
+# only zip this read was the updater's own release archive — but the bridge is
+# published as `shm-bridge-x86_64-pc-windows-gnu.zip` and it is *Linux* that
+# needs to unpack one, because Windows has no bridge at all.
+zip = { workspace = true }
 
-# Release-archive extraction for the in-app updater. Only the format this
-# platform actually downloads is pulled in: dist ships .tar.gz for unix and
-# .zip for Windows.
+# Release-archive extraction for the in-app updater. dist ships .tar.gz for
+# unix, so only the unix leg needs a tar reader.
 [target.'cfg(not(target_os="windows"))'.dependencies]
 tar = { workspace = true }
 flate2 = { workspace = true }
 
 [target.'cfg(target_os="windows")'.dependencies]
-zip = { workspace = true }
 windows = { workspace = true, features = [
     "Win32_System_Memory",
     "Win32_Foundation",

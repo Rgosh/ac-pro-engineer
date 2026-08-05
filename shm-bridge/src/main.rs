@@ -57,6 +57,39 @@ const OVERLAY_FILE: &str = "AcTools.CSP.Limited.ACPE.v1";
 /// by a test in ac_core rather than kept in step by hand.
 const OVERLAY_FILE_SIZE: usize = 424;
 
+/// Shape of the note this bridge leaves behind — see [`BRIDGE_INFO_FILE`].
+///
+/// Bumped when the note gains or loses a key, not when the bridge changes.
+/// Must match `ac_core::overlay::bridge::BRIDGE_PROTOCOL`.
+const BRIDGE_PROTOCOL: u32 = 1;
+
+/// Where the bridge says who it is.
+///
+/// The application cannot ask a running bridge anything: it is a Windows
+/// process inside a Wine prefix, started by hand through protontricks, with no
+/// channel back. But it can write a file, and `/dev/shm` is the one directory
+/// both sides already agree on. Every failure that cost an evening was a
+/// bridge older than the frame it was mapping, and this is what makes that
+/// visible instead of leaving the panel saying "waiting for AC Pro Engineer"
+/// with the mapping sitting right there.
+///
+/// Must match `ac_core::overlay::bridge::BRIDGE_INFO_FILE`.
+const BRIDGE_INFO_FILE: &str = "acpe-bridge.info";
+
+/// The version, findable in the built `.exe` without running it.
+///
+/// The application has to be able to tell how old a `shm-bridge.exe` sitting
+/// next to it is, and the honest answers are all unavailable: it cannot run a
+/// Windows binary to ask, and a bridge that is not running has left no note.
+/// So the version travels in the file itself, behind a prefix distinctive
+/// enough that scanning for it cannot match anything else.
+///
+/// `#[used]` keeps it through dead-code elimination — nothing reads this
+/// static, which is the point.
+#[used]
+static VERSION_MARKER: &[u8] =
+    concat!("ACPE-SHM-BRIDGE-VERSION=", env!("CARGO_PKG_VERSION"), ";").as_bytes();
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = LONG_ABOUT)]
 struct Cli {}
@@ -91,6 +124,26 @@ fn create_file_mapping(dir: &Path, file_name: &str, size: usize) -> Result<FileM
     Ok(mapping)
 }
 
+/// Leave the note the application reads to learn which bridge is running.
+///
+/// Written after the mappings, so its presence means they exist. Best effort:
+/// a bridge that cannot write this still maps everything, and the application
+/// then reports an unknown bridge rather than a broken one.
+fn write_bridge_info(dir: &Path) -> Result<PathBuf> {
+    let path = dir.join(BRIDGE_INFO_FILE);
+    let body = format!(
+        "protocol={BRIDGE_PROTOCOL}\n\
+         version={}\n\
+         frame_bytes={OVERLAY_FILE_SIZE}\n\
+         mmf={OVERLAY_FILE}\n\
+         pid={}\n",
+        env!("CARGO_PKG_VERSION"),
+        std::process::id(),
+    );
+    std::fs::write(&path, body).context(format!("Could not write {path:?}"))?;
+    Ok(path)
+}
+
 fn main() -> Result<()> {
     let _ = Cli::parse();
 
@@ -98,6 +151,10 @@ fn main() -> Result<()> {
 
     let shm_dir = find_shm_dir();
 
+    println!(
+        "shm-bridge {} (bridge protocol {BRIDGE_PROTOCOL}, overlay frame {OVERLAY_FILE_SIZE} bytes)",
+        env!("CARGO_PKG_VERSION")
+    );
     println!("Found a tmpfs filesystem at {}", shm_dir.to_string_lossy());
 
     for file_name in ACC_FILES {
@@ -107,6 +164,13 @@ fn main() -> Result<()> {
 
         println!("Created a tmpfs backed mapping for {file_name} with size {size}");
         mappings.push(mapping);
+    }
+
+    match write_bridge_info(&shm_dir) {
+        Ok(path) => println!("Announced this bridge in {}", path.display()),
+        // Not fatal. The mappings are what the game needs; the note is only
+        // how the application names the version it is talking to.
+        Err(error) => eprintln!("Could not announce this bridge: {error:#}"),
     }
 
     println!("All mappings were successfully created, enter 'exit' to close the app");
@@ -132,6 +196,16 @@ fn main() -> Result<()> {
     // of the mappings in place. They persist as zero-filled pages that the TUI
     // maps without complaint, so it reports a healthy connection to a feed
     // that is all zeroes: the state that produces NaN telemetry downstream.
+    // Before the mappings, not after: while this file is there the application
+    // takes it as a promise that they are too, and the window where that is
+    // untrue should be as short as possible.
+    let info_path = shm_dir.join(BRIDGE_INFO_FILE);
+    if let Err(error) = remove_file(&info_path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        eprintln!("Could not unlink {}: {error}", info_path.display());
+    }
+
     let mut failures = 0;
     for file_name in ACC_FILES {
         println!("Removing mapping {file_name}");

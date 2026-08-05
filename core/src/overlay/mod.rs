@@ -1,3 +1,5 @@
+pub mod bridge;
+pub mod bridge_update;
 pub mod frame;
 pub mod install;
 pub mod provider;
