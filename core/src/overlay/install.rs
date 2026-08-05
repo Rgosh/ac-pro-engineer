@@ -122,6 +122,13 @@ pub struct InstallReport {
     /// the change at the wrong offset. Better to say so here than to let the
     /// driver work it out from nonsense on the windscreen.
     pub panel_version: Option<u32>,
+    /// The *release* the installed panel came from, e.g. `0.3.3`.
+    ///
+    /// Most releases leave the frame alone, so [`Self::panel_version`] matching
+    /// says nothing about how old the installed panel is. This does, and it is
+    /// what a bug report needs: "the panel is from three releases ago" is a
+    /// diagnosis, "the frame version matches" is not.
+    pub panel_release: Option<String>,
 }
 
 /// The `EXPECTED_VERSION` an installed panel was written against.
@@ -131,6 +138,25 @@ fn installed_panel_version(app_path: &Path) -> Option<u32> {
         .lines()
         .find(|line| line.trim_start().starts_with("local EXPECTED_VERSION"))?;
     line.split('=').nth(1)?.trim().parse().ok()
+}
+
+/// The `PANEL_VERSION` an installed panel announces.
+///
+/// Read from the script rather than from the manifest: the script is the file
+/// the installer overwrites and the one CSP actually loads, so it cannot be the
+/// stale half of a partial install.
+fn installed_panel_release(app_path: &Path) -> Option<String> {
+    let source = std::fs::read_to_string(app_path.join("ac_pro_engineer.lua")).ok()?;
+    let line = source
+        .lines()
+        .find(|line| line.trim_start().starts_with("local PANEL_VERSION"))?;
+    Some(
+        line.split('=')
+            .nth(1)?
+            .trim()
+            .trim_matches('\'')
+            .to_string(),
+    )
 }
 
 /// Look at the game folder and report what is there.
@@ -156,6 +182,7 @@ pub fn describe(configured_install: Option<&Path>) -> InstallReport {
     });
 
     let panel_version = app_path.as_deref().and_then(installed_panel_version);
+    let panel_release = app_path.as_deref().and_then(installed_panel_release);
 
     InstallReport {
         game_root,
@@ -163,6 +190,7 @@ pub fn describe(configured_install: Option<&Path>) -> InstallReport {
         current,
         csp_present,
         panel_version,
+        panel_release,
     }
 }
 
@@ -277,6 +305,88 @@ mod tests {
             restored.starts_with(b"-- GENERATED"),
             "the embedded copy wins over whatever was there"
         );
+    }
+
+    /// The panel has to say which release it is, and say the right one.
+    ///
+    /// It is embedded in this binary, so the two ship together and the number
+    /// is trivially knowable — but only if someone changes it. Nothing else
+    /// fails when they forget: the frame version stays valid, the panel draws,
+    /// and every bug report afterwards names a version that is not the one
+    /// installed. The manifest sat at 1.0 for eleven releases that way.
+    #[test]
+    fn the_panel_announces_this_builds_version() {
+        let source = embedded("ac_pro_engineer.lua");
+        let declared = source
+            .lines()
+            .find(|line| line.trim_start().starts_with("local PANEL_VERSION"))
+            .and_then(|line| line.split('=').nth(1))
+            .map(|value| value.trim().trim_matches('\'').to_string())
+            .expect("the panel declares a PANEL_VERSION");
+
+        assert_eq!(
+            declared,
+            env!("CARGO_PKG_VERSION"),
+            "PANEL_VERSION in apps/lua/ac_pro_engineer/ac_pro_engineer.lua is stale; \
+             set it to {}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+
+    /// CSP shows the manifest's VERSION in its apps list, which makes it the
+    /// version a driver can read without opening a file.
+    #[test]
+    fn the_manifest_announces_this_builds_version() {
+        let manifest = embedded("manifest.ini");
+        let declared = manifest
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with(';'))
+            .find_map(|line| line.strip_prefix("VERSION"))
+            .map(|value| value.trim_start_matches([' ', '=']).trim().to_string())
+            .expect("the manifest declares a VERSION");
+
+        assert_eq!(
+            declared,
+            env!("CARGO_PKG_VERSION"),
+            "VERSION in apps/lua/ac_pro_engineer/manifest.ini is stale; set it to {}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+
+    /// The report is what the launcher card draws, so reading the release out
+    /// of an installed panel has to work on a panel this installer wrote.
+    #[test]
+    fn an_installed_panel_reports_the_release_it_came_from() {
+        let temp = std::env::temp_dir().join("acpe-release-report");
+        let app = temp.join("apps").join("lua").join(APP_DIR);
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).expect("temp game folder");
+        install_into(&app).expect("install");
+
+        let report = describe(Some(&temp));
+        assert_eq!(
+            report.panel_release.as_deref(),
+            Some(env!("CARGO_PKG_VERSION")),
+            "a freshly installed panel reports this build's release"
+        );
+        assert_eq!(
+            report.panel_version,
+            Some(crate::overlay::frame::OVERLAY_VERSION)
+        );
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    /// The text of an embedded file, so a test reads what actually ships
+    /// rather than what happens to be on disk beside it.
+    fn embedded(name: &str) -> String {
+        let bytes = FILES
+            .iter()
+            .find(|(file, _)| *file == name)
+            .map(|(_, bytes)| *bytes);
+        assert!(bytes.is_some(), "{name} is one of the embedded files");
+        String::from_utf8(bytes.unwrap_or_default().to_vec()).expect("valid UTF-8")
     }
 
     /// CSP locates an app's entry point by folder name, so this pairing is

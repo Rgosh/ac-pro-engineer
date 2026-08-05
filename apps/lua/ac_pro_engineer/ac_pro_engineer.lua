@@ -17,7 +17,24 @@
 local layout = require('frame_layout')
 
 -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
+--
+-- The shape of the struct, not the release. It changes when a field moves and
+-- stays put when everything else does, which is why it is a small integer and
+-- not a version string: the only question it answers is whether this panel and
+-- the application that wrote the frame agree about where the fields are.
 local EXPECTED_VERSION = 3
+
+-- The release this panel was shipped in, matching the workspace's Cargo
+-- version and the manifest's VERSION.
+--
+-- Separate from EXPECTED_VERSION on purpose. Most releases do not touch the
+-- struct, so the frame version alone cannot tell a panel from January apart
+-- from one built this morning — and "the panel is old" is the first thing
+-- worth ruling out when something in the game looks wrong. Checked against the
+-- crate by `cargo test -p ac_core the_panel_announces`, so it cannot be left
+-- behind at release time.
+local PANEL_VERSION = '0.3.3'
+
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
 -- How long the sequence may stand still before the application is presumed
@@ -506,6 +523,8 @@ local RUSSIAN = {
   ['LINK'] = 'СВЯЗЬ',
   ['FRAME'] = 'КАДР',
   ['PANEL'] = 'ПАНЕЛЬ',
+  ['panel'] = 'панель',
+  ['frame'] = 'кадр',
 
   -- The settings window, so the tabs and the switches read in one language.
   ['Panel'] = 'Панель', ['Advice'] = 'Советы', ['Look'] = 'Вид',
@@ -1258,6 +1277,14 @@ local function drawWaitingForApp()
     ui.textWrapped('The shared mapping is not there yet. Start the desktop '
       .. 'application — it creates the mapping, and this panel picks it up '
       .. 'within a couple of seconds.')
+    -- Named because this is the state a Linux driver sits in with everything
+    -- apparently running. The application writes /dev/shm itself, but only
+    -- shm-bridge.exe gives that file the Win32 name CSP can open, so without
+    -- it the panel waits forever beside a mapping that is right there.
+    ui.textWrapped('On Linux shm-bridge.exe must be running in the game\'s '
+      .. 'Proton prefix as well — the panel cannot see the mapping without it.')
+    ui.textWrapped(tr('panel') .. ' v' .. PANEL_VERSION
+      .. ', ' .. tr('frame') .. ' v' .. EXPECTED_VERSION)
     ui.popStyleColor()
     ui.popFont()
     return
@@ -1303,8 +1330,12 @@ function script.windowMain(dt)
   if shown.version ~= EXPECTED_VERSION and not settings.devIgnoreVersion then
     ui.textColored(tr('Version mismatch'), COLOR.bad)
     pushRole('caption')
-    ui.textColored(string.format('app v%d, overlay v%d', shown.version, EXPECTED_VERSION),
-      COLOR.dim)
+    ui.textColored(string.format('the application writes frame v%d, this panel reads v%d',
+      shown.version, EXPECTED_VERSION), COLOR.dim)
+    -- The release, not just the frame number: which of the two to replace is
+    -- the actual question, and only the release names answer it.
+    ui.textColored(string.format('panel v%s — reinstall it from the desktop application',
+      PANEL_VERSION), COLOR.dim)
     ui.popFont()
     return
   end
@@ -1673,7 +1704,8 @@ local function drawDevBody()
   row('sequence', tostring(shown.sequence))
   row('since change', string.format('%.2f s', secondsSinceChange))
   row('flags', string.format('0x%02X', shown.flags))
-  row('version', string.format('%d / %d', shown.version, EXPECTED_VERSION))
+  row('frame version', string.format('%d / %d', shown.version, EXPECTED_VERSION))
+  row('panel version', PANEL_VERSION)
 
   say('caption', tr('LAYOUT'), COLOR.label)
   row('window scale', string.format('%.2fx', windowScale()))
@@ -1769,6 +1801,11 @@ local function drawStatusBody()
   row('advice lines', tostring(shown.message_count))
 
   sectionLabel('PANEL')
+  -- First, and before anything about the panel's own preferences: "which
+  -- version of this is installed" is the question every report starts with,
+  -- and the answer used to require reading the file in the game folder.
+  row('panel version', PANEL_VERSION)
+  row('frame version', tostring(EXPECTED_VERSION))
   row('text size', settings.vrMode and 'VR (large)' or settings.textSize)
   row('units', (settings.celsius and 'C' or 'F') .. ' / ' .. (settings.psi and 'psi' or 'bar'))
 end
