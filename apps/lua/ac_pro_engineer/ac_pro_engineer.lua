@@ -612,6 +612,7 @@ local RUSSIAN = {
   ['compact'] = 'плотно', ['normal'] = 'обычно', ['large'] = 'крупно',
   ['SECTIONS'] = 'СЕКЦИИ', ['UNITS'] = 'ЕДИНИЦЫ', ['FORMAT'] = 'ФОРМАТ',
   ['SHOW'] = 'ПОКАЗЫВАТЬ', ['LINES'] = 'СТРОКИ', ['MARKER'] = 'МАРКЕР',
+  ['the application is sending %d of %d'] = 'приложение шлёт %d из %d',
   ['ACCENT'] = 'АКЦЕНТ', ['PALETTE'] = 'ПАЛИТРА', ['SCREEN'] = 'ЭКРАН',
   ['PRESSURE'] = 'ДАВЛЕНИЕ', ['COLUMNS'] = 'КОЛОНКИ', ['QUICK'] = 'БЫСТРО',
   ['COMMAND'] = 'КОМАНДА', ['OUTPUT'] = 'ВЫВОД',
@@ -1570,7 +1571,7 @@ local COMMANDS = {
     consoleSay('--scale N   --width N   --bar N   --backing N')
     consoleSay('--accent blue|teal|amber|violet|green')
     consoleSay('--vr on|off   --dev-mode   --units c|f  --psi|--bar-units')
-    consoleSay('--lines N   --palette   --reset')
+    consoleSay('--lines 1..' .. MESSAGE_SLOTS .. '   --palette   --reset')
   end,
   ['--dev-mode'] = function()
     settings.devMode = not settings.devMode
@@ -1587,7 +1588,7 @@ local NUMERIC = {
   ['--width'] = { 'contentWidth', 200, 1200 },
   ['--bar'] = { 'barHeight', 2, 40 },
   ['--backing'] = { 'background', 0, 1 },
-  ['--lines'] = { 'engineerLines', 1, 4 },
+  ['--lines'] = { 'engineerLines', 1, MESSAGE_SLOTS },
 }
 
 local function runCommand(line)
@@ -2034,20 +2035,23 @@ function script.windowSettings(dt)
     end)
 
     ui.tabItem(tr('Advice'), function()
-      pushRole('caption')
-      ui.textColored('LINES', COLOR.label)
-      ui.popFont()
-      for _, lines in ipairs({ 1, 2, 3, 4 }) do
-        if settingRadio(string.format('%d line%s', lines, lines > 1 and 's' or ''),
-            'lines' .. lines, settings.engineerLines == lines) then
-          settings.engineerLines = lines
-        end
-      end
+      say('caption', tr('LINES'), COLOR.label)
+      -- A slider, not a radio per line. Four radios were fine while the frame
+      -- carried four slots; eight of them is a column of buttons where a
+      -- number belongs.
+      settingSlider('adviceLines', 'engineerLines', 1, MESSAGE_SLOTS,
+        'draw up to  %.0f', true)
+      -- What the application actually sent, underneath. "I asked for eight and
+      -- see three" is the application having three things to say, not the
+      -- setting failing, and there is no way to tell those apart from here.
+      say('caption', string.format(tr('the application is sending %d of %d'),
+        shown.message_count, MESSAGE_SLOTS), COLOR.dim)
 
       ui.separator()
-      pushRole('caption')
-      ui.textColored('MARKER', COLOR.label)
-      ui.popFont()
+      -- `say`, not pushRole + textColored: CSP draws widget text at its own
+      -- font size, which cannot be scaled, so on a 4K screen this heading came
+      -- out a third the size of everything around it.
+      say('caption', tr('MARKER'), COLOR.label)
       for _, bullet in ipairs(BULLET_NAMES) do
         if settingRadio(bullet, 'bullet' .. bullet, settings.engineerBullet == bullet) then
           settings.engineerBullet = bullet

@@ -152,6 +152,41 @@ ui = setmetatable({
   availableSpace = function() return vec2(300, 380) end,
   availableSpaceX = function() return 300 end,
   getCursor = function() return vec2(0, 0) end,
+
+  -- Tabs run their bodies. The catch-all stub below returns 0 and calls
+  -- nothing, so every `ui.tabItem(name, function() ... end)` in the settings
+  -- window was skipped -- which is the whole settings window, all fifteen
+  -- tabs of it. `windowSettings: OK` meant the tab bar was constructed, not
+  -- that a single control inside it had been drawn, and that is how a slider
+  -- with a nil bound or a caption calling a function declared below it got
+  -- through: this harness is documented as the thing to run after every panel
+  -- edit, and it was reporting on an empty window.
+  -- Widgets that report what the user did report that the user did nothing.
+  --
+  -- The catch-all stub returns 0, and 0 is truthy in Lua, so the moment the
+  -- tab bodies below started running, every `if ui.checkbox(...)` in the
+  -- settings window fired at once: the panel came out of one frame with every
+  -- toggle inverted, including `freezeDisplay`, which stops it reading the
+  -- frame at all. A harness that clicks every control it draws is not driving
+  -- the panel, it is fighting it.
+  checkbox = function() note('checkbox'); return false end,
+  button = function() note('button'); return false end,
+  radioButton = function() note('radioButton'); return false end,
+  colorButton = function() note('colorButton'); return false end,
+  colorPicker = function() note('colorPicker'); return false end,
+  slider = function(_id, value) note('slider'); return value, false end,
+  inputText = function(_id, text) note('inputText'); return text, false, false end,
+
+  tabBar = function(_id, body)
+    note('tabBar')
+    if type(body) == 'function' then body() end
+  end,
+  tabItem = function(name, a, b)
+    note('tabItem')
+    drawn[#drawn + 1] = tostring(name)
+    local body = type(b) == 'function' and b or (type(a) == 'function' and a or nil)
+    if body ~= nil then body() end
+  end,
 }, { __index = function(_, k) return stub(k) end })
 
 script = {}
