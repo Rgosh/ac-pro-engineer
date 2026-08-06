@@ -40,14 +40,14 @@ in the [main README](../../../README.md#getting-assetto-corsa-csp-and-content-ma
 
 A CSP Lua app in `../ac_pro_engineer/`, installed into the game folder by the
 desktop application on every launch. It computes nothing. Once a frame the
-desktop side packs a 416-byte `#[repr(C)]` `OverlayFrame` into shared memory,
+desktop side packs a 712-byte `#[repr(C)]` `OverlayFrame` into shared memory,
 and the app reads fields out of it and hands them to ImGui — Lua runs on AC's
 render thread, where LuaJIT collects garbage mid-frame, so the panel allocates
 nothing per frame that can be allocated once.
 
 The frame carries speed, revs and gear; four corners of pressure, temperature,
 wear and brake heat; delta and lap times; fuel, laps left and consumption;
-position, lap, air and road temperature, grip; up to four lines of engineer
+position, lap, air and road temperature, grip; up to eight lines of engineer
 advice **with a severity each**; and a bit field of what the application wants
 shown. A `sequence` counter that only ever moves by two guards against torn
 reads and doubles as the liveness signal: frozen for two seconds means the

@@ -1260,16 +1260,34 @@ local function sayAdvice(text, color)
   ui.dwriteText(text, textSize('body') * (settings.engineerScale or 1), color)
 end
 
+-- How tall the advice came out last frame.
+--
+-- The plate has to be drawn before the text — a rectangle drawn afterwards
+-- covers it — so it cannot know the height of the thing it is backing. Reusing
+-- the last frame's measurement is one frame stale, and a block that only
+-- changes when a new advice line arrives never shows that.
+local engineerPlateHeight = 0
+
 local function drawEngineerMessages(withLabel)
   if withLabel ~= false then sectionLabel('ENGINEER') end
 
   -- A plate behind the advice, on its own. Numbers are read in a glance and
   -- forgiven a busy background; a sentence is not.
+  --
+  -- It used to stop at 140 pixels and at the right edge of the content, so in
+  -- the advice window — where the advice *is* the window — it came out as a
+  -- strip across the top corner with the text running off the bottom of it.
+  -- In the window it covers everything; in the panel it covers the block and
+  -- not the readouts underneath.
+  local plateOrigin = ui.getCursor()
   if settings.engineerBackground > 0.01 then
-    local origin = ui.getCursor()
     local space = ui.availableSpace()
-    ui.drawRectFilled(vec2(origin.x - 4, origin.y - 3),
-      vec2(origin.x + contentWidth(), origin.y + math.min(space.y, 140)),
+    local height = space.y
+    if withLabel ~= false then
+      height = math.min(space.y, math.max(engineerPlateHeight, 1))
+    end
+    ui.drawRectFilled(vec2(plateOrigin.x - 6, plateOrigin.y - 4),
+      vec2(plateOrigin.x + contentWidth() + 6, plateOrigin.y + height + 4),
       rgbm(0.04, 0.05, 0.07, settings.engineerBackground), 4)
   end
 
@@ -1327,6 +1345,9 @@ local function drawEngineerMessages(withLabel)
   elseif settings.engineerShowCount then
     say('caption', string.format('%d of %d shown', count, shown.message_count), COLOR.dim)
   end
+
+  -- What the plate above will be drawn to next frame.
+  engineerPlateHeight = math.max(0, ui.getCursor().y - plateOrigin.y)
 end
 
 --- What every window shows while the desktop application is not publishing.
