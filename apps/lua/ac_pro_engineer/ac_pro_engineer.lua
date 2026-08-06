@@ -202,40 +202,62 @@ if type(ac) == 'table' and type(ac.storage) == 'function' then
   end
 end
 
---- Write every setting back through the storage proxy.
+--- What was last written, so a save can tell what actually changed.
 ---
---- Storage persists on write, so a value only reaches the disk if something
---- assigns it. Assigning all of them is how a settings screen that was edited
---- while storage was unavailable — or a default that was never touched — ends
---- up saved anyway.
+--- Seeded from storage as soon as it is available: everything in there is
+--- already on disk, and starting from an empty table made the first frame of
+--- the settings window rewrite all seventy keys.
 local lastSaved = {}
-
---- Save when anything changed, whatever changed it.
----
---- Wiring every control to a save call missed the ones that set a value
---- directly — accents, palette entries, presets. Comparing the table against
---- what was last written catches all of them, and it only runs while the
---- settings window is open.
-local function autoSave()
-  local dirty = false
-  for _, key in ipairs(SETTING_KEYS) do
-    if lastSaved[key] ~= settings[key] then
-      lastSaved[key] = settings[key]
-      dirty = true
-    end
-  end
-  if dirty then return true end
-  return false
+if storageActive then
+  for _, key in ipairs(SETTING_KEYS) do lastSaved[key] = settings[key] end
 end
 
+--- How the last save went, for the line under the Save button.
+local saveReport = { written = 0, failed = 0, ever = false }
+
+--- Write back everything that has changed since the last write.
+---
+--- Storage persists on assignment, so a value reaches the disk when something
+--- assigns it — and only then. This used to assign every key to *itself*,
+--- which works only if the proxy writes a value it already holds; nothing on
+--- this side can check that it does, and nothing ever did. Assigning only the
+--- keys that differ is a real change however the proxy treats equal ones, and
+--- reading each one back afterwards is the only proof available that it stuck.
+---
+--- Called from every control and once at the end of the settings frame, so a
+--- value set directly — accents, palette entries, presets — is caught even
+--- though nothing wired it to a save.
 local function saveSettings()
-  if not storageActive then return false end
-  local ok = pcall(function()
-    for _, key in ipairs(SETTING_KEYS) do
-      settings[key] = settings[key]
+  if not storageActive then return 0, 0 end
+  local written, failed = 0, 0
+  for _, key in ipairs(SETTING_KEYS) do
+    local value = settings[key]
+    if lastSaved[key] ~= value then
+      local ok = pcall(function() settings[key] = value end)
+      if ok and settings[key] == value then
+        lastSaved[key] = value
+        written = written + 1
+      else
+        -- Left out of lastSaved on purpose, so the next frame tries again.
+        failed = failed + 1
+      end
     end
-  end)
-  return ok
+  end
+  if written > 0 or failed > 0 then
+    saveReport.written, saveReport.failed, saveReport.ever = written, failed, true
+  end
+  return written, failed
+end
+
+--- Write everything, whether or not it looks changed.
+---
+--- What the Save button means. A driver presses it because they do not trust
+--- that it saved, and answering "nothing needed writing" is not an answer.
+local function saveEverySetting()
+  lastSaved = {}
+  local written, failed = saveSettings()
+  saveReport.written, saveReport.failed, saveReport.ever = written, failed, true
+  return written, failed
 end
 
 -- Anything but a string here is a palette saved by an older build, or one that
@@ -606,6 +628,8 @@ local RUSSIAN = {
   ['settings are saved as you change them'] = 'настройки сохраняются сразу',
   ['storage unavailable: settings last for this session'] =
     'хранилище недоступно: настройки только на эту сессию',
+  ['%d saved'] = 'сохранено: %d',
+  ['%d saved, %d would not stick'] = 'сохранено: %d, не записалось: %d',
   ['everything'] = 'всё',
   ['warnings and worse'] = 'предупреждения и хуже',
   ['critical only'] = 'только критичное',
@@ -1582,9 +1606,16 @@ end
 local consoleInput = ''
 local consoleLines = { 'type --help' }
 
+-- Forty rather than twelve. "Dump settings to console" writes one line per
+-- setting — seventy of them — into this buffer, so with twelve the only keys
+-- that survived were the last twelve alphabetically and the button was, in
+-- practice, a way to look at `wearBad`. The dump packs three to a line below,
+-- which brings it inside this.
+local CONSOLE_LINES = 40
+
 local function consoleSay(line)
   consoleLines[#consoleLines + 1] = line
-  while #consoleLines > 12 do table.remove(consoleLines, 1) end
+  while #consoleLines > CONSOLE_LINES do table.remove(consoleLines, 1) end
 end
 
 local COMMANDS = {
@@ -1809,9 +1840,17 @@ local function drawDevBody()
 
   ui.separator()
   if ui.button('Dump settings to console') then
+    -- Three to a line: one per line is seventy lines into a buffer that keeps
+    -- forty, so the first two thirds of the alphabet scrolled away unread.
+    local group = {}
     for _, key in ipairs(SETTING_KEYS) do
-      consoleSay(key .. ' = ' .. tostring(settings[key]))
+      group[#group + 1] = key .. '=' .. tostring(settings[key])
+      if #group == 3 then
+        consoleSay(table.concat(group, '   '))
+        group = {}
+      end
     end
+    if #group > 0 then consoleSay(table.concat(group, '   ')) end
   end
 end
 
@@ -2240,12 +2279,22 @@ function script.windowSettings(dt)
           say('caption', storageError, COLOR.dim)
         end
       end
-      if ui.button('Save now') then saveSettings() end
+      if ui.button(tr('Save now')) then saveEverySetting() end
       ui.sameLine()
-      if ui.button('Reset to defaults') then
+      if ui.button(tr('Reset to defaults')) then
         for key, value in pairs(DEFAULTS) do settings[key] = value end
-        saveSettings()
+        saveEverySetting()
         formatFrame()
+      end
+      -- What the press did. A button that saves silently is a button people
+      -- press twice and still do not believe.
+      if saveReport.ever then
+        if saveReport.failed > 0 then
+          say('caption', string.format(tr('%d saved, %d would not stick'),
+            saveReport.written, saveReport.failed), COLOR.bad)
+        else
+          say('caption', string.format(tr('%d saved'), saveReport.written), COLOR.good)
+        end
       end
     end)
 
@@ -2273,8 +2322,10 @@ function script.windowSettings(dt)
   end)
 
   -- Anything the tabs changed is written here, once, at the end of the frame
-  -- that changed it.
-  if autoSave() then saveSettings() end
+  -- that changed it. `saveSettings` decides what changed itself now — the
+  -- change detector that used to sit here consumed the difference into
+  -- `lastSaved` before the save could look at it.
+  saveSettings()
 
   popLayoutStyle(styles, colors)
 end

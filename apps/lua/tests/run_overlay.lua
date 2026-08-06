@@ -11,6 +11,8 @@ local ffi = require('ffi')
 
 local drawn = {}          -- everything the app tried to render
 local calls = {}          -- every stubbed call, to prove the paths ran
+local sliderMoved = nil   -- {id, value}: pretend the driver dragged that one
+local buttonPressed = nil -- label: pretend the driver clicked that one
 
 local function note(name) calls[name] = (calls[name] or 0) + 1 end
 
@@ -129,6 +131,34 @@ ac = {
   end,
 }
 
+-- ---------------------------------------------------------------------------
+-- Persistent settings
+--
+-- `ac.storage` was not stubbed at all, so `type(ac.storage) == 'function'` was
+-- false, the panel fell back to defaults that only last for the run, and the
+-- entire save path -- the thing drivers reported as "the panel forgets
+-- everything" -- was never executed here once.
+--
+-- Same shape as the LOVE harness's (apps/lua/love/csp.lua): hand it a table of
+-- defaults, get back a proxy whose writes land in `savedValues`. `savedValues`
+-- outlives a reload of the script, which is the whole point -- that is what
+-- CSP's storage does when a window is closed and opened again.
+-- ---------------------------------------------------------------------------
+local savedValues = {}
+local storageAsked = 0
+
+ac.storage = function(defaults, _prefix)
+  storageAsked = storageAsked + 1
+  for key, value in pairs(defaults) do
+    if savedValues[key] == nil then savedValues[key] = value end
+  end
+  return setmetatable({}, {
+    __index = savedValues,
+    __newindex = function(_, key, value) savedValues[key] = value end,
+    __pairs = function() return pairs(savedValues) end,
+  })
+end
+
 -- Anything the app reaches for that is not spelled out below: callable, so
 -- `ui.pushStyleVar(...)` works, and indexable, so `ui.StyleVar.WindowRounding`
 -- does too. A stub that is only one of the two turns a missing entry into a
@@ -170,11 +200,22 @@ ui = setmetatable({
   -- frame at all. A harness that clicks every control it draws is not driving
   -- the panel, it is fighting it.
   checkbox = function() note('checkbox'); return false end,
-  button = function() note('button'); return false end,
+  button = function(label)
+    note('button')
+    return buttonPressed ~= nil and label == buttonPressed
+  end,
   radioButton = function() note('radioButton'); return false end,
   colorButton = function() note('colorButton'); return false end,
   colorPicker = function() note('colorPicker'); return false end,
-  slider = function(_id, value) note('slider'); return value, false end,
+  -- `sliderMoved` lets one check below drag one slider, which is the only way
+  -- to reach the panel's save path the way a driver reaches it.
+  slider = function(id, value)
+    note('slider')
+    if sliderMoved ~= nil and id == sliderMoved.id then
+      return sliderMoved.value, true
+    end
+    return value, false
+  end,
   inputText = function(_id, text) note('inputText'); return text, false, false end,
 
   tabBar = function(_id, body)
@@ -270,6 +311,84 @@ if not screen:find('214', 1, true) then
   os.exit(1)
 end
 print('live draw path: OK')
+
+-- ---------------------------------------------------------------------------
+-- A setting changed in the window has to be there after the script reloads
+--
+-- CSP reloads the script when a window is reopened, so "does the panel save"
+-- is not a question about a call succeeding — it is a question about what a
+-- freshly loaded copy reads. Nothing here checked it, in either direction:
+-- storage was not even stubbed.
+-- ---------------------------------------------------------------------------
+
+if storageAsked == 0 then
+  print('\nFAILED: the panel never asked for ac.storage, so nothing it is told')
+  print('can outlive the window being closed.')
+  os.exit(1)
+end
+
+-- Drag the advice-lines slider to two, the way a driver would. Two rather than
+-- a number near the default, so counting the lines afterwards cannot pass by
+-- accident.
+sliderMoved = { id = '##adviceLines', value = 2 }
+local dragged, dragError = pcall(script.windowSettings, 0.016)
+sliderMoved = nil
+if not dragged then
+  print('\nFAILED: moving a slider threw: ' .. tostring(dragError))
+  os.exit(1)
+end
+
+if savedValues.engineerLines ~= 2 then
+  print('\nFAILED: the panel drew a slider, took the new value and did not save it.')
+  print('storage holds engineerLines = ' .. tostring(savedValues.engineerLines)
+    .. ', expected 2')
+  os.exit(1)
+end
+print('settings reach storage: OK')
+
+-- Load it again, as CSP does when the window is reopened, and ask the fresh
+-- copy what it thinks the setting is. Its own developer tab answers that:
+-- "Dump settings to console" prints the live `settings` table into the console,
+-- which the Console tab draws. Reading the panel's answer rather than counting
+-- advice lines keeps this independent of whatever frame the run was given —
+-- ACPE_FRAME points at a real published one under `cargo test`.
+-- A mark in `drawn`, not a fresh table: emptying it threw away the drive
+-- output, and the sample printed at the end -- which is what the cargo test
+-- greps for the published speed -- came out as nothing but settings captions.
+local reloadedFrom = #drawn
+script = {}
+savedValues.devMode = true
+local reloaded, reloadError = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
+if not reloaded then
+  print('\nFAILED: the panel would not load a second time: ' .. tostring(reloadError))
+  os.exit(1)
+end
+pcall(script.update, 0.016)
+
+-- Twice: the Console tab is drawn before the Dev tab, so the dump lands after
+-- the console has already been laid out and shows up on the next frame.
+buttonPressed = 'Dump settings to console'
+local dumped, dumpError = pcall(script.windowSettings, 0.016)
+buttonPressed = nil
+if dumped then dumped, dumpError = pcall(script.windowSettings, 0.016) end
+if not dumped then
+  print('\nFAILED: windowSettings after a reload: ' .. tostring(dumpError))
+  os.exit(1)
+end
+
+local restored = nil
+for i = reloadedFrom + 1, #drawn do
+  restored = drawn[i]:match('engineerLines=(%S+)') or restored
+end
+
+if restored ~= '2' then
+  print('\nFAILED: the reloaded panel reads engineerLines = ' .. tostring(restored)
+    .. ', expected the 2 it was told to keep.')
+  print('The setting was written and not read back, which is what a driver')
+  print('sees as the panel forgetting everything between sessions.')
+  os.exit(1)
+end
+print('settings survive a reload: OK')
 
 -- Sixteen is enough to see the panel came up; ACPE_ALL=1 prints the lot, which
 -- is how a wrong unit or an untranslated caption is spotted without the game.
