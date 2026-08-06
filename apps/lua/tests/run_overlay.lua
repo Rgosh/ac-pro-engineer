@@ -13,6 +13,7 @@ local drawn = {}          -- everything the app tried to render
 local calls = {}          -- every stubbed call, to prove the paths ran
 local sliderMoved = nil   -- {id, value}: pretend the driver dragged that one
 local buttonPressed = nil -- label: pretend the driver clicked that one
+local carPresent = true   -- false publishes a frame with CONNECTED cleared
 
 local function note(name) calls[name] = (calls[name] or 0) + 1 end
 
@@ -125,6 +126,12 @@ ac = {
       end
       if k == 'messages' then
         return setmetatable({}, { __index = function(_, i) return ffi.string(raw.messages[i]) end })
+      end
+      -- `carPresent` clears the CONNECTED bit, which is the state the panel is
+      -- in whenever the application is publishing and AC has no telemetry:
+      -- the launcher, the menus, and the pit garage before a session starts.
+      if k == 'flags' and not carPresent then
+        return bit.band(raw.flags, bit.bnot(2))
       end
       return raw[k]
     end })
@@ -389,6 +396,43 @@ if restored ~= '2' then
   os.exit(1)
 end
 print('settings survive a reload: OK')
+
+-- ---------------------------------------------------------------------------
+-- A published frame with no car in it is not the same as no application
+--
+-- The application publishes from its launcher screen and while AC has nothing
+-- in shared memory, so the panel is reachable in the garage. It has to say
+-- which of the two states it is in: "AC Pro Engineer is not running" sends
+-- someone hunting through the bridge and the Proton prefix, and in the garage
+-- there is nothing there to find.
+-- ---------------------------------------------------------------------------
+
+local garageFrom = #drawn
+carPresent = false
+script = {}
+local idled, idleError = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
+if idled then idled, idleError = pcall(script.update, 0.016) end
+if idled then idled, idleError = pcall(script.windowMain, 0.016) end
+if idled then idled, idleError = pcall(script.windowEngineer, 0.016) end
+carPresent = true
+if not idled then
+  print('\nFAILED: the panel threw with no car in the frame: ' .. tostring(idleError))
+  os.exit(1)
+end
+
+local garage = table.concat(drawn, '\n', garageFrom + 1, #drawn)
+if not garage:find('Waiting for the car', 1, true) then
+  print('\nFAILED: with CONNECTED clear the panel did not say it is waiting for')
+  print('the car. It drew:')
+  for i = garageFrom + 1, math.min(#drawn, garageFrom + 12) do print('  ' .. drawn[i]) end
+  os.exit(1)
+end
+if garage:find('AC Pro Engineer is not running', 1, true) then
+  print('\nFAILED: the panel says the application is not running while reading')
+  print('frames from it.')
+  os.exit(1)
+end
+print('no car is not no application: OK')
 
 -- Sixteen is enough to see the panel came up; ACPE_ALL=1 prints the lot, which
 -- is how a wrong unit or an untranslated caption is spotted without the game.

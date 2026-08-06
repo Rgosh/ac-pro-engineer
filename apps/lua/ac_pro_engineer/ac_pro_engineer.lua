@@ -559,6 +559,13 @@ local RUSSIAN = {
   ['Shared memory unavailable'] = 'Общая память недоступна',
   ['Version mismatch'] = 'Версии не совпадают',
   ['Waiting for AC Pro Engineer'] = 'Жду AC Pro Engineer',
+  ['Waiting for the car'] = 'Жду машину',
+  ['AC Pro Engineer is running. Telemetry starts when you go on track.'] =
+    'AC Pro Engineer работает. Телеметрия появится, когда выедешь на трассу.',
+  ['app'] = 'прил.',
+  ['car'] = 'машина',
+  ['on track'] = 'на трассе',
+  ['in the garage'] = 'в боксах',
   ['CAR'] = 'МАШИНА',
   ['TIMING'] = 'ВРЕМЯ КРУГА',
   ['CORNERS'] = 'КОЛЁСА',
@@ -1425,6 +1432,31 @@ local function drawWaitingForApp()
   ui.popFont()
 end
 
+--- The application is publishing, but there is no car yet.
+---
+--- Distinct from `drawWaitingForApp` on purpose, and the distinction is the
+--- whole point of this screen: one of them is a problem to go and fix, the
+--- other is the pit garage. They used to look identical, because the
+--- application published nothing at all until a session was live — so anyone
+--- opening the panel before a race was told it was not running, and went
+--- looking through the bridge, the install and the Proton prefix for a fault
+--- that was not there.
+local function drawWaitingForCar()
+  pushRole('body')
+  ui.pushStyleColor(ui.StyleColor.Text, COLOR.accent)
+  ui.textWrapped(tr('Waiting for the car'))
+  ui.popStyleColor()
+  ui.popFont()
+
+  pushRole('caption')
+  ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
+  ui.textWrapped(tr('AC Pro Engineer is running. Telemetry starts when you go on track.'))
+  ui.textWrapped(tr('panel') .. ' v' .. PANEL_VERSION
+    .. (shown.app_version ~= '' and ('  ·  ' .. tr('app') .. ' v' .. shown.app_version) or ''))
+  ui.popStyleColor()
+  ui.popFont()
+end
+
 -- ---------------------------------------------------------------------------
 -- The panel
 --
@@ -1452,6 +1484,14 @@ function script.windowMain(dt)
     ui.textColored(string.format('panel v%s — reinstall it from the desktop application',
       PANEL_VERSION), COLOR.dim)
     ui.popFont()
+    return
+  end
+
+  -- The application is there and there is no car. Not a fault, and not the
+  -- same screen as "the application is not running".
+  if not hasFlag(FLAG_CONNECTED) then
+    drawUpdateNotice()
+    drawWaitingForCar()
     return
   end
 
@@ -1550,6 +1590,11 @@ end
 function script.windowEngineer(dt)
   if not isLive then
     drawWaitingForApp()
+    return
+  end
+
+  if not hasFlag(FLAG_CONNECTED) then
+    drawWaitingForCar()
     return
   end
 
@@ -1917,6 +1962,11 @@ local function drawStatusBody()
   row('mapping', MMF_NAME, frame ~= nil and COLOR.good or COLOR.bad)
   row('state', frame == nil and 'not opened' or (isLive and 'live' or 'stale'),
     isLive and COLOR.good or COLOR.warn)
+  -- Live and no car is the normal state in a pit garage, and it used to be
+  -- indistinguishable from the application being gone. Named here so the
+  -- question "is anything wrong" has an answer without leaving the game.
+  row(tr('car'), hasFlag(FLAG_CONNECTED) and tr('on track') or tr('in the garage'),
+    hasFlag(FLAG_CONNECTED) and COLOR.good or COLOR.dim)
   if openError ~= nil then
     pushRole('caption')
     ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)

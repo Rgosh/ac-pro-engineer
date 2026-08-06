@@ -558,6 +558,16 @@ mod tests {
         frame.gear = 4;
         frame.max_rpm = 8000;
         frame.rpm = 6000;
+        // A frame from a car on track, which is what this check is for. Without
+        // CONNECTED the panel correctly draws "waiting for the car" instead of
+        // the readouts, and the draw path this test exists to exercise is the
+        // one that never runs.
+        frame.flags = crate::overlay::frame::flags::CONNECTED
+            | crate::overlay::frame::flags::SHOW_TELEMETRY
+            | crate::overlay::frame::flags::SHOW_TIMING
+            | crate::overlay::frame::flags::SHOW_FUEL
+            | crate::overlay::frame::flags::SHOW_SESSION
+            | crate::overlay::frame::flags::SHOW_ENGINEER;
         writer.publish(&frame);
 
         let output = std::process::Command::new("luajit")

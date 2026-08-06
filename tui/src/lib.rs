@@ -1016,6 +1016,11 @@ impl AppState {
         self.is_game_running = process_active;
 
         if self.stage != AppStage::Running {
+            // The launcher is where the application spends the minutes before
+            // a race, and it published nothing from here — so a driver who
+            // opened the panel in the garage was told the application was not
+            // running while looking at it.
+            self.publish_overlay_idle();
             return;
         }
 
@@ -1043,15 +1048,21 @@ impl AppState {
                     s.engineer_messages.clear();
                 }
             }
+            // AC running with nothing in its shared memory yet: the menus, the
+            // loading screen, the seconds in the garage before the session
+            // starts. The application is fine, and now says so.
+            self.publish_overlay_idle();
             return;
         }
 
         let Some(mem) = self.mem.as_mut() else {
+            self.publish_overlay_idle();
             return;
         };
 
         if let Err(error) = mem.refresh() {
             error!(error = ?error, "Cannot refresh memory");
+            self.publish_overlay_idle();
             return;
         }
 
@@ -1096,19 +1107,77 @@ impl AppState {
         }
     }
 
+    /// The part of a frame that does not come from the car.
+    ///
+    /// Versions, which sections the driver asked for, which language to speak,
+    /// and whether there is a car at all. Split out because this is the whole
+    /// frame when there is no session: see [`Self::publish_overlay_idle`].
+    fn overlay_frame_shell(&self) -> ac_core::overlay::frame::OverlayFrame {
+        use ac_core::overlay::frame::{OverlayFrame, flags};
+
+        let mut frame = OverlayFrame::empty();
+
+        frame.target_pressure_front = self.config.target_hot_pressure_front;
+        frame.target_pressure_rear = self.config.target_hot_pressure_rear;
+
+        frame.set_flag(flags::CONNECTED, self.is_connected);
+        // Both sides have to agree: the overlay manager knows whether there is
+        // anything to show right now, the config carries what the driver asked
+        // for in the Settings tab.
+        frame.set_flag(
+            flags::SHOW_TELEMETRY,
+            self.overlay_manager.state.show_telemetry && self.config.overlay.show_telemetry,
+        );
+        frame.set_flag(
+            flags::SHOW_ENGINEER,
+            self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
+        );
+        frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
+        frame.set_flag(flags::SHOW_TIMING, self.config.overlay.show_timing);
+        frame.set_flag(
+            flags::RUSSIAN,
+            self.config.language == ac_core::config::Language::Russian,
+        );
+        frame.set_flag(flags::SHOW_FUEL, self.config.overlay.show_fuel);
+
+        frame
+    }
+
+    /// Publish a frame with no car in it.
+    ///
+    /// The panel used to go dead in three situations that are not failures:
+    /// the application sitting on its launcher screen, AC running with nothing
+    /// in shared memory yet, and the driver in the pit garage before a session
+    /// starts. In every one of them the panel showed "AC Pro Engineer is not
+    /// running" — which is both wrong and the exact message that sends someone
+    /// hunting through the bridge, the install and the Proton prefix for a
+    /// problem that is not there.
+    ///
+    /// The application is running, so it says so. The sequence keeps advancing,
+    /// which is how the panel knows; `CONNECTED` stays clear, which is how it
+    /// knows not to draw zeroes as telemetry. Settings, versions and the link
+    /// state are all reachable in that state, which is when they are most
+    /// likely to be wanted.
+    pub fn publish_overlay_idle(&mut self) {
+        let frame = self.overlay_frame_shell();
+        if let Some(writer) = self.overlay_writer.as_mut() {
+            writer.publish(&frame);
+        }
+    }
+
     /// Pack the current state into an overlay frame and publish it.
     ///
     /// Everything here is a copy of an already-computed value: the overlay
     /// draws on AC's render thread, so no work that can be done on this side
     /// belongs on that one.
     fn publish_overlay_frame(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
-        use ac_core::overlay::frame::{OverlayFrame, flags};
+        use ac_core::overlay::frame::flags;
+
+        let mut frame = self.overlay_frame_shell();
 
         let Some(writer) = self.overlay_writer.as_mut() else {
             return;
         };
-
-        let mut frame = OverlayFrame::empty();
 
         frame.speed_kmh = phys.speed_kmh;
         frame.rpm = phys.rpms;
@@ -1137,31 +1206,9 @@ impl AppState {
         frame.fuel_per_lap = self.engineer.stats.fuel_consumption_rate;
         frame.delta_seconds = self.engineer.stats.current_delta;
 
-        frame.target_pressure_front = self.config.target_hot_pressure_front;
-        frame.target_pressure_rear = self.config.target_hot_pressure_rear;
-
         frame.apply_session(&self.session_info);
 
         frame.set_flag(flags::PIT_LIMITER, phys.pit_limiter_on != 0);
-        frame.set_flag(flags::CONNECTED, self.is_connected);
-        // Both sides have to agree: the overlay manager knows whether there is
-        // anything to show right now, the config carries what the driver asked
-        // for in the Settings tab.
-        frame.set_flag(
-            flags::SHOW_TELEMETRY,
-            self.overlay_manager.state.show_telemetry && self.config.overlay.show_telemetry,
-        );
-        frame.set_flag(
-            flags::SHOW_ENGINEER,
-            self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
-        );
-        frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
-        frame.set_flag(flags::SHOW_TIMING, self.config.overlay.show_timing);
-        frame.set_flag(
-            flags::RUSSIAN,
-            self.config.language == ac_core::config::Language::Russian,
-        );
-        frame.set_flag(flags::SHOW_FUEL, self.config.overlay.show_fuel);
         frame.set_flag(
             flags::FUEL_WARNING,
             self.engineer.stats.fuel_laps_remaining > 0.0
@@ -1315,6 +1362,51 @@ mod tests {
         assert!(app.overlay_manager.state.speed_kmh > 0);
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
+    }
+
+    /// The panel has to be reachable before a session starts.
+    ///
+    /// `tick` used to return before publishing anything whenever the
+    /// application was on its launcher screen — which is where it sits for the
+    /// minutes before a race — so a driver who opened the panel in the garage
+    /// was told the application was not running while looking at it. The frame
+    /// says the opposite of that now: the sequence advances, and CONNECTED
+    /// stays clear so the panel knows not to draw zeroes as telemetry.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn the_launcher_still_publishes_a_frame() {
+        use ac_core::overlay::frame::{OverlayFrame, flags};
+
+        let mut app = AppState::new(OverlayMode::External);
+        app.overlay_writer =
+            ac_core::overlay::shared_writer::OverlayWriter::open_named("acpe-test-idle").ok();
+        let Some(path) = app.overlay_writer.as_ref().map(|w| w.backing_path()) else {
+            eprintln!("no shared memory here; skipping");
+            return;
+        };
+        app.stage = AppStage::Launcher;
+
+        app.tick();
+        app.tick();
+
+        let bytes = std::fs::read(&path).expect("read the published frame");
+        assert!(bytes.len() >= size_of::<OverlayFrame>());
+        // SAFETY: the file is at least struct-sized and was written by
+        // OverlayWriter from exactly this type. Unaligned because nothing
+        // guarantees the buffer's alignment.
+        let frame: OverlayFrame =
+            unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const OverlayFrame) };
+
+        assert_ne!(
+            frame.sequence, 0,
+            "a sequence of zero reads as never written, which is what the panel \
+             was seeing"
+        );
+        assert!(
+            !frame.has_flag(flags::CONNECTED),
+            "there is no car on the launcher screen"
+        );
+        assert_eq!(frame.speed_kmh, 0.0, "and no telemetry to go with it");
     }
 
     /// The final split is derived from the lap time rather than read off the
