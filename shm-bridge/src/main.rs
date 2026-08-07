@@ -92,7 +92,23 @@ static VERSION_MARKER: &[u8] =
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = LONG_ABOUT)]
-struct Cli {}
+struct Cli {
+    /// Open the overlay mapping the way CSP does and report what is in it,
+    /// then exit.
+    ///
+    /// The one question nobody could answer from inside the Proton prefix:
+    /// *can a Windows process in here see the frame at all*. The desktop
+    /// application checks the file, the bridge's note and the versions, and
+    /// all three can be right while CSP still refuses the mapping — that is
+    /// the failure this whole subsystem exists to make visible, and until now
+    /// the only way to see it was to launch the game.
+    ///
+    /// Run it in the same prefix, with the bridge already running:
+    ///
+    ///     protontricks-launch --appid 244210 shm-bridge.exe --verify
+    #[arg(long)]
+    verify: bool,
+}
 
 fn file_size(name: &str) -> usize {
     match name {
@@ -144,8 +160,103 @@ fn write_bridge_info(dir: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Open the overlay mapping by name and say what is in it.
+///
+/// Deliberately the same call a CSP script makes — `OpenFileMappingW` on the
+/// bare name, no `Local\\` prefix — so a success here means the panel can open
+/// it too, and a failure here is the failure the panel would hit.
+#[cfg(target_os = "windows")]
+fn verify() -> Result<()> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Memory::{
+        FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile, OpenFileMappingW, UnmapViewOfFile,
+    };
+    use windows::core::HSTRING;
+
+    println!(
+        "shm-bridge {} — verifying the overlay mapping",
+        env!("CARGO_PKG_VERSION")
+    );
+    println!("opening {OVERLAY_FILE} the way CSP does");
+
+    let name = HSTRING::from(OVERLAY_FILE);
+    // SAFETY: every pointer below is either checked for null or derived from a
+    // view this function mapped and unmaps before returning.
+    unsafe {
+        let handle = OpenFileMappingW(FILE_MAP_READ.0, false, &name).map_err(|error| {
+            anyhow::anyhow!(
+                "could not open {OVERLAY_FILE}: {error}\n\n\
+                 Nothing has created it in this prefix. Start shm-bridge.exe here \n\
+                 first, and make sure the desktop application is running on the \n\
+                 Linux side — it is what fills the file the bridge wraps."
+            )
+        })?;
+
+        let view = MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 0);
+        if view.Value.is_null() {
+            let _ = CloseHandle(handle);
+            return Err(anyhow::anyhow!(
+                "opened {OVERLAY_FILE} and could not map a view of it"
+            ));
+        }
+
+        let base = view.Value as *const u8;
+        let version = std::ptr::read_unaligned(base as *const u32);
+        let sequence = std::ptr::read_unaligned(base.add(4) as *const u32);
+        // Last field in the struct, so its offset is the size minus its own.
+        let app_version = std::slice::from_raw_parts(base.add(OVERLAY_FILE_SIZE - 16), 16);
+        let end = app_version
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(app_version.len());
+        let app_version = String::from_utf8_lossy(&app_version[..end]);
+
+        println!("  opened          yes");
+        println!("  frame version   {version}");
+        println!("  sequence        {sequence}");
+        println!(
+            "  application     {}",
+            if app_version.is_empty() {
+                "— (nothing has published yet)"
+            } else {
+                &app_version
+            }
+        );
+
+        let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS { Value: view.Value });
+        let _ = CloseHandle(handle);
+
+        if sequence == 0 {
+            println!(
+                "\nThe mapping is there and empty. The bridge is doing its job; the\n\
+                 desktop application is not publishing. Start it on the Linux side."
+            );
+        } else {
+            println!("\nThe overlay can be read from inside this prefix.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Same flag on the Linux build, so `--help` does not describe something that
+/// is not there. It cannot do the check: the mapping is a Win32 object and
+/// only a process inside the prefix can open it.
+#[cfg(not(target_os = "windows"))]
+fn verify() -> Result<()> {
+    Err(anyhow::anyhow!(
+        "--verify has to run inside the Proton prefix, where the Win32 mapping \n\
+         exists. Run the Windows build there:\n\n    \
+         protontricks-launch --appid 244210 shm-bridge.exe --verify"
+    ))
+}
+
 fn main() -> Result<()> {
-    let _ = Cli::parse();
+    let cli = Cli::parse();
+
+    if cli.verify {
+        return verify();
+    }
 
     let mut mappings = Vec::new();
 
