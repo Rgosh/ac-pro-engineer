@@ -5,6 +5,7 @@ use ac_core::updater::UpdateStatus;
 #[cfg(target_os = "linux")]
 use ac_tui::platform;
 use ac_tui::ui::UIRenderer;
+use ac_tui::keys;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
@@ -557,14 +558,20 @@ async fn main() -> Result<(), anyhow::Error> {
                     continue;
                 }
 
-                if key.code == KeyCode::F(10) {
+                // One place decides what a key means, and the hints at the
+                // bottom of every tab are printed from the same table. They
+                // used to be three independent claims about the key map, and
+                // two of them were wrong.
+                let action = keys::resolve(key, &app_lock.config.keys, app_lock.active_tab);
+
+                if action == Some(keys::Action::OverlayToggle) {
                     app_lock.overlay_manager.toggle();
                     let active = app_lock.overlay_manager.is_active;
                     info!("Master overlay toggled to {}", active);
                     continue;
                 }
 
-                if key.code == KeyCode::F(11) {
+                if action == Some(keys::Action::OverlayMenu) {
                     app_lock.show_overlay_menu = !app_lock.show_overlay_menu;
                     continue;
                 }
@@ -599,21 +606,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
 
                 if app_lock.show_help {
-                    match key.code {
-                        // F1 included because the modal itself says
-                        // "PRESS ESC, ?, Q, OR F1 TO CLOSE" in nine places,
-                        // and F1 was the one key of the four that did nothing
-                        // -- which reads as the modal being stuck.
-                        KeyCode::Esc
-                        | KeyCode::Char('?')
-                        | KeyCode::Char('q')
-                        | KeyCode::Char('Q')
-                        | KeyCode::Char('й')
-                        | KeyCode::Char('Й')
-                        | KeyCode::F(1) => {
-                            app_lock.show_help = false;
-                        }
-                        _ => {}
+                    // Whatever opens the help closes it, plus the fixed
+                    // aliases the modal names in nine places. Resolved rather
+                    // than listed: F1 used to be the one key of the four the
+                    // modal advertised that did nothing, which reads as the
+                    // modal being stuck.
+                    if matches!(action, Some(keys::Action::Help) | Some(keys::Action::Quit)) {
+                        app_lock.show_help = false;
                     }
                     continue;
                 }
@@ -630,30 +629,37 @@ async fn main() -> Result<(), anyhow::Error> {
                     continue;
                 }
 
-                match key.code {
-                    KeyCode::Char('?') | KeyCode::Char(',') | KeyCode::F(1) => {
+                // The Settings screen's key-capture mode wants the next
+                // keypress raw, whatever it is bound to — otherwise F10 could
+                // never be rebound, because it would toggle the overlay on the
+                // way past.
+                if app_lock.active_tab == AppTab::Settings && app_lock.ui_state.settings.capturing {
+                    let AppState {
+                        ui_state, config, ..
+                    } = &mut *app_lock;
+                    if ui_state.settings.capture_key(key, config)
+                        && let Err(error) = app_lock.config.save()
+                    {
+                        error!(error = ?error, "Could not save the key bindings");
+                    }
+                    continue;
+                }
+
+                match action {
+                    Some(keys::Action::Help) => {
                         app_lock.show_help = true;
                     }
-                    KeyCode::Esc
-                    | KeyCode::Char('q')
-                    | KeyCode::Char('Q')
-                    | KeyCode::Char('й')
-                    | KeyCode::Char('Й') => {
+                    Some(keys::Action::Quit) => {
                         app_lock.stage = AppStage::Launcher;
                         if !app_lock.is_demo_mode {
                             app_lock.disconnect();
                         }
                         continue;
                     }
-                    // Ctrl+S dumps the frame that was just drawn. Handled
-                    // here rather than in a tab arm because the buffer belongs
-                    // to the terminal, not to any one screen.
-                    KeyCode::Char('s')
-                    | KeyCode::Char('S')
-                    | KeyCode::Char('ы')
-                    | KeyCode::Char('Ы')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                    // The screenshot dumps the frame that was just drawn.
+                    // Handled here rather than in a tab arm because the buffer
+                    // belongs to the terminal, not to any one screen.
+                    Some(keys::Action::Screenshot) => {
                         let size = terminal.size().unwrap_or_default();
                         let result = save_screenshot(
                             terminal.current_buffer_mut(),
@@ -670,30 +676,20 @@ async fn main() -> Result<(), anyhow::Error> {
                         };
                         app_lock.ui_state.analysis.set_status(message);
                     }
-                    KeyCode::Char('l') | KeyCode::Char('L')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                    Some(keys::Action::Language) => {
                         app_lock.config.language = match app_lock.config.language {
                             Language::English => Language::Russian,
                             Language::Russian => Language::English,
                         };
                         let _res = app_lock.config.save();
                     }
-                    KeyCode::Tab => {
+                    Some(keys::Action::NextTab) => {
                         app_lock.active_tab = app_lock.active_tab.next();
                     }
-                    KeyCode::BackTab => {
+                    Some(keys::Action::PrevTab) => {
                         app_lock.active_tab = app_lock.active_tab.previous();
                     }
-                    KeyCode::Char('1') => app_lock.active_tab = AppTab::Dashboard,
-                    KeyCode::Char('2') => app_lock.active_tab = AppTab::Telemetry,
-                    KeyCode::Char('3') => app_lock.active_tab = AppTab::Engineer,
-                    KeyCode::Char('4') => app_lock.active_tab = AppTab::Setup,
-                    KeyCode::Char('5') => app_lock.active_tab = AppTab::Analysis,
-                    KeyCode::Char('6') => app_lock.active_tab = AppTab::Strategy,
-                    KeyCode::Char('7') => app_lock.active_tab = AppTab::Ffb,
-                    KeyCode::Char('8') => app_lock.active_tab = AppTab::Settings,
-                    KeyCode::Char('9') => app_lock.active_tab = AppTab::Guide,
+                    Some(keys::Action::GoToTab(tab)) => app_lock.active_tab = tab,
                     _ => match app_lock.active_tab {
                         AppTab::Settings => {
                             // The overlay category has an action, not just
@@ -794,11 +790,8 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                             _ => {}
                         },
-                        AppTab::Analysis => match key.code {
-                            KeyCode::Char('s')
-                            | KeyCode::Char('S')
-                            | KeyCode::Char('ы')
-                            | KeyCode::Char('Ы') => {
+                        AppTab::Analysis => match (action, key.code) {
+                            (Some(keys::Action::AnalysisSave), _) => {
                                 // The lap the user has selected, not the
                                 // fastest one. This used to read
                                 // `best_lap_index`, so selecting lap 3 and
@@ -816,22 +809,13 @@ async fn main() -> Result<(), anyhow::Error> {
                                         .set_status("No lap to save".to_string()),
                                 }
                             }
-                            KeyCode::Char('l')
-                            | KeyCode::Char('L')
-                            | KeyCode::Char('д')
-                            | KeyCode::Char('Д') => {
+                            (Some(keys::Action::AnalysisLoad), _) => {
                                 app_lock.ui_state.analysis.toggle_load_menu();
                             }
-                            KeyCode::Char('c')
-                            | KeyCode::Char('C')
-                            | KeyCode::Char('с')
-                            | KeyCode::Char('С') => {
+                            (Some(keys::Action::AnalysisCompare), _) => {
                                 app_lock.ui_state.analysis.toggle_compare();
                             }
-                            KeyCode::Char('e')
-                            | KeyCode::Char('E')
-                            | KeyCode::Char('у')
-                            | KeyCode::Char('У') => {
+                            (Some(keys::Action::AnalysisExport), _) => {
                                 let sel = app_lock
                                     .ui_state
                                     .analysis
@@ -878,17 +862,17 @@ async fn main() -> Result<(), anyhow::Error> {
                                         .set_status("No lap to export".to_string()),
                                 }
                             }
-                            KeyCode::Left => app_lock.ui_state.analysis.prev_tab(),
-                            KeyCode::Right => app_lock.ui_state.analysis.next_tab(),
-                            KeyCode::Up => {
+                            (_, KeyCode::Left) => app_lock.ui_state.analysis.prev_tab(),
+                            (_, KeyCode::Right) => app_lock.ui_state.analysis.next_tab(),
+                            (_, KeyCode::Up) => {
                                 let laps_len = app_lock.analyzer.laps.len();
                                 app_lock.ui_state.analysis.menu_up(laps_len);
                             }
-                            KeyCode::Down => {
+                            (_, KeyCode::Down) => {
                                 let laps_len = app_lock.analyzer.laps.len();
                                 app_lock.ui_state.analysis.menu_down(laps_len);
                             }
-                            KeyCode::Enter => {
+                            (_, KeyCode::Enter) => {
                                 let AppState {
                                     ui_state, analyzer, ..
                                 } = &mut *app_lock;
@@ -898,19 +882,27 @@ async fn main() -> Result<(), anyhow::Error> {
                         },
                         AppTab::Setup => {
                             let in_browser = *app_lock.setup_manager.browser_active.safe_lock();
-                            match key.code {
-                                // 'B' toggles between the local setup list and
-                                // the cloud browser, in either direction.
-                                KeyCode::Char('b')
-                                | KeyCode::Char('B')
-                                | KeyCode::Char('и')
-                                | KeyCode::Char('И') => {
+                            match (action, key.code) {
+                                // The browser key toggles between the local
+                                // setup list and the cloud browser, in either
+                                // direction.
+                                (Some(keys::Action::SetupBrowser), _) => {
                                     let mut active =
                                         app_lock.setup_manager.browser_active.safe_lock();
                                     *active = !*active;
                                 }
-                                _ if in_browser => handle_setup_browser_key(key.code, &app_lock),
-                                KeyCode::Up => {
+                                // Download reached nothing outside the browser,
+                                // while the hint on the list screen advertised
+                                // it. It opens the browser now, which is where
+                                // there is something to download.
+                                (Some(keys::Action::SetupDownload), _) if !in_browser => {
+                                    *app_lock.setup_manager.browser_active.safe_lock() = true;
+                                    app_lock.setup_manager.load_browser_car();
+                                }
+                                _ if in_browser => {
+                                    handle_setup_browser_key(action, key.code, &app_lock)
+                                }
+                                (_, KeyCode::Up) => {
                                     let current =
                                         app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
                                     if current > 0 {
@@ -920,7 +912,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                             .select(Some(current - 1));
                                     }
                                 }
-                                KeyCode::Down => {
+                                (_, KeyCode::Down) => {
                                     let current =
                                         app_lock.ui_state.setup_list_state.selected().unwrap_or(0);
                                     let total = app_lock.setup_manager.setups.safe_lock().len();
@@ -931,8 +923,8 @@ async fn main() -> Result<(), anyhow::Error> {
                                             .select(Some(current + 1));
                                     }
                                 }
-                                KeyCode::PageUp => app_lock.setup_manager.scroll_details(-1),
-                                KeyCode::PageDown => app_lock.setup_manager.scroll_details(1),
+                                (_, KeyCode::PageUp) => app_lock.setup_manager.scroll_details(-1),
+                                (_, KeyCode::PageDown) => app_lock.setup_manager.scroll_details(1),
                                 _ => {}
                             }
                         }
@@ -1015,9 +1007,21 @@ fn is_key_action(kind: event::KeyEventKind) -> bool {
 /// download, and `download_setup`, `load_browser_car`,
 /// `get_browser_selected_setup` and `scroll_details` had no callers anywhere
 /// in the workspace.
-fn handle_setup_browser_key(key: KeyCode, app: &AppState) {
+fn handle_setup_browser_key(action: Option<keys::Action>, key: KeyCode, app: &AppState) {
     let manager = &app.setup_manager;
     let focus_col = *manager.browser_focus_col.safe_lock();
+
+    if action == Some(keys::Action::SetupDownload) {
+        if let Some(setup) = manager.get_browser_selected_setup() {
+            let target = manager.get_browser_target_car();
+            if manager.download_setup(&setup, &target) {
+                info!("Installed setup '{}' for {}", setup.name, target);
+            } else {
+                error!("Could not install setup '{}' for {}", setup.name, target);
+            }
+        }
+        return;
+    }
 
     match key {
         KeyCode::Left => *manager.browser_focus_col.safe_lock() = 0,
@@ -1050,17 +1054,6 @@ fn handle_setup_browser_key(key: KeyCode, app: &AppState) {
         KeyCode::Enter if focus_col == 0 => {
             manager.load_browser_car();
             *manager.browser_focus_col.safe_lock() = 1;
-        }
-
-        KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('в') | KeyCode::Char('В') => {
-            if let Some(setup) = manager.get_browser_selected_setup() {
-                let target = manager.get_browser_target_car();
-                if manager.download_setup(&setup, &target) {
-                    info!("Installed setup '{}' for {}", setup.name, target);
-                } else {
-                    error!("Could not install setup '{}' for {}", setup.name, target);
-                }
-            }
         }
 
         KeyCode::PageUp => manager.scroll_details(-1),

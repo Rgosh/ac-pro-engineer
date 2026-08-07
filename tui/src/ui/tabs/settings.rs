@@ -10,12 +10,21 @@ pub enum SettingsCategory {
     Display,
     RaceEngineer,
     Overlay,
+    Keys,
 }
 
 pub struct SettingsState {
     pub category: SettingsCategory,
     pub selected_index: usize,
     pub is_editing: bool,
+    /// Waiting for the next keypress to become a binding.
+    ///
+    /// While this is set the main loop hands over the key untouched, before
+    /// resolving it — otherwise the overlay toggle could never be rebound,
+    /// because pressing it would toggle the overlay on the way past.
+    pub capturing: bool,
+    /// What the last capture refused to do, and why.
+    pub key_message: Option<String>,
 }
 
 impl Default for SettingsState {
@@ -30,6 +39,8 @@ impl SettingsState {
             category: SettingsCategory::System,
             selected_index: 0,
             is_editing: false,
+            capturing: false,
+            key_message: None,
         }
     }
 
@@ -38,33 +49,120 @@ impl SettingsState {
             SettingsCategory::System => SettingsCategory::Display,
             SettingsCategory::Display => SettingsCategory::RaceEngineer,
             SettingsCategory::RaceEngineer => SettingsCategory::Overlay,
-            SettingsCategory::Overlay => SettingsCategory::System,
+            SettingsCategory::Overlay => SettingsCategory::Keys,
+            SettingsCategory::Keys => SettingsCategory::System,
         };
         self.selected_index = 0;
         self.is_editing = false;
+        self.capturing = false;
     }
 
     pub fn prev_category(&mut self) {
         self.category = match self.category {
-            SettingsCategory::System => SettingsCategory::Overlay,
+            SettingsCategory::System => SettingsCategory::Keys,
             SettingsCategory::Display => SettingsCategory::System,
             SettingsCategory::RaceEngineer => SettingsCategory::Display,
             SettingsCategory::Overlay => SettingsCategory::RaceEngineer,
+            SettingsCategory::Keys => SettingsCategory::Overlay,
         };
         self.selected_index = 0;
         self.is_editing = false;
+        self.capturing = false;
     }
 
     pub fn set_category(&mut self, cat: SettingsCategory) {
         self.category = cat;
         self.selected_index = 0;
         self.is_editing = false;
+        self.capturing = false;
+    }
+
+    /// Take a keypress as the new binding for the selected action.
+    ///
+    /// Returns whether the config changed, so the caller writes it out. Esc
+    /// cancels; Delete puts the default back. A key already taken by another
+    /// action is refused with a reason rather than written — two actions on one
+    /// key means one of them silently stops working, and there is nothing on
+    /// screen to say which.
+    pub fn capture_key(&mut self, key: crossterm::event::KeyEvent, config: &mut AppConfig) -> bool {
+        use crossterm::event::KeyCode;
+
+        self.capturing = false;
+
+        if key.code == KeyCode::Esc {
+            self.key_message = None;
+            return false;
+        }
+
+        let bindings = crate::keys::all(&config.keys);
+        let Some((field, label, _)) = bindings.get(self.selected_index).copied() else {
+            return false;
+        };
+
+        if key.code == KeyCode::Delete || key.code == KeyCode::Backspace {
+            let default = crate::keys::all(&ac_core::config::KeyBindings::default())
+                .into_iter()
+                .find(|(name, _, _)| *name == field)
+                .map(|(_, _, value)| value.to_string());
+            if let Some(default) = default {
+                crate::keys::set(&mut config.keys, field, default);
+                self.key_message = None;
+                return true;
+            }
+            return false;
+        }
+
+        let Some(spelled) = crate::keys::spell(key) else {
+            self.key_message = Some("That key cannot be bound".to_string());
+            return false;
+        };
+
+        if let Some(taken_by) = crate::keys::conflict(&config.keys, field, &spelled) {
+            self.key_message = Some(format!(
+                "{} is already {}",
+                crate::keys::describe(&spelled),
+                taken_by
+            ));
+            return false;
+        }
+
+        crate::keys::set(&mut config.keys, field, spelled.clone());
+        self.key_message = Some(format!(
+            "{label} is now {}",
+            crate::keys::describe(&spelled)
+        ));
+        true
     }
 
     /// Returns whether this keypress changed `config`, so the caller knows to
     /// persist it. Navigating between items and categories does not; only the
     /// editing branch below touches the config.
     pub fn handle_input(&mut self, key: KeyCode, config: &mut AppConfig) -> bool {
+        // Bindings are not numbers, so the left/right/edit machinery below
+        // does not apply: Enter arms the capture, and the next keypress goes
+        // to `capture_key` before anything else looks at it.
+        if self.category == SettingsCategory::Keys {
+            match key {
+                KeyCode::Down => self.selected_index += 1,
+                KeyCode::Up => self.selected_index = self.selected_index.saturating_sub(1),
+                KeyCode::Right => self.next_category(),
+                KeyCode::Left => self.prev_category(),
+                KeyCode::Char('a') | KeyCode::Char('A') => {
+                    self.set_category(SettingsCategory::System)
+                }
+                KeyCode::Enter => {
+                    self.capturing = true;
+                    self.key_message = None;
+                }
+                _ => {}
+            }
+            let max_items = self.get_item_count();
+            if self.selected_index >= max_items {
+                self.selected_index = max_items.saturating_sub(1);
+            }
+            return false;
+        }
+
         if !self.is_editing {
             match key {
                 KeyCode::Down => self.selected_index += 1,
@@ -88,6 +186,9 @@ impl SettingsState {
                 }
                 KeyCode::Char('f') | KeyCode::Char('F') => {
                     self.set_category(SettingsCategory::Overlay)
+                }
+                KeyCode::Char('g') | KeyCode::Char('G') => {
+                    self.set_category(SettingsCategory::Keys)
                 }
 
                 KeyCode::Enter => self.is_editing = true,
@@ -132,11 +233,18 @@ impl SettingsState {
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 10,
             SettingsCategory::Overlay => 7,
+            // Counted off the binding list rather than written down, so adding
+            // an action cannot leave a row that is drawn and unreachable.
+            SettingsCategory::Keys => {
+                crate::keys::all(&ac_core::config::KeyBindings::default()).len()
+            }
         }
     }
 
     fn modify_value(&self, config: &mut AppConfig, delta: f32) {
         match self.category {
+            // Bindings are captured, not nudged: see `capture_key`.
+            SettingsCategory::Keys => {}
             SettingsCategory::System => match self.selected_index {
                 0 => {
                     if delta > 0.0 {
@@ -252,6 +360,15 @@ impl SettingsState {
     fn get_description(&self, lang: &Language) -> String {
         let is_ru = *lang == Language::Russian;
         match self.category {
+            SettingsCategory::Keys => {
+                // One line, and it has to fit: the description pane does not
+                // wrap, so a longer sentence comes out with a hole in it.
+                return if is_ru {
+                    "ENTER — назначить, DEL — стандарт, ESC — отмена".to_string()
+                } else {
+                    "ENTER to bind, DEL for the default, ESC to cancel".to_string()
+                };
+            }
             SettingsCategory::System => match self.selected_index {
                 0 => {
                     if is_ru {
@@ -708,8 +825,14 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         (
             SettingsCategory::Overlay,
             if is_ru { "ОВЕРЛЕЙ" } else { "OVERLAY" },
-            "🖥",
+            "🖥️",
             "[F]",
+        ),
+        (
+            SettingsCategory::Keys,
+            if is_ru { "КЛАВИШИ" } else { "KEYS" },
+            "⌨️",
+            "[G]",
         ),
     ];
 
@@ -743,8 +866,13 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             );
             let key_span = Span::styled(format!(" {} ", key), key_style);
 
+            // Measured in cells, not bytes. `name.len()` counts UTF-8 bytes,
+            // so ОВЕРЛЕЙ was twice as wide as this thought and the key tag ran
+            // off the right edge as "[F". The icon is an emoji and takes two
+            // cells; the tag is " [X] ", five; the block's borders, two.
+            let used = name.chars().count() + 4 + key.chars().count() + 2;
             let spacer = Span::styled(
-                " ".repeat(area.width.saturating_sub(name.len() as u16 + 8) as usize),
+                " ".repeat((area.width as usize).saturating_sub(used + 2)),
                 Style::default().bg(bg),
             );
 
@@ -757,6 +885,15 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_settings_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    // The other categories have five to ten items and give each a three-row
+    // block. There are twenty-three bindings, which is sixty-nine rows into a
+    // pane that has about thirty: every block loses its borders and the last
+    // ones are squeezed to nothing. One row each, and a scroll.
+    if app.ui_state.settings.category == SettingsCategory::Keys {
+        render_key_settings(f, area, app);
+        return;
+    }
+
     let count = app.ui_state.settings.get_item_count();
     let constraints = vec![Constraint::Length(3); count];
     let rows = Layout::default()
@@ -769,7 +906,85 @@ fn render_settings_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         SettingsCategory::Display => render_display_settings(f, &rows, app),
         SettingsCategory::RaceEngineer => render_engineer_settings(f, &rows, app),
         SettingsCategory::Overlay => render_overlay_settings(f, &rows, app),
+        // Unreachable: the key list is drawn before this function splits the
+        // area, because twenty-three three-row blocks do not fit in a pane
+        // that holds eleven.
+        SettingsCategory::Keys => {}
     }
+}
+
+/// Every action, the key it is on, and whether the panel is waiting for a new
+/// one.
+///
+/// Drawn from `keys::all`, which is the same list `keys::resolve` consults —
+/// so a row here that says F10 is a row whose key really is F10.
+///
+/// One row per binding, scrolled to keep the selection on screen. There are
+/// twenty-three of them and the pane holds about thirty rows, so this fits
+/// today and will not when the twenty-fourth arrives; the offset is what makes
+/// that a non-event.
+fn render_key_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let is_ru = app.config.language == Language::Russian;
+    let state = &app.ui_state.settings;
+    let bindings = crate::keys::all(&app.config.keys);
+
+    let visible = area.height.max(1) as usize;
+    let offset = state.selected_index.saturating_sub(visible.saturating_sub(1));
+
+    let mut lines: Vec<Line<'_>> = Vec::with_capacity(visible);
+    for (index, (_, label, binding)) in bindings.iter().enumerate().skip(offset).take(visible) {
+        let selected = index == state.selected_index;
+
+        let value = if selected && state.capturing {
+            if is_ru {
+                "нажмите клавишу…".to_string()
+            } else {
+                "press a key…".to_string()
+            }
+        } else {
+            crate::keys::describe(binding)
+        };
+
+        // A hand-edited config with a typo in it costs one shortcut. Saying so
+        // here is the difference between "that key does nothing" and "that key
+        // is spelled wrong".
+        let unreadable = crate::keys::parse(binding).is_none();
+
+        let row_style = if selected {
+            Style::default().bg(Color::DarkGray)
+        } else {
+            Style::default()
+        };
+        let value_style = if state.capturing && selected {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else if unreadable {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        };
+
+        // Measured in characters, not bytes: the Russian labels are two bytes
+        // each and the padding came out half as wide as it should be.
+        let label_width = label.chars().count();
+        let value_width = value.chars().count();
+        let room = (area.width as usize).saturating_sub(label_width + value_width + 4);
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{} {}", if selected { "▸" } else { " " }, label),
+                row_style.fg(if selected { Color::White } else { Color::Gray }),
+            ),
+            Span::styled(" ".repeat(room), row_style),
+            Span::styled(value, value_style.bg(row_style.bg.unwrap_or(Color::Reset))),
+            Span::styled("  ", row_style),
+        ]));
+    }
+
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 fn render_item(
@@ -1114,16 +1329,30 @@ fn render_description_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    // A/S/D/F/G, not A/S/D. There have been four categories since the overlay
+    // one landed and five since the key map, and this line named three of them
+    // -- so the two newest were reachable only by arrow key, and the help
+    // overlay repeated the same wrong list.
     let controls_text = if is_ru {
-        "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [A/S/D] Категории"
+        "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [A/S/D/F/G] Категории"
     } else {
-        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D] Categories"
+        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D/F/G] Categories"
     };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(inner);
+
+    // What the last capture did, or refused to do. A binding that was declined
+    // because another action already has the key looks exactly like a binding
+    // that did not register, without this.
+    let desc = match app.ui_state.settings.key_message.as_deref() {
+        Some(message) if app.ui_state.settings.category == SettingsCategory::Keys => {
+            message.to_string()
+        }
+        _ => desc,
+    };
 
     let p_desc = Paragraph::new(format!("ℹ️ {}", desc)).style(Style::default().fg(Color::White));
     let p_ctrl = Paragraph::new(controls_text)
@@ -1132,4 +1361,147 @@ fn render_description_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     f.render_widget(p_desc, chunks[0]);
     f.render_widget(p_ctrl, chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    fn on_keys() -> SettingsState {
+        let mut state = SettingsState::new();
+        state.set_category(SettingsCategory::Keys);
+        state
+    }
+
+    /// The reason `capturing` exists: the next keypress has to reach here
+    /// before anything resolves it, or the overlay toggle could never be
+    /// rebound — pressing it would toggle the overlay on the way past.
+    #[test]
+    fn enter_arms_the_capture_and_the_next_key_lands_on_the_binding() {
+        let mut state = on_keys();
+        let mut config = AppConfig::default();
+
+        assert!(!state.capturing);
+        state.handle_input(KeyCode::Enter, &mut config);
+        assert!(state.capturing, "ENTER has to arm the capture");
+
+        let changed = state.capture_key(
+            KeyEvent::new(KeyCode::F(9), KeyModifiers::NONE),
+            &mut config,
+        );
+
+        assert!(changed, "the config changed, so the caller has to save it");
+        assert!(!state.capturing, "one keypress, not a mode to escape from");
+        assert_eq!(config.keys.help, "f9");
+    }
+
+    /// Two actions on one key means one of them silently stops working, with
+    /// nothing on screen to say which. Refused, with a reason.
+    #[test]
+    fn a_key_another_action_already_has_is_refused() {
+        let mut state = on_keys();
+        let mut config = AppConfig::default();
+        // Index 2 is the overlay toggle; F1 is the help.
+        state.selected_index = 2;
+        state.capturing = true;
+
+        let changed = state.capture_key(
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+            &mut config,
+        );
+
+        assert!(!changed);
+        assert_eq!(config.keys.overlay_toggle, "f10", "left as it was");
+        let message = state.key_message.expect("a reason to show the driver");
+        assert!(message.contains("F1"), "{message}");
+        assert!(message.contains("Help"), "{message}");
+    }
+
+    /// Escape has to leave the binding alone, or arming the capture by accident
+    /// is a binding lost.
+    #[test]
+    fn escape_cancels_without_touching_the_binding() {
+        let mut state = on_keys();
+        let mut config = AppConfig::default();
+        state.capturing = true;
+
+        let changed = state.capture_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &mut config,
+        );
+
+        assert!(!changed);
+        assert!(!state.capturing);
+        assert_eq!(config.keys.help, "f1");
+    }
+
+    /// A way back from a binding that turned out to be wrong, without editing
+    /// the config by hand.
+    #[test]
+    fn delete_puts_the_default_back() {
+        let mut state = on_keys();
+        let mut config = AppConfig::default();
+        config.keys.help = "ctrl+h".to_string();
+        state.capturing = true;
+
+        let changed = state.capture_key(
+            KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+            &mut config,
+        );
+
+        assert!(changed);
+        assert_eq!(config.keys.help, "f1");
+    }
+
+    /// Every binding has a row, and the selection cannot run off the end of
+    /// the list onto one that is not drawn.
+    #[test]
+    fn the_key_list_has_a_row_for_every_binding() {
+        let state = on_keys();
+        assert_eq!(
+            state.get_item_count(),
+            crate::keys::all(&ac_core::config::KeyBindings::default()).len()
+        );
+
+        let mut state = on_keys();
+        let mut config = AppConfig::default();
+        for _ in 0..100 {
+            state.handle_input(KeyCode::Down, &mut config);
+        }
+        assert_eq!(state.selected_index, state.get_item_count() - 1);
+    }
+
+    /// Every category has to be reachable by its advertised letter. The list
+    /// said A/S/D while there were four of them, and then five.
+    #[test]
+    fn every_category_is_reachable_by_its_letter() {
+        let mut config = AppConfig::default();
+        for (key, expected) in [
+            ('a', SettingsCategory::System),
+            ('s', SettingsCategory::Display),
+            ('d', SettingsCategory::RaceEngineer),
+            ('f', SettingsCategory::Overlay),
+            ('g', SettingsCategory::Keys),
+        ] {
+            let mut state = SettingsState::new();
+            state.handle_input(KeyCode::Char(key), &mut config);
+            assert_eq!(state.category, expected, "[{key}] should open {expected:?}");
+        }
+    }
+
+    /// And by the arrows, all the way round in both directions.
+    #[test]
+    fn the_categories_cycle_both_ways() {
+        let mut state = SettingsState::new();
+        let start = state.category;
+        for _ in 0..5 {
+            state.next_category();
+        }
+        assert_eq!(state.category, start);
+        for _ in 0..5 {
+            state.prev_category();
+        }
+        assert_eq!(state.category, start);
+    }
 }

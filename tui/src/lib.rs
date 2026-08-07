@@ -1,3 +1,4 @@
+pub mod keys;
 pub mod platform;
 pub mod ui;
 
@@ -99,7 +100,7 @@ impl<T> SafeLock<T> for Mutex<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppTab {
     Dashboard,
     Telemetry,

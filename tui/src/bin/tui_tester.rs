@@ -266,6 +266,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     *app.setup_manager.browser_active.safe_lock() = false;
     println!("  [OK] Rendered Setup_cloud.svg");
 
+    // 3b. Settings_Keys.svg — twenty-three rows in a pane that holds about
+    // thirty, so this is the screenshot that shows when it stops fitting.
+    app.active_tab = AppTab::Settings;
+    app.ui_state
+        .settings
+        .set_category(ac_tui::ui::tabs::settings::SettingsCategory::Keys);
+    terminal.draw(|f| renderer.render(f, &app))?;
+    buffer_to_svg(
+        terminal.backend().buffer(),
+        width,
+        height,
+        &screenshot_dir.join("Settings_Keys.svg"),
+    )?;
+    app.ui_state
+        .settings
+        .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
+    println!("  [OK] Rendered Settings_Keys.svg");
+
     // 4. Analysis_Radar.svg
     app.active_tab = AppTab::Analysis;
     app.ui_state.analysis.next_tab();
@@ -305,6 +323,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.ui_state.overlay_mode = false;
     println!("  [OK] Rendered Overlay_Control.svg");
 
-    println!("\nALL 14 POPULATED REALISTIC VECTOR SVG SCREENSHOTS GENERATED SUCCESSFULLY!");
+    println!("\nALL 15 POPULATED REALISTIC VECTOR SVG SCREENSHOTS GENERATED SUCCESSFULLY!");
     Ok(())
 }

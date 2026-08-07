@@ -81,6 +81,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub alerts: AlertsConfig,
 
+    /// What each key does. See [`KeyBindings`].
+    #[serde(default)]
+    pub keys: KeyBindings,
+
     /// What the in-game overlay shows. Published as flags on every frame, so a
     /// change here reaches the panel on the next tick without a restart.
     #[serde(default)]
@@ -237,6 +241,176 @@ fn default_wear_warning() -> f32 {
     96.0
 }
 
+/// What each key in the terminal application does.
+///
+/// Strings rather than key codes, and in this crate rather than in `ac_tui`,
+/// for two reasons. This crate does not depend on crossterm and should not
+/// start — a config file is data, and turning that data into a `KeyCode` is
+/// the terminal's business. And a config full of `"ctrl+s"` is a config
+/// someone can edit in a text editor when the key they bound turns out to be
+/// the one their terminal swallows.
+///
+/// The spelling is what `ac_tui::keys` parses and prints back: an optional
+/// `ctrl+`, `shift+` or `alt+`, then a name (`f1`, `esc`, `tab`, `enter`,
+/// `space`, `up`, `pgup`, `del`, …) or a single character. Case does not
+/// matter. Anything unparseable leaves that action unbound rather than
+/// crashing, and the Settings screen says so.
+///
+/// Every field is `#[serde(default)]`, so a config written before this existed
+/// gains the defaults rather than failing to load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyBindings {
+    #[serde(default = "key_help")]
+    pub help: String,
+    #[serde(default = "key_quit")]
+    pub quit: String,
+    #[serde(default = "key_overlay_toggle")]
+    pub overlay_toggle: String,
+    #[serde(default = "key_overlay_menu")]
+    pub overlay_menu: String,
+    #[serde(default = "key_screenshot")]
+    pub screenshot: String,
+    #[serde(default = "key_language")]
+    pub language: String,
+    #[serde(default = "key_next_tab")]
+    pub next_tab: String,
+    #[serde(default = "key_prev_tab")]
+    pub prev_tab: String,
+
+    #[serde(default = "key_tab_1")]
+    pub tab_dashboard: String,
+    #[serde(default = "key_tab_2")]
+    pub tab_telemetry: String,
+    #[serde(default = "key_tab_3")]
+    pub tab_engineer: String,
+    #[serde(default = "key_tab_4")]
+    pub tab_setup: String,
+    #[serde(default = "key_tab_5")]
+    pub tab_analysis: String,
+    #[serde(default = "key_tab_6")]
+    pub tab_strategy: String,
+    #[serde(default = "key_tab_7")]
+    pub tab_ffb: String,
+    #[serde(default = "key_tab_8")]
+    pub tab_settings: String,
+    #[serde(default = "key_tab_9")]
+    pub tab_guide: String,
+
+    #[serde(default = "key_analysis_save")]
+    pub analysis_save: String,
+    #[serde(default = "key_analysis_load")]
+    pub analysis_load: String,
+    #[serde(default = "key_analysis_compare")]
+    pub analysis_compare: String,
+    #[serde(default = "key_analysis_export")]
+    pub analysis_export: String,
+
+    #[serde(default = "key_setup_browser")]
+    pub setup_browser: String,
+    #[serde(default = "key_setup_download")]
+    pub setup_download: String,
+}
+
+fn key_help() -> String {
+    "f1".to_string()
+}
+fn key_quit() -> String {
+    "esc".to_string()
+}
+fn key_overlay_toggle() -> String {
+    "f10".to_string()
+}
+fn key_overlay_menu() -> String {
+    "f11".to_string()
+}
+fn key_screenshot() -> String {
+    "ctrl+s".to_string()
+}
+fn key_language() -> String {
+    "ctrl+l".to_string()
+}
+fn key_next_tab() -> String {
+    "tab".to_string()
+}
+fn key_prev_tab() -> String {
+    "shift+tab".to_string()
+}
+fn key_tab_1() -> String {
+    "1".to_string()
+}
+fn key_tab_2() -> String {
+    "2".to_string()
+}
+fn key_tab_3() -> String {
+    "3".to_string()
+}
+fn key_tab_4() -> String {
+    "4".to_string()
+}
+fn key_tab_5() -> String {
+    "5".to_string()
+}
+fn key_tab_6() -> String {
+    "6".to_string()
+}
+fn key_tab_7() -> String {
+    "7".to_string()
+}
+fn key_tab_8() -> String {
+    "8".to_string()
+}
+fn key_tab_9() -> String {
+    "9".to_string()
+}
+fn key_analysis_save() -> String {
+    "s".to_string()
+}
+fn key_analysis_load() -> String {
+    "l".to_string()
+}
+fn key_analysis_compare() -> String {
+    "c".to_string()
+}
+fn key_analysis_export() -> String {
+    "e".to_string()
+}
+fn key_setup_browser() -> String {
+    "b".to_string()
+}
+fn key_setup_download() -> String {
+    "d".to_string()
+}
+
+impl Default for KeyBindings {
+    fn default() -> Self {
+        Self {
+            help: key_help(),
+            quit: key_quit(),
+            overlay_toggle: key_overlay_toggle(),
+            overlay_menu: key_overlay_menu(),
+            screenshot: key_screenshot(),
+            language: key_language(),
+            next_tab: key_next_tab(),
+            prev_tab: key_prev_tab(),
+            tab_dashboard: key_tab_1(),
+            tab_telemetry: key_tab_2(),
+            tab_engineer: key_tab_3(),
+            tab_setup: key_tab_4(),
+            tab_analysis: key_tab_5(),
+            tab_strategy: key_tab_6(),
+            tab_ffb: key_tab_7(),
+            tab_settings: key_tab_8(),
+            tab_guide: key_tab_9(),
+            analysis_save: key_analysis_save(),
+            analysis_load: key_analysis_load(),
+            analysis_compare: key_analysis_compare(),
+            analysis_export: key_analysis_export(),
+            setup_browser: key_setup_browser(),
+            setup_download: key_setup_download(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub background: ColorTuple,
@@ -321,6 +495,7 @@ impl Default for AppConfig {
             review_banner_hidden: false,
 
             alerts: AlertsConfig::default(),
+            keys: KeyBindings::default(),
             data_path: PathBuf::from("./data"),
             ac_install_path: PathBuf::new(),
             ac_documents_path: PathBuf::new(),
