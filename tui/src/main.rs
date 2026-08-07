@@ -69,18 +69,32 @@ fn set_console_icon() {
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct AppArgs {
+    /// Do not write a log file at all.
+    ///
+    /// The log is small and it is the first thing a bug report needs, so this
+    /// is not the default — but it is written under the config directory, and
+    /// a machine where that is not writable should still start.
     #[arg(short, long, conflicts_with = "log-level", conflicts_with = "log")]
     silent: bool,
 
+    /// How much to log. Defaults to `info`.
+    ///
+    /// `debug` adds the telemetry loop and the overlay writer. `trace` adds
+    /// every shared-memory read, which is tens of lines a second and is only
+    /// worth it when chasing a connection that comes and goes.
     #[arg(short, long, id = "log-level", conflicts_with = "silent")]
     log_level: Option<AppLogLevel>,
 
+    /// Write the log to this file instead of under the config directory.
     #[arg(long, conflicts_with = "silent")]
     log: Option<PathBuf>,
 
+    /// Draw the desktop overlay window with made-up numbers, to position it
+    /// without starting the game. Windows only; does nothing elsewhere.
     #[arg(long = "overlay-test-d")]
     overlay_test_d: bool,
 
+    /// The same, in the VR compositor rather than on the desktop.
     #[arg(long = "overlay-test-vr")]
     overlay_test_vr: bool,
 
