@@ -21,6 +21,16 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 memmap2 = { workspace = true }
 image = "0.24"
+# Screenshots. `tui_tester` renders the TUI into a ratatui buffer, turns it into
+# SVG (which is the exact, diffable record of what was drawn) and rasterises it
+# here — so the PNGs in `screenshots/` are the real UI rather than a mock-up,
+# and regenerating them needs nothing installed on the machine.
+# `raster-images` is off: it pulls a JPEG decoder that does not build on this
+# toolchain, and the screenshots contain no bitmaps — only text and rectangles.
+resvg = { version = "0.48", default-features = false, features = [
+    "text",
+    "system-fonts",
+] }
 tokio = { workspace = true, features = [
     "rt-multi-thread",
     "rt",

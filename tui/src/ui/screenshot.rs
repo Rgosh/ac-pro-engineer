@@ -22,6 +22,16 @@ pub fn buffer_to_svg(
     height: u16,
     output_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(output_path, svg_string(buffer, width, height))?;
+    Ok(())
+}
+
+/// The SVG itself, so the PNG writer below can rasterise exactly this rather
+/// than draw the same thing a second way.
+fn svg_string(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) -> String {
     let char_w = 10u32;
     let char_h = 20u32;
     let header_h = 32u32;
@@ -33,7 +43,7 @@ pub fn buffer_to_svg(
 
     let mut svg = String::with_capacity(64 * 1024);
     svg.push_str(&format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}" style="background-color: #0b0f19; font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace; font-size: {}px;">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}" style="background-color: #0b0f19; font-family: 'DejaVu Sans Mono', 'Noto Color Emoji', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace; font-size: {}px;">"#,
         total_w, total_h, total_w, total_h, font_size
     ));
     svg.push('\n');
@@ -133,8 +143,59 @@ pub fn buffer_to_svg(
     }
 
     svg.push_str("</svg>\n");
+    svg
+}
 
-    fs::write(output_path, svg)?;
+/// Render `buffer` to a PNG file at `output_path`.
+///
+/// The SVG above is the record — exact, diffable, and produced from the same
+/// buffer the terminal drew. This rasterises it, because a README on GitHub
+/// wants a bitmap and because "here is a picture of the program" should not
+/// require anyone to install a converter. Same pixels either way: nothing is
+/// drawn twice or by hand.
+///
+/// `scale` is a multiplier on the SVG's own size — 2.0 gives a crisp image on
+/// a high-DPI screen at half the on-screen width.
+pub fn buffer_to_png(
+    buffer: &ratatui::buffer::Buffer,
+    width: u16,
+    height: u16,
+    output_path: &Path,
+    scale: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use resvg::tiny_skia;
+    use resvg::usvg;
+
+    let svg = svg_string(buffer, width, height);
+
+    // System fonts, because the monospace stack above has to resolve to
+    // something real. Without this every glyph silently renders as nothing and
+    // the PNG comes out as an empty dark rectangle.
+    let mut fontdb = usvg::fontdb::Database::new();
+    fontdb.load_system_fonts();
+    let options = usvg::Options {
+        fontdb: std::sync::Arc::new(fontdb),
+        ..usvg::Options::default()
+    };
+
+    let tree = usvg::Tree::from_str(&svg, &options)?;
+    let size = tree.size().to_int_size();
+    let target = size
+        .scale_by(scale)
+        .ok_or("the screenshot scaled to nothing")?;
+
+    let mut pixmap = tiny_skia::Pixmap::new(target.width(), target.height())
+        .ok_or("could not allocate the screenshot")?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    pixmap.save_png(output_path)?;
     Ok(())
 }
 

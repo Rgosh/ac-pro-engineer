@@ -5,12 +5,32 @@ use ac_core::engineer::{Recommendation, Severity};
 use ac_core::overlay::OverlayMode;
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
-use ac_tui::ui::screenshot::buffer_to_svg;
+use ac_tui::ui::screenshot::{buffer_to_png, buffer_to_svg};
 use ac_tui::{AppStage, AppState, AppTab, SafeLock};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::fs;
 use std::path::Path;
+
+/// Write one screenshot, twice: the SVG is the exact record of what was drawn,
+/// the PNG is what a README can show.
+///
+/// Both come from the same buffer and the same SVG, so they cannot disagree.
+fn capture(
+    terminal: &ratatui::Terminal<TestBackend>,
+    width: u16,
+    height: u16,
+    dir: &Path,
+    name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let buffer = terminal.backend().buffer();
+    buffer_to_svg(buffer, width, height, &dir.join(format!("{name}.svg")))?;
+    // Two, for a screen that is 1416 CSS pixels wide: readable inline on
+    // GitHub and still crisp when opened.
+    buffer_to_png(buffer, width, height, &dir.join(format!("{name}.png")), 2.0)?;
+    println!("  [OK] Rendered {name}.svg + {name}.png");
+    Ok(())
+}
 
 fn create_populated_app_state() -> AppState {
     let mut app = AppState::new(OverlayMode::External);
@@ -43,6 +63,10 @@ fn create_populated_app_state() -> AppState {
         steer_angle: -0.12,
         acc_g: [1.38, 0.0, 0.65],
         wheels_pressure: [27.4, 27.6, 27.5, 27.3],
+        // A stint's worth of wear, not a fresh set. Every screenshot showed
+        // "0%" in red on all four corners, because nothing filled this in —
+        // which reads as the readout being broken rather than as no data.
+        tyre_wear: [96.8, 96.4, 94.9, 95.2],
         tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
         tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
         tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
@@ -51,6 +75,9 @@ fn create_populated_app_state() -> AppState {
         road_temp: 34.0,
         tc: 3.0,
         abs: 2.0,
+        // The cockpit block reads these, and at zero it showed "MAP 0" and
+        // "BIAS 0.0%" next to live numbers.
+        brake_bias: 0.567,
         ..Default::default()
     };
     app.mock_physics = Some(phys);
@@ -64,6 +91,16 @@ fn create_populated_app_state() -> AppState {
         i_best_time: 81452,
         position: 2,
         fuel_x_lap: 2.85,
+        // Half an hour left, a car a third of the way round, and a delta worth
+        // looking at. The footer and the session block read these, and with
+        // them at zero the screenshots showed "-:--.---" and "0.0 min" beside
+        // live telemetry.
+        session_time_left: 1_512_000.0,
+        normalized_car_position: 0.34,
+        current_sector_index: 1,
+        engine_map: 4,
+        last_sector_time: 27_940,
+        number_of_laps: 0,
         ..Default::default()
     });
 
@@ -108,8 +145,15 @@ fn create_populated_app_state() -> AppState {
             slip_avg: 0.02,
         });
     }
-    for p in history {
+    for (index, p) in history.into_iter().enumerate() {
         app.physics_history.push(p);
+        // The footer reads the *graphics* history for the lap times, and
+        // nothing filled it — so every screenshot showed "L: -:--.---" and
+        // "B: -:--.---" underneath a live session.
+        if let Some(mut g) = app.mock_graphics {
+            g.i_current_time = 42_500 + index as i32 * 8;
+            app.graphics_history.push(g);
+        }
     }
 
     // Lap Data for Analysis
@@ -200,7 +244,7 @@ fn create_populated_app_state() -> AppState {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting REALISTIC POPULATED SVG Vector Screenshot Generator (14 target screens)...");
+    println!("Rendering every screen to SVG and PNG...");
 
     let width = 140;
     let height = 40;
@@ -218,53 +262,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Launcher.svg
     app.stage = AppStage::Launcher;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Launcher.svg"),
-    )?;
-    println!("  [1/14] Rendered Launcher.svg");
+    capture(&terminal, width, height, screenshot_dir, "Launcher")?;
 
     // 2. Main Running Stage (Live Populated Telemetry)
     app.stage = AppStage::Running;
 
     let targets = [
-        (AppTab::Dashboard, "Dashboard.svg"),
-        (AppTab::Telemetry, "Telemetry.svg"),
-        (AppTab::Engineer, "Engineer.svg"),
-        (AppTab::Setup, "Setup_1.svg"),
-        (AppTab::Analysis, "Analysis_Overview.svg"),
-        (AppTab::Strategy, "Strategy.svg"),
-        (AppTab::Ffb, "FFB_Tuning.svg"),
-        (AppTab::Settings, "Settings.svg"),
-        (AppTab::Guide, "Guide.svg"),
+        (AppTab::Dashboard, "Dashboard"),
+        (AppTab::Telemetry, "Telemetry"),
+        (AppTab::Engineer, "Engineer"),
+        (AppTab::Setup, "Setup_1"),
+        (AppTab::Analysis, "Analysis_Overview"),
+        (AppTab::Strategy, "Strategy"),
+        (AppTab::Ffb, "FFB_Tuning"),
+        (AppTab::Settings, "Settings"),
+        (AppTab::Guide, "Guide"),
     ];
 
-    for (tab, filename) in &targets {
+    for (tab, name) in &targets {
         app.active_tab = *tab;
         terminal.draw(|f| renderer.render(f, &app))?;
-        buffer_to_svg(
-            terminal.backend().buffer(),
-            width,
-            height,
-            &screenshot_dir.join(filename),
-        )?;
-        println!("  [OK] Rendered {}", filename);
+        capture(&terminal, width, height, screenshot_dir, name)?;
     }
 
     // 3. Setup_cloud.svg
     app.active_tab = AppTab::Setup;
     *app.setup_manager.browser_active.safe_lock() = true;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Setup_cloud.svg"),
-    )?;
+    capture(&terminal, width, height, screenshot_dir, "Setup_cloud")?;
     *app.setup_manager.browser_active.safe_lock() = false;
-    println!("  [OK] Rendered Setup_cloud.svg");
 
     // 3b. Settings_Keys.svg — twenty-three rows in a pane that holds about
     // thirty, so this is the screenshot that shows when it stops fitting.
@@ -273,28 +299,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .settings
         .set_category(ac_tui::ui::tabs::settings::SettingsCategory::Keys);
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Settings_Keys.svg"),
-    )?;
+    capture(&terminal, width, height, screenshot_dir, "Settings_Keys")?;
     app.ui_state
         .settings
         .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
-    println!("  [OK] Rendered Settings_Keys.svg");
 
     // 4. Analysis_Radar.svg
     app.active_tab = AppTab::Analysis;
     app.ui_state.analysis.next_tab();
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Analysis_Radar.svg"),
-    )?;
-    println!("  [OK] Rendered Analysis_Radar.svg");
+    capture(&terminal, width, height, screenshot_dir, "Analysis_Radar")?;
 
     // 5. Help_Modal.svg
     // AppState::show_help, not UIState::show_help. The renderer checks the
@@ -302,27 +316,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Help_Modal.svg was byte-identical to the screenshot before it.
     app.show_help = true;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Help_Modal.svg"),
-    )?;
+    capture(&terminal, width, height, screenshot_dir, "Help_Modal")?;
     app.show_help = false;
-    println!("  [OK] Rendered Help_Modal.svg");
 
     // 6. Overlay_Control.svg
     app.ui_state.overlay_mode = true;
     terminal.draw(|f| renderer.render(f, &app))?;
-    buffer_to_svg(
-        terminal.backend().buffer(),
-        width,
-        height,
-        &screenshot_dir.join("Overlay_Control.svg"),
-    )?;
+    capture(&terminal, width, height, screenshot_dir, "Overlay_Control")?;
     app.ui_state.overlay_mode = false;
-    println!("  [OK] Rendered Overlay_Control.svg");
 
-    println!("\nALL 15 POPULATED REALISTIC VECTOR SVG SCREENSHOTS GENERATED SUCCESSFULLY!");
+    println!("\nDone. SVG is the record; PNG is what the README shows.");
     Ok(())
 }
