@@ -24,7 +24,7 @@ allocates nothing per frame that can be allocated once.
 |---|---|
 | Struct, generator, flags | `core/src/overlay/frame.rs` |
 | Install / uninstall / describe | `core/src/overlay/install.rs` |
-| The panel | `apps/lua/ac_pro_engineer/ac_pro_engineer.lua` |
+| The panel | `apps/lua/ac_pro_engineer/` — entry point plus `acpe/` |
 | Generated layout | `apps/lua/ac_pro_engineer/frame_layout.lua` |
 | Manifest, five windows | `apps/lua/ac_pro_engineer/manifest.ini` |
 | LÖVE harness | `apps/lua/love/` — see its README |

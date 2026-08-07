@@ -167,6 +167,42 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings
 ```
 
+## How the panel is laid out
+
+One file per thing, under `apps/lua/ac_pro_engineer/`:
+
+```
+ac_pro_engineer.lua      the entry point CSP loads, and nothing else
+frame_layout.lua         GENERATED — see the note at its top
+manifest.ini             the windows CSP opens
+acpe/settings.lua        what the driver chose, and making it stick
+acpe/i18n.lua            the panel's own words, in two languages
+acpe/theme.lua           colours, accents, the editable palette
+acpe/layout.lua          text sizes, spacing, the measured window
+acpe/format.lua          numbers into strings, once per settled frame
+acpe/frame.lua           the shared block and the snapshot drawn from it
+acpe/blocks.lua          one function per thing on screen
+acpe/controls.lua        the widgets the settings window is built from
+acpe/console.lua         typed commands, for what has no widget
+acpe/windows/*.lua       one file per window
+```
+
+The layering runs one way and only one way: settings → i18n/theme → layout →
+format → frame → blocks → windows. A `require` that goes back up that list is a
+cycle, and LuaJIT will hand the requiring module a half-built table rather than
+fail.
+
+Two things live in the entry point and nowhere else: `EXPECTED_VERSION` and
+`PANEL_VERSION`. `acpe/frame.lua` is where they are *compared* against a frame,
+and it is handed them by `frame.configure` — but the installer greps
+`ac_pro_engineer.lua` for both, and three cargo tests read them from there.
+
+**A new module has to be added to `FILES` in `core/src/overlay/install.rs`.**
+`include_bytes!` takes a literal path, so the list is written out by hand;
+`every_lua_file_in_the_app_folder_is_shipped` fails when one is missed, because
+the alternative is an install missing a `require` target — which fails at load,
+in the game, with every window drawing the error.
+
 ## The terminal's key map
 
 `tui/src/keys.rs` is the only thing that decides what a key does, and the only
@@ -202,6 +238,17 @@ fails rather than going quietly missing.
   the same bytes and read as Lua strings.
 - `ac.setWindowSizeConstraints` removed the resize grip from every window in the
   app. Do not reach for it without a way to test first.
+- **`require` is cached, and a "reload" that does not clear `package.loaded`
+  is not a reload.** CSP throws the whole Lua state away between loads; both
+  harnesses have to do the same by hand, or a reloaded entry point gets the
+  module instances the previous load left behind, with their frame already read
+  and their settings already applied.
+- **A cdata reference does not keep its owner alive.** `b[0]` on an
+  `ffi.new('F[1]')` is a reference into `b`; let `b` go out of scope and the
+  next collection frees the memory underneath it, after which every field reads
+  as zero. This sat in the LuaJIT harness undetected for as long as the panel
+  was one file — nothing allocated enough between opening the mapping and
+  reading it to trigger a collection. Twelve modules did.
 - **`LAZY = FULL` in the manifest loses everything the script holds.** CSP
   unloads the script when the last window closes and loads it again when one
   opens, so a driver who closed the panel to look at the track got the defaults

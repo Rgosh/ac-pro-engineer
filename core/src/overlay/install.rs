@@ -24,6 +24,12 @@ pub const APP_DIR: &str = "ac_pro_engineer";
 
 /// The app, as shipped. Embedded so it cannot drift from the struct layout
 /// this build uses.
+///
+/// A tree, not a flat list: the panel is `ac_pro_engineer.lua` plus a dozen
+/// modules under `acpe/`, and `install_into` creates the directories on the
+/// way. Every `.lua` file in the source folder has to appear here or it simply
+/// does not reach the game —
+/// `every_lua_file_in_the_app_folder_is_shipped` fails when one is missed.
 const FILES: &[(&str, &[u8])] = &[
     (
         "ac_pro_engineer.lua",
@@ -41,7 +47,77 @@ const FILES: &[(&str, &[u8])] = &[
         "icon.png",
         include_bytes!("../../../apps/lua/ac_pro_engineer/icon.png"),
     ),
+    (
+        "acpe/blocks.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/blocks.lua"),
+    ),
+    (
+        "acpe/console.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/console.lua"),
+    ),
+    (
+        "acpe/controls.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/controls.lua"),
+    ),
+    (
+        "acpe/format.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/format.lua"),
+    ),
+    (
+        "acpe/frame.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/frame.lua"),
+    ),
+    (
+        "acpe/i18n.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/i18n.lua"),
+    ),
+    (
+        "acpe/layout.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/layout.lua"),
+    ),
+    (
+        "acpe/settings.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/settings.lua"),
+    ),
+    (
+        "acpe/theme.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/theme.lua"),
+    ),
+    (
+        "acpe/windows/dev.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/dev.lua"),
+    ),
+    (
+        "acpe/windows/engineer.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/engineer.lua"),
+    ),
+    (
+        "acpe/windows/main.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/main.lua"),
+    ),
+    (
+        "acpe/windows/settings.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/settings.lua"),
+    ),
+    (
+        "acpe/windows/status.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/status.lua"),
+    ),
+    (
+        "acpe/windows/telemetry.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/telemetry.lua"),
+    ),
 ];
+
+/// How many files the panel is, for anything that offers to write or remove
+/// them.
+///
+/// Said "four" in five places, and the panel became nineteen files the moment
+/// it was split into modules. A number nobody has to remember is a number that
+/// cannot be wrong.
+pub fn file_count() -> usize {
+    FILES.len()
+}
 
 /// What an install attempt did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,8 +291,21 @@ pub fn uninstall(configured_install: Option<&Path>) -> io::Result<usize> {
         }
     }
 
-    // Only if it is empty: a folder with someone else's file in it is not ours
-    // to delete.
+    // The panel is a tree now, so the folders it created have to go too —
+    // deepest first, because a parent is only empty once its children are.
+    // Only if empty, throughout: a folder with someone else's file in it is not
+    // ours to delete, and neither is its parent.
+    let mut directories: Vec<&str> = FILES
+        .iter()
+        .filter_map(|(name, _)| name.rsplit_once('/').map(|(dir, _)| dir))
+        .collect();
+    directories.sort_unstable();
+    directories.dedup();
+    directories.sort_by_key(|dir| std::cmp::Reverse(dir.matches('/').count()));
+    for dir in directories {
+        let _ = std::fs::remove_dir(target.join(dir));
+    }
+
     let _ = std::fs::remove_dir(&target);
 
     Ok(removed)
@@ -333,6 +422,53 @@ mod tests {
         );
     }
 
+    /// A module that is not embedded is a module that does not reach the game.
+    ///
+    /// The panel is a tree of a dozen files now, and `FILES` lists them one by
+    /// one because `include_bytes!` takes a literal path. Adding a module and
+    /// forgetting this list produces an install that is missing one `require`
+    /// target — which fails at load, in the game, with every window drawing the
+    /// error instead of the panel.
+    #[test]
+    fn every_lua_file_in_the_app_folder_is_shipped() {
+        let root = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../apps/lua/ac_pro_engineer"
+        ));
+
+        let mut found = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "lua") {
+                    let relative = path
+                        .strip_prefix(root)
+                        .expect("under the app root")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    found.push(relative);
+                }
+            }
+        }
+        found.sort();
+        assert!(!found.is_empty(), "the app folder has Lua in it");
+
+        let shipped: Vec<&str> = FILES.iter().map(|(name, _)| *name).collect();
+        for name in &found {
+            assert!(
+                shipped.contains(&name.as_str()),
+                "{name} is in the app folder and not in FILES, so it would not \
+                 be installed"
+            );
+        }
+    }
+
     /// The panel has to read the frame this build writes.
     ///
     /// `frame_layout.lua` is generated and checked, and `PANEL_VERSION` is
@@ -369,7 +505,15 @@ mod tests {
     /// the setting that asks for all of them quietly does nothing.
     #[test]
     fn the_panel_names_every_advice_slot() {
-        let source = embedded("ac_pro_engineer.lua");
+        // Across every embedded file, not just the entry point: MESSAGE_KEYS
+        // lives in acpe/frame.lua, and a check pinned to one filename is a
+        // check that stops working the next time something moves.
+        let source: String = FILES
+            .iter()
+            .filter(|(name, _)| name.ends_with(".lua"))
+            .filter_map(|(_, bytes)| std::str::from_utf8(bytes).ok())
+            .collect();
+
         for slot in 0..crate::overlay::frame::MESSAGE_SLOTS {
             let field = format!("'message_{slot}'");
             assert!(

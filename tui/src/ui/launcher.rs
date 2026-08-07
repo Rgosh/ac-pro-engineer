@@ -120,7 +120,7 @@ fn render_overlay_offer(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         dim,
     )));
     lines.push(Line::from(Span::styled(
-        "      with [U] whenever you like — four files, nothing else touched",
+        "      with [U] whenever you like — nothing else in the game is touched",
         dim,
     )));
 
@@ -190,11 +190,11 @@ fn render_overlay_tips(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         dim,
     )));
     lines.push(Line::from(Span::styled(
-        "  Remove it any time with [U] in Settings → OVERLAY. Four files go;",
+        "  Remove it any time with [U] in Settings → OVERLAY. Only its own",
         dim,
     )));
     lines.push(Line::from(Span::styled(
-        "  your settings stay, so putting it back finds them where they were.",
+        "  folder goes, and your settings stay — putting it back finds them.",
         dim,
     )));
     lines.push(Line::from(""));

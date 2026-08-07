@@ -63,14 +63,31 @@ local function loadApp()
   local dir = appDirectory()
   app.path = dir .. 'ac_pro_engineer.lua'
 
-  -- The app does `require('frame_layout')`, and that file has to be read from
-  -- the app's own directory rather than from the harness's.
-  package.loaded['frame_layout'] = nil
-  package.preload['frame_layout'] = function()
-    local chunk, err = loadfile(dir .. 'frame_layout.lua')
-    if chunk == nil then error(err, 0) end
-    return chunk()
+  -- The panel requires `frame_layout` and a dozen `acpe.*` modules, and every
+  -- one of them has to be read from the app's own directory rather than from
+  -- the harness's. LÖVE mounts its own source as the filesystem root, so
+  -- `package.path` cannot reach the app; a preload loader that resolves the
+  -- module name to a path under `dir` can.
+  --
+  -- Cleared first, or F5 reloads the entry point and keeps every module the
+  -- previous load left behind — which is not a reload, and would make editing
+  -- a module look like editing had no effect.
+  for name in pairs(package.loaded) do
+    if name == 'frame_layout' or name:match('^acpe') then
+      package.loaded[name] = nil
+    end
   end
+  setmetatable(package.preload, {
+    __index = function(_, name)
+      if name ~= 'frame_layout' and not name:match('^acpe') then return nil end
+      return function()
+        local file = dir .. name:gsub('%.', '/') .. '.lua'
+        local chunk, err = loadfile(file)
+        if chunk == nil then error(err, 0) end
+        return chunk()
+      end
+    end,
+  })
 
   _G.script = {}
   -- A panel that does not load is the worst outcome there is — every window

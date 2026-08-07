@@ -615,16 +615,27 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     lines.push(Line::from(Span::styled(
         if removing {
             if is_ru {
-                "  Из папки игры уйдут четыре файла панели."
+                "  Из папки игры уйдут файлы панели."
             } else {
-                "  Four files of the panel leave the game folder."
+                "  The panel's files leave the game folder."
             }
         } else if is_ru {
-            "  Четыре файла лягут в папку игры."
+            "  Файлы панели лягут в папку игры."
         } else {
-            "  Four files go into the game folder."
+            "  The panel's files go into the game folder."
         },
         white,
+    )));
+
+    // The count, from the installer rather than from a word in a sentence.
+    // This said "four" in five places, and the panel is nineteen files now.
+    lines.push(Line::from(Span::styled(
+        format!(
+            "  {} {}",
+            ac_core::overlay::install::file_count(),
+            if is_ru { "файлов" } else { "files" }
+        ),
+        dim,
     )));
 
     if let Some(path) = app.overlay_report.app_path.as_ref() {

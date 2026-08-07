@@ -712,11 +712,32 @@ mod tests {
             return;
         };
 
-        let app = std::fs::read_to_string(concat!(
+        // Every file of the panel, not just the entry point. Ten of the eleven
+        // `ui.*` calls live in the modules now, and a check pinned to one
+        // filename would have gone on passing while checking almost nothing.
+        let app_dir = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../apps/lua/ac_pro_engineer/ac_pro_engineer.lua"
-        ))
-        .expect("the overlay app source");
+            "/../apps/lua/ac_pro_engineer"
+        ));
+        let mut app = String::new();
+        let mut stack = vec![app_dir.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "lua")
+                    && let Ok(text) = std::fs::read_to_string(&path)
+                {
+                    app.push_str(&text);
+                    app.push('\n');
+                }
+            }
+        }
+        assert!(!app.is_empty(), "the overlay app source");
 
         let mut checked = 0;
         for line in app.lines() {
@@ -734,9 +755,11 @@ mod tests {
                 checked += 1;
             }
         }
+        // The whole panel makes well over a hundred `ui.*` calls; a threshold
+        // that only proves "some" would survive the file list going empty.
         assert!(
-            checked > 10,
-            "expected to have checked real calls, got {checked}"
+            checked > 100,
+            "expected to have checked the whole panel's calls, got {checked}"
         );
     }
 

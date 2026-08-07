@@ -114,8 +114,19 @@ ac = {
       synthesise(b)
     end
     -- Wrap so `messages[i]` yields a Lua string, as CSP's string() type does.
-    local raw = b[0]
+    --
+    -- `b` is captured on purpose. `b[0]` is a *reference* into the array, and a
+    -- reference does not keep its owner alive: once this function returned, `b`
+    -- was unreachable, and the next collection freed the memory `raw` points
+    -- at — after which every field read as zero. It survived for as long as the
+    -- panel was one file, because nothing allocated enough between opening the
+    -- mapping and reading it to trigger a collection. Splitting the panel into
+    -- a dozen modules did, and the whole harness quietly went back to drawing
+    -- the "waiting for AC Pro Engineer" screen.
+    local held = b
+    local raw = held[0]
     return setmetatable({}, { __index = function(_, k)
+      local _ = held
       if k == 'message_severity' then
         return setmetatable({}, { __index = function(_, i) return raw.message_severity[i] end })
       end
@@ -237,9 +248,25 @@ ui = setmetatable({
   end,
 }, { __index = function(_, k) return stub(k) end })
 
-script = {}
-local ok, err = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
-if not ok then print('LOAD FAILED: ' .. tostring(err)); os.exit(1) end
+--- Load the panel the way CSP loads it: from nothing.
+---
+--- `package.loaded` has to be cleared, or `require` hands the reloaded entry
+--- point the module instances the previous load left behind — with their frame
+--- already read, their settings already applied and their liveness already
+--- decided. CSP throws the whole Lua state away between loads; `dofile` on its
+--- own does not, and the two checks below that reload the panel were quietly
+--- testing nothing.
+local function loadPanel()
+  for name in pairs(package.loaded) do
+    if name == 'frame_layout' or name:match('^acpe') then
+      package.loaded[name] = nil
+    end
+  end
+  script = {}
+  return pcall(dofile, appDir .. 'ac_pro_engineer.lua')
+end
+
+local ok, err = loadPanel()
 print('load: OK')
 
 for i = 1, 3 do
@@ -280,30 +307,53 @@ local ALLOWED_GLOBALS = {
   tostring = true, type = true,
 }
 
-local pipe = io.popen('luajit -bl ' .. appDir .. 'ac_pro_engineer.lua 2>/dev/null')
-if pipe ~= nil then
-  local bytecode = pipe:read('*a')
-  pipe:close()
-
-  local stray = {}
-  for name in bytecode:gmatch('GGET%s+%d+%s+%d+%s*;%s*"([^"]+)"') do
-    if not ALLOWED_GLOBALS[name] then stray[name] = true end
-  end
-
-  local names = {}
-  for name in pairs(stray) do names[#names + 1] = name end
-  table.sort(names)
-
-  if #names > 0 then
-    print('\nFAILED: the panel reads ' .. #names .. ' name(s) from the global table:')
-    for _, name in ipairs(names) do print('  ' .. name) end
-    print('Each is either a typo or a local declared below something that calls')
-    print('it. A local declared after its callers is nil to them, and the file')
-    print('still loads, so only this check finds it.')
-    os.exit(1)
-  end
-  print('globals: OK')
+-- Every file, not just the entry point. The panel is a dozen modules now, and
+-- checking only `ac_pro_engineer.lua` let `isLive` come through the split as a
+-- global — nil to everything that read it, so every window drew the "waiting
+-- for AC Pro Engineer" screen and the load, update and window checks above all
+-- still said OK.
+local sources = {}
+local listing = io.popen('find ' .. appDir .. " -name '*.lua' | sort")
+if listing ~= nil then
+  for path in listing:lines() do sources[#sources + 1] = path end
+  listing:close()
 end
+
+local strayByFile = {}
+local strayCount = 0
+for _, path in ipairs(sources) do
+  local pipe = io.popen('luajit -bl ' .. path .. ' 2>/dev/null')
+  if pipe ~= nil then
+    local bytecode = pipe:read('*a')
+    pipe:close()
+
+    local stray = {}
+    for name in bytecode:gmatch('GGET%s+%d+%s+%d+%s*;%s*"([^"]+)"') do
+      if not ALLOWED_GLOBALS[name] then stray[name] = true end
+    end
+
+    local names = {}
+    for name in pairs(stray) do names[#names + 1] = name end
+    table.sort(names)
+    if #names > 0 then
+      strayByFile[#strayByFile + 1] = { path, names }
+      strayCount = strayCount + #names
+    end
+  end
+end
+
+if strayCount > 0 then
+  print('\nFAILED: the panel reads ' .. strayCount .. ' name(s) from the global table:')
+  for _, entry in ipairs(strayByFile) do
+    print('  ' .. entry[1]:gsub('.*/ac_pro_engineer/', ''))
+    for _, name in ipairs(entry[2]) do print('    ' .. name) end
+  end
+  print('Each is either a typo or a local declared below something that calls')
+  print('it. A local declared after its callers is nil to them, and the file')
+  print('still loads, so only this check finds it.')
+  os.exit(1)
+end
+print('globals: OK (' .. #sources .. ' files)')
 
 -- Every check above passes while the panel draws its "waiting for the
 -- application" screen in every window, and that is a state with no readouts,
@@ -363,9 +413,8 @@ print('settings reach storage: OK')
 -- output, and the sample printed at the end -- which is what the cargo test
 -- greps for the published speed -- came out as nothing but settings captions.
 local reloadedFrom = #drawn
-script = {}
 savedValues.devMode = true
-local reloaded, reloadError = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
+local reloaded, reloadError = loadPanel()
 if not reloaded then
   print('\nFAILED: the panel would not load a second time: ' .. tostring(reloadError))
   os.exit(1)
@@ -409,8 +458,7 @@ print('settings survive a reload: OK')
 
 local garageFrom = #drawn
 carPresent = false
-script = {}
-local idled, idleError = pcall(dofile, appDir .. 'ac_pro_engineer.lua')
+local idled, idleError = loadPanel()
 if idled then idled, idleError = pcall(script.update, 0.016) end
 if idled then idled, idleError = pcall(script.windowMain, 0.016) end
 if idled then idled, idleError = pcall(script.windowEngineer, 0.016) end

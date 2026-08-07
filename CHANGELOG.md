@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 🧱 Структура
+
+- **Lua-панель разложена по модулям.** Был один файл на 2 429 строк; стало
+  `ac_pro_engineer.lua` (точка входа, 138 строк) и `acpe/` — настройки, язык,
+  тема, вёрстка, форматирование, кадр, блоки, виджеты, консоль и по файлу на
+  каждое окно в `acpe/windows/`. Слои идут в одну сторону:
+  settings → i18n/theme → layout → format → frame → blocks → windows.
+  Установщик кладёт дерево целиком (19 файлов), удаление убирает и папки;
+  тест `every_lua_file_in_the_app_folder_is_shipped` не даст забыть новый
+  модуль.
+- Версия панели по-прежнему равна версии релиза и проверяется тестами —
+  `PANEL_VERSION`, `VERSION` в манифесте и `Cargo.toml` обязаны совпадать.
+
 ### ✨ Добавлено
 
 - **`shm-bridge.exe --verify`** — открывает маппинг оверлея ровно тем вызовом,
