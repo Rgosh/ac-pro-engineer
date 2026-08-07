@@ -87,7 +87,7 @@ local frame = {
   -- The release the application claims to be. Matching the panel's own means
   -- the harness does not draw the "restart the game" notice by default; set it
   -- to something else to see that path.
-  app_version = '0.3.4',
+  app_version = '0.3.5',
 }
 
 -- The panel reads the messages by name, the way CSP hands them over.

@@ -290,7 +290,10 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
                     "⚠️ {}: Overlay Control Center",
                     keys::describe(&keys.overlay_menu)
                 )),
-                owned(format!("⚠️ {} / Q: Exit safely", keys::describe(&keys.quit))),
+                owned(format!(
+                    "⚠️ {} / Q: Exit safely",
+                    keys::describe(&keys.quit)
+                )),
                 Line::from(""),
                 head("PER-MODULE KEYS"),
                 owned(format!(

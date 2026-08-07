@@ -1,8 +1,8 @@
 # Handoff — the in-game overlay
 
-State as of 2026-08-05. Read this first in a new session.
+State as of 2026-08-07, at v0.3.5. Read this first in a new session.
 
-`main` is pushed to `origin`, 224 tests, clippy and fmt clean on Linux **and**
+`main` is pushed to `origin`, 231 tests, clippy and fmt clean on Linux **and**
 `x86_64-pc-windows-gnu`. Check both before pushing:
 
 ```bash
@@ -11,8 +11,11 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warn
 
 ## The shape of the thing
 
-The desktop application computes everything and publishes a 440-byte
-`#[repr(C)]` `OverlayFrame` once per tick. A CSP Lua app reads fields and calls
+The desktop application computes everything and publishes a 712-byte
+`#[repr(C)]` `OverlayFrame` once per tick — frame version 5, which carries
+eight advice lines rather than four. **Any `shm-bridge.exe` older than v0.3.5
+maps 440 bytes, CSP refuses to open the mapping, and the panel waits forever
+beside a file that is right there.** A CSP Lua app reads fields and calls
 ImGui. Lua runs on AC's render thread where LuaJIT collects garbage mid-frame,
 so the panel formats text when a frame *arrives*, not when one is drawn, and
 allocates nothing per frame that can be allocated once.
@@ -118,14 +121,29 @@ font tiers cannot be scaled and a 4K screen needs more than the largest.
 - A `str.replace` with no anchor is a silent no-op — two "split this tab into
   sub-tabs" edits did nothing and the tests still passed.
 
-## Where this stands: v0.3.4 is a demo release
+## Where this stands: v0.3.5
 
-Cut and published deliberately as a preview, because the two things that
-remained could only be done on someone else's machine: running it on Windows,
-and running it inside a session. The changelog states both limits at the top of
-the release, so nobody reads a rough edge as a promise.
+The same limit as v0.3.4 — nothing has been run on Windows or inside a real
+session by the author of the changes — and the changelog still says so at the
+top of the release. What changed under it:
 
-## The one thing that blocked a beta, and how v0.3.4 answers it
+- **frame v5, eight advice lines.** The struct is 712 bytes; every published
+  bridge before v0.3.5 maps 440 and CSP silently refuses the mapping. [B] on
+  the launcher card is the way out.
+- **the panel is reachable outside a session.** `tick` publishes a frame with
+  `CONNECTED` clear from the launcher stage and whenever AC has nothing in
+  shared memory, so the panel opens in the garage saying "waiting for the car"
+  rather than "AC Pro Engineer is not running".
+- **`LAZY = ON`.** With `FULL`, CSP unloaded the script when the last window
+  closed and every setting that had not reached `ac.storage` was gone.
+- **the key map is data.** `tui/src/keys.rs` and a KEYS category in Settings;
+  every hint in the application is printed from it, and a test walks all nine
+  tabs to keep it honest.
+- **the engineer groups per-corner findings.** Four cold tyres are one line, not
+  four, so a car with four problems does not publish four lines about one of
+  them.
+
+## The one thing that blocked a beta, and how v0.3.4 answered it
 
 **No published release contains a bridge that can serve the overlay.** v0.3.3
 was tagged at 04:15 and `187b914`, the commit that added the overlay mapping to

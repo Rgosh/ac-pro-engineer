@@ -2,10 +2,10 @@ use ac_core::config::Language;
 use ac_core::overlay::OverlayMode;
 use ac_core::updater::UpdateStatus;
 // Only the Linux startup path reaches into `platform`.
+use ac_tui::keys;
 #[cfg(target_os = "linux")]
 use ac_tui::platform;
 use ac_tui::ui::UIRenderer;
-use ac_tui::keys;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{

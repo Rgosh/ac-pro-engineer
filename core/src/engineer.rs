@@ -1220,14 +1220,16 @@ impl Engineer {
         let formatter = self.config.formatter();
 
         if !cold.is_empty() {
-            let average = cold
-                .iter()
-                .map(|i| phys.get_avg_tyre_temp(*i))
-                .sum::<f32>()
-                / cold.len() as f32;
+            let average =
+                cold.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / cold.len() as f32;
             recs.push(Recommendation {
                 component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                category: if ru { "Температура" } else { "Temperature" }.to_string(),
+                category: if ru {
+                    "Температура"
+                } else {
+                    "Temperature"
+                }
+                .to_string(),
                 severity: Severity::Warning,
                 message: format!(
                     "{} {}: {}",
@@ -1235,7 +1237,12 @@ impl Engineer {
                     if ru { "ХОЛОДНЫЕ" } else { "COLD" },
                     formatter.format_temp(average)
                 ),
-                action: if ru { "Греть шины" } else { "Warm tyres" }.to_string(),
+                action: if ru {
+                    "Греть шины"
+                } else {
+                    "Warm tyres"
+                }
+                .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
             });
@@ -1251,10 +1258,19 @@ impl Engineer {
                 message: format!(
                     "{} {}: {}",
                     Self::corner_phrase(&hot, ru),
-                    if ru { "ПЕРЕГРЕВ" } else { "OVERHEATING" },
+                    if ru {
+                        "ПЕРЕГРЕВ"
+                    } else {
+                        "OVERHEATING"
+                    },
                     formatter.format_temp(average)
                 ),
-                action: if ru { "Остудить шины" } else { "Cool tyres" }.to_string(),
+                action: if ru {
+                    "Остудить шины"
+                } else {
+                    "Cool tyres"
+                }
+                .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
             });
@@ -1298,7 +1314,11 @@ impl Engineer {
             message: format!(
                 "{} {}: {}",
                 Self::corner_phrase(&cooking, ru),
-                if ru { "перегрев тормозов" } else { "brakes cooking" },
+                if ru {
+                    "перегрев тормозов"
+                } else {
+                    "brakes cooking"
+                },
                 formatter.format_temp(hottest)
             ),
             action: if ru {
@@ -1625,9 +1645,22 @@ mod tests {
         let aged = std::time::Instant::now() - std::time::Duration::from_secs(2);
         let now = std::time::Instant::now();
         for key in [
-            "wear_0", "wear_1", "wear_2", "wear_3", "tyre_temp_0", "tyre_temp_1", "tyre_temp_2",
-            "tyre_temp_3", "pres_0", "pres_1", "pres_2", "pres_3", "brake_temp_0", "brake_temp_1",
-            "brake_temp_2", "brake_temp_3",
+            "wear_0",
+            "wear_1",
+            "wear_2",
+            "wear_3",
+            "tyre_temp_0",
+            "tyre_temp_1",
+            "tyre_temp_2",
+            "tyre_temp_3",
+            "pres_0",
+            "pres_1",
+            "pres_2",
+            "pres_3",
+            "brake_temp_0",
+            "brake_temp_1",
+            "brake_temp_2",
+            "brake_temp_3",
         ] {
             engineer.alert_timers.insert(key.to_string(), (aged, now));
         }
@@ -1770,7 +1803,11 @@ mod tests {
         let mut recs = Vec::new();
         engineer.analyze_tyre_pressure(&phys, &AcGraphics::default(), &mut recs);
 
-        assert_eq!(recs.len(), 1, "four under-inflated tyres are one line: {recs:?}");
+        assert_eq!(
+            recs.len(),
+            1,
+            "four under-inflated tyres are one line: {recs:?}"
+        );
         assert!(
             recs[0].message.contains("bar"),
             "expected bar, got: {}",
@@ -1840,7 +1877,6 @@ mod tests {
             );
         }
     }
-
 
     #[test]
     fn tyre_pressure_alert_uses_updated_configuration() {

@@ -18,7 +18,7 @@ in the draw path.
 
 ## The frame contract
 
-`core/src/overlay/frame.rs` owns a 440-byte `#[repr(C)]` `OverlayFrame` and the
+`core/src/overlay/frame.rs` owns a 712-byte `#[repr(C)]` `OverlayFrame` and the
 generator that emits its Lua declaration. Three artefacts encode it:
 
 1. the application, which writes it,
@@ -35,10 +35,18 @@ cargo run -p ac_core --example gen_lua_layout > apps/lua/ac_pro_engineer/frame_l
 cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu
 ```
 
-Bump `OVERLAY_VERSION` and `EXPECTED_VERSION` in the panel together. Field
-**order** must match between the struct and `FIELDS` — size and count matching
-is not enough, and a mismatch reads eight bytes of one field as another
+Bump `OVERLAY_VERSION` and `EXPECTED_VERSION` in the panel together —
+`the_panel_reads_the_frame_this_build_writes` fails if they disagree, which
+saves the evening where the panel loads, reads every offset correctly and draws
+nothing but "Version mismatch". Field **order** must match between the struct
+and `FIELDS` — size and count matching is not enough, and a mismatch reads eight
+bytes of one field as another
 (`the_generator_lists_the_fields_in_the_struct_s_order` catches it now).
+
+`MESSAGE_SLOTS` is eight, and the panel counts from `#MESSAGE_KEYS` rather than
+from a literal. Growing it means a line per slot in `FIELDS`, a name per slot in
+the panel's `MESSAGE_KEYS`, and both harnesses' `ffi.cdef` —
+`the_panel_names_every_advice_slot` catches the one that is easiest to miss.
 
 Adding a bit to `flags` costs nothing: no layout change, no version bump.
 Prefer that to a new field when the answer is yes-or-no.
@@ -49,7 +57,7 @@ Four numbers, and confusing them wastes an evening:
 
 | Number | Where | Changes when |
 |---|---|---|
-| `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves |
+| `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves (5 as of v0.3.5) |
 | `app_version` in the frame | filled by `OverlayFrame::empty` | every release, on its own |
 | `BRIDGE_PROTOCOL` | `bridge.rs`, `shm-bridge/src/main.rs` | the bridge's note gains a key |
 | `PANEL_VERSION`, manifest `VERSION` | the panel, `manifest.ini` | every release |
@@ -115,6 +123,22 @@ AC Pro Engineer" branch and reported OK for a panel that drew nothing —
 27 strings instead of 140. `ACPE_ALL=1` prints every one of them, which is how a
 wrong unit or an untranslated caption is caught without launching the game.
 
+Four more things it checks, each of which was once a bug that shipped:
+
+- **tab bodies actually run.** `ui.tabItem` used to fall to the catch-all stub,
+  which calls nothing — so every one of the fifteen settings tabs was skipped
+  and `windowSettings: OK` meant a tab bar had been constructed. Running them
+  took the count from 150 drawn strings to 261.
+- **widgets report that nobody clicked them.** The catch-all returns `0`, and
+  `0` is truthy in Lua, so the moment the tab bodies ran every
+  `if ui.checkbox(...)` fired at once and inverted every toggle in the panel.
+- **settings survive a reload.** `ac.storage` is stubbed and outlives a reload
+  of the script, which is what CSP does when a window is reopened.
+  `sliderMoved` drags one slider the way a driver would.
+- **a frame with no car is not a missing application.** `carPresent = false`
+  clears `CONNECTED`, and the panel has to say it is waiting for the car rather
+  than for the application.
+
 ```bash
 love apps/lua/love --test --settings
 ```
@@ -143,6 +167,25 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings
 ```
 
+## The terminal's key map
+
+`tui/src/keys.rs` is the only thing that decides what a key does, and the only
+thing that prints one. Bindings live in `config.json` as text (`f10`, `ctrl+s`,
+`shift+tab`); `resolve` turns a keypress into an `Action`, `describe` turns a
+binding into something to draw.
+
+**Do not write a key name into a string.** Every hint, the help overlay and the
+Settings screen read from `keys::all` / `keys::hints`, and
+`the_hints_only_name_keys_that_do_something` walks all nine tabs and insists
+each key a hint names resolves to the action the hint claims on that tab. That
+test exists because the Setup tab promised `'D' - Download` on a screen where
+`D` reached no handler.
+
+Adding an action means: a field on `KeyBindings`, an entry in `keys::all`, a
+case in `keys::set`, a case in `keys::action_of`, and an arm in `resolve`. Two
+tests count fields off the serialised struct, so forgetting the first three
+fails rather than going quietly missing.
+
 ## Lua traps that have cost real time
 
 - **A local declared after its callers is a global to them — that is, nil.**
@@ -159,6 +202,13 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warn
   the same bytes and read as Lua strings.
 - `ac.setWindowSizeConstraints` removed the resize grip from every window in the
   app. Do not reach for it without a way to test first.
+- **`LAZY = FULL` in the manifest loses everything the script holds.** CSP
+  unloads the script when the last window closes and loads it again when one
+  opens, so a driver who closed the panel to look at the track got the defaults
+  back. It is `LAZY = ON` now. Anything that has to survive that has to be in
+  `ac.storage`, and the storage write has to be a *change* — assigning a key to
+  itself relies on the proxy writing a value it already holds, which nothing on
+  this side can check.
 - CSP's five font tiers cannot be scaled. `ui.dwriteText(text, size, colour)`
   draws at any size, which is the only way the panel is readable at 4K.
 

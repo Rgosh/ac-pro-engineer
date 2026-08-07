@@ -289,8 +289,8 @@ pub fn matches(binding: &str, key: KeyEvent) -> bool {
     // SHIFT set on some platforms and without it on others, and a shortcut
     // that works on Linux and not on Windows is worse than one that ignores a
     // modifier nobody meant to type.
-    let control_ok =
-        wanted.modifiers.contains(KeyModifiers::CONTROL) == key.modifiers.contains(KeyModifiers::CONTROL);
+    let control_ok = wanted.modifiers.contains(KeyModifiers::CONTROL)
+        == key.modifiers.contains(KeyModifiers::CONTROL);
     let alt_ok =
         wanted.modifiers.contains(KeyModifiers::ALT) == key.modifiers.contains(KeyModifiers::ALT);
     if !control_ok || !alt_ok {
@@ -380,14 +380,26 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
     vec![
         ("help", "Help", keys.help.as_str()),
         ("quit", "Back / quit", keys.quit.as_str()),
-        ("overlay_toggle", "Toggle overlay", keys.overlay_toggle.as_str()),
+        (
+            "overlay_toggle",
+            "Toggle overlay",
+            keys.overlay_toggle.as_str(),
+        ),
         ("overlay_menu", "Overlay menu", keys.overlay_menu.as_str()),
         ("screenshot", "Screenshot", keys.screenshot.as_str()),
         ("language", "Switch language", keys.language.as_str()),
         ("next_tab", "Next tab", keys.next_tab.as_str()),
         ("prev_tab", "Previous tab", keys.prev_tab.as_str()),
-        ("tab_dashboard", "Go to Dashboard", keys.tab_dashboard.as_str()),
-        ("tab_telemetry", "Go to Telemetry", keys.tab_telemetry.as_str()),
+        (
+            "tab_dashboard",
+            "Go to Dashboard",
+            keys.tab_dashboard.as_str(),
+        ),
+        (
+            "tab_telemetry",
+            "Go to Telemetry",
+            keys.tab_telemetry.as_str(),
+        ),
         ("tab_engineer", "Go to Engineer", keys.tab_engineer.as_str()),
         ("tab_setup", "Go to Setup", keys.tab_setup.as_str()),
         ("tab_analysis", "Go to Analysis", keys.tab_analysis.as_str()),
@@ -395,16 +407,36 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
         ("tab_ffb", "Go to FFB", keys.tab_ffb.as_str()),
         ("tab_settings", "Go to Settings", keys.tab_settings.as_str()),
         ("tab_guide", "Go to Guide", keys.tab_guide.as_str()),
-        ("analysis_save", "Analysis: save lap", keys.analysis_save.as_str()),
-        ("analysis_load", "Analysis: load lap", keys.analysis_load.as_str()),
+        (
+            "analysis_save",
+            "Analysis: save lap",
+            keys.analysis_save.as_str(),
+        ),
+        (
+            "analysis_load",
+            "Analysis: load lap",
+            keys.analysis_load.as_str(),
+        ),
         (
             "analysis_compare",
             "Analysis: compare ghost",
             keys.analysis_compare.as_str(),
         ),
-        ("analysis_export", "Analysis: export CSV", keys.analysis_export.as_str()),
-        ("setup_browser", "Setup: open browser", keys.setup_browser.as_str()),
-        ("setup_download", "Setup: download", keys.setup_download.as_str()),
+        (
+            "analysis_export",
+            "Analysis: export CSV",
+            keys.analysis_export.as_str(),
+        ),
+        (
+            "setup_browser",
+            "Setup: open browser",
+            keys.setup_browser.as_str(),
+        ),
+        (
+            "setup_download",
+            "Setup: download",
+            keys.setup_download.as_str(),
+        ),
     ]
 }
 
@@ -547,8 +579,19 @@ mod tests {
     #[test]
     fn the_written_form_survives_a_round_trip() {
         for text in [
-            "f1", "f12", "esc", "tab", "shift+tab", "ctrl+s", "ctrl+l", "1", "s", "space", "pgup",
-            "del", "up",
+            "f1",
+            "f12",
+            "esc",
+            "tab",
+            "shift+tab",
+            "ctrl+s",
+            "ctrl+l",
+            "1",
+            "s",
+            "space",
+            "pgup",
+            "del",
+            "up",
         ] {
             let parsed = parse(text).expect("a default binding has to parse");
             let printed = describe(text);
@@ -627,8 +670,8 @@ mod tests {
 
     #[test]
     fn a_captured_key_spells_itself_back() {
-        let captured = spell(KeyEvent::new(KeyCode::Char('S'), KeyModifiers::CONTROL))
-            .expect("ctrl+S spells");
+        let captured =
+            spell(KeyEvent::new(KeyCode::Char('S'), KeyModifiers::CONTROL)).expect("ctrl+S spells");
         assert_eq!(captured, "ctrl+s");
         assert!(matches(
             &captured,
@@ -672,7 +715,10 @@ mod tests {
             resolve(press(KeyCode::Char('s')), &keys, AppTab::Analysis),
             Some(Action::AnalysisSave)
         );
-        assert_eq!(resolve(press(KeyCode::Char('s')), &keys, AppTab::Setup), None);
+        assert_eq!(
+            resolve(press(KeyCode::Char('s')), &keys, AppTab::Setup),
+            None
+        );
         assert_eq!(
             resolve(press(KeyCode::Char('b')), &keys, AppTab::Setup),
             Some(Action::SetupBrowser)
@@ -688,7 +734,10 @@ mod tests {
     fn a_rebound_key_replaces_the_default() {
         let mut keys = KeyBindings::default();
         set(&mut keys, "overlay_toggle", "ctrl+o".to_string());
-        assert_eq!(resolve(press(KeyCode::F(10)), &keys, AppTab::Dashboard), None);
+        assert_eq!(
+            resolve(press(KeyCode::F(10)), &keys, AppTab::Dashboard),
+            None
+        );
         assert_eq!(
             resolve(
                 KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL),
@@ -705,7 +754,10 @@ mod tests {
     #[test]
     fn a_clash_is_reported_against_the_binding_it_shadows() {
         let keys = KeyBindings::default();
-        assert_eq!(conflict(&keys, "overlay_menu", "f10"), Some("Toggle overlay"));
+        assert_eq!(
+            conflict(&keys, "overlay_menu", "f10"),
+            Some("Toggle overlay")
+        );
         assert_eq!(conflict(&keys, "overlay_toggle", "f10"), None);
         assert_eq!(conflict(&keys, "overlay_menu", "f9"), None);
 

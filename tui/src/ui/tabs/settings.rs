@@ -961,7 +961,9 @@ fn render_key_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let bindings = crate::keys::all(&app.config.keys);
 
     let visible = area.height.max(1) as usize;
-    let offset = state.selected_index.saturating_sub(visible.saturating_sub(1));
+    let offset = state
+        .selected_index
+        .saturating_sub(visible.saturating_sub(1));
 
     let mut lines: Vec<Line<'_>> = Vec::with_capacity(visible);
     for (index, (_, label, binding)) in bindings.iter().enumerate().skip(offset).take(visible) {
@@ -1470,10 +1472,8 @@ mod tests {
         let mut config = AppConfig::default();
         state.capturing = true;
 
-        let changed = state.capture_key(
-            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
-            &mut config,
-        );
+        let changed =
+            state.capture_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &mut config);
 
         assert!(!changed);
         assert!(!state.capturing);

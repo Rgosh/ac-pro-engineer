@@ -33,7 +33,7 @@ local EXPECTED_VERSION = 5
 -- worth ruling out when something in the game looks wrong. Checked against the
 -- crate by `cargo test -p ac_core the_panel_announces`, so it cannot be left
 -- behind at release time.
-local PANEL_VERSION = '0.3.4'
+local PANEL_VERSION = '0.3.5'
 
 -- Must match ac_core::overlay::frame::OVERLAY_MMF_NAME.
 local MMF_NAME = 'AcTools.CSP.Limited.ACPE.v1'
