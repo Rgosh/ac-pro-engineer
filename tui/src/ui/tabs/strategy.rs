@@ -323,44 +323,87 @@ fn render_tyres_strategy(
         .split(inner);
 
     let tyre_names = ["FL", "FR", "RL", "RR"];
+    let critical = app.config.alerts.wear_critical.clamp(0.0, 99.0);
+    let warning = app.config.alerts.wear_warning.clamp(critical, 100.0);
 
-    for i in 0..4 {
-        if i >= layout.len() {
+    for (i, name) in tyre_names.iter().enumerate() {
+        let Some(row) = layout.get(i) else {
             break;
-        }
+        };
 
         let wear = phys.tyre_wear[i];
         let laps_rem = app.engineer.stats.tyre_laps_remaining[i];
 
-        let laps_str = if laps_rem == 99.0 {
-            if is_ru {
-                "Оценка...".to_string()
-            } else {
-                "Calc...".to_string()
-            }
+        // "Calc..." was a sentence cut in half, and it appeared for a whole
+        // stint — the projection needs a completed lap before it means
+        // anything. Say which of the two it is.
+        let laps_str = if laps_rem < 0.0 {
+            // Not measured yet: the projection needs a completed lap.
+            "—".to_string()
         } else if laps_rem <= 0.0 {
-            "DEAD".to_string()
+            if is_ru { "конец" } else { "spent" }.to_string()
+        } else if laps_rem >= 500.0 {
+            "> 500".to_string()
+        } else if is_ru {
+            format!("{laps_rem:.0} кр.")
         } else {
-            format!("{:.1} laps", laps_rem)
+            format!("{laps_rem:.0} laps")
         };
 
-        let health_pct = ((wear - 94.0) / 6.0 * 100.0).clamp(0.0, 100.0);
-        let color = if wear > 98.0 {
+        // Scaled between the driver's own critical threshold and a fresh tyre,
+        // so an empty bar means "at the point you said is the end" rather than
+        // "below 94 %", which is a number that used to be written in here and
+        // showed a mid-stint tyre as dead.
+        let span = (100.0 - critical).max(0.1);
+        let health = ((wear - critical) / span).clamp(0.0, 1.0);
+
+        // The same thresholds the engineer's advice uses, so the colour here
+        // and the sentence there cannot disagree.
+        let color = if wear >= warning {
             Color::Green
-        } else if wear > 96.0 {
+        } else if wear >= critical {
             Color::Yellow
         } else {
             Color::Red
         };
 
-        let label = format!("{} ({:.1}%) -> {}", tyre_names[i], wear, laps_str);
+        // Three columns, not a label painted over the bar. `Gauge::label`
+        // centres its text on top of the fill, so every row read as a sentence
+        // half-swallowed by a coloured rectangle.
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(12),
+                Constraint::Min(6),
+                Constraint::Length(9),
+            ])
+            .split(*row);
 
-        let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(color).bg(Color::DarkGray))
-            .ratio(crate::ui::widgets::safe_ratio(health_pct as f64 / 100.0))
-            .label(label);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    format!("{name} "),
+                    Style::default().fg(app.ui_state.get_color(&theme.text)),
+                ),
+                Span::styled(format!("{wear:.1}%"), Style::default().fg(color)),
+            ])),
+            columns[0],
+        );
 
-        f.render_widget(gauge, layout[i]);
+        f.render_widget(
+            Gauge::default()
+                .gauge_style(Style::default().fg(color).bg(Color::DarkGray))
+                .ratio(crate::ui::widgets::safe_ratio(health as f64))
+                .label(""),
+            columns[1],
+        );
+
+        f.render_widget(
+            Paragraph::new(laps_str)
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(Color::DarkGray)),
+            columns[2],
+        );
     }
 }
 

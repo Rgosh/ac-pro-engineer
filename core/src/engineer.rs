@@ -150,7 +150,11 @@ impl EngineerStats {
             base_tyre_wear: [100.0; 4],
             stint_laps: 0,
             last_lap_count: -1,
-            tyre_laps_remaining: [99.0; 4],
+            // Negative means "not measured yet", and it has to be a value
+            // laps remaining can never take — this was 99.0, which is also a
+            // perfectly good answer, so a tyre with ninety-nine laps in it read
+            // as no data.
+            tyre_laps_remaining: [-1.0; 4],
         }
     }
 }
@@ -258,8 +262,15 @@ impl Engineer {
                     let wear_used = self.stats.base_tyre_wear[i] - phys.tyre_wear[i];
                     if wear_used > 0.0 && self.stats.stint_laps > 0 {
                         let wear_per_lap = wear_used / self.stats.stint_laps as f32;
-                        let replacement_threshold =
-                            (self.config.alerts.wear_warning - 2.0).max(0.0);
+                        // Laps until the tyre is *done*, not until it is two
+                        // percent past the warning. That derivation is the same
+                        // one that used to call a tyre at 93.9 % life critical.
+                        let replacement_threshold = self
+                            .config
+                            .alerts
+                            .wear_critical
+                            .min(self.config.alerts.wear_warning)
+                            .max(0.0);
                         let remaining_wear = phys.tyre_wear[i] - replacement_threshold;
                         if wear_per_lap > 0.001 {
                             let laps = (remaining_wear / wear_per_lap).max(0.0);
@@ -1779,6 +1790,20 @@ mod tests {
         let mut recs = Vec::new();
         engineer.analyze_tyre_wear(&phys, &mut recs);
         assert_eq!(recs[0].severity, Severity::Critical, "{recs:?}");
+    }
+
+    /// "Laps remaining" starts as "not measured", and 99.0 was a bad way to
+    /// say it — ninety-nine laps is also a perfectly good answer, so a fresh
+    /// set on a short track read as having no data at all.
+    #[test]
+    fn tyre_life_says_not_measured_with_a_value_laps_cannot_take() {
+        let engineer = Engineer::new(&AppConfig::default());
+        for corner in 0..4 {
+            assert!(
+                engineer.stats.tyre_laps_remaining[corner] < 0.0,
+                "corner {corner} should start unmeasured"
+            );
+        }
     }
 
     /// The pressure advice printed raw psi while the temperature advice next
