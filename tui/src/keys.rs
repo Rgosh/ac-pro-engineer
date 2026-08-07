@@ -408,6 +408,77 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
     ]
 }
 
+/// What each binding does, by the name [`all`] gives it.
+///
+/// The hints are built from this, and `the_hints_only_name_keys_that_do_
+/// something` walks it, so a field named in a hint whose action does not fire
+/// on that tab fails a test rather than misleading a driver.
+pub fn action_of(field: &str) -> Option<Action> {
+    Some(match field {
+        "help" => Action::Help,
+        "quit" => Action::Quit,
+        "overlay_toggle" => Action::OverlayToggle,
+        "overlay_menu" => Action::OverlayMenu,
+        "screenshot" => Action::Screenshot,
+        "language" => Action::Language,
+        "next_tab" => Action::NextTab,
+        "prev_tab" => Action::PrevTab,
+        "tab_dashboard" => Action::GoToTab(AppTab::Dashboard),
+        "tab_telemetry" => Action::GoToTab(AppTab::Telemetry),
+        "tab_engineer" => Action::GoToTab(AppTab::Engineer),
+        "tab_setup" => Action::GoToTab(AppTab::Setup),
+        "tab_analysis" => Action::GoToTab(AppTab::Analysis),
+        "tab_strategy" => Action::GoToTab(AppTab::Strategy),
+        "tab_ffb" => Action::GoToTab(AppTab::Ffb),
+        "tab_settings" => Action::GoToTab(AppTab::Settings),
+        "tab_guide" => Action::GoToTab(AppTab::Guide),
+        "analysis_save" => Action::AnalysisSave,
+        "analysis_load" => Action::AnalysisLoad,
+        "analysis_compare" => Action::AnalysisCompare,
+        "analysis_export" => Action::AnalysisExport,
+        "setup_browser" => Action::SetupBrowser,
+        "setup_download" => Action::SetupDownload,
+        _ => return None,
+    })
+}
+
+/// The current value of a binding, by the name [`all`] gives it.
+pub fn value_of<'a>(keys: &'a KeyBindings, field: &str) -> Option<&'a str> {
+    all(keys)
+        .into_iter()
+        .find(|(name, _, _)| *name == field)
+        .map(|(_, _, value)| value)
+}
+
+/// What to offer at the bottom right of a tab: the binding to name, and what
+/// to call it in each language.
+///
+/// Short on purpose — this shares a row with the status chips. The keys that
+/// work everywhere (tab switching, the digits, the screenshot) are in the help
+/// overlay rather than here; these are the ones that do something on *this*
+/// screen and would otherwise go undiscovered.
+pub fn hints(tab: AppTab) -> &'static [(&'static str, &'static str, &'static str)] {
+    match tab {
+        AppTab::Analysis => &[
+            ("analysis_save", "Save", "Сохр"),
+            ("analysis_load", "Load", "Загр"),
+            ("analysis_compare", "Ghost", "Призрак"),
+            ("analysis_export", "CSV", "CSV"),
+            ("help", "Help", "Помощь"),
+        ],
+        AppTab::Setup => &[
+            ("setup_browser", "Browser", "Браузер"),
+            ("setup_download", "Download", "Скачать"),
+            ("help", "Help", "Помощь"),
+        ],
+        _ => &[
+            ("overlay_toggle", "Overlay", "Оверлей"),
+            ("overlay_menu", "Overlay menu", "Меню оверлея"),
+            ("help", "Help", "Помощь"),
+        ],
+    }
+}
+
 /// Write a binding by the name [`all`] gives it.
 pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
     match field {
@@ -693,6 +764,79 @@ mod tests {
             );
         }
         assert_eq!(listed.len(), fields.len());
+    }
+
+    /// The check this module exists for.
+    ///
+    /// Every key named in a hint has to do, on the tab the hint is drawn on,
+    /// the thing the hint says it does. The Setup tab offered `'D' - Download`
+    /// on a screen where D was not handled at all, and nothing caught it
+    /// because the text and the handler had no connection.
+    #[test]
+    fn the_hints_only_name_keys_that_do_something() {
+        let keys = KeyBindings::default();
+        let tabs = [
+            AppTab::Dashboard,
+            AppTab::Telemetry,
+            AppTab::Engineer,
+            AppTab::Setup,
+            AppTab::Analysis,
+            AppTab::Strategy,
+            AppTab::Ffb,
+            AppTab::Settings,
+            AppTab::Guide,
+        ];
+
+        for tab in tabs {
+            for (field, label, _) in hints(tab) {
+                let binding = value_of(&keys, field);
+                assert!(
+                    binding.is_some(),
+                    "{tab:?} names {field} in a hint, and it is not a binding"
+                );
+                let binding = binding.unwrap_or_default();
+
+                let parsed = parse(binding);
+                assert!(
+                    parsed.is_some(),
+                    "{tab:?} names {field} in a hint, and it is bound to \
+                     something unreadable: {binding}"
+                );
+                let parsed = parsed.unwrap_or(Binding {
+                    code: KeyCode::Null,
+                    modifiers: KeyModifiers::NONE,
+                });
+                let key = KeyEvent::new(parsed.code, parsed.modifiers);
+
+                assert_eq!(
+                    resolve(key, &keys, tab),
+                    action_of(field),
+                    "{tab:?} offers {label} on {}, which does something else there",
+                    describe(binding)
+                );
+            }
+        }
+    }
+
+    /// And it has to keep holding after a rebind, or the hint is only true
+    /// until someone uses the feature this release added.
+    #[test]
+    fn the_hints_follow_a_rebound_key() {
+        let mut keys = KeyBindings::default();
+        set(&mut keys, "analysis_save", "f6".to_string());
+
+        let binding = value_of(&keys, "analysis_save").expect("bound");
+        assert_eq!(describe(binding), "F6");
+
+        let parsed = parse(binding).expect("readable");
+        assert_eq!(
+            resolve(
+                KeyEvent::new(parsed.code, parsed.modifiers),
+                &keys,
+                AppTab::Analysis
+            ),
+            Some(Action::AnalysisSave)
+        );
     }
 
     /// `set` has to reach every field, or a binding is editable on screen and

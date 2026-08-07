@@ -1127,10 +1127,14 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .split(area);
 
     let status = Paragraph::new(msg).style(Style::default().fg(color).add_modifier(Modifier::BOLD));
+    // The launcher's keys, all of them. This named two of six: ←/→ changes the
+    // language and the release on the update row, O opens the review page, H
+    // hides the banner and Q leaves, and none of that was written anywhere on
+    // the screen it works on.
     let controls_hint = if is_ru {
-        "[↑/↓] Навигация   [ENTER] Выбор"
+        "[↑/↓] Навигация  [←/→] Менять  [ENTER] Выбор  [Q] Выход"
     } else {
-        "[↑/↓] Select   [ENTER] Open"
+        "[↑/↓] Select  [←/→] Change  [ENTER] Open  [Q] Quit"
     };
     let controls = Paragraph::new(controls_hint)
         .alignment(Alignment::Center)

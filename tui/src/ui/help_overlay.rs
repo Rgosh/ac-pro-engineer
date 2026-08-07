@@ -1,10 +1,12 @@
+use crate::keys;
+use ac_core::config::KeyBindings;
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(f: &mut Frame<'_>, area: Rect, current_tab_index: usize) {
+pub fn render(f: &mut Frame<'_>, area: Rect, current_tab_index: usize, keys: &KeyBindings) {
     let popup_area = centered_rect(85, 80, area);
     f.render_widget(Clear, popup_area);
 
-    let (title, content) = get_help_content(current_tab_index);
+    let (title, content) = get_help_content(current_tab_index, keys);
 
     let block = Block::default()
         .title(format!(" PADDOCK DATA ASSISTANT: {} ", title))
@@ -22,8 +24,19 @@ pub fn render(f: &mut Frame<'_>, area: Rect, current_tab_index: usize) {
     f.render_widget(p, popup_area);
 }
 
-fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
+fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<Line<'static>>) {
     let t = |text: &'static str| Line::from(Span::raw(text));
+    let owned = |text: String| Line::from(Span::raw(text));
+    // The line every page ends with, naming the keys that actually close the
+    // modal. It used to be a fixed string, and F1 was the one key of the four
+    // it advertised that did nothing -- which reads as the modal being stuck.
+    let close = || {
+        Line::from(Span::raw(format!(
+            "[ PRESS {}, ?, Q, OR {} TO CLOSE ]",
+            keys::describe(&keys.quit),
+            keys::describe(&keys.help)
+        )))
+    };
     let head = |text: &'static str| {
         Line::from(Span::styled(
             text,
@@ -76,7 +89,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 warn("DELTA DISPLAY:"),
                 t("Compares current lap vs your BEST session lap. GREEN = Faster. RED = Slower."),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         1 => (
@@ -96,7 +109,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "If bars max out constantly, increase Bump Stop stiffness (Packer) or ride height.",
                 ),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         2 => (
@@ -127,7 +140,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Brakes transfer heat to the tyre core. Target: 350-500°C."),
                 fix("If >650°C: Open Brake Ducts to prevent fade and tyre cooking."),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         3 => (
@@ -140,7 +153,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Use UP/DOWN to browse setups. Use LEFT/RIGHT to switch cars."),
                 fix("Press [ D ] to inject the setup directly into AC. No restarting required."),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         4 => (
@@ -163,7 +176,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 Line::from(""),
                 t("CONTROLS: [ S ] Save Lap | [ L ] Load Lap | [ C ] Toggle Ghost"),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         5 => (
@@ -182,7 +195,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 ),
                 fix("Short Shift: Shift at lower RPMs to consume less fuel per engine cycle."),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         6 => (
@@ -210,7 +223,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "Trail Braking: You should see the brake trace slowly decrease as G-forces rise in corner entry.",
                 ),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         7 => (
@@ -224,7 +237,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                     "Note: Lower update rate means less CPU usage, but the UI might feel less smooth.",
                 ),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         8 => (
@@ -236,7 +249,7 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
                 t("Use UP/DOWN ARROWS to scroll through the different physics chapters."),
                 t("Press any number key (1-9) to return to live data."),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
         _ => (
@@ -244,20 +257,58 @@ fn get_help_content(tab_index: usize) -> (&'static str, Vec<Line<'static>>) {
             vec![
                 head("NAVIGATION & OVERLAYS"),
                 Line::from(""),
-                warn("1 - 9: Module Switching"),
-                warn("TAB / SHIFT+TAB: Next / previous module"),
-                warn("? or F1: Show/Hide this Engineering Assistant"),
-                warn("CTRL+L: Switch language"),
-                warn("F10: Toggle the in-game overlay"),
-                warn("F11: Overlay Control Center"),
-                warn("Q / ESC: Exit safely"),
+                // Printed from the bindings, not written down. This list said
+                // "SETTINGS: A / S / D switch category" for as long as there
+                // have been four categories, and the fourth was on F.
+                owned(format!(
+                    "⚠️ {} - {}: Module switching",
+                    keys::describe(&keys.tab_dashboard),
+                    keys::describe(&keys.tab_guide)
+                )),
+                owned(format!(
+                    "⚠️ {} / {}: Next / previous module",
+                    keys::describe(&keys.next_tab),
+                    keys::describe(&keys.prev_tab)
+                )),
+                owned(format!(
+                    "⚠️ {} or ?: Show/hide this Engineering Assistant",
+                    keys::describe(&keys.help)
+                )),
+                owned(format!(
+                    "⚠️ {}: Switch language",
+                    keys::describe(&keys.language)
+                )),
+                owned(format!(
+                    "⚠️ {}: Save a screenshot of this screen",
+                    keys::describe(&keys.screenshot)
+                )),
+                owned(format!(
+                    "⚠️ {}: Toggle the in-game overlay",
+                    keys::describe(&keys.overlay_toggle)
+                )),
+                owned(format!(
+                    "⚠️ {}: Overlay Control Center",
+                    keys::describe(&keys.overlay_menu)
+                )),
+                owned(format!("⚠️ {} / Q: Exit safely", keys::describe(&keys.quit))),
                 Line::from(""),
                 head("PER-MODULE KEYS"),
-                warn("ANALYSIS: S save lap, E export CSV, L load, C compare"),
-                warn("SETUP: B browser, D download, PGUP/PGDN scroll details"),
-                warn("SETTINGS: A / S / D switch category, ENTER edit"),
+                owned(format!(
+                    "⚠️ ANALYSIS: {} save lap, {} export CSV, {} load, {} compare",
+                    keys::describe(&keys.analysis_save),
+                    keys::describe(&keys.analysis_export),
+                    keys::describe(&keys.analysis_load),
+                    keys::describe(&keys.analysis_compare)
+                )),
+                owned(format!(
+                    "⚠️ SETUP: {} browser, {} download, PGUP/PGDN scroll details",
+                    keys::describe(&keys.setup_browser),
+                    keys::describe(&keys.setup_download)
+                )),
+                warn("SETTINGS: A / S / D / F / G switch category, ENTER edit"),
+                warn("SETTINGS -> KEYS: rebind any of the above"),
                 Line::from(""),
-                t("[ PRESS ESC, ?, Q, OR F1 TO CLOSE ]"),
+                close(),
             ],
         ),
     }

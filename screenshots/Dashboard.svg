@@ -141,23 +141,6 @@
   <rect x="918" y="812" width="10" height="20" fill="#8957e5"/>
   <rect x="928" y="812" width="10" height="20" fill="#8957e5"/>
   <rect x="938" y="812" width="10" height="20" fill="#8957e5"/>
-  <rect x="948" y="812" width="10" height="20" fill="#8957e5"/>
-  <rect x="958" y="812" width="10" height="20" fill="#8957e5"/>
-  <rect x="978" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="988" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1008" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1018" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1028" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1038" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1048" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1058" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1068" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1078" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1088" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1098" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1108" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1118" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1128" y="812" width="10" height="20" fill="#9e6a03"/>
   <text x="19" y="47" fill="#c9d1d9">🏁</text>
   <text x="49" y="47" fill="#c9d1d9">D</text>
   <text x="59" y="47" fill="#c9d1d9">A</text>
@@ -1750,37 +1733,36 @@
   <text x="919" y="827" fill="#f0f6fc">.</text>
   <text x="929" y="827" fill="#f0f6fc">-</text>
   <text x="939" y="827" fill="#f0f6fc">-</text>
-  <text x="949" y="827" fill="#f0f6fc">-</text>
-  <text x="989" y="827" fill="#c9d1d9">🌡️</text>
-  <text x="1019" y="827" fill="#c9d1d9">A</text>
-  <text x="1029" y="827" fill="#c9d1d9">:</text>
-  <text x="1039" y="827" fill="#c9d1d9">2</text>
-  <text x="1049" y="827" fill="#c9d1d9">2</text>
-  <text x="1059" y="827" fill="#c9d1d9">°</text>
-  <text x="1079" y="827" fill="#c9d1d9">R</text>
-  <text x="1089" y="827" fill="#c9d1d9">:</text>
-  <text x="1099" y="827" fill="#c9d1d9">3</text>
-  <text x="1109" y="827" fill="#c9d1d9">4</text>
-  <text x="1119" y="827" fill="#c9d1d9">°</text>
-  <text x="1169" y="827" fill="#c9d1d9">[</text>
-  <text x="1179" y="827" fill="#c9d1d9">F</text>
-  <text x="1189" y="827" fill="#c9d1d9">1</text>
-  <text x="1199" y="827" fill="#c9d1d9">0</text>
-  <text x="1209" y="827" fill="#c9d1d9">:</text>
-  <text x="1229" y="827" fill="#c9d1d9">O</text>
-  <text x="1239" y="827" fill="#c9d1d9">v</text>
-  <text x="1249" y="827" fill="#c9d1d9">e</text>
-  <text x="1259" y="827" fill="#c9d1d9">r</text>
-  <text x="1269" y="827" fill="#c9d1d9">l</text>
-  <text x="1279" y="827" fill="#c9d1d9">a</text>
-  <text x="1289" y="827" fill="#c9d1d9">y</text>
-  <text x="1299" y="827" fill="#c9d1d9">]</text>
-  <text x="1319" y="827" fill="#c9d1d9">[</text>
-  <text x="1329" y="827" fill="#c9d1d9">?</text>
-  <text x="1339" y="827" fill="#c9d1d9">:</text>
-  <text x="1359" y="827" fill="#c9d1d9">H</text>
-  <text x="1369" y="827" fill="#c9d1d9">e</text>
-  <text x="1379" y="827" fill="#c9d1d9">l</text>
-  <text x="1389" y="827" fill="#c9d1d9">p</text>
-  <text x="1399" y="827" fill="#c9d1d9">]</text>
+  <text x="959" y="827" fill="#8b949e">F</text>
+  <text x="969" y="827" fill="#8b949e">1</text>
+  <text x="979" y="827" fill="#8b949e">0</text>
+  <text x="999" y="827" fill="#8b949e">O</text>
+  <text x="1009" y="827" fill="#8b949e">v</text>
+  <text x="1019" y="827" fill="#8b949e">e</text>
+  <text x="1029" y="827" fill="#8b949e">r</text>
+  <text x="1039" y="827" fill="#8b949e">l</text>
+  <text x="1049" y="827" fill="#8b949e">a</text>
+  <text x="1059" y="827" fill="#8b949e">y</text>
+  <text x="1089" y="827" fill="#8b949e">·</text>
+  <text x="1119" y="827" fill="#8b949e">F</text>
+  <text x="1129" y="827" fill="#8b949e">1</text>
+  <text x="1139" y="827" fill="#8b949e">1</text>
+  <text x="1159" y="827" fill="#8b949e">O</text>
+  <text x="1169" y="827" fill="#8b949e">v</text>
+  <text x="1179" y="827" fill="#8b949e">e</text>
+  <text x="1189" y="827" fill="#8b949e">r</text>
+  <text x="1199" y="827" fill="#8b949e">l</text>
+  <text x="1209" y="827" fill="#8b949e">a</text>
+  <text x="1219" y="827" fill="#8b949e">y</text>
+  <text x="1239" y="827" fill="#8b949e">m</text>
+  <text x="1249" y="827" fill="#8b949e">e</text>
+  <text x="1259" y="827" fill="#8b949e">n</text>
+  <text x="1269" y="827" fill="#8b949e">u</text>
+  <text x="1299" y="827" fill="#8b949e">·</text>
+  <text x="1329" y="827" fill="#8b949e">F</text>
+  <text x="1339" y="827" fill="#8b949e">1</text>
+  <text x="1359" y="827" fill="#8b949e">H</text>
+  <text x="1369" y="827" fill="#8b949e">e</text>
+  <text x="1379" y="827" fill="#8b949e">l</text>
+  <text x="1389" y="827" fill="#8b949e">p</text>
 </svg>

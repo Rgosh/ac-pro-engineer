@@ -147,17 +147,6 @@
   <rect x="988" y="812" width="10" height="20" fill="#9e6a03"/>
   <rect x="1008" y="812" width="10" height="20" fill="#9e6a03"/>
   <rect x="1018" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1028" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1038" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1048" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1058" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1068" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1078" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1088" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1098" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1108" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1118" y="812" width="10" height="20" fill="#9e6a03"/>
-  <rect x="1128" y="812" width="10" height="20" fill="#9e6a03"/>
   <text x="19" y="47" fill="#c9d1d9">🏁</text>
   <text x="49" y="47" fill="#c9d1d9">D</text>
   <text x="59" y="47" fill="#c9d1d9">A</text>
@@ -944,69 +933,77 @@
   <text x="149" y="807" fill="#f2cc60">o</text>
   <text x="159" y="807" fill="#f2cc60">w</text>
   <text x="169" y="807" fill="#f2cc60">s</text>
-  <text x="189" y="807" fill="#f2cc60">-</text>
-  <text x="209" y="807" fill="#f2cc60">N</text>
-  <text x="219" y="807" fill="#f2cc60">a</text>
-  <text x="229" y="807" fill="#f2cc60">v</text>
-  <text x="239" y="807" fill="#f2cc60">i</text>
-  <text x="249" y="807" fill="#f2cc60">g</text>
-  <text x="259" y="807" fill="#f2cc60">a</text>
-  <text x="269" y="807" fill="#f2cc60">t</text>
-  <text x="279" y="807" fill="#f2cc60">e</text>
-  <text x="299" y="807" fill="#f2cc60">|</text>
-  <text x="319" y="807" fill="#f2cc60">E</text>
-  <text x="329" y="807" fill="#f2cc60">N</text>
-  <text x="339" y="807" fill="#f2cc60">T</text>
-  <text x="349" y="807" fill="#f2cc60">E</text>
-  <text x="359" y="807" fill="#f2cc60">R</text>
-  <text x="379" y="807" fill="#f2cc60">-</text>
-  <text x="399" y="807" fill="#f2cc60">S</text>
-  <text x="409" y="807" fill="#f2cc60">e</text>
-  <text x="419" y="807" fill="#f2cc60">l</text>
+  <text x="189" y="807" fill="#f2cc60">t</text>
+  <text x="199" y="807" fill="#f2cc60">o</text>
+  <text x="219" y="807" fill="#f2cc60">n</text>
+  <text x="229" y="807" fill="#f2cc60">a</text>
+  <text x="239" y="807" fill="#f2cc60">v</text>
+  <text x="249" y="807" fill="#f2cc60">i</text>
+  <text x="259" y="807" fill="#f2cc60">g</text>
+  <text x="269" y="807" fill="#f2cc60">a</text>
+  <text x="279" y="807" fill="#f2cc60">t</text>
+  <text x="289" y="807" fill="#f2cc60">e</text>
+  <text x="309" y="807" fill="#f2cc60">|</text>
+  <text x="329" y="807" fill="#f2cc60">E</text>
+  <text x="339" y="807" fill="#f2cc60">N</text>
+  <text x="349" y="807" fill="#f2cc60">T</text>
+  <text x="359" y="807" fill="#f2cc60">E</text>
+  <text x="369" y="807" fill="#f2cc60">R</text>
+  <text x="389" y="807" fill="#f2cc60">t</text>
+  <text x="399" y="807" fill="#f2cc60">o</text>
+  <text x="419" y="807" fill="#f2cc60">s</text>
   <text x="429" y="807" fill="#f2cc60">e</text>
-  <text x="439" y="807" fill="#f2cc60">c</text>
-  <text x="449" y="807" fill="#f2cc60">t</text>
-  <text x="469" y="807" fill="#f2cc60">|</text>
-  <text x="489" y="807" fill="#f2cc60">&apos;</text>
-  <text x="499" y="807" fill="#f2cc60">D</text>
-  <text x="509" y="807" fill="#f2cc60">&apos;</text>
-  <text x="529" y="807" fill="#f2cc60">-</text>
-  <text x="549" y="807" fill="#f2cc60">D</text>
-  <text x="559" y="807" fill="#f2cc60">o</text>
-  <text x="569" y="807" fill="#f2cc60">w</text>
-  <text x="579" y="807" fill="#f2cc60">n</text>
-  <text x="589" y="807" fill="#f2cc60">l</text>
-  <text x="599" y="807" fill="#f2cc60">o</text>
-  <text x="609" y="807" fill="#f2cc60">a</text>
-  <text x="619" y="807" fill="#f2cc60">d</text>
-  <text x="639" y="807" fill="#f2cc60">|</text>
-  <text x="659" y="807" fill="#f2cc60">&apos;</text>
-  <text x="669" y="807" fill="#f2cc60">B</text>
-  <text x="679" y="807" fill="#f2cc60">&apos;</text>
-  <text x="699" y="807" fill="#f2cc60">-</text>
-  <text x="719" y="807" fill="#f2cc60">R</text>
-  <text x="729" y="807" fill="#f2cc60">e</text>
-  <text x="739" y="807" fill="#f2cc60">t</text>
-  <text x="749" y="807" fill="#f2cc60">u</text>
-  <text x="759" y="807" fill="#f2cc60">r</text>
-  <text x="769" y="807" fill="#f2cc60">n</text>
-  <text x="789" y="807" fill="#f2cc60">|</text>
-  <text x="809" y="807" fill="#f2cc60">P</text>
-  <text x="819" y="807" fill="#f2cc60">g</text>
-  <text x="829" y="807" fill="#f2cc60">U</text>
-  <text x="839" y="807" fill="#f2cc60">p</text>
-  <text x="849" y="807" fill="#f2cc60">/</text>
-  <text x="859" y="807" fill="#f2cc60">P</text>
-  <text x="869" y="807" fill="#f2cc60">g</text>
-  <text x="879" y="807" fill="#f2cc60">D</text>
-  <text x="889" y="807" fill="#f2cc60">n</text>
-  <text x="909" y="807" fill="#f2cc60">-</text>
-  <text x="929" y="807" fill="#f2cc60">S</text>
-  <text x="939" y="807" fill="#f2cc60">c</text>
-  <text x="949" y="807" fill="#f2cc60">r</text>
-  <text x="959" y="807" fill="#f2cc60">o</text>
-  <text x="969" y="807" fill="#f2cc60">l</text>
-  <text x="979" y="807" fill="#f2cc60">l</text>
+  <text x="439" y="807" fill="#f2cc60">l</text>
+  <text x="449" y="807" fill="#f2cc60">e</text>
+  <text x="459" y="807" fill="#f2cc60">c</text>
+  <text x="469" y="807" fill="#f2cc60">t</text>
+  <text x="489" y="807" fill="#f2cc60">|</text>
+  <text x="509" y="807" fill="#f2cc60">P</text>
+  <text x="519" y="807" fill="#f2cc60">g</text>
+  <text x="529" y="807" fill="#f2cc60">U</text>
+  <text x="539" y="807" fill="#f2cc60">p</text>
+  <text x="549" y="807" fill="#f2cc60">/</text>
+  <text x="559" y="807" fill="#f2cc60">P</text>
+  <text x="569" y="807" fill="#f2cc60">g</text>
+  <text x="579" y="807" fill="#f2cc60">D</text>
+  <text x="589" y="807" fill="#f2cc60">n</text>
+  <text x="609" y="807" fill="#f2cc60">t</text>
+  <text x="619" y="807" fill="#f2cc60">o</text>
+  <text x="639" y="807" fill="#f2cc60">s</text>
+  <text x="649" y="807" fill="#f2cc60">c</text>
+  <text x="659" y="807" fill="#f2cc60">r</text>
+  <text x="669" y="807" fill="#f2cc60">o</text>
+  <text x="679" y="807" fill="#f2cc60">l</text>
+  <text x="689" y="807" fill="#f2cc60">l</text>
+  <text x="699" y="807" fill="#f2cc60">─</text>
+  <text x="709" y="807" fill="#f2cc60">─</text>
+  <text x="719" y="807" fill="#f2cc60">─</text>
+  <text x="729" y="807" fill="#f2cc60">─</text>
+  <text x="739" y="807" fill="#f2cc60">─</text>
+  <text x="749" y="807" fill="#f2cc60">─</text>
+  <text x="759" y="807" fill="#f2cc60">─</text>
+  <text x="769" y="807" fill="#f2cc60">─</text>
+  <text x="779" y="807" fill="#f2cc60">─</text>
+  <text x="789" y="807" fill="#f2cc60">─</text>
+  <text x="799" y="807" fill="#f2cc60">─</text>
+  <text x="809" y="807" fill="#f2cc60">─</text>
+  <text x="819" y="807" fill="#f2cc60">─</text>
+  <text x="829" y="807" fill="#f2cc60">─</text>
+  <text x="839" y="807" fill="#f2cc60">─</text>
+  <text x="849" y="807" fill="#f2cc60">─</text>
+  <text x="859" y="807" fill="#f2cc60">─</text>
+  <text x="869" y="807" fill="#f2cc60">─</text>
+  <text x="879" y="807" fill="#f2cc60">─</text>
+  <text x="889" y="807" fill="#f2cc60">─</text>
+  <text x="899" y="807" fill="#f2cc60">─</text>
+  <text x="909" y="807" fill="#f2cc60">─</text>
+  <text x="919" y="807" fill="#f2cc60">─</text>
+  <text x="929" y="807" fill="#f2cc60">─</text>
+  <text x="939" y="807" fill="#f2cc60">─</text>
+  <text x="949" y="807" fill="#f2cc60">─</text>
+  <text x="959" y="807" fill="#f2cc60">─</text>
+  <text x="969" y="807" fill="#f2cc60">─</text>
+  <text x="979" y="807" fill="#f2cc60">─</text>
   <text x="989" y="807" fill="#f2cc60">─</text>
   <text x="999" y="807" fill="#f2cc60">─</text>
   <text x="1009" y="807" fill="#f2cc60">─</text>
@@ -1117,35 +1114,31 @@
   <text x="939" y="827" fill="#f0f6fc">-</text>
   <text x="949" y="827" fill="#f0f6fc">-</text>
   <text x="989" y="827" fill="#c9d1d9">🌡️</text>
+  <text x="999" y="827" fill="#8b949e">O</text>
   <text x="1019" y="827" fill="#c9d1d9">A</text>
-  <text x="1029" y="827" fill="#c9d1d9">:</text>
-  <text x="1039" y="827" fill="#c9d1d9">2</text>
-  <text x="1049" y="827" fill="#c9d1d9">2</text>
-  <text x="1059" y="827" fill="#c9d1d9">°</text>
-  <text x="1079" y="827" fill="#c9d1d9">R</text>
-  <text x="1089" y="827" fill="#c9d1d9">:</text>
-  <text x="1099" y="827" fill="#c9d1d9">3</text>
-  <text x="1109" y="827" fill="#c9d1d9">4</text>
-  <text x="1119" y="827" fill="#c9d1d9">°</text>
-  <text x="1169" y="827" fill="#c9d1d9">[</text>
-  <text x="1179" y="827" fill="#c9d1d9">F</text>
-  <text x="1189" y="827" fill="#c9d1d9">1</text>
-  <text x="1199" y="827" fill="#c9d1d9">0</text>
-  <text x="1209" y="827" fill="#c9d1d9">:</text>
-  <text x="1229" y="827" fill="#c9d1d9">O</text>
-  <text x="1239" y="827" fill="#c9d1d9">v</text>
-  <text x="1249" y="827" fill="#c9d1d9">e</text>
-  <text x="1259" y="827" fill="#c9d1d9">r</text>
-  <text x="1269" y="827" fill="#c9d1d9">l</text>
-  <text x="1279" y="827" fill="#c9d1d9">a</text>
-  <text x="1289" y="827" fill="#c9d1d9">y</text>
-  <text x="1299" y="827" fill="#c9d1d9">]</text>
-  <text x="1319" y="827" fill="#c9d1d9">[</text>
-  <text x="1329" y="827" fill="#c9d1d9">?</text>
-  <text x="1339" y="827" fill="#c9d1d9">:</text>
-  <text x="1359" y="827" fill="#c9d1d9">H</text>
-  <text x="1369" y="827" fill="#c9d1d9">e</text>
-  <text x="1379" y="827" fill="#c9d1d9">l</text>
-  <text x="1389" y="827" fill="#c9d1d9">p</text>
-  <text x="1399" y="827" fill="#c9d1d9">]</text>
+  <text x="1039" y="827" fill="#8b949e">B</text>
+  <text x="1059" y="827" fill="#8b949e">B</text>
+  <text x="1069" y="827" fill="#8b949e">r</text>
+  <text x="1079" y="827" fill="#8b949e">o</text>
+  <text x="1089" y="827" fill="#8b949e">w</text>
+  <text x="1099" y="827" fill="#8b949e">s</text>
+  <text x="1109" y="827" fill="#8b949e">e</text>
+  <text x="1119" y="827" fill="#8b949e">r</text>
+  <text x="1149" y="827" fill="#8b949e">·</text>
+  <text x="1179" y="827" fill="#8b949e">D</text>
+  <text x="1199" y="827" fill="#8b949e">D</text>
+  <text x="1209" y="827" fill="#8b949e">o</text>
+  <text x="1219" y="827" fill="#8b949e">w</text>
+  <text x="1229" y="827" fill="#8b949e">n</text>
+  <text x="1239" y="827" fill="#8b949e">l</text>
+  <text x="1249" y="827" fill="#8b949e">o</text>
+  <text x="1259" y="827" fill="#8b949e">a</text>
+  <text x="1269" y="827" fill="#8b949e">d</text>
+  <text x="1299" y="827" fill="#8b949e">·</text>
+  <text x="1329" y="827" fill="#8b949e">F</text>
+  <text x="1339" y="827" fill="#8b949e">1</text>
+  <text x="1359" y="827" fill="#8b949e">H</text>
+  <text x="1369" y="827" fill="#8b949e">e</text>
+  <text x="1379" y="827" fill="#8b949e">l</text>
+  <text x="1389" y="827" fill="#8b949e">p</text>
 </svg>

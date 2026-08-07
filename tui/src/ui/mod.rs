@@ -178,7 +178,7 @@ impl UIRenderer {
                         AppTab::Settings => 7,
                         AppTab::Guide => 8,
                     };
-                    help_overlay::render(f, f.size(), tab_idx);
+                    help_overlay::render(f, f.size(), tab_idx, &app.config.keys);
                 }
             }
         }
@@ -491,11 +491,6 @@ impl UIRenderer {
                     },
                 ),
             ),
-            Span::raw(" "),
-            Span::styled(
-                " [F10: Overlay] [?: Help] ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
         ];
 
         let footer = Paragraph::new(Line::from(spans))
@@ -503,5 +498,11 @@ impl UIRenderer {
             .style(Style::default().bg(Color::Reset));
 
         f.render_widget(footer, area);
+
+        // The keys for the tab on screen, bottom right, on every tab. This
+        // used to be a fixed "[F10: Overlay] [?: Help]" here plus a hand-typed
+        // line on two tabs and nothing on the other seven — and one of the two
+        // named a key that did nothing.
+        widgets::render_tab_hints(f, area, app);
     }
 }

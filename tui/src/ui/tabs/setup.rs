@@ -87,16 +87,23 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
+    // The key hint is drawn by `ui::widgets::render_tab_hints` on the status
+    // row now, from the bindings themselves. The version that lived here was
+    // hand-typed, and it promised `'D' - Download` on the list screen, where D
+    // reached no handler at all.
+    //
+    // The arrows and PgUp/PgDn are not in it: they are the same on every list
+    // in the application and are not rebindable.
     let hint_text = if is_browser {
         if *lang == ac_core::config::Language::Russian {
-            "БРАУЗЕР: Стрелки - Навигация | ENTER - Выбор | 'D' - Скачать | 'B' - Назад | PgUp/PgDn - Скролл"
+            "БРАУЗЕР: Стрелки — навигация | ENTER — выбор | PgUp/PgDn — скролл"
         } else {
-            "BROWSER: Arrows - Navigate | ENTER - Select | 'D' - Download | 'B' - Return | PgUp/PgDn - Scroll"
+            "BROWSER: Arrows to navigate | ENTER to select | PgUp/PgDn to scroll"
         }
     } else if *lang == ac_core::config::Language::Russian {
-        "LIVE: 'B' - База Сетапов | 'D' - Скачать | PgUp/PgDn - Скролл деталей"
+        "Стрелки — выбор сетапа | PgUp/PgDn — скролл деталей"
     } else {
-        "LIVE: 'B' - Online Database | 'D' - Download | PgUp/PgDn - Scroll Details"
+        "Arrows to pick a setup | PgUp/PgDn to scroll the details"
     };
 
     let hint_area = Rect {

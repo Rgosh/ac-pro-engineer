@@ -337,21 +337,16 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             f.render_widget(status_p, footer_layout[0]);
         }
 
-        let hint_parts = [
-            if is_ru {
-                "←/→ Вкладки"
-            } else {
-                "←/→ Tabs"
-            },
-            if is_ru { "S Сохр" } else { "S Save" },
-            if is_ru { "L Загр" } else { "L Load" },
-            if is_ru {
-                "C Сравнить"
-            } else {
-                "C Compare"
-            },
-        ];
-        let hint_text = hint_parts.join(" | ");
+        // S / L / C used to be spelled out here, and E -- which exports the
+        // CSV and has worked for as long as the other three -- was missing.
+        // The key names come from `ui::widgets::render_tab_hints` on the
+        // status row now, from the bindings themselves; what is left here is
+        // the navigation, which is the same on every list and not rebindable.
+        let hint_text = if is_ru {
+            "←/→ Вкладки   ↑/↓ Круги".to_string()
+        } else {
+            "←/→ Tabs   ↑/↓ Laps".to_string()
+        };
         let hint_p = Paragraph::new(hint_text)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Right);

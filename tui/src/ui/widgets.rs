@@ -253,6 +253,58 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
     }
 }
 
+/// The keys that do something on the tab on screen, bottom right.
+///
+/// Every word of this comes from `keys::hints` and `keys::describe`, which
+/// read the same bindings `keys::resolve` acts on — so it cannot advertise a
+/// key that does nothing, which is what the Setup tab's hand-typed
+/// `'D' - Download` did on a screen with no D handler.
+///
+/// Right-aligned on the status row, and dropped entirely when the terminal is
+/// too narrow to hold it beside the chips: half a hint is worse than none.
+pub fn render_tab_hints(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+
+    let parts: Vec<String> = crate::keys::hints(app.active_tab)
+        .iter()
+        .filter_map(|(field, english, russian)| {
+            let binding = crate::keys::value_of(&app.config.keys, field)?;
+            // A binding nobody can read is a key nobody can press. Left out
+            // rather than printed, so the promise this line makes stays true.
+            crate::keys::parse(binding)?;
+            Some(format!(
+                "{} {}",
+                crate::keys::describe(binding),
+                if is_ru { russian } else { english }
+            ))
+        })
+        .collect();
+
+    if parts.is_empty() {
+        return;
+    }
+
+    let text = format!(" {} ", parts.join("  ·  "));
+    let width = text.chars().count() as u16;
+    if width + 2 >= area.width {
+        return;
+    }
+
+    let hint_area = Rect {
+        x: area.x + area.width - width,
+        y: area.y,
+        width,
+        height: 1,
+    };
+
+    f.render_widget(
+        Paragraph::new(text)
+            .alignment(Alignment::Right)
+            .style(Style::default().fg(Color::Gray).bg(Color::Reset)),
+        hint_area,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::safe_ratio;
