@@ -231,7 +231,7 @@ impl SettingsState {
         match self.category {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
-            SettingsCategory::RaceEngineer => 10,
+            SettingsCategory::RaceEngineer => 11,
             SettingsCategory::Overlay => 7,
             // Counted off the binding list rather than written down, so adding
             // an action cannot leave a row that is drawn and unreachable.
@@ -319,14 +319,18 @@ impl SettingsState {
                         (config.alerts.wear_warning + delta * 0.5).clamp(0.0, 100.0)
                 }
                 7 => {
+                    config.alerts.wear_critical =
+                        (config.alerts.wear_critical + delta * 0.5).clamp(0.0, 100.0)
+                }
+                8 => {
                     config.target_hot_pressure_front =
                         (config.target_hot_pressure_front + delta * 0.1).clamp(15.0, 45.0)
                 }
-                8 => {
+                9 => {
                     config.target_hot_pressure_rear =
                         (config.target_hot_pressure_rear + delta * 0.1).clamp(15.0, 45.0)
                 }
-                9 if delta.abs() > 0.0 => config.show_ghost_delta = !config.show_ghost_delta,
+                10 if delta.abs() > 0.0 => config.show_ghost_delta = !config.show_ghost_delta,
                 _ => {}
             },
             SettingsCategory::Overlay => match self.selected_index {
@@ -469,9 +473,37 @@ impl SettingsState {
                 }
                 6 => {
                     if is_ru {
-                        "Критический износ шин (%)."
+                        "Остаток жизни шины, ниже которого это предупреждение (%)."
                     } else {
-                        "Critical Tyre Wear (%)."
+                        "Tyre life below which it is a warning (%)."
+                    }
+                }
+                7 => {
+                    if is_ru {
+                        "Остаток жизни шины, ниже которого это критично (%)."
+                    } else {
+                        "Tyre life below which it is critical (%)."
+                    }
+                }
+                8 => {
+                    if is_ru {
+                        "Целевое горячее давление спереди."
+                    } else {
+                        "Target hot pressure, front."
+                    }
+                }
+                9 => {
+                    if is_ru {
+                        "Целевое горячее давление сзади."
+                    } else {
+                        "Target hot pressure, rear."
+                    }
+                }
+                10 => {
+                    if is_ru {
+                        "Считать дельту по своему лучшему кругу, а не по метру AC."
+                    } else {
+                        "Measure the delta against your own best lap, not AC's meter."
                     }
                 }
                 _ => "",
@@ -1271,6 +1303,18 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         (
             tr("alert_wear", lang),
             format!("{:.0}%", alerts.wear_warning),
+            false,
+        ),
+        (
+            // Its own row, because it used to be `wear_warning - 2` and that
+            // made every worn tyre a critical one two percent later.
+            if is_ru {
+                "Износ: критично ниже"
+            } else {
+                "Wear: critical below"
+            }
+            .to_string(),
+            format!("{:.0}%", alerts.wear_critical),
             false,
         ),
         (

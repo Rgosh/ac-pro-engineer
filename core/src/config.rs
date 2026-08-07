@@ -212,8 +212,18 @@ pub struct AlertsConfig {
     pub brake_temp_max: f32,
     #[serde(default = "default_fuel_warning_laps")]
     pub fuel_warning_laps: f32,
+    /// Life left below which a tyre is "going off", as a percentage.
     #[serde(default = "default_wear_warning")]
     pub wear_warning: f32,
+    /// Life left below which it is a critical problem, as a percentage.
+    ///
+    /// Separate from [`Self::wear_warning`] because it used to be derived from
+    /// it: anything under `wear_warning - 2` was reported as WORN OUT, so with
+    /// the default of 96 a tyre at 93.9 % life — which is a tyre most of the
+    /// way through a first stint — came back as a critical alert. Advice that
+    /// cries wolf on lap three is advice nobody reads on lap thirty.
+    #[serde(default = "default_wear_critical")]
+    pub wear_critical: f32,
 }
 
 fn default_language() -> Language {
@@ -239,6 +249,9 @@ fn default_fuel_warning_laps() -> f32 {
 }
 fn default_wear_warning() -> f32 {
     96.0
+}
+fn default_wear_critical() -> f32 {
+    85.0
 }
 
 /// What each key in the terminal application does.
@@ -514,6 +527,7 @@ impl Default for AlertsConfig {
             brake_temp_max: 800.0,
             fuel_warning_laps: 3.0,
             wear_warning: 96.0,
+            wear_critical: 85.0,
         }
     }
 }

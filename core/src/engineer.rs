@@ -27,6 +27,12 @@ pub struct Parameter {
     pub unit: String,
 }
 
+/// The four corners, in the order every array in AC's physics page uses.
+///
+/// Was written out as a `match i { 0 => "FL", ... }` in six analysers, which
+/// is six places to get the order wrong.
+pub const CORNER_NAMES: [&str; 4] = ["FL", "FR", "RL", "RR"];
+
 #[derive(Debug, Serialize, Clone, PartialEq, PartialOrd)]
 pub enum Severity {
     Info,
@@ -786,6 +792,29 @@ impl Engineer {
         }
     }
 
+    /// Name a set of corners the way an engineer would say it out loud.
+    ///
+    /// Four separate lines saying the same thing about four wheels is four of
+    /// the overlay's slots spent on one fact, and the driver reads "FL COLD /
+    /// FR COLD / RL COLD / RR COLD" as noise rather than as "the tyres are not
+    /// up to temperature yet". Which is what it means.
+    fn corner_phrase(corners: &[usize], ru: bool) -> String {
+        match corners {
+            [] => String::new(),
+            [only] => CORNER_NAMES[*only].to_string(),
+            [0, 1] => if ru { "Перед" } else { "Fronts" }.to_string(),
+            [2, 3] => if ru { "Зад" } else { "Rears" }.to_string(),
+            [0, 2] => if ru { "Левые" } else { "Left side" }.to_string(),
+            [1, 3] => if ru { "Правые" } else { "Right side" }.to_string(),
+            [0, 1, 2, 3] => if ru { "Все шины" } else { "All four" }.to_string(),
+            many => many
+                .iter()
+                .map(|index| CORNER_NAMES[*index])
+                .collect::<Vec<_>>()
+                .join("/"),
+        }
+    }
+
     fn analyze_tyre_pressure(
         &mut self,
         phys: &AcPhysics,
@@ -826,69 +855,87 @@ impl Engineer {
         let grip_compensation = (1.0 - gfx.surface_grip.clamp(0.80, 1.0)) * 1.5;
         let optimal_pressure = base_optimal + grip_compensation;
 
+        let mut low: Vec<usize> = Vec::new();
+        let mut high: Vec<usize> = Vec::new();
+
         for i in 0..4 {
             let pressure = phys.wheels_pressure[i];
-            let diff = (pressure - optimal_pressure).abs();
             let is_error = pressure < pressure_min || pressure > pressure_max;
 
             let key = format!("pres_{}", i);
-            if self.check_hysteresis(&key, is_error) && phys.speed_kmh > 10.0 {
-                if !is_error {
-                    continue;
-                }
+            if !self.check_hysteresis(&key, is_error) || phys.speed_kmh <= 10.0 || !is_error {
+                continue;
+            }
 
-                let name = match i {
-                    0 => "FL",
-                    1 => "FR",
-                    2 => "RL",
-                    3 => "RR",
-                    _ => "",
-                };
-                let action_text = if pressure < optimal_pressure {
-                    if ru { "Накачать" } else { "Inflate" }
-                } else {
-                    if ru { "Спустить" } else { "Deflate" }
-                }
-                .to_string();
-
-                recs.push(Recommendation {
-                    component: if ru {
-                        format!("Шины ({})", class_name)
-                    } else {
-                        format!("Tyres ({})", class_name)
-                    },
-                    category: if ru {
-                        "Давление".to_string()
-                    } else {
-                        "Pressure".to_string()
-                    },
-                    severity: if diff > 2.5 {
-                        Severity::Warning
-                    } else {
-                        Severity::Info
-                    },
-                    message: if ru {
-                        format!(
-                            "{} Давление: {:.1} (Цель: {:.1})",
-                            name, pressure, optimal_pressure
-                        )
-                    } else {
-                        format!(
-                            "{} Pressure: {:.1} (Target: {:.1})",
-                            name, pressure, optimal_pressure
-                        )
-                    },
-                    action: action_text,
-                    parameters: vec![Parameter {
-                        name: "Delta".to_string(),
-                        current: pressure,
-                        target: optimal_pressure,
-                        unit: "PSI".to_string(),
-                    }],
-                    confidence: 0.9,
-                });
+            if pressure < optimal_pressure {
+                low.push(i);
+            } else {
+                high.push(i);
             }
         }
+
+        // Units, at last. The temperature analyser has gone through the
+        // formatter since it was written; this one printed raw psi, so anyone
+        // working in bar read their pressures in one unit on the Dashboard and
+        // another in the advice about them.
+        let formatter = self.config.formatter();
+
+        let mut push = |corners: &[usize], inflate: bool| {
+            if corners.is_empty() {
+                return;
+            }
+            let average = corners
+                .iter()
+                .map(|i| phys.wheels_pressure[*i])
+                .sum::<f32>()
+                / corners.len() as f32;
+            let difference = (average - optimal_pressure).abs();
+
+            recs.push(Recommendation {
+                component: if ru {
+                    format!("Шины ({})", class_name)
+                } else {
+                    format!("Tyres ({})", class_name)
+                },
+                category: if ru { "Давление" } else { "Pressure" }.to_string(),
+                // A pressure a full unit off the target changes how the car
+                // turns; half of one is a setup working as intended.
+                severity: if difference > 2.5 {
+                    Severity::Warning
+                } else {
+                    Severity::Info
+                },
+                message: format!(
+                    "{} {}: {} ({} {})",
+                    Self::corner_phrase(corners, ru),
+                    if ru { "давление" } else { "pressure" },
+                    formatter.format_pressure(average),
+                    if ru { "цель" } else { "target" },
+                    formatter.format_pressure(optimal_pressure)
+                ),
+                action: if inflate {
+                    if ru { "Накачать" } else { "Inflate" }
+                } else if ru {
+                    "Спустить"
+                } else {
+                    "Deflate"
+                }
+                .to_string(),
+                parameters: corners
+                    .iter()
+                    .map(|i| Parameter {
+                        name: CORNER_NAMES[*i].to_string(),
+                        current: phys.wheels_pressure[*i],
+                        target: optimal_pressure,
+                        unit: formatter.pressure_symbol().to_string(),
+                    })
+                    .collect(),
+                confidence: 0.9,
+            });
+        };
+
+        push(&low, true);
+        push(&high, false);
     }
 
     fn analyze_tyre_wear(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
@@ -903,61 +950,76 @@ impl Engineer {
             return;
         }
 
-        for i in 0..4 {
-            let wear = phys.tyre_wear[i];
-            let warning_threshold = self.config.alerts.wear_warning;
+        let warning_threshold = self.config.alerts.wear_warning;
+        // Its own threshold, not `warning - 2`. That derivation made a tyre at
+        // 93.9 % life a CRITICAL "WORN OUT" with the default settings, which is
+        // a tyre most of the way through its first stint.
+        let critical_threshold = self
+            .config
+            .alerts
+            .wear_critical
+            .min(self.config.alerts.wear_warning);
+
+        let mut worn: Vec<usize> = Vec::new();
+        let mut critical: Vec<usize> = Vec::new();
+
+        for (i, wear) in phys.tyre_wear.iter().copied().enumerate() {
             let is_worn = wear < warning_threshold;
-
-            if self.check_hysteresis(&format!("wear_{}", i), is_worn) {
-                if !is_worn {
-                    continue;
-                }
-
-                let name = match i {
-                    0 => "FL",
-                    1 => "FR",
-                    2 => "RL",
-                    3 => "RR",
-                    _ => "",
-                };
-                let (severity, msg_en, msg_ru) = if wear < (warning_threshold - 2.0).max(0.0) {
-                    (Severity::Critical, "WORN OUT", "ИЗНОС (Крит)")
-                } else {
-                    (Severity::Warning, "High Wear", "Сильный износ")
-                };
-
-                recs.push(Recommendation {
-                    component: if ru {
-                        "Шины".to_string()
-                    } else {
-                        "Tyres".to_string()
-                    },
-                    category: if ru {
-                        "Износ".to_string()
-                    } else {
-                        "Wear".to_string()
-                    },
-                    severity,
-                    message: if ru {
-                        format!("{} {}: {:.1}%", name, msg_ru, wear)
-                    } else {
-                        format!("{} {}: {:.1}%", name, msg_en, wear)
-                    },
-                    action: if ru {
-                        "Пит-стоп / Осторожно".to_string()
-                    } else {
-                        "Box / Careful".to_string()
-                    },
-                    parameters: vec![Parameter {
-                        name: "Life".to_string(),
-                        current: wear,
-                        target: 100.0,
-                        unit: "%".to_string(),
-                    }],
-                    confidence: 0.9,
-                });
+            // The hysteresis is still per corner: it is per-corner state, and
+            // one wheel picking up a flat spot should not reset the timers on
+            // the other three. Only the reporting is grouped.
+            if !self.check_hysteresis(&format!("wear_{}", i), is_worn) || !is_worn {
+                continue;
+            }
+            if wear < critical_threshold {
+                critical.push(i);
+            } else {
+                worn.push(i);
             }
         }
+
+        let mut push = |corners: &[usize], severity: Severity| {
+            if corners.is_empty() {
+                return;
+            }
+            let lowest = corners
+                .iter()
+                .map(|i| phys.tyre_wear[*i])
+                .fold(f32::MAX, f32::min);
+            let where_ = Self::corner_phrase(corners, ru);
+            let what = match (&severity, ru) {
+                (Severity::Critical, true) => "ИЗНОС (Крит)",
+                (Severity::Critical, false) => "WORN OUT",
+                (_, true) => "сильный износ",
+                (_, false) => "high wear",
+            };
+
+            recs.push(Recommendation {
+                component: if ru { "Шины" } else { "Tyres" }.to_string(),
+                category: if ru { "Износ" } else { "Wear" }.to_string(),
+                severity,
+                message: format!("{where_} {what}: {lowest:.1}%"),
+                action: if ru {
+                    "Пит-стоп / Осторожно"
+                } else {
+                    "Box / Careful"
+                }
+                .to_string(),
+                parameters: corners
+                    .iter()
+                    .map(|i| Parameter {
+                        name: format!("{} life", CORNER_NAMES[*i]),
+                        current: phys.tyre_wear[*i],
+                        target: 100.0,
+                        unit: "%".to_string(),
+                    })
+                    .collect(),
+                confidence: 0.9,
+            });
+        };
+
+        push(&critical, Severity::Critical);
+        push(&worn, Severity::Warning);
     }
 
     fn analyze_camber(
@@ -1132,106 +1194,78 @@ impl Engineer {
             .max(self.config.alerts.tyre_temp_max);
         let ru = self.is_ru();
 
-        if phys.speed_kmh > 100.0 {
-            for i in 0..4 {
-                let temp = phys.get_avg_tyre_temp(i);
-                // Same gate as the pressure and wear alerts. This ran on
-                // every frame, so a tyre that stayed cold produced a fresh
-                // recommendation dozens of times a second.
-                let out_of_band = temp < min_temp || temp > max_temp;
-                if !self.check_hysteresis(&format!("tyre_temp_{}", i), out_of_band) {
-                    continue;
-                }
-                if temp < min_temp {
-                    let name = match i {
-                        0 => "FL",
-                        1 => "FR",
-                        2 => "RL",
-                        3 => "RR",
-                        _ => "",
-                    };
-                    recs.push(Recommendation {
-                        component: if ru {
-                            "Шины".to_string()
-                        } else {
-                            "Tyres".to_string()
-                        },
-                        category: if ru {
-                            "Температура".to_string()
-                        } else {
-                            "Temperature".to_string()
-                        },
-                        severity: Severity::Warning,
-                        message: if ru {
-                            format!(
-                                "{} ХОЛОДНАЯ: {}",
-                                name,
-                                self.config.formatter().format_temp(temp)
-                            )
-                        } else {
-                            format!(
-                                "{} COLD: {}",
-                                name,
-                                self.config.formatter().format_temp(temp)
-                            )
-                        },
-                        action: if ru {
-                            "Греть шины".to_string()
-                        } else {
-                            "Warm tyres".to_string()
-                        },
-                        parameters: vec![],
-                        confidence: 0.95,
-                    });
-                } else if temp > max_temp {
-                    let name = match i {
-                        0 => "FL",
-                        1 => "FR",
-                        2 => "RL",
-                        3 => "RR",
-                        _ => "",
-                    };
-                    recs.push(Recommendation {
-                        component: if ru {
-                            "Шины".to_string()
-                        } else {
-                            "Tyres".to_string()
-                        },
-                        category: if ru {
-                            "Перегрев".to_string()
-                        } else {
-                            "Overheat".to_string()
-                        },
-                        severity: Severity::Critical,
-                        message: if ru {
-                            format!(
-                                "{} ПЕРЕГРЕВ: {}",
-                                name,
-                                self.config.formatter().format_temp(temp)
-                            )
-                        } else {
-                            format!(
-                                "{} OVERHEATING: {}",
-                                name,
-                                self.config.formatter().format_temp(temp)
-                            )
-                        },
-                        action: if ru {
-                            "Остудить шины".to_string()
-                        } else {
-                            "Cool tyres".to_string()
-                        },
-                        parameters: vec![],
-                        confidence: 0.95,
-                    });
-                }
+        if phys.speed_kmh <= 100.0 {
+            return;
+        }
+
+        let mut cold: Vec<usize> = Vec::new();
+        let mut hot: Vec<usize> = Vec::new();
+
+        for i in 0..4 {
+            let temp = phys.get_avg_tyre_temp(i);
+            let out_of_band = temp < min_temp || temp > max_temp;
+            // Same gate as the pressure and wear alerts. This ran on every
+            // frame, so a tyre that stayed cold produced a fresh recommendation
+            // dozens of times a second.
+            if !self.check_hysteresis(&format!("tyre_temp_{}", i), out_of_band) {
+                continue;
             }
+            if temp < min_temp {
+                cold.push(i);
+            } else if temp > max_temp {
+                hot.push(i);
+            }
+        }
+
+        let formatter = self.config.formatter();
+
+        if !cold.is_empty() {
+            let average = cold
+                .iter()
+                .map(|i| phys.get_avg_tyre_temp(*i))
+                .sum::<f32>()
+                / cold.len() as f32;
+            recs.push(Recommendation {
+                component: if ru { "Шины" } else { "Tyres" }.to_string(),
+                category: if ru { "Температура" } else { "Temperature" }.to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "{} {}: {}",
+                    Self::corner_phrase(&cold, ru),
+                    if ru { "ХОЛОДНЫЕ" } else { "COLD" },
+                    formatter.format_temp(average)
+                ),
+                action: if ru { "Греть шины" } else { "Warm tyres" }.to_string(),
+                parameters: vec![],
+                confidence: 0.95,
+            });
+        }
+
+        if !hot.is_empty() {
+            let average =
+                hot.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / hot.len() as f32;
+            recs.push(Recommendation {
+                component: if ru { "Шины" } else { "Tyres" }.to_string(),
+                category: if ru { "Перегрев" } else { "Overheat" }.to_string(),
+                severity: Severity::Critical,
+                message: format!(
+                    "{} {}: {}",
+                    Self::corner_phrase(&hot, ru),
+                    if ru { "ПЕРЕГРЕВ" } else { "OVERHEATING" },
+                    formatter.format_temp(average)
+                ),
+                action: if ru { "Остудить шины" } else { "Cool tyres" }.to_string(),
+                parameters: vec![],
+                confidence: 0.95,
+            });
         }
     }
 
     fn analyze_brakes(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
+
+        let mut cooking: Vec<usize> = Vec::new();
         for i in 0..4 {
             // Gated the way the pressure and wear alerts already are. Without
             // it this pushed a fresh recommendation on every single frame the
@@ -1239,46 +1273,43 @@ impl Engineer {
             // other message in the list.
             let too_hot = phys.brake_temp[i] > max_temp;
             if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
-                recs.push(Recommendation {
-                    component: if ru {
-                        "Тормоза".to_string()
-                    } else {
-                        "Brakes".to_string()
-                    },
-                    category: if ru {
-                        "Перегрев".to_string()
-                    } else {
-                        "Overheat".to_string()
-                    },
-                    severity: Severity::Critical,
-                    // FL/FR/RL/RR, matching every neighbouring alert. This
-                    // said "Brake 1" through "Brake 4", which is the only
-                    // place in the app that numbers the corners and leaves
-                    // the driver to work out which wheel that is.
-                    message: {
-                        let corner = match i {
-                            0 => "FL",
-                            1 => "FR",
-                            2 => "RL",
-                            3 => "RR",
-                            _ => "",
-                        };
-                        if ru {
-                            format!("Тормоз {} горит!", corner)
-                        } else {
-                            format!("Brake {} cooking!", corner)
-                        }
-                    },
-                    action: if ru {
-                        "Сместить баланс / Охладить".to_string()
-                    } else {
-                        "Move bias / Cool down".to_string()
-                    },
-                    parameters: vec![],
-                    confidence: 1.0,
-                });
+                cooking.push(i);
             }
         }
+
+        if cooking.is_empty() {
+            return;
+        }
+
+        // Both front brakes overheating is one thing to say, not two. The
+        // corner names are FL/FR/RL/RR the way every neighbouring alert says
+        // them — this used to number them "Brake 1" to "Brake 4", the only
+        // place in the application that did.
+        let hottest = cooking
+            .iter()
+            .map(|i| phys.brake_temp[*i])
+            .fold(0.0_f32, f32::max);
+        let formatter = self.config.formatter();
+
+        recs.push(Recommendation {
+            component: if ru { "Тормоза" } else { "Brakes" }.to_string(),
+            category: if ru { "Перегрев" } else { "Overheat" }.to_string(),
+            severity: Severity::Critical,
+            message: format!(
+                "{} {}: {}",
+                Self::corner_phrase(&cooking, ru),
+                if ru { "перегрев тормозов" } else { "brakes cooking" },
+                formatter.format_temp(hottest)
+            ),
+            action: if ru {
+                "Сместить баланс / Охладить"
+            } else {
+                "Move bias / Cool down"
+            }
+            .to_string(),
+            parameters: vec![],
+            confidence: 1.0,
+        });
     }
 
     fn analyze_brake_bias(&self, setup: Option<&CarSetup>, recs: &mut Vec<Recommendation>) {
@@ -1584,9 +1615,232 @@ mod tests {
             "the worn corner is reported once there is data: {recs:?}"
         );
     }
-    use super::Engineer;
+    use super::{Engineer, Severity};
     use crate::ac_structs::{AcGraphics, AcPhysics};
-    use crate::config::AppConfig;
+    use crate::config::{AppConfig, PressureUnit};
+
+    /// Age every alert timer past the one-second hold, so a test does not have
+    /// to sleep through it.
+    fn age_the_alerts(engineer: &mut Engineer) {
+        let aged = std::time::Instant::now() - std::time::Duration::from_secs(2);
+        let now = std::time::Instant::now();
+        for key in [
+            "wear_0", "wear_1", "wear_2", "wear_3", "tyre_temp_0", "tyre_temp_1", "tyre_temp_2",
+            "tyre_temp_3", "pres_0", "pres_1", "pres_2", "pres_3", "brake_temp_0", "brake_temp_1",
+            "brake_temp_2", "brake_temp_3",
+        ] {
+            engineer.alert_timers.insert(key.to_string(), (aged, now));
+        }
+    }
+
+    /// Four corners of one problem used to be four recommendations, which is
+    /// every slot the overlay has spent saying one thing — and "FL COLD / FR
+    /// COLD / RL COLD / RR COLD" reads as noise rather than as "the tyres are
+    /// not up to temperature".
+    #[test]
+    fn four_cold_tyres_are_one_piece_of_advice() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            speed_kmh: 180.0,
+            tyre_temp_i: [55.0; 4],
+            tyre_temp_m: [55.0; 4],
+            tyre_temp_o: [55.0; 4],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_temperature(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1, "one fact, one line: {recs:?}");
+        assert!(
+            recs[0].message.contains("All four"),
+            "and it says which corners: {}",
+            recs[0].message
+        );
+    }
+
+    /// Two of four is still one line, and it names the axle rather than
+    /// listing wheels.
+    #[test]
+    fn two_hot_fronts_are_named_as_an_axle() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            speed_kmh: 180.0,
+            tyre_temp_i: [130.0, 130.0, 90.0, 90.0],
+            tyre_temp_m: [130.0, 130.0, 90.0, 90.0],
+            tyre_temp_o: [130.0, 130.0, 90.0, 90.0],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_temperature(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1);
+        assert!(
+            recs[0].message.contains("Fronts"),
+            "expected an axle, got: {}",
+            recs[0].message
+        );
+    }
+
+    /// Cold at the front and hot at the back is two different problems, and
+    /// grouping must not merge them.
+    #[test]
+    fn cold_and_hot_stay_separate_problems() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            speed_kmh: 180.0,
+            tyre_temp_i: [50.0, 50.0, 130.0, 130.0],
+            tyre_temp_m: [50.0, 50.0, 130.0, 130.0],
+            tyre_temp_o: [50.0, 50.0, 130.0, 130.0],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_temperature(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 2, "{recs:?}");
+        assert!(recs.iter().any(|rec| rec.message.contains("Fronts")));
+        assert!(recs.iter().any(|rec| rec.message.contains("Rears")));
+    }
+
+    /// The threshold that made the engineer cry wolf. `wear_warning - 2` meant
+    /// a tyre at 93.9 % life — most of the way through a first stint — came
+    /// back as CRITICAL "WORN OUT".
+    #[test]
+    fn a_tyre_most_of_the_way_through_a_stint_is_not_critical() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            tyre_wear: [93.0; 4],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_wear(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1, "{recs:?}");
+        assert_eq!(
+            recs[0].severity,
+            Severity::Warning,
+            "93% life is a warning, not a critical: {}",
+            recs[0].message
+        );
+
+        // And below the critical threshold it still is one.
+        let phys = AcPhysics {
+            tyre_wear: [70.0; 4],
+            ..Default::default()
+        };
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_wear(&phys, &mut recs);
+        assert_eq!(recs[0].severity, Severity::Critical, "{recs:?}");
+    }
+
+    /// The pressure advice printed raw psi while the temperature advice next
+    /// to it went through the formatter, so anyone working in bar read their
+    /// pressures in one unit on the Dashboard and another in the advice about
+    /// them.
+    #[test]
+    fn pressure_advice_is_in_the_unit_the_driver_chose() {
+        let config = AppConfig {
+            pressure_unit: PressureUnit::Bar,
+            ..AppConfig::default()
+        };
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            speed_kmh: 120.0,
+            wheels_pressure: [20.0; 4],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_pressure(&phys, &AcGraphics::default(), &mut recs);
+
+        assert_eq!(recs.len(), 1, "four under-inflated tyres are one line: {recs:?}");
+        assert!(
+            recs[0].message.contains("bar"),
+            "expected bar, got: {}",
+            recs[0].message
+        );
+        assert!(
+            !recs[0].message.contains("psi"),
+            "and not psi: {}",
+            recs[0].message
+        );
+    }
+
+    /// Both front brakes over temperature is one thing to say. It also has to
+    /// name the wheels the way every other alert does — this used to number
+    /// them "Brake 1" to "Brake 4".
+    #[test]
+    fn cooking_brakes_are_grouped_and_named_by_corner() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            brake_temp: [950.0, 950.0, 300.0, 300.0],
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_brakes(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1, "{recs:?}");
+        assert!(recs[0].message.contains("Fronts"), "{}", recs[0].message);
+        assert!(
+            !recs[0].message.contains("Brake 1"),
+            "corners are named, not numbered: {}",
+            recs[0].message
+        );
+    }
+
+    /// What all of this is for: the overlay carries eight lines, and a session
+    /// with several things wrong has to fit more than one of them in.
+    #[test]
+    fn several_problems_at_once_still_leave_room_for_each_other() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        let phys = AcPhysics {
+            speed_kmh: 180.0,
+            wheels_pressure: [20.0; 4],
+            tyre_wear: [70.0; 4],
+            brake_temp: [950.0; 4],
+            tyre_temp_i: [130.0; 4],
+            tyre_temp_m: [130.0; 4],
+            tyre_temp_o: [130.0; 4],
+            ..Default::default()
+        };
+
+        let recs = engineer.analyze_live(&phys, &AcGraphics::default(), None);
+
+        // Four distinct problems. Ungrouped this was sixteen lines, and the
+        // four the overlay publishes were all about tyre temperature.
+        for expected in ["pressure", "WORN OUT", "brakes cooking", "OVERHEATING"] {
+            assert!(
+                recs.iter().any(|rec| rec.message.contains(expected)),
+                "'{expected}' did not survive into the top of the list: {:?}",
+                recs.iter().map(|r| &r.message).collect::<Vec<_>>()
+            );
+        }
+    }
+
 
     #[test]
     fn tyre_pressure_alert_uses_updated_configuration() {
