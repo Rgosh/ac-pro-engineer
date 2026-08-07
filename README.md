@@ -51,7 +51,7 @@ The main entry screen upon starting the application.
 
 ---
 
-### **F1: Dashboard (Mission Control)** `[Added in v0.1.0]`
+### **1 — Dashboard (Mission Control)** `[Added in v0.1.0]`
 
 ![Dashboard](screenshots/Dashboard.svg)
 Your primary race dashboard for live telemetry monitoring.
@@ -62,7 +62,7 @@ Your primary race dashboard for live telemetry monitoring.
 
 ---
 
-### **F2: Telemetry (Real-Time Physics & Friction Circle)** `[Added in v0.1.0]`
+### **2 — Telemetry (Real-Time Physics & Friction Circle)** `[Added in v0.1.0]`
 
 ![Telemetry](screenshots/Telemetry.svg)
 Deep dive into live car dynamics and track mapping.
@@ -73,7 +73,7 @@ Deep dive into live car dynamics and track mapping.
 
 ---
 
-### **F3: Race Engineer & Tire Thermal Optimizer** `[Enhanced in v0.2.3]`
+### **3 — Race Engineer & Tire Thermal Optimizer** `[Enhanced in v0.2.3]`
 
 ![Race Engineer](screenshots/Engineer.svg)
 An intelligent real-time engineering copilot.
@@ -84,7 +84,7 @@ An intelligent real-time engineering copilot.
 
 ---
 
-### **F4: Setup Manager & Local Comparison** `[Added in v0.1.2]`
+### **4 — Setup Manager & Local Comparison** `[Added in v0.1.2]`
 
 ![Local Setup Comparison](screenshots/Setup_1.svg)
 Compare local car setup files side-by-side.
@@ -94,7 +94,7 @@ Compare local car setup files side-by-side.
 
 ---
 
-### **F4 Sub-tab: Community Setup Cloud Browser** `[Added in v0.1.2]`
+### **4, sub-tab — Community Setup Cloud Browser** `[Added in v0.1.2]`
 
 ![Community Setup Cloud](screenshots/Setup_cloud.svg)
 Browse and sync setups directly from the cloud repository.
@@ -104,7 +104,7 @@ Browse and sync setups directly from the cloud repository.
 
 ---
 
-### **F5: Analysis (Lap History, MoTeC CSV Export & Ghost Comparison)** `[Enhanced in v0.2.3]`
+### **5 — Analysis (Lap History, MoTeC CSV Export & Ghost Comparison)** `[Enhanced in v0.2.3]`
 
 ![Analysis Overview](screenshots/Analysis_Overview.svg)
 Comprehensive post-stint lap analysis and comparison.
@@ -116,7 +116,7 @@ Comprehensive post-stint lap analysis and comparison.
 
 ---
 
-### **F5 Sub-tab: Driver Skills Radar & Coach Report** `[Added in v0.1.3]`
+### **5, sub-tab — Driver Skills Radar & Coach Report** `[Added in v0.1.3]`
 
 ![Driver Skills Radar](screenshots/Analysis_Radar.svg)
 Detailed driver skill evaluation and automated coaching report.
@@ -126,7 +126,7 @@ Detailed driver skill evaluation and automated coaching report.
 
 ---
 
-### **F6: Strategy (Stint Planning & Cold Tyre Pressure Calculator)** `[Enhanced in v0.2.3]`
+### **6 — Strategy (Stint Planning & Cold Tyre Pressure Calculator)** `[Enhanced in v0.2.3]`
 
 ![Strategy & Stint Planning](screenshots/Strategy.svg)
 Pit strategy, stint planning, cold tyre pressure calculator, and predictive lap analytics.
@@ -138,7 +138,7 @@ Pit strategy, stint planning, cold tyre pressure calculator, and predictive lap 
 
 ---
 
-### **F7: FFB Tuning (Force Feedback Diagnostic)** `[Added in v0.2.0]`
+### **7 — FFB Tuning (Force Feedback Diagnostic)** `[Added in v0.2.0]`
 
 ![FFB Tuning](screenshots/FFB_Tuning.svg)
 Dedicated Force Feedback diagnostic tab.
@@ -148,7 +148,7 @@ Dedicated Force Feedback diagnostic tab.
 
 ---
 
-### **F8: Settings & JSON Localization** `[Enhanced in v0.2.3]`
+### **8 — Settings & JSON Localization** `[Enhanced in v0.2.3]`
 
 ![Settings Menu](screenshots/Settings.svg)
 Application configuration panel.
@@ -160,7 +160,7 @@ Application configuration panel.
 
 ---
 
-### **F9: Guide (User Manual & Setup Reference)** `[Enhanced in v0.2.3]`
+### **9 — Guide (User Manual & Setup Reference)** `[Enhanced in v0.2.3]`
 
 ![User Guide](screenshots/Guide.svg)
 Built-in interactive documentation.
@@ -192,7 +192,7 @@ Quick help overlay available from any screen by pressing **'?'**.
 
 | Key | Context | Action |
 |:---:|:---:|:---|
-| **1 - 9** | Global | Switch Tabs (Dashboard, Telemetry, Engineer, Setup, Analysis, Strategy, FFB, Settings, Guide) |
+| **1 - 9** | Global | Switch tabs — the digits, not the function keys (Dashboard, Telemetry, Engineer, Setup, Analysis, Strategy, FFB, Settings, Guide) |
 | **Tab / Shift+Tab** | Global | Cycle forward/backward through tabs |
 | **Q** / **Esc** | Global | Return to Launcher / Quit Application |
 | **Ctrl+L** | Global | Switch language (English / Russian) |
@@ -203,10 +203,15 @@ Quick help overlay available from any screen by pressing **'?'**.
 | **Left / Right** | Engineer / Analysis | Switch subtabs (Live Feed vs Debriefing / Overview vs Graphs vs Dynamics...) |
 | **B** | Setup Tab | Open/Close Setup Cloud Browser |
 | **PgUp / PgDn** | Setup Tab | Scroll setup details |
-| **D** | Setup Tab | Download selected cloud setup |
+| **D** | Setup Tab | Download the selected cloud setup, or open the browser if it is closed |
 | **S** | Analysis Tab | Save the selected lap's telemetry to file |
 | **E** | Analysis Tab | Export selected lap telemetry to MoTeC-compatible CSV (`[New in v0.2.3]`) |
 | **C** | Analysis Tab | Toggle Lap Comparison Mode |
+| **Ctrl+S** | Global | Save an SVG screenshot of the current screen |
+
+Every one of these is a default, not a fact: **Settings → KEYS [G]** rebinds any
+of them, and the hints at the bottom right of each tab are printed from whatever
+they are bound to. `?` and `Q` stay fixed.
 
 ---
 

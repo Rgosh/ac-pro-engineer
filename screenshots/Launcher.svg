@@ -3,7 +3,7 @@
   <circle cx="20" cy="20" r="5.5" fill="#ff5f56"/>
   <circle cx="36" cy="20" r="5.5" fill="#ffbd2e"/>
   <circle cx="52" cy="20" r="5.5" fill="#27c93f"/>
-  <text x="708" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.3.4 — High-Performance Sim Telemetry Suite</text>
+  <text x="708" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.3.5 — High-Performance Sim Telemetry Suite</text>
   <line x1="4" y1="32" x2="1412" y2="32" stroke="#21262d" stroke-width="1"/>
   <rect x="408" y="492" width="10" height="20" fill="#238636"/>
   <rect x="418" y="492" width="10" height="20" fill="#238636"/>
@@ -145,7 +145,7 @@
   <text x="829" y="147" fill="#56d4dd">.</text>
   <text x="839" y="147" fill="#56d4dd">3</text>
   <text x="849" y="147" fill="#56d4dd">.</text>
-  <text x="859" y="147" fill="#56d4dd">4</text>
+  <text x="859" y="147" fill="#56d4dd">5</text>
   <text x="9" y="207" fill="#484f58">╭</text>
   <text x="19" y="207" fill="#484f58">─</text>
   <text x="29" y="207" fill="#484f58">─</text>
@@ -920,7 +920,7 @@
   <text x="629" y="447" fill="#7ee787">.</text>
   <text x="639" y="447" fill="#7ee787">3</text>
   <text x="649" y="447" fill="#7ee787">.</text>
-  <text x="659" y="447" fill="#7ee787">4</text>
+  <text x="659" y="447" fill="#7ee787">5</text>
   <text x="1089" y="447" fill="#56d4dd">║</text>
   <text x="1379" y="447" fill="#c9d1d9">│</text>
   <text x="69" y="467" fill="#c9d1d9">│</text>

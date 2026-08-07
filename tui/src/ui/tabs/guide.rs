@@ -190,7 +190,10 @@ fn render_content(f: &mut Frame<'_>, area: Rect, chapter: usize) {
             text.push(br());
             text.push(h2("THE 'SHARK FIN' TRACE"));
             text.push(p(
-                "Look at the Analysis Tab (F5). Your brake trace should look like a shark fin.",
+                // The tab, not the key. This said "(F5)" while the tab has always
+                // been on the digit 5, and now that the digit is a setting the
+                // only sentence that cannot go stale is the one naming the tab.
+                "Look at the Analysis tab. Your brake trace should look like a shark fin.",
             ));
             text.push(art(r#" 100% |   |\     <-- Instant Attack"#));
             text.push(art(r#"      |   | \    <-- Modulation Phase"#));

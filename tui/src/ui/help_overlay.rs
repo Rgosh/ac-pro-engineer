@@ -7,6 +7,13 @@ pub fn render(f: &mut Frame<'_>, area: Rect, current_tab_index: usize, keys: &Ke
     f.render_widget(Clear, popup_area);
 
     let (title, content) = get_help_content(current_tab_index, keys);
+    // The title names the key that opens this page, and the key is a setting
+    // now — a page headed "(1)" on a build where the driver moved Dashboard to
+    // F1 is the same lie the tab hints used to tell.
+    let title = format!(
+        "{title} ({})",
+        keys::describe(tab_binding(current_tab_index, keys))
+    );
 
     let block = Block::default()
         .title(format!(" PADDOCK DATA ASSISTANT: {} ", title))
@@ -22,6 +29,22 @@ pub fn render(f: &mut Frame<'_>, area: Rect, current_tab_index: usize, keys: &Ke
         .alignment(Alignment::Left);
 
     f.render_widget(p, popup_area);
+}
+
+/// The binding that opens a help page's tab, by the index `ui::mod` passes.
+fn tab_binding(tab_index: usize, keys: &KeyBindings) -> &str {
+    match tab_index {
+        0 => &keys.tab_dashboard,
+        1 => &keys.tab_telemetry,
+        2 => &keys.tab_engineer,
+        3 => &keys.tab_setup,
+        4 => &keys.tab_analysis,
+        5 => &keys.tab_strategy,
+        6 => &keys.tab_ffb,
+        7 => &keys.tab_settings,
+        8 => &keys.tab_guide,
+        _ => &keys.help,
+    }
 }
 
 fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<Line<'static>>) {
@@ -68,7 +91,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
 
     match tab_index {
         0 => (
-            "DASHBOARD (1)",
+            "DASHBOARD",
             vec![
                 head("DASHBOARD: TIMING & ENGINE MANAGEMENT"),
                 Line::from(""),
@@ -93,7 +116,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         1 => (
-            "TELEMETRY (2)",
+            "TELEMETRY",
             vec![
                 head("LIVE TELEMETRY: RAW DATA FEED"),
                 Line::from(""),
@@ -113,7 +136,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         2 => (
-            "ENGINEER (3)",
+            "ENGINEER",
             vec![
                 head("ENGINEER: AERO, TYRE THERMODYNAMICS & SUSPENSION"),
                 Line::from(""),
@@ -144,7 +167,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         3 => (
-            "SETUP BROWSER (4)",
+            "SETUP BROWSER",
             vec![
                 head("SETUP CLOUD: COMMUNITY DATABASE"),
                 Line::from(""),
@@ -157,7 +180,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         4 => (
-            "ANALYSIS (5)",
+            "ANALYSIS",
             vec![
                 head("MOTEC GRAPHICS: TRACE ANALYSIS"),
                 Line::from(""),
@@ -180,7 +203,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         5 => (
-            "STRATEGY (6)",
+            "STRATEGY",
             vec![
                 head("PIT WALL: FUEL LOAD CALCULATOR"),
                 Line::from(""),
@@ -199,7 +222,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         6 => (
-            "FFB & INPUTS (7)",
+            "FFB & INPUTS",
             vec![
                 head("HARDWARE: SIGNAL CLIPPING & LINEARITY"),
                 Line::from(""),
@@ -227,7 +250,7 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         7 => (
-            "SETTINGS (8)",
+            "SETTINGS",
             vec![
                 head("APPLICATION SETTINGS"),
                 Line::from(""),
@@ -241,13 +264,17 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
             ],
         ),
         8 => (
-            "USER GUIDE (9)",
+            "USER GUIDE",
             vec![
                 head("AC PRO ENGINEER MANUAL"),
                 Line::from(""),
                 t("You are viewing the comprehensive setup and telemetry guide."),
                 t("Use UP/DOWN ARROWS to scroll through the different physics chapters."),
-                t("Press any number key (1-9) to return to live data."),
+                owned(format!(
+                    "Press {} - {} to return to live data.",
+                    keys::describe(&keys.tab_dashboard),
+                    keys::describe(&keys.tab_guide)
+                )),
                 Line::from(""),
                 close(),
             ],

@@ -3,7 +3,7 @@
   <circle cx="20" cy="20" r="5.5" fill="#ff5f56"/>
   <circle cx="36" cy="20" r="5.5" fill="#ffbd2e"/>
   <circle cx="52" cy="20" r="5.5" fill="#27c93f"/>
-  <text x="708" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.3.4 — High-Performance Sim Telemetry Suite</text>
+  <text x="708" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v0.3.5 — High-Performance Sim Telemetry Suite</text>
   <line x1="4" y1="32" x2="1412" y2="32" stroke="#21262d" stroke-width="1"/>
   <rect x="8" y="72" width="10" height="20" fill="#238636"/>
   <rect x="18" y="72" width="10" height="20" fill="#238636"/>
@@ -610,6 +610,7 @@
   <text x="1399" y="127" fill="#c9d1d9">║</text>
   <text x="9" y="147" fill="#c9d1d9">║</text>
   <text x="29" y="147" fill="#8b949e">💻</text>
+  <text x="39" y="147" fill="#c9d1d9">m</text>
   <text x="59" y="147" fill="#8b949e">S</text>
   <text x="69" y="147" fill="#8b949e">Y</text>
   <text x="79" y="147" fill="#8b949e">S</text>
@@ -635,6 +636,7 @@
   <text x="1399" y="147" fill="#c9d1d9">║</text>
   <text x="9" y="167" fill="#c9d1d9">║</text>
   <text x="29" y="167" fill="#8b949e">👁️</text>
+  <text x="39" y="167" fill="#c9d1d9">m</text>
   <text x="59" y="167" fill="#8b949e">D</text>
   <text x="69" y="167" fill="#8b949e">I</text>
   <text x="79" y="167" fill="#8b949e">S</text>
@@ -665,6 +667,7 @@
   <text x="1399" y="167" fill="#c9d1d9">║</text>
   <text x="9" y="187" fill="#c9d1d9">║</text>
   <text x="29" y="187" fill="#8b949e">🔧</text>
+  <text x="39" y="187" fill="#c9d1d9">e</text>
   <text x="59" y="187" fill="#8b949e">E</text>
   <text x="69" y="187" fill="#8b949e">N</text>
   <text x="79" y="187" fill="#8b949e">G</text>
@@ -694,6 +697,7 @@
   <text x="1399" y="187" fill="#c9d1d9">║</text>
   <text x="9" y="207" fill="#c9d1d9">║</text>
   <text x="29" y="207" fill="#8b949e">🖥️</text>
+  <text x="39" y="207" fill="#c9d1d9">o</text>
   <text x="59" y="207" fill="#8b949e">O</text>
   <text x="69" y="207" fill="#8b949e">V</text>
   <text x="79" y="207" fill="#8b949e">E</text>
@@ -724,6 +728,7 @@
   <text x="1399" y="207" fill="#c9d1d9">║</text>
   <text x="9" y="227" fill="#c9d1d9">║</text>
   <text x="29" y="227" fill="#c9d1d9">⌨️</text>
+  <text x="39" y="227" fill="#c9d1d9">c</text>
   <text x="59" y="227" fill="#c9d1d9">K</text>
   <text x="69" y="227" fill="#c9d1d9">E</text>
   <text x="79" y="227" fill="#c9d1d9">Y</text>
@@ -1183,7 +1188,7 @@
   <text x="9" y="767" fill="#c9d1d9">║</text>
   <text x="359" y="767" fill="#484f58">│</text>
   <text x="389" y="767" fill="#f0f6fc">ℹ️</text>
-  <text x="399" y="767" fill="#f2cc60">─</text>
+  <text x="399" y="767" fill="#8b949e">─</text>
   <text x="419" y="767" fill="#f0f6fc">E</text>
   <text x="429" y="767" fill="#f0f6fc">N</text>
   <text x="439" y="767" fill="#f0f6fc">T</text>
