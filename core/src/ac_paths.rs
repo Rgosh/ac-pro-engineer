@@ -46,10 +46,47 @@ pub fn ac_install_root(configured: Option<&Path>) -> Option<PathBuf> {
         );
     }
 
-    steam_libraries()
+    let from_steam = steam_libraries()
         .into_iter()
         .map(|lib| lib.join("steamapps").join("common").join(AC_DIR_NAME))
-        .find(|candidate| candidate.exists())
+        .find(|candidate| candidate.exists());
+    if from_steam.is_some() {
+        return from_steam;
+    }
+
+    // A copy that is not in a Steam library at all: moved to another disk by
+    // hand, or installed from somewhere that is not Steam. Only reached when
+    // every library has been looked in, so it costs nothing in the normal case.
+    #[cfg(target_os = "windows")]
+    {
+        for drive in drive_roots() {
+            for candidate in [
+                drive.join(AC_DIR_NAME),
+                drive.join("Games").join(AC_DIR_NAME),
+                drive.join("Games").join("Assetto Corsa"),
+            ] {
+                if candidate.join("content").join("cars").is_dir() {
+                    info!(
+                        "Found Assetto Corsa outside Steam at {}",
+                        candidate.display()
+                    );
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Drop repeats while keeping the order, which is the order of likelihood.
+///
+/// `Vec::dedup` only removes *neighbouring* repeats, and these lists are built
+/// from several sources that overlap without being adjacent — the registry and
+/// `%ProgramFiles%` name the same directory on an ordinary machine.
+fn dedup_keeping_order(paths: &mut Vec<PathBuf>) {
+    let mut seen = std::collections::HashSet::new();
+    paths.retain(|path| seen.insert(path.clone()));
 }
 
 /// Resolve the Documents folder Assetto Corsa reads setups from.
@@ -130,12 +167,129 @@ fn steam_roots() -> Vec<PathBuf> {
 
     #[cfg(target_os = "windows")]
     {
-        roots.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
-        roots.push(PathBuf::from(r"C:\Program Files\Steam"));
+        // Steam's own record of where it is, which is the only source that is
+        // right for every installation rather than for the common one.
+        roots.extend(steam_roots_from_registry());
+
+        // Then the default locations, from the environment rather than from a
+        // literal `C:` — Windows is not always on C, and this used to be the
+        // first thing tried and hardcoded.
+        for variable in ["ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"] {
+            if let Ok(dir) = std::env::var(variable) {
+                roots.push(PathBuf::from(dir).join("Steam"));
+            }
+        }
+
+        // And finally every drive there is, in the places people put Steam by
+        // hand. This replaces a hardcoded `D:`, `E:`, `F:` guess that missed a
+        // machine whose second drive is anything else, and it is what makes
+        // "Steam is not in Program Files" stop being an unfindable install.
+        for drive in drive_roots() {
+            roots.push(drive.join("Steam"));
+            roots.push(drive.join("SteamLibrary"));
+            roots.push(drive.join("Games").join("Steam"));
+            roots.push(drive.join("Program Files").join("Steam"));
+            roots.push(drive.join("Program Files (x86)").join("Steam"));
+        }
     }
 
     roots.retain(|p| p.exists());
+    dedup_keeping_order(&mut roots);
     roots
+}
+
+/// Where Steam says it is installed.
+///
+/// Steam writes its own location to the registry on install, and it is the one
+/// answer that does not depend on guessing directory names: `SteamPath` under
+/// the current user, `InstallPath` under the machine. The user value uses
+/// forward slashes, which `PathBuf` handles on Windows.
+#[cfg(target_os = "windows")]
+fn steam_roots_from_registry() -> Vec<PathBuf> {
+    use windows::Win32::System::Registry::{
+        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW,
+    };
+    use windows::core::{HSTRING, PCWSTR};
+
+    let sources = [
+        (HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+        (
+            HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\WOW6432Node\Valve\Steam",
+            "InstallPath",
+        ),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    ];
+
+    let mut roots = Vec::new();
+    for (hive, subkey, value) in sources {
+        let subkey = HSTRING::from(subkey);
+        let value = HSTRING::from(value);
+
+        // Ask for the size first: registry strings have no useful upper bound,
+        // and a fixed buffer here would silently truncate a long path into one
+        // that does not exist.
+        let mut bytes = 0u32;
+        // SAFETY: both names are null-terminated HSTRINGs that outlive the
+        // call, and a null data pointer with a length out-parameter is how
+        // RegGetValueW is asked for the size it needs.
+        let status = unsafe {
+            RegGetValueW(
+                hive,
+                PCWSTR(subkey.as_ptr()),
+                PCWSTR(value.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                None,
+                Some(&mut bytes),
+            )
+        };
+        if status.is_err() || bytes == 0 {
+            continue;
+        }
+
+        let mut buffer = vec![0u16; bytes as usize / 2 + 1];
+        let mut size = bytes;
+        // SAFETY: `buffer` is at least `size` bytes and stays alive for the
+        // call; the value was reported as REG_SZ, so it is UTF-16.
+        let status = unsafe {
+            RegGetValueW(
+                hive,
+                PCWSTR(subkey.as_ptr()),
+                PCWSTR(value.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                Some(buffer.as_mut_ptr().cast()),
+                Some(&mut size),
+            )
+        };
+        if status.is_err() {
+            continue;
+        }
+
+        let end = buffer.iter().position(|c| *c == 0).unwrap_or(buffer.len());
+        let path = String::from_utf16_lossy(&buffer[..end]);
+        if !path.is_empty() {
+            debug!("Steam registered at {path}");
+            roots.push(PathBuf::from(path));
+        }
+    }
+    roots
+}
+
+/// The drive letters that are actually mounted, as `X:\`.
+///
+/// From the bitmask rather than by probing A to Z: touching a letter that is a
+/// disconnected network drive blocks until it times out, and doing that
+/// twenty-six times on startup is a frozen splash screen.
+#[cfg(target_os = "windows")]
+fn drive_roots() -> Vec<PathBuf> {
+    // SAFETY: no arguments, no pointers; returns a bitmask of drive letters.
+    let mask = unsafe { windows::Win32::Storage::FileSystem::GetLogicalDrives() };
+    (0..26)
+        .filter(|bit| mask & (1 << bit) != 0)
+        .map(|bit| PathBuf::from(format!("{}:\\", (b'A' + bit as u8) as char)))
+        .collect()
 }
 
 /// Every Steam library folder, including the ones on other drives.
@@ -154,17 +308,18 @@ fn steam_libraries() -> Vec<PathBuf> {
         ));
     }
 
-    // Keep the historical Windows guesses as a last resort, for an install
-    // Steam's own metadata somehow does not describe.
+    // A library on a drive Steam's own metadata does not describe — a folder
+    // copied to another disk, a library added while Steam was not running.
+    // This used to be a literal `D:`, `E:`, `F:` list, which found nothing on a
+    // machine whose second drive is any other letter.
     #[cfg(target_os = "windows")]
-    {
-        libraries.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
-        libraries.push(PathBuf::from(r"D:\SteamLibrary"));
-        libraries.push(PathBuf::from(r"E:\SteamLibrary"));
-        libraries.push(PathBuf::from(r"F:\SteamLibrary"));
+    for drive in drive_roots() {
+        libraries.push(drive.join("SteamLibrary"));
+        libraries.push(drive.join("Steam"));
+        libraries.push(drive.join("Games").join("SteamLibrary"));
     }
 
-    libraries.dedup();
+    dedup_keeping_order(&mut libraries);
     libraries
 }
 
@@ -250,6 +405,49 @@ mod tests {
             parse_library_folders(&path),
             vec![PathBuf::from(r"D:\SteamLibrary")]
         );
+    }
+
+    /// The candidate lists are built from sources that overlap without being
+    /// next to each other — the registry and `%ProgramFiles%` name the same
+    /// directory on an ordinary machine, with a dozen drive guesses in
+    /// between. `Vec::dedup` only removes neighbours, so it left both, and the
+    /// second one meant probing the same missing folder twice.
+    #[test]
+    fn repeats_go_but_the_order_stays() {
+        let mut paths = vec![
+            PathBuf::from(r"C:\Program Files (x86)\Steam"),
+            PathBuf::from(r"D:\SteamLibrary"),
+            PathBuf::from(r"C:\Program Files (x86)\Steam"),
+            PathBuf::from(r"E:\Steam"),
+            PathBuf::from(r"D:\SteamLibrary"),
+        ];
+        dedup_keeping_order(&mut paths);
+
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from(r"C:\Program Files (x86)\Steam"),
+                PathBuf::from(r"D:\SteamLibrary"),
+                PathBuf::from(r"E:\Steam"),
+            ],
+            "the order is the order of likelihood and has to survive"
+        );
+    }
+
+    /// Every mounted drive, and nothing that is not mounted. A machine always
+    /// has at least one.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_drive_letters_are_the_ones_that_exist() {
+        let drives = drive_roots();
+        assert!(!drives.is_empty(), "a Windows machine has a drive");
+        for drive in &drives {
+            assert!(
+                drive.exists(),
+                "{} came back from the bitmask but is not there",
+                drive.display()
+            );
+        }
     }
 
     /// Steam not being installed is the normal case on a CI runner, not an

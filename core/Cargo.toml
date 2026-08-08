@@ -46,6 +46,12 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Security",
+    # Finding the game. Steam records its own location in the registry, which
+    # is the only source that is right for an install that is not in Program
+    # Files; the drive bitmask goes with it, because probing A to Z by hand
+    # blocks on a disconnected network letter until it times out.
+    "Win32_System_Registry",
+    "Win32_Storage_FileSystem",
 ] }
 
 # Both archive readers are compiled under cfg(test) regardless of host, so the
