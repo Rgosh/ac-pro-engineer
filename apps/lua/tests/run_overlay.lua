@@ -567,6 +567,7 @@ for i = survivedFrom + 1, #drawn do
 end
 print('a checkbox outlives storage that forgets: OK')
 
+
 -- ---------------------------------------------------------------------------
 -- A published frame with no car in it is not the same as no application
 --
@@ -602,6 +603,93 @@ if garage:find('AC Pro Engineer is not running', 1, true) then
   os.exit(1)
 end
 print('no car is not no application: OK')
+
+-- Last, and after a reload. The combinations below leave the panel holding
+-- demo numbers and developer switches, and every check above reads what the
+-- panel drew — running them in the middle left "waiting for the car" looking
+-- at a demo frame from two combinations earlier.
+local combosLoaded, combosError = loadPanel()
+if not combosLoaded then
+  print('\nFAILED: reload before the setting combinations: ' .. tostring(combosError))
+  os.exit(1)
+end
+pcall(script.update, 0.016)
+
+-- ---------------------------------------------------------------------------
+-- Every window, under settings nobody runs by default
+--
+-- Everything above draws the panel as it ships. A driver who turns things on
+-- is running code no check has ever executed: one-line mode, VR, every block
+-- off, every block on, the largest and smallest text. Each of those takes a
+-- different path through the layout, and a nil or an arithmetic-on-nil in one
+-- of them is a window that draws an error instead of the telemetry.
+-- ---------------------------------------------------------------------------
+
+local live = package.loaded['acpe.settings'].values
+
+--- Put the settings back the way they ship, so one combination cannot leak
+--- into the next.
+local function resetSettings()
+  for key, value in pairs(package.loaded['acpe.settings'].DEFAULTS) do
+    live[key] = value
+  end
+end
+
+local COMBINATIONS = {
+  { name = 'one-line mode', apply = function() live.hudMode = true end },
+  { name = 'VR', apply = function() live.vrMode = true end },
+  { name = 'largest text', apply = function() live.textSize = 'large' end },
+  { name = 'compact text', apply = function() live.textSize = 'compact' end },
+  { name = 'no auto scale', apply = function() live.autoScale = false end },
+  { name = 'no section captions', apply = function() live.sectionLabels = false end },
+  {
+    name = 'every block off',
+    apply = function()
+      for _, key in ipairs(package.loaded['acpe.settings'].KEYS) do
+        if key:match('^show') and type(live[key]) == 'boolean' then live[key] = false end
+      end
+    end,
+  },
+  {
+    name = 'every block on, every marker word',
+    apply = function()
+      for _, key in ipairs(package.loaded['acpe.settings'].KEYS) do
+        if key:match('^show') and type(live[key]) == 'boolean' then live[key] = true end
+      end
+      live.engineerSeverityWord = true
+      live.engineerNumbered = true
+      live.engineerUppercase = true
+      live.engineerSpacing = true
+      live.engineerSeparator = true
+      live.engineerBackground = 0.6
+      live.engineerBullet = 'dot'
+      live.engineerLines = 8
+    end,
+  },
+  { name = 'two columns', apply = function() live.columnsPerRow = 2 end },
+  { name = 'developer, demo numbers', apply = function()
+      live.devMode = true; live.devDemo = true; live.devSampleAdvice = true
+    end },
+}
+
+local WINDOWS = { 'windowMain', 'windowEngineer', 'windowSettings',
+  'windowTelemetry', 'windowStatus' }
+
+for _, combination in ipairs(COMBINATIONS) do
+  resetSettings()
+  combination.apply()
+  pcall(script.update, 0.016)
+  for _, window in ipairs(WINDOWS) do
+    local drew, drawError = pcall(script[window], 0.016)
+    if not drew then
+      print('\nFAILED: ' .. window .. ' with ' .. combination.name .. ': '
+        .. tostring(drawError))
+      os.exit(1)
+    end
+  end
+end
+resetSettings()
+print('every window under ' .. #COMBINATIONS .. ' setting combinations: OK')
 
 -- Sixteen is enough to see the panel came up; ACPE_ALL=1 prints the lot, which
 -- is how a wrong unit or an untranslated caption is spotted without the game.

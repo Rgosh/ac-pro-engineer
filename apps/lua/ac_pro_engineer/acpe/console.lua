@@ -11,6 +11,7 @@ local theme = require('acpe.theme')
 local i18n = require('acpe.i18n')
 local layout = require('acpe.layout')
 local frame = require('acpe.frame')
+local format = require('acpe.format')
 
 local COLOR = theme.COLOR
 local ACCENTS = theme.ACCENTS
@@ -109,6 +110,15 @@ local function runCommand(line)
     end
     index = index + 1
   end
+
+  -- The same two things every control in the settings window does after it
+  -- changes something. The console changed settings and did neither: units
+  -- typed here did not reach the drawn strings until the next frame arrived
+  -- from the application — so with the feed stopped, `--units f` appeared to
+  -- do nothing at all — and nothing was written until some other control
+  -- happened to trigger a save.
+  format.rebuild(frame.shown)
+  store.save()
 end
 
 -- One-press commands, so the common ones do not have to be typed at all. The
