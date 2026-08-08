@@ -372,6 +372,31 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 mod tests {
     use super::*;
 
+    /// The `[B]` key, from the context it is actually pressed in.
+    ///
+    /// `crate::net`'s own test proves the mechanism offline; this proves the
+    /// real call path, so it reaches GitHub and is ignored by default. Run it
+    /// when touching this module:
+    ///
+    /// ```text
+    /// cargo test -p ac_core -- --ignored survives_being_called
+    /// ```
+    ///
+    /// It asserts nothing about the answer — offline, rate-limited and "no
+    /// release publishes a bridge" are all legitimate. Returning at all rather
+    /// than killing the process is the assertion.
+    #[test]
+    #[ignore = "reaches GitHub"]
+    fn the_check_survives_being_called_from_inside_a_runtime() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("build a runtime");
+
+        let answer = runtime.block_on(async { latest_published() });
+        println!("latest_published() said: {answer:?}");
+    }
+
     #[test]
     fn versions_order_the_way_the_release_page_numbers_them() {
         use std::cmp::Ordering;
