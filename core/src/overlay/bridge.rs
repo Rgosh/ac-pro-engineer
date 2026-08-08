@@ -333,12 +333,13 @@ pub fn version_in_bytes(bytes: &[u8]) -> Option<String> {
     std::str::from_utf8(&rest[..end]).ok().map(str::to_string)
 }
 
-/// Find the `shm-bridge.exe` this installation would run.
+/// Every place a `shm-bridge.exe` might be, in the order they are preferred
+/// when none of them is the right version.
 ///
 /// Beside the application first, because that is where the release bundle puts
 /// it and where the README tells people to keep it; then the working directory,
 /// for a run straight out of a checkout.
-pub fn installed_executable() -> Option<PathBuf> {
+fn candidate_executables() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
     if let Ok(exe) = std::env::current_exe()
@@ -360,7 +361,37 @@ pub fn installed_executable() -> Option<PathBuf> {
         );
     }
 
-    candidates.into_iter().find(|path| path.is_file())
+    candidates.retain(|path| path.is_file());
+    candidates
+}
+
+/// Find the `shm-bridge.exe` this installation would run.
+///
+/// **A bridge carrying this build's version wins, wherever it is.** The order
+/// above decides only between copies that are all the wrong version.
+///
+/// Without that rule a checkout is very hard to test in: the working directory
+/// is searched before the build target, so one stale `shm-bridge.exe` left at
+/// the root of the repository shadows the one you just cross-compiled, and the
+/// application spawns it, reports it as out of date, and offers to download a
+/// third. Deleting the stale copy is not obvious, because nothing on screen
+/// says which of the three files it is talking about.
+///
+/// Matching on the version rather than on the path also does the right thing
+/// for a user with an old bridge next to the application and a current one
+/// somewhere else, which is the same situation with different directories.
+pub fn installed_executable() -> Option<PathBuf> {
+    choose_executable(&candidate_executables(), crate::updater::CURRENT_VERSION)
+}
+
+/// The rule above, with the search and the version handed in so it can be
+/// tested against real files rather than against whatever is on this machine.
+fn choose_executable(candidates: &[PathBuf], wanted: &str) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .find(|path| version_in_executable(path).as_deref() == Some(wanted))
+        .or_else(|| candidates.first())
+        .cloned()
 }
 
 #[cfg(test)]
@@ -551,6 +582,52 @@ mod tests {
                 "shm-bridge does not write {key}, which this build requires"
             );
         }
+    }
+
+    /// A bridge built for this release wins over one that merely sits in a
+    /// more-preferred directory.
+    ///
+    /// This is what makes a checkout testable. The working directory is
+    /// searched before the build target, so a stale `shm-bridge.exe` at the
+    /// root of the repository used to shadow the one just cross-compiled — the
+    /// application spawned the stale one, called it out of date, and offered to
+    /// download a third.
+    #[test]
+    fn the_bridge_built_for_this_release_wins_wherever_it_is() {
+        let dir = std::env::temp_dir().join("acpe_bridge_choice");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create tmp");
+
+        let marked = |name: &str, version: &str| {
+            let path = dir.join(name);
+            let body = format!("MZ padding {VERSION_MARKER_PREFIX}{version}; more padding");
+            std::fs::write(&path, body).expect("write");
+            path
+        };
+
+        let stale = marked("stale.exe", "0.3.1");
+        let current = marked("current.exe", crate::updater::CURRENT_VERSION);
+
+        // Stale first, which is the order the directories actually produce.
+        let candidates = vec![stale.clone(), current.clone()];
+        assert_eq!(
+            choose_executable(&candidates, crate::updater::CURRENT_VERSION),
+            Some(current),
+            "the one carrying this build's version is the one to run"
+        );
+
+        // With nothing matching, the search order decides, as it always did.
+        assert_eq!(
+            choose_executable(&[stale.clone()], crate::updater::CURRENT_VERSION),
+            Some(stale),
+            "an old bridge is still better than no bridge, and the card says so"
+        );
+
+        assert_eq!(
+            choose_executable(&[], crate::updater::CURRENT_VERSION),
+            None,
+            "and nothing found is still nothing found"
+        );
     }
 
     /// Windows has no bridge, and reporting a missing one there would send

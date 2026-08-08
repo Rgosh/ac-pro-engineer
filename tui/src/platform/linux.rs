@@ -23,26 +23,23 @@ pub struct SharedMemoryBridge {
 
 /// Locate `shm-bridge.exe`.
 ///
-/// Next to the running executable first, then the working directory. It used
-/// to be the working directory alone, which works when the app is started
-/// from its own folder in a shell and fails everywhere else — from a desktop
-/// entry, from a file manager, or from an installed location, all of which
-/// leave the working directory somewhere unrelated.
+/// The same search the launcher's overlay card and `bridge_probe` use, so the
+/// bridge the card *judges* is the bridge the application *spawns*. They used
+/// to be two separate functions looking in different places: this one knew
+/// nothing about `target/x86_64-pc-windows-gnu/release/`, so a checkout that
+/// had just cross-compiled a bridge still had to have a copy at the root of
+/// the repository before `cargo run` would start one — and the card, which did
+/// know about the build target, could report a version the application had
+/// never launched.
+///
+/// Falls back to the working directory when there is no bridge anywhere, so
+/// the spawn fails naming a path a person can act on rather than an empty one.
 fn bridge_path() -> std::path::PathBuf {
-    const BRIDGE: &str = "shm-bridge.exe";
-
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let beside = dir.join(BRIDGE);
-        if beside.is_file() {
-            return beside;
-        }
-    }
-
-    std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join(BRIDGE)
+    ac_core::overlay::bridge::installed_executable().unwrap_or_else(|| {
+        std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join(ac_core::overlay::bridge::BRIDGE_EXE)
+    })
 }
 
 impl SharedMemoryBridge {
