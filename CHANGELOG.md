@@ -4,364 +4,98 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.3.5] - 2026-08-08
 
-**The point:** the overlay stopped being "the panel that sometimes works". It
-opens before the race and in the pits, keeps its settings when the window is
-closed, and shows up to eight lines of advice instead of four. There is now one
-overlay rather than two — the desktop window on F10 is gone. In the terminal,
-the keys finally do what the bottom of the tab says they do, and every one of
-them can be rebound.
-
-> The panel still has not been checked in game by the author of these changes:
-> it is driven under LuaJIT and LÖVE, and every `ui.*` call it makes is checked
-> against the installed CSP, but that is not the same as a session. Report what
-> breaks.
+**The point:** the in-game overlay stopped being "the panel that sometimes
+works". It opens before the race and in the pits, keeps its settings when you
+close its window, and shows up to eight lines of advice instead of four. There
+is one overlay now rather than two. In the terminal, every key does what the
+screen says it does, and every one of them can be rebound.
 
 ### ⚠️ Breaking
 
-- **Overlay frame version 5.** Eight advice slots instead of four; the struct
-  grew from 440 to 712 bytes. **`shm-bridge.exe` has to be updated** — a bridge
-  built for 440 bytes maps too few, CSP silently refuses to open the mapping,
-  and the panel waits forever for "AC Pro Engineer". **[B]** on the overlay card
-  fetches a current one.
-- **F10 and F11 are no longer bound to anything**, and the `--overlay-test-d`
-  and `--overlay-test-vr` flags are gone. See below.
+- **The overlay frame grew from 440 to 712 bytes** (version 5, eight advice
+  slots). On Linux this means **`shm-bridge.exe` has to be updated**: an older
+  bridge maps too few bytes, CSP silently refuses the mapping, and the panel
+  waits forever for an application that is running. Press **[B]** on the
+  launcher's overlay card to fetch a current one, or **[C]** for a report on
+  which of the three pieces does not fit.
+- **F10 and F11 are no longer bound to anything**, and the `--overlay-test-*`
+  flags are gone.
+
+### ✨ Added
+
+- **The panel works outside a session** — in the garage, in the pits, before the
+  green. It now tells *waiting for the car* apart from *waiting for AC Pro
+  Engineer*; it only ever said the second, which sent people hunting for a
+  broken bridge that was fine.
+- **Up to eight lines of advice**, with a slider for how many to draw and the
+  number the application actually sent printed under it.
+- **Rebind any key** — a KEYS category in Settings, stored as text in
+  `config.json`, working on both keyboard layouts.
+- **A `Changed` tab in the panel's settings**: everything that differs from the
+  defaults, what it was, and a reset beside each line. The setting making the
+  panel look wrong is the one you do not remember touching.
+- **New advice is drawn differently** from advice that has been on screen for
+  four laps.
+- **`[C]` — the whole overlay diagnosis, in the application.** *Why is the panel
+  blank* is the question this program gets asked most; it used to have one
+  answer, and it was a `cargo` command.
+- **`shm-bridge.exe --verify`** opens the mapping with exactly the call CSP
+  makes and prints what is inside it.
 
 ### 🗑 Removed
 
 - **The desktop overlay on F10 and its control centre on F11.** There were two
-  overlays. This one was a layered Win32 window drawn by the application
-  itself, and on Linux it had no implementation at all: `OverlayManager` chose
-  `None`, so F10 wrote a line to the log and did nothing. On Windows it drew a
-  worse copy of what the CSP panel already draws — it did not survive exclusive
-  fullscreen, never appeared in VR, and was invisible to AC's own screenshots
-  and replays. Gone with it: `OverlayManager`, `native_window.rs` (422 lines of
-  Win32), `openxr.rs` (a stub that never drew a pixel), `provider.rs`,
-  `state.rs`, `ui/overlay.rs`, the `OverlayMode` modes, both key bindings and
-  the two `--overlay-test-*` flags. There is one overlay now, and it is the CSP
-  panel.
-- A side effect worth knowing: the `SHOW_TELEMETRY` and `SHOW_ENGINEER` flags in
-  the frame were the setting ANDed with a second switch on that manager. Nobody
-  ever set the second one to false, but finding that out meant reading two
-  structs. The frame now carries exactly what the settings say.
-
-### ✨ Added
-
-- **A slider for how many advice lines to draw, 1 to 8**, instead of four radio
-  buttons, with the number the application actually sent printed underneath:
-  "I asked for 8 and see 3" is the engineer having three things to say, not a
-  setting that failed. The same limit was raised to 8 in the application
-  (Settings → OVERLAY).
-- **The panel works before the race and in the pits.** The application publishes
-  a frame from its launcher screen and while AC has nothing in shared memory
-  yet. The panel now tells two states apart: *waiting for the car* (everything
-  is fine, telemetry starts on track) and *waiting for AC Pro Engineer* (the
-  application is not running). It only ever said the second, which sent people
-  hunting for a fault in the bridge and the Proton prefix that was not there.
-  The status window gained a `car: in the garage / on track` row.
-- **Your own keys** — a new **KEYS `[G]`** category in the terminal's settings.
-  ENTER binds, DEL restores the default, ESC cancels; a key another action
-  already holds is not written silently, it says which action holds it. Same on
-  Linux and Windows, stored in `config.json` as text (`f1`, `ctrl+s`,
-  `shift+tab`) so it can be edited by hand. Keyboard layout is handled: bind `s`
-  and `ы` works too.
-- **`shm-bridge.exe --verify`** opens the overlay mapping with exactly the call
-  CSP makes and prints what is in it: the frame version, the sequence counter
-  and the application's version. It is the one question that could not be
-  answered from inside the prefix — *can a Windows process here see our frame at
-  all*.
-
-  ```
-  protontricks-launch --appid 244210 shm-bridge.exe --verify
-  ```
-
-  No mapping, and it says what to start; a mapping that is empty, and it says
-  the Linux side is not publishing.
-
-### 🖼 Screenshots
-
-- **No more SVG — PNG only.** Every screen was written twice: an SVG "as the
-  exact record" and a PNG "to show". Nobody read the SVG, GitHub will not render
-  one inline in a README anyway, and refreshing the screenshots put both in the
-  diff. The SVG survives as an in-memory intermediate that the PNG is rasterised
-  from — drawing a grid of coloured glyphs any other way would mean carrying a
-  font rasteriser. `Ctrl+S` in the application saves a PNG too.
-- **Pictures of the panel itself, one window per picture.** The README used to
-  have exactly one picture of "the overlay", and it was the terminal's control
-  centre for the overlay that no longer exists. There are now all five panel
-  windows and all six tabs of its settings, drawn by the panel's own code.
-  `apps/lua/love/portraits.sh` regenerates them: each run draws one window in a
-  LÖVE window sized exactly to it, so there is nothing to crop.
-
-### ✨ Added — after the release notes above were written
-
-- **`[C]` on Settings → OVERLAY: the whole bridge report, in the application.**
-  *Why is the panel blank* is the question this program gets asked most, and
-  until now it had exactly one answer:
-  `cargo run -p ac_core --example bridge_probe` — a command someone who
-  downloaded a release cannot run and has no reason to know about. The screen
-  names all three pieces that have to agree about a frame, what each one is,
-  and what to do about the one that does not fit; `[R]` measures again, so
-  starting the bridge in another window and pressing it is the whole loop. The
-  example now prints the same report rather than owning it, so the answer a
-  user reads is the answer a bug report quotes.
-
-- **A `Changed` tab in the panel's settings.** Eighty-five settings across six
-  tabs, and the one making the panel look wrong is the one you do not remember
-  touching; the only way back was Reset to defaults, which throws away the
-  eighty-four that were fine. The tab lists everything that differs from the
-  defaults with what it is now and what it was, a search box, and a reset
-  beside each line. It carries the count in its own label, so "have I changed
-  anything" is answered without opening it. The names are the keys rather than
-  the captions, so this list and `ac_pro_engineer_overlay.lua` are the same
-  vocabulary.
-- **New advice looks different from advice that has been there four laps.** A
-  line that arrived within the last six seconds is drawn in its full severity
-  colour and the settled lines a shade back. Tracked by the sentence rather
-  than the slot — the application packs what it has to say into the slots in
-  order, so a line moving from second to first has not changed. One switch,
-  `Pick out new advice`, on by default.
+  overlays. That one had no implementation on Linux at all, and on Windows it
+  drew a worse copy of what the CSP panel already draws — it did not survive
+  exclusive fullscreen, never appeared in VR, and was invisible to AC's own
+  screenshots. About 1,500 lines went with it.
 
 ### 🐞 Fixed
 
-- **`[B]` fetched the newest published bridge, not the one for this release.**
-  The bridge is not republished every time, so those are usually different
-  things — and a v0.3.5 application beside a v0.3.4 bridge cannot work at all.
-  Pressing `[B]` found v0.3.4 as the newest carrying a bridge, compared it with
-  the v0.3.4 already on disk and said "nothing to fetch": correct by its own
-  rule, useless to the person reading it, indistinguishable from "everything is
-  fine". It now takes this release's own bridge first, replaces an older one
-  under a newer application, and when there is genuinely nothing to take it
-  says which of the two situations that is — with the command to build one.
-- **Three overlay keys were written into a string.** `[I]`, `[U]` and `[C]` were
-  matched as letters and printed as letters, which is the one thing this
-  project's own rules forbid: a caption naming a key that has been rebound is
-  worse than no caption. All three are bindings now, listed in Settings → KEYS
-  and rebindable. That exposed the conflict checker comparing every binding
-  against every other regardless of where it fires — so it would have refused
-  `C` for either `analysis_compare` or the new diagnostics, a key that already
-  works on both tabs. Tab-local keys sharing a letter is the design; the
-  checker knows that now.
-- **`Again` in the panel's console repeated the wrong command.** It re-runs the
-  last one, and the last one was recorded only when it came from the text
-  field. The seven quick buttons go straight to the runner and did not record
-  themselves, so `4K` then `Again` re-ran whatever had been typed before — and
-  nothing at all on a session where nothing had been.
-- **Pressing `[B]` on the launcher's overlay card killed the application.**
-  `reqwest::blocking` builds a private tokio runtime and drops it while
-  constructing a client, and dropping a runtime from a thread already inside one
-  panics. `fetch_bridge_now` called it straight from the key handler, which runs
-  inside `#[tokio::main]` — so the one key that fetches a bridge was the one key
-  that could not be pressed. Both of the bridge's requests now run on a thread
-  with no runtime context, and so do the Setup Cloud's two, which were the same
-  shape and one keystroke away from the same crash. Every blocking request in
-  the crate is now either behind that hop or the first thing on a thread of its
-  own.
-- **The screen that says nothing is working now says it loudly.** When the panel
-  cannot reach the application it has one job — say so to someone glancing at it
-  from a driving seat — and it said so in CSP's own font at a tier that cannot
-  be scaled: a few small words in the top-left corner of an otherwise empty
-  window, unchanged while the panel itself grew to fill a 4K screen. There is a
-  headline sized from the window now, the explanation under it at the panel's
-  own body size, the block centred. Four screens use it: waiting for the
-  application, waiting for the car, the mapping missing, and a frame version
-  mismatch. Five of the sentences they draw had never been translated,
-  including both halves of the mapping-missing screen — the one a Linux driver
-  reads most.
-- **The panel forgot every checkbox, and the reason was not that it failed to
-  save.** `settings = stored` made the panel's live settings table *be* CSP's
-  `ac.storage` proxy, so every read and write went through its metatable. A
-  proxy that accepts an assignment and does nothing with it did not merely fail
-  to persist the value — it lost it outright, because there was no table
-  underneath holding it. Tick a box, and the next frame read it back out of the
-  proxy and drew it unticked again. The panel owns a plain table now; storage is
-  read out of once and written to on save, and it is also cheaper, since these
-  are read every frame in the draw path.
-- **The settings are kept in a file as well.** `ac_pro_engineer_overlay.lua`, in
-  the folder CSP names, written on every change and read at startup, winning
-  over storage when they disagree — it is only ever written by a change the
-  driver made. Plain text that can be opened, edited or deleted, which makes
-  "did it save" a question with an answer; the Units tab shows the path. Where
-  the Lua sandbox withholds file access the panel behaves exactly as before and
-  says so.
-- **Settings typed into the console did not redraw or save.** No
-  `format.rebuild`, so a unit typed there did not reach the drawn strings until
-  the next frame arrived from the application — with the feed stopped,
-  `--units f` appeared to do nothing. And no `store.save`, so it lasted until
-  some other control happened to trigger one. The seven one-press buttons go
-  through the same function.
-- **A checkout ran whichever bridge happened to be nearest, not the one built
-  for it.** There were two different searches for `shm-bridge.exe`: the
-  launcher's card and `bridge_probe` used one that knows about
-  `target/x86_64-pc-windows-gnu/release/`, and the code that actually spawns the
-  bridge had its own that did not — so the card could judge one file while the
-  application launched another. Both searched the working directory first, so a
-  single stale `shm-bridge.exe` at the root of a checkout shadowed the one just
-  cross-compiled: the old one was spawned, reported out of date, and `[B]`
-  offered to download a third. A bridge carrying this build's version now wins
-  wherever it is, and the directory order only decides between copies that are
-  all wrong. `cargo build --release -p shm-bridge --target
-  x86_64-pc-windows-gnu` then `cargo run` uses what you just built, with nothing
-  to copy or delete.
-- **The key hints lied.** Every tab now has its own line at the bottom right,
-  built from the same bindings that handle the keypress, so it cannot disagree
-  with them; `the_hints_only_name_keys_that_do_something` walks every tab and
-  requires the key a hint names to do what the hint claims. There used to be
-  hints on two tabs of nine, and one of the two promised `'D' — Download` on a
-  screen where `D` reached no handler at all. Also: `D` in the setup list now
-  opens the browser, and the Analysis hint gained `E` for CSV export, which had
-  worked all along and was written down nowhere.
-- **The help page (F1) and the launcher line** are printed from the bindings
-  too. The launcher named two keys out of six: `←/→`, `O`, `H` and `Q` all
-  worked and were mentioned nowhere.
-- **"F1: Dashboard", "F5: Analysis" — the tabs were never on function keys.**
-  That is what the README's headings said, what the help pages' headings said,
-  and what the guide said ("Look at the Analysis Tab (F5)"), while tabs actually
-  switched on the digits. The help headings are printed from the binding now,
-  and the README and the guide talk about the digit and the tab rather than a
-  key that does nothing.
-- **The panel forgot every setting when its window was closed.** The manifest
-  said `LAZY = FULL`, which unloads the script when the last window closes —
-  close the panel to look at the track, open it again, and the defaults are
-  back. Saving also relied on assigning a value to itself in the storage proxy,
-  which cannot be verified from this side. It is `LAZY = ON` now, only keys that
-  actually changed are written, and each is read back after the write. The Save
-  button says how many stuck.
-- **The plate behind the engineer's advice took up a corner of the window.** The
-  rectangle was drawn exactly 140 pixels tall: in the advice window that is a
-  band across the top, with the text running out below it. It now fills the
-  advice window, matches the block's height in the panel, and has symmetrical
-  padding (it was 4 left, 3 top, 0 right).
-- **`A / S / D` in the settings category caption** — there are five categories
-  and three were named. The other two could only be reached with the arrows.
-  It is `A/S/D/F/G` now.
-- **Category names were clipped**: the width was counted in bytes, so `ОВЕРЛЕЙ`
-  took twice the room the arithmetic thought it did and the key tag ran off the
-  edge as `[F`.
-- **"Dump settings to console"** wrote seventy lines into a buffer that keeps
-  twelve, so only the end of the alphabet was ever visible. Three keys to a
-  line, forty lines.
-- **The tyre life bars were drawn over their own labels.** `Gauge::label`
-  centres the text on the bar, so half the string sank into the coloured
-  rectangle. Three columns now: wheel and percentage on the left, the bar in the
-  middle, circles on the right. The bar scales between your `wear_critical`
-  threshold and a new tyre rather than between 94 % and 100 %, so an empty bar
-  means "finished by your own threshold" rather than "below 94".
-- **`Calc...`** was a sentence cut in half that hung there for a whole stint.
-  The projection needs a completed lap; until there is one, there is a dash.
-- **The bar colours come from the same thresholds** as the engineer's advice —
-  98/96 used to be hard-coded into them.
-- **"Laps left" counted to `wear_warning − 2`** rather than to the end of the
-  tyre, and "no data" was encoded as 99.0 — so a fresh set on a short lap looked
-  like missing data.
+- **The panel forgot everything.** Closing its window unloaded the script, and
+  the settings table was CSP's storage proxy rather than a table — so a ticked
+  box was not merely unsaved, it was lost on the next frame. Settings are also
+  written to a plain file now, which makes "did it save" a question with an
+  answer.
+- **The keys the screens named.** Hints promised keys that reached no handler,
+  headings named function keys the tabs were never on, and the launcher listed
+  two of its six keys. Every hint, heading and help page is printed from the
+  bindings now, and a test walks all nine tabs to keep it that way.
+- **`[B]` fetched the newest published bridge**, not the one built for this
+  release — and then reported "nothing to fetch", which is indistinguishable
+  from everything being fine.
+- **Pressing `[B]` crashed the application**, and the Setup Cloud was one
+  keystroke from the same crash: a blocking HTTP client built inside the async
+  runtime.
+- **The engineer said one thing four times.** "FL COLD / FR COLD / RL COLD / RR
+  COLD" filled every slot in the frame; it is "All four COLD" now, or "Fronts",
+  or "Left side".
+- **The camber advice fired on every straight**, four lines at a time, about a
+  car with nothing wrong with it — a tyre only says something about camber
+  while it is loaded sideways. It is judged over cornering now, and the degrees
+  in it come from what AC reports the car is running rather than from a step
+  index in the setup file that no reading can turn into degrees. The post-stint
+  verdict on it was also backwards half the time.
+- **Wear no longer screams on lap three**, and the tyre bars scale to your own
+  threshold instead of a hard-coded 94 %.
+- **Advice comes in the units you chose.** The pressures printed raw psi to
+  someone working in bar.
+- Plus the panel's plate, its clipped captions, its overflowing corner
+  readouts, the console's `Again` button, a checkout running whichever
+  `shm-bridge.exe` was nearest rather than the one built for it, and two bugs in
+  the test harness that had been agreeing with a panel that was wrong.
 
-### 🐞 Fixed — the panel and its harness
+### 🧱 Under it
 
-- **A nested `ui.tabBar` took the outer one down with it.** The harness set the
-  current tab bar back to `nil` instead of restoring the parent, so every
-  `ui.tabItem` in the *outer* bar after a nested one drew no label and ran its
-  body unconditionally. The settings window lost four of its six tabs and drew
-  their contents stacked under whichever one was selected.
-- **`##id` was drawn as part of the label.** ImGui hides everything from `##`
-  onward; the panel depends on it, because nearly every control is
-  `ui.checkbox('##showHeader')` with the caption drawn beside it at a chosen
-  size — CSP's font tiers cannot be scaled. Every setting in the harness read
-  `##showHeader` in front of its name.
-- **The corner readouts ran off the right edge of the telemetry window.** `row`
-  is measured for "44.82 L": the value at 46 % of the width in body text. The
-  string "26.8 psi 90°C 521°C 98%" did not fit at any window size, because the
-  text scales with the width and the overflow stays the same fraction of the
-  line. Those rows now use a narrow caption column and caption-sized text. The
-  mapping name in the status window was losing its `.v1` for the same reason —
-  and that is exactly the character worth reading there.
-- **The `status` window was missing from the harness** although the manifest
-  declares it alongside the other four. The fifth window could only be seen in
-  game.
-
-### 🧱 Structure
-
-- **The Lua panel is split into modules.** It was one file of 2,429 lines; it is
-  now `ac_pro_engineer.lua` (the entry point, 138 lines) and `acpe/` — settings,
+- **The Lua panel is 19 modules instead of one 2,429-line file** — settings,
   language, theme, layout, formatting, frame, blocks, widgets, console, and one
-  file per window under `acpe/windows/`. The layering runs one way:
-  settings → i18n/theme → layout → format → frame → blocks → windows. The
-  installer writes the whole tree (19 files) and uninstalling removes the
-  folders too; `every_lua_file_in_the_app_folder_is_shipped` will not let a new
-  module be forgotten.
-- The panel's version still equals the release's and is checked by tests —
-  `PANEL_VERSION`, `VERSION` in the manifest and `Cargo.toml` have to agree.
-
-### 🔧 The engineer's core
-
-- **Four corners of one problem are now one line.** "FL COLD / FR COLD / RL COLD
-  / RR COLD" filled every slot in the frame and read as noise. It is "All four
-  COLD: 55 °C" now, and two wheels are named as an axle or a side ("Fronts",
-  "Rears", "Left side"). Pressures, wear and brakes are folded the same way. The
-  hysteresis stays per wheel — a flat spot on one tyre does not reset the timers
-  on the others.
-- **Wear no longer screams on lap three.** Critical was computed as
-  `wear_warning − 2`, so with the default settings a tyre with 93.9 % left —
-  the middle of a first stint — arrived as CRITICAL "WORN OUT". There is a
-  separate `wear_critical` threshold now (85 % by default) with its own row in
-  Settings → ENGINEER.
-- **Pressure advice comes in the units you chose.** The temperature advice has
-  gone through the formatter for a long time; the pressure advice printed raw
-  psi, so anyone working in bar saw one number on the dashboard and a different
-  one in the advice about it.
-- **Brakes are named after wheels, not numbers.** It was "Brake 1"…"Brake 4" —
-  the only place in the application where the corners were numbered.
-- **The camber advice stopped firing on every straight.** It read the
-  inner-minus-outer tyre temperature of the frame in front of it, and on a
-  straight a correctly cambered tyre has no spread at all — so above 50 km/h it
-  published "FL/FR/RL/RR contact patch inefficient", four of the panel's eight
-  lines, about a car that was fine. Camber only shows in that spread while the
-  tyre is loaded sideways, so the spread is now averaged over the frames where
-  the car is actually cornering (above 0.5 g), and nothing is said until there
-  is a second of that behind it. The four corners are folded into one line the
-  same way the wear and pressure advice already was.
-- **The camber advice names the camber the car is running.** It used to print
-  the setup file's `CAMBER_LF VALUE=-9` as "now: -9" beside a game showing
-  −1.3°: that number is a step index into a range that lives inside the car's
-  `data.acd`, so nothing outside AC can turn it into degrees. AC publishes
-  `camberRAD` per wheel in shared memory and the application had been carrying
-  the field unread since the struct was written. The advice reads it, and
-  negates the right-hand corners — AC reports each wheel in its own frame, so a
-  symmetric car reads −1.3° on the left and +1.3° on the right.
-- **The post-stint camber verdict was backwards half the time.** The Setup
-  Wizard took `(inner − outer).abs()`, and the sign is the entire message: a
-  front tyre whose *outer* edge ran 13 °C hotter is a car short of negative
-  camber, and `abs` sent it to the branch that says to take camber out. It also
-  judged the whole front axle from FL alone, which reads a track's handedness as
-  a setup problem; it is both fronts now, and an outer edge running hot is named
-  as itself rather than reported as an evenly warmed tyre.
-- The simulator writes `camber_rad` and the three-lap test fixture writes an
-  outer tyre temperature. The fixture had an 88 °C inner edge against a default
-  0 °C outer one — an 88-degree spread no tyre has run — and the "the engineer
-  produced advice" assertion in the integration test was resting entirely on the
-  camber lines that spread produced.
-
-### 📖 Documentation
-
-- **The README was rewritten.** Installation separately for Windows and Linux, a
-  section on the in-game panel and the bridge, every screen with a picture, the
-  full key table, **every command-line flag** (there were none documented) and
-  every environment variable, a reference for `config.json` with each key and
-  its default, and a "what to do if" section with symptoms, causes and checks in
-  order. Search keywords and section links, so a question about the application
-  can be answered without opening the source.
-- **The panel's windows are documented with the rest of the screens.** "Every
-  screen" now covers both halves of the application: the terminal's nine tabs,
-  then the panel's five windows and all six tabs of its settings — each with a
-  description of what is in it and what it is for, rather than a one-line
-  caption. The descriptions are written against the panel's code: what each
-  threshold means, why the colour limits are yours, why the palette needs both a
-  swatch and a picker, and which console command is the only way to turn
-  developer mode on. The overlay section keeps installation and the bridge.
-- **Everything in this repository is written in English.** The changelog's
-  recent entries and the README's one Russian paragraph were not. Russian
-  remains what it should be: a translation of the program, in `acpe/i18n.lua`
-  and the terminal's own strings.
-- **`ac_pro_engineer --help` finally says something.** Five of the seven flags
-  had no description at all.
+  file per window.
+- **Every picture in the README is generated by the code that draws it**, the
+  terminal's and the panel's alike, and there are now pictures of the panel
+  itself rather than of a window that no longer exists.
+- The README was rewritten: installation per platform, every screen, the full
+  key table, every command-line flag, and a troubleshooting section for the
+  overlay.
 
 ## [v0.3.4] - 2026-08-05
 
