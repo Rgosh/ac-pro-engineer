@@ -31,6 +31,15 @@ local RUSSIAN = {
   ['AC Pro Engineer is not running'] = 'AC Pro Engineer не запущен',
   ['Start the desktop application to see telemetry.'] =
     'Запусти приложение, чтобы увидеть телеметрию.',
+  ['Last frame %.0f s ago.'] = 'Последний кадр %.0f с назад.',
+  ['The shared mapping is not there yet. Start the desktop application — it creates the mapping, and this panel picks it up within a couple of seconds.'] =
+    'Общий маппинг ещё не создан. Запустите программу — она его создаёт, и панель подхватит его за пару секунд.',
+  ["On Linux shm-bridge.exe must be running in the game's Proton prefix as well — the panel cannot see the mapping without it."] =
+    'На Linux в префиксе Proton должен работать ещё и shm-bridge.exe — без него панель не видит маппинг.',
+  ['the application writes frame v%d, this panel reads v%d'] =
+    'программа пишет кадр v%d, эта панель читает v%d',
+  ['panel v%s — reinstall it from the desktop application'] =
+    'панель v%s — переустановите её из программы',
   ['Nothing has been published yet.'] = 'Данные ещё не публиковались.',
   ['Shared memory unavailable'] = 'Общая память недоступна',
   ['Version mismatch'] = 'Версии не совпадают',

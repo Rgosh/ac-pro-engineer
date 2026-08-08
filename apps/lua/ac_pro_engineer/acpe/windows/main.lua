@@ -35,15 +35,17 @@ return function(dt)
   end
 
   if shown.version ~= frame.expectedVersion() and not settings.devIgnoreVersion then
-    ui.textColored(tr('Version mismatch'), COLOR.bad)
-    pushRole('caption')
-    ui.textColored(string.format('the application writes frame v%d, this panel reads v%d',
-      shown.version, frame.expectedVersion()), COLOR.dim)
-    -- The release, not just the frame number: which of the two to replace is
-    -- the actual question, and only the release names answer it.
-    ui.textColored(string.format('panel v%s — reinstall it from the desktop application',
-      frame.panelVersion()), COLOR.dim)
-    ui.popFont()
+    -- Sized from the window like the other two dead-end screens. This one used
+    -- CSP's own font, which does not scale, so the message explaining why the
+    -- panel is blank was the smallest thing on a blank panel.
+    layout.notice(tr('Version mismatch'), COLOR.bad, {
+      { 'body', string.format(tr('the application writes frame v%d, this panel reads v%d'),
+        shown.version, frame.expectedVersion()), COLOR.dim },
+      -- The release, not just the frame number: which of the two to replace is
+      -- the actual question, and only the release names answer it.
+      { 'body', string.format(tr('panel v%s — reinstall it from the desktop application'),
+        frame.panelVersion()), COLOR.dim },
+    })
     return
   end
 

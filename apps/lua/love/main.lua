@@ -189,6 +189,10 @@ function love.load(args)
   csp.selectTab('harness', S.tab)
   loadApp()
 
+  -- What a closed application looks like from the panel's side: the sequence
+  -- counter stops moving, and after two seconds the panel says so.
+  if config.appStopped then harness.appStopped = true end
+
   applyAppTab(config.appTab)
   applyAppDeveloperMode(config.appDev)
   enterPortrait(config.portrait)

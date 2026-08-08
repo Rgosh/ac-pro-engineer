@@ -41,11 +41,7 @@ local function drawStatusBody()
   row(tr('car'), hasFlag(frame.FLAG_CONNECTED) and tr('on track') or tr('in the garage'),
     hasFlag(frame.FLAG_CONNECTED) and COLOR.good or COLOR.dim)
   if frame.openError() ~= nil then
-    pushRole('caption')
-    ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
-    ui.textWrapped(frame.openError())
-    ui.popStyleColor()
-    ui.popFont()
+    layout.sayWrapped('caption', frame.openError(), COLOR.dim)
   end
 
   sectionLabel('FRAME')

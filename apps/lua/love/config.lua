@@ -111,6 +111,7 @@ Options:
                             main, engineer, telemetry, status or settings
   --app-tab PATH            open the app on a tab, e.g. Look/Colour
   --app-dev                 turn the panel's own developer mode on
+  --app-stopped             freeze the feed, as a closed application looks
   --help                    this text
 
 Settings changed in the window are saved and reused next time; a flag wins for
@@ -188,6 +189,8 @@ function config.applyArguments(args)
       config.appTab = next_()
     elseif a == '--app-dev' then
       config.appDev = true
+    elseif a == '--app-stopped' then
+      config.appStopped = true
     end
     i = i + 1
   end

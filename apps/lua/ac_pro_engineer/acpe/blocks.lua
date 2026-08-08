@@ -16,6 +16,9 @@ local COLOR = theme.COLOR
 local accentColor = theme.accentColor
 local tr = i18n.tr
 local say = layout.say
+local sayWrapped = layout.sayWrapped
+local headline = layout.headline
+local notice = layout.notice
 local gap = layout.gap
 local stat = layout.stat
 local pushRole = layout.pushRole
@@ -377,49 +380,36 @@ end
 --- are worse than no numbers, and a panel that looks broken sends people
 --- looking for the wrong problem. This says which problem it is.
 local function drawWaitingForApp()
+  -- Large, and sized from the window. This is the one thing on screen, it is
+  -- what a driver reads at a glance from a seat, and it used to be the
+  -- smallest text the panel drew: CSP's own font at a tier that does not
+  -- scale, so on a 4K display the panel grew and the message did not.
   if frame.openError() ~= nil then
-    pushRole('body')
-    ui.pushStyleColor(ui.StyleColor.Text, COLOR.bad)
-    ui.textWrapped(tr('Waiting for AC Pro Engineer'))
-    ui.popStyleColor()
-    ui.popFont()
-
-    pushRole('caption')
-    ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
-    ui.textWrapped('The shared mapping is not there yet. Start the desktop '
-      .. 'application — it creates the mapping, and this panel picks it up '
-      .. 'within a couple of seconds.')
-    -- Named because this is the state a Linux driver sits in with everything
-    -- apparently running. The application writes /dev/shm itself, but only
-    -- shm-bridge.exe gives that file the Win32 name CSP can open, so without
-    -- it the panel waits forever beside a mapping that is right there.
-    ui.textWrapped('On Linux shm-bridge.exe must be running in the game\'s '
-      .. 'Proton prefix as well — the panel cannot see the mapping without it.')
-    ui.textWrapped(tr('panel') .. ' v' .. frame.panelVersion()
-      .. ', ' .. tr('frame') .. ' v' .. frame.expectedVersion())
-    ui.popStyleColor()
-    ui.popFont()
+    notice(tr('Waiting for AC Pro Engineer'), COLOR.bad, {
+      { 'body', tr('The shared mapping is not there yet. Start the desktop '
+        .. 'application — it creates the mapping, and this panel picks it up '
+        .. 'within a couple of seconds.'), COLOR.dim },
+      -- Named because this is the state a Linux driver sits in with everything
+      -- apparently running. The application writes /dev/shm itself, but only
+      -- shm-bridge.exe gives that file the Win32 name CSP can open, so without
+      -- it the panel waits forever beside a mapping that is right there.
+      { 'body', tr('On Linux shm-bridge.exe must be running in the game\'s '
+        .. 'Proton prefix as well — the panel cannot see the mapping without it.'),
+        COLOR.dim },
+      { 'caption', tr('panel') .. ' v' .. frame.panelVersion()
+        .. ', ' .. tr('frame') .. ' v' .. frame.expectedVersion(), COLOR.dim },
+    })
     return
   end
 
-  -- Wrapped, not clipped: this text is wider than a narrow panel and the half
-  -- of the sentence that fits is not the useful half.
-  pushRole('body')
-  ui.pushStyleColor(ui.StyleColor.Text, COLOR.warn)
-  ui.textWrapped('AC Pro Engineer is not running')
-  ui.popStyleColor()
-  ui.popFont()
+  local last = shown.sequence == 0
+    and tr('Nothing has been published yet.')
+    or string.format(tr('Last frame %.0f s ago.'), frame.secondsSinceChange())
 
-  pushRole('caption')
-  ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
-  ui.textWrapped(tr('Start the desktop application to see telemetry.'))
-  if shown.sequence == 0 then
-    ui.textWrapped(tr('Nothing has been published yet.'))
-  else
-    ui.textWrapped(string.format('Last frame %.0f s ago.', frame.secondsSinceChange()))
-  end
-  ui.popStyleColor()
-  ui.popFont()
+  notice(tr('AC Pro Engineer is not running'), COLOR.warn, {
+    { 'body', tr('Start the desktop application to see telemetry.'), COLOR.dim },
+    { 'caption', last, COLOR.dim },
+  })
 end
 
 --- The application is publishing, but there is no car yet.
@@ -432,31 +422,21 @@ end
 --- looking through the bridge, the install and the Proton prefix for a fault
 --- that was not there.
 local function drawWaitingForCar()
-  pushRole('body')
-  ui.pushStyleColor(ui.StyleColor.Text, COLOR.accent)
-  ui.textWrapped(tr('Waiting for the car'))
-  ui.popStyleColor()
-  ui.popFont()
-
-  pushRole('caption')
-  ui.pushStyleColor(ui.StyleColor.Text, COLOR.dim)
-  ui.textWrapped(tr('AC Pro Engineer is running. Telemetry starts when you go on track.'))
-  ui.textWrapped(tr('panel') .. ' v' .. frame.panelVersion()
-    .. (shown.app_version ~= '' and ('  ·  ' .. tr('app') .. ' v' .. shown.app_version) or ''))
-  ui.popStyleColor()
-  ui.popFont()
+  notice(tr('Waiting for the car'), COLOR.accent, {
+    { 'body', tr('AC Pro Engineer is running. Telemetry starts when you go on track.'),
+      COLOR.dim },
+    { 'caption', tr('panel') .. ' v' .. frame.panelVersion()
+      .. (shown.app_version ~= '' and ('  ·  ' .. tr('app') .. ' v' .. shown.app_version) or ''),
+      COLOR.dim },
+  })
 end
 
 --- Say so, once, at the top of whichever window is being drawn.
 local function drawUpdateNotice()
   if not frame.panelIsStale() then return end
-  pushRole('caption')
-  ui.pushStyleColor(ui.StyleColor.Text, COLOR.accent)
-  ui.textWrapped(string.format(
+  sayWrapped('caption', string.format(
     tr('Panel %s is installed — restart Assetto Corsa to load it'),
-    shown.app_version))
-  ui.popStyleColor()
-  ui.popFont()
+    shown.app_version), COLOR.accent)
 end
 
 M.rpmRatio = rpmRatio

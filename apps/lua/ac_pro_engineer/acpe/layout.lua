@@ -202,6 +202,134 @@ local function row(label, value, color)
   say('body', value, color or COLOR.text)
 end
 
+--- Break `text` into the lines it needs at `size`, given `width`.
+---
+--- Measured word by word rather than guessed from character counts, because a
+--- proportional font makes "iiii" and "MMMM" very different widths. Only used
+--- by the screens that appear when there is nothing else to draw, so the
+--- measuring costs nothing that matters.
+local function wrapLines(text, size, width)
+  local lines = {}
+  local line = nil
+  for word in tostring(text):gmatch('%S+') do
+    local candidate = line == nil and word or (line .. ' ' .. word)
+    local measured = ui.measureDWriteText(candidate, size)
+    if line ~= nil and measured ~= nil and measured.x ~= nil and measured.x > width then
+      lines[#lines + 1] = line
+      line = word
+    else
+      line = candidate
+    end
+  end
+  if line ~= nil then lines[#lines + 1] = line end
+  return lines
+end
+
+-- Drawn line height as a share of the text size, matching what `dwriteText`
+-- advances by. Only used to work out where a centred block starts.
+local LINE_HEIGHT = 1.3
+
+--- Wrap `text` to the content width and draw it at `role`'s size.
+---
+--- `ui.textWrapped` wraps, but it draws in CSP's own font at a tier that
+--- cannot be scaled — so every screen that used it came out tiny next to the
+--- panel around it, and stayed tiny on a 4K display where the panel had grown
+--- to match. Everything else in the panel goes through DirectWrite; these
+--- screens now do too.
+---
+--- Measured word by word rather than guessed from character counts, because a
+--- proportional font makes "iiii" and "MMMM" very different widths. Only drawn
+--- on the screens that appear when there is nothing else to draw, so the
+--- measuring costs nothing that matters.
+local function sayWrapped(role, text, color)
+  local size = textSize(role)
+  for _, line in ipairs(wrapLines(text, size, contentWidth())) do
+    ui.dwriteText(line, size, color)
+  end
+end
+
+--- One line, as large as the window will take.
+---
+--- For the two words that matter when the panel has nothing else to say. The
+--- size is derived from the window rather than picked, so it fills a 300-pixel
+--- panel and a 900-pixel one alike — which is the point, since the message a
+--- driver needs to read at a glance was the smallest thing on the screen.
+local NOTICE_MIN, NOTICE_MAX = 15, 64
+
+--- The size a headline gets in a window this wide.
+---
+--- Measured once at a reference size and scaled to fit, so it works for any
+--- string in any language without a table of sizes per message. Never smaller
+--- than the body text around it: a headline shrunk to fit a long sentence into
+--- a narrow window is not a headline any more, and wrapping reads better.
+local function headlineSize(text, width)
+  local REFERENCE = 40
+  local size = REFERENCE
+  local measured = ui.measureDWriteText(text, REFERENCE)
+  if measured ~= nil and measured.x ~= nil and measured.x > 0 then
+    size = REFERENCE * (width * 0.94) / measured.x
+  end
+  return math.max(math.max(NOTICE_MIN, textSize('body')), math.min(NOTICE_MAX, size))
+end
+
+local function headline(text, color)
+  local width = contentWidth()
+  local size = headlineSize(text, width)
+  for _, line in ipairs(wrapLines(text, size, width)) do
+    ui.dwriteText(line, size, color)
+  end
+end
+
+--- A whole screen that is nothing but a message: one headline as large as the
+--- window will take, some lines under it, the lot centred in the window.
+---
+--- `parts` is a list of `{ role, text, colour }`. Everything is measured before
+--- anything is drawn, because centring needs the height first.
+---
+--- This is what the panel shows when it has nothing else to show — waiting for
+--- the application, waiting for the car, a version mismatch — and it used to be
+--- a few words of CSP's own unscalable font in the top-left corner of an
+--- otherwise empty window.
+local function notice(head, headColor, parts)
+  local width = contentWidth()
+  local headSize = headlineSize(head, width)
+  local headLines = wrapLines(head, headSize, width)
+
+  local height = #headLines * headSize * LINE_HEIGHT
+  local wrapped = {}
+  for index, part in ipairs(parts or {}) do
+    local size = textSize(part[1])
+    local lines = wrapLines(part[2], size, width)
+    wrapped[index] = { size = size, lines = lines, color = part[3] }
+    height = height + #lines * size * LINE_HEIGHT
+  end
+  -- The air between the headline and the rest, and between the parts.
+  local spacing = headSize * 0.4
+  height = height + spacing * math.max(0, #wrapped)
+
+  -- Centred when there is room to centre it. `availableSpace` is not in every
+  -- CSP build, so a missing one just means the message starts at the top,
+  -- which is what it did before.
+  local room = nil
+  if type(ui.availableSpace) == 'function' then
+    local ok, space = pcall(ui.availableSpace)
+    if ok and space ~= nil and space.y ~= nil then room = space.y end
+  end
+  if room ~= nil and room > height then
+    ui.offsetCursorY((room - height) * 0.5)
+  end
+
+  for _, line in ipairs(headLines) do
+    ui.dwriteText(line, headSize, headColor)
+  end
+  for _, part in ipairs(wrapped) do
+    ui.offsetCursorY(spacing)
+    for _, line in ipairs(part.lines) do
+      ui.dwriteText(line, part.size, part.color)
+    end
+  end
+end
+
 --- A row whose value is four numbers rather than one.
 ---
 --- `row` is measured for "44.82 L": a two-character label and the value at
@@ -233,6 +361,9 @@ M.sectionLabel = sectionLabel
 M.stat = stat
 M.row = row
 M.denseRow = denseRow
+M.sayWrapped = sayWrapped
+M.headline = headline
+M.notice = notice
 M.contentWidth = contentWidth
 M.nextColumn = nextColumn
 M.push = pushLayoutStyle
