@@ -49,10 +49,6 @@ overlay app.
 | [For developers](#for-developers) | architecture, tests, contributing |
 | [Security](#security--why-your-antivirus-might-complain) | why a telemetry reader looks suspicious |
 
-**Русскоязычным:** установка и решение проблем ниже одинаковы; интерфейс
-переключается на русский по `Ctrl+L` или в Настройки → СИСТЕМА. Подробный список
-изменений каждой версии — по-русски в [CHANGELOG.md](CHANGELOG.md).
-
 ---
 
 ## What it does
@@ -497,7 +493,7 @@ sub-tabs, so one window answers "what is going on" instead of three.
 | **F1** / **?** | everywhere | Help for the current tab |
 | **Esc** / **Q** | everywhere | Back to the launcher, then quit |
 | **Ctrl+C** | everywhere | Back to the launcher, or quit from it |
-| **Ctrl+L** | everywhere | Switch language (English / Русский) |
+| **Ctrl+L** | everywhere | Switch language (English / Russian) |
 | **Ctrl+S** | everywhere | Save a screenshot of the current screen |
 | **↑ / ↓** | lists | Move through laps, chapters, setups, settings |
 | **← / →** | tabs with sub-tabs | Switch sub-tab; change a setting's value |

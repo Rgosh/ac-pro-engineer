@@ -141,7 +141,7 @@ CSP scrolls a window in game.
 ## What the application controls, live
 
 Seven of the panel's decisions are made on the desktop side and published as
-flags on every frame, so changing one in the TUI's **Settings → ОВЕРЛЕЙ [F]**
+flags on every frame, so changing one in the TUI's **Settings → OVERLAY `[F]`**
 reaches the panel on the next tick — no restart, no reload:
 
 telemetry, engineer advice, session, lap timing and fuel blocks, the fuel

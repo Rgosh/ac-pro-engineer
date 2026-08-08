@@ -2,282 +2,305 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.3.5] - 2026-08-08
 
-### 🗑 Удалено
+**The point:** the overlay stopped being "the panel that sometimes works". It
+opens before the race and in the pits, keeps its settings when the window is
+closed, and shows up to eight lines of advice instead of four. There is now one
+overlay rather than two — the desktop window on F10 is gone. In the terminal,
+the keys finally do what the bottom of the tab says they do, and every one of
+them can be rebound.
 
-- **Оверлей на F10 и «центр управления» на F11.** Это был второй оверлей —
-  своё окно Win32 поверх игры, которое рисовало само приложение. На Linux у
-  него вообще не было исполнителя: `OverlayManager` выбирал `None`, F10 писала
-  строчку в лог и больше ничего не делала. На Windows он рисовал худшую копию
-  того, что уже рисует Lua-панель, не переживал полноэкранный режим, не
-  появлялся в VR и был невидим для скриншотов самой AC. Вместе с ним ушли
-  `OverlayManager`, `native_window.rs` (422 строки Win32), `openxr.rs`
-  (заглушка, которая никогда ничего не нарисовала), `provider.rs`, `state.rs`,
-  `ui/overlay.rs`, режимы `OverlayMode`, флаги `--overlay-test-d` и
-  `--overlay-test-vr` и две привязки клавиш. Оверлей теперь один — панель CSP.
-- Побочный эффект: флаги `SHOW_TELEMETRY` и `SHOW_ENGINEER` в кадре брались как
-  «И» настройки и второго переключателя на стороне того менеджера. Второй
-  никто никогда не выключал, но выяснить это можно было только через две
-  структуры. Теперь в кадр идёт ровно то, что выбрано в настройках.
+> The panel still has not been checked in game by the author of these changes:
+> it is driven under LuaJIT and LÖVE, and every `ui.*` call it makes is checked
+> against the installed CSP, but that is not the same as a session. Report what
+> breaks.
 
-### 🖼 Скриншоты
+### ⚠️ Breaking
 
-- **SVG больше нет — только PNG.** Каждый экран лежал в двух файлах: SVG «как
-  точная запись» и PNG «чтобы показать». SVG не читал никто, GitHub его в
-  README всё равно не покажет, а обновление скриншотов клало в диф вдвое
-  больше. SVG остался как промежуточное представление в памяти, из которого
-  растрируется PNG, — рисовать сетку цветных глифов иначе означало бы тащить
-  растеризатор шрифтов. `Ctrl+S` в программе тоже сохраняет PNG.
-- **Скриншоты самой панели, по окну на картинку.** Раньше в README была ровно
-  одна картинка «оверлея» — и на ней был терминальный центр управления тем
-  оверлеем, которого больше нет. Теперь есть все пять окон панели и все шесть
-  вкладок её настроек, отрисованные настоящим кодом панели.
-  `apps/lua/love/portraits.sh` генерирует их заново: каждый прогон рисует одно
-  окно в окне LÖVE ровно его размера, так что обрезать нечего.
+- **Overlay frame version 5.** Eight advice slots instead of four; the struct
+  grew from 440 to 712 bytes. **`shm-bridge.exe` has to be updated** — a bridge
+  built for 440 bytes maps too few, CSP silently refuses to open the mapping,
+  and the panel waits forever for "AC Pro Engineer". **[B]** on the overlay card
+  fetches a current one.
+- **F10 and F11 are no longer bound to anything**, and the `--overlay-test-d`
+  and `--overlay-test-vr` flags are gone. See below.
 
-### 🐞 Исправлено в панели и стенде
+### 🗑 Removed
 
-- **Вложенная `ui.tabBar` ломала внешнюю.** Стенд сбрасывал текущую панель
-  вкладок в `nil` вместо того, чтобы вернуть родительскую, — поэтому все
-  `ui.tabItem` внешней панели *после* вложенной не рисовали ярлык и выполняли
-  своё тело безусловно. Окно настроек теряло четыре вкладки из шести, а их
-  содержимое рисовалось стопкой под выбранной.
-- **`##id` печатался как часть подписи.** ImGui прячет всё от `##` и дальше;
-  панель на этом держится — почти каждый переключатель это
-  `ui.checkbox('##showHeader')` с подписью, нарисованной рядом нужным
-  размером, потому что тиры шрифтов CSP не масштабируются. В стенде перед
-  каждой настройкой стояло `##showHeader`.
-- **Показания по колёсам уезжали за правый край окна телеметрии.** `row`
-  рассчитан на «44.82 L»: значение на 46 % ширины крупным шрифтом. Строка
-  «26.8 psi 90°C 521°C 98%» не влезала ни при каком размере окна — текст
-  масштабируется вместе с шириной, поэтому доля вылета одна и та же. Теперь у
-  таких строк узкая колонка подписи и мелкий шрифт значения. Имя маппинга в
-  окне состояния теряло `.v1` по той же причине — а это ровно тот символ,
-  ради которого туда и смотрят.
-- **Окно `status` в стенде отсутствовало**, хотя манифест объявляет его наравне
-  с остальными. Пятое окно рисовалось только в игре.
+- **The desktop overlay on F10 and its control centre on F11.** There were two
+  overlays. This one was a layered Win32 window drawn by the application
+  itself, and on Linux it had no implementation at all: `OverlayManager` chose
+  `None`, so F10 wrote a line to the log and did nothing. On Windows it drew a
+  worse copy of what the CSP panel already draws — it did not survive exclusive
+  fullscreen, never appeared in VR, and was invisible to AC's own screenshots
+  and replays. Gone with it: `OverlayManager`, `native_window.rs` (422 lines of
+  Win32), `openxr.rs` (a stub that never drew a pixel), `provider.rs`,
+  `state.rs`, `ui/overlay.rs`, the `OverlayMode` modes, both key bindings and
+  the two `--overlay-test-*` flags. There is one overlay now, and it is the CSP
+  panel.
+- A side effect worth knowing: the `SHOW_TELEMETRY` and `SHOW_ENGINEER` flags in
+  the frame were the setting ANDed with a second switch on that manager. Nobody
+  ever set the second one to false, but finding that out meant reading two
+  structs. The frame now carries exactly what the settings say.
 
-### 🧱 Структура
+### ✨ Added
 
-- **Lua-панель разложена по модулям.** Был один файл на 2 429 строк; стало
-  `ac_pro_engineer.lua` (точка входа, 138 строк) и `acpe/` — настройки, язык,
-  тема, вёрстка, форматирование, кадр, блоки, виджеты, консоль и по файлу на
-  каждое окно в `acpe/windows/`. Слои идут в одну сторону:
-  settings → i18n/theme → layout → format → frame → blocks → windows.
-  Установщик кладёт дерево целиком (19 файлов), удаление убирает и папки;
-  тест `every_lua_file_in_the_app_folder_is_shipped` не даст забыть новый
-  модуль.
-- Версия панели по-прежнему равна версии релиза и проверяется тестами —
-  `PANEL_VERSION`, `VERSION` в манифесте и `Cargo.toml` обязаны совпадать.
+- **A slider for how many advice lines to draw, 1 to 8**, instead of four radio
+  buttons, with the number the application actually sent printed underneath:
+  "I asked for 8 and see 3" is the engineer having three things to say, not a
+  setting that failed. The same limit was raised to 8 in the application
+  (Settings → OVERLAY).
+- **The panel works before the race and in the pits.** The application publishes
+  a frame from its launcher screen and while AC has nothing in shared memory
+  yet. The panel now tells two states apart: *waiting for the car* (everything
+  is fine, telemetry starts on track) and *waiting for AC Pro Engineer* (the
+  application is not running). It only ever said the second, which sent people
+  hunting for a fault in the bridge and the Proton prefix that was not there.
+  The status window gained a `car: in the garage / on track` row.
+- **Your own keys** — a new **KEYS `[G]`** category in the terminal's settings.
+  ENTER binds, DEL restores the default, ESC cancels; a key another action
+  already holds is not written silently, it says which action holds it. Same on
+  Linux and Windows, stored in `config.json` as text (`f1`, `ctrl+s`,
+  `shift+tab`) so it can be edited by hand. Keyboard layout is handled: bind `s`
+  and `ы` works too.
+- **`shm-bridge.exe --verify`** opens the overlay mapping with exactly the call
+  CSP makes and prints what is in it: the frame version, the sequence counter
+  and the application's version. It is the one question that could not be
+  answered from inside the prefix — *can a Windows process here see our frame at
+  all*.
 
-### 🐞 Исправлено
-
-- **«Прогноз жизни шин» рисовал подписи поверх собственных полосок.**
-  `Gauge::label` центрирует текст по бару, поэтому строка наполовину тонула в
-  цветном прямоугольнике. Теперь три колонки: колесо и процент слева, полоса в
-  середине, круги справа. Полоса масштабируется между вашим порогом
-  `wear_critical` и новой шиной, а не между 94 % и 100 % — так пустая полоса
-  значит «конец по вашему же порогу», а не «ниже 94».
-- **`Calc...`** — оборванная на середине фраза, висевшая весь стинт. Прогноз
-  требует завершённого круга; пока его нет, стоит прочерк.
-- **Цвета полос берутся из тех же порогов**, что и советы инженера, — раньше в
-  них было зашито 98/96.
-- **«Кругов осталось» считалось до `wear_warning − 2`**, а не до реального
-  конца шины, и «нет данных» кодировалось значением 99.0 — то есть свежий
-  комплект на коротком круге выглядел как отсутствие данных.
-
-### 📖 Документация
-
-- **README переписан целиком.** Установка отдельно для Windows и для Linux,
-  раздел про игровую панель и мост, все девять экранов со скриншотами, полная
-  таблица клавиш, **все параметры запуска** (их не было ни одного) и все
-  переменные окружения, справочник по `config.json` — каждый ключ со значением
-  по умолчанию, и раздел «что делать, если» с симптомами, причинами и
-  проверками по порядку. Ключевые слова для поиска и ссылки на разделы —
-  чтобы на вопрос про программу можно было ответить, не открывая исходники.
-- **Окна панели описаны там же, где остальные экраны.** Раздел «Every screen»
-  теперь охватывает обе половины программы: девять вкладок терминала, потом
-  пять окон панели и все шесть вкладок её настроек — каждое с описанием того,
-  что в нём лежит и зачем оно, а не с подписью в строчку. Описания написаны по
-  коду панели: что означает каждый порог, почему цветовые пределы ваши, почему
-  палитре нужны и образец, и пипетка, и какая команда консоли — единственный
-  способ включить режим разработчика. В разделе про оверлей остались установка
-  и мост.
-- **`ac_pro_engineer --help` наконец что-то говорит.** У пяти флагов из семи не
-  было ни строчки описания.
-- **Скриншоты — PNG вместо SVG**, отрисованные из тех же буферов; GitHub
-  показывает их одинаково у всех. Заодно в них появились износ шин, времена
-  кругов, остаток сессии и карта двигателя — раньше всё это было нулями и
-  выглядело как сломанный интерфейс.
-
-### ✨ Добавлено
-
-- **`shm-bridge.exe --verify`** — открывает маппинг оверлея ровно тем вызовом,
-  которым его открывает CSP, и печатает, что в нём лежит: версию кадра, счётчик
-  и версию приложения. Это единственный вопрос, на который изнутри префикса
-  ответить было нельзя, — «видит ли вообще Windows-процесс здесь наш кадр».
   ```
   protontricks-launch --appid 244210 shm-bridge.exe --verify
   ```
-  Если маппинга нет — говорит, что запускать; если он есть и пустой — что
-  приложение на стороне Linux не публикует.
 
-## [v0.3.5] - 2026-08-07
+  No mapping, and it says what to start; a mapping that is empty, and it says
+  the Linux side is not publishing.
 
-**Главное:** оверлей перестал быть «панелькой, которая иногда работает». Он
-открывается до заезда и в боксах, помнит настройки после закрытия окна, и
-показывает до восьми советов вместо четырёх. В терминале клавиши наконец
-делают то, что написано внизу вкладки — и переназначаются.
+### 🖼 Screenshots
 
-> Оверлей всё ещё не проверялся автором изменений внутри игры: панель гоняется
-> под LuaJIT и LÖVE, каждый её вызов `ui.*` сверяется с установленным CSP, но
-> это не то же самое, что сессия. Сообщайте, что сломалось.
+- **No more SVG — PNG only.** Every screen was written twice: an SVG "as the
+  exact record" and a PNG "to show". Nobody read the SVG, GitHub will not render
+  one inline in a README anyway, and refreshing the screenshots put both in the
+  diff. The SVG survives as an in-memory intermediate that the PNG is rasterised
+  from — drawing a grid of coloured glyphs any other way would mean carrying a
+  font rasteriser. `Ctrl+S` in the application saves a PNG too.
+- **Pictures of the panel itself, one window per picture.** The README used to
+  have exactly one picture of "the overlay", and it was the terminal's control
+  centre for the overlay that no longer exists. There are now all five panel
+  windows and all six tabs of its settings, drawn by the panel's own code.
+  `apps/lua/love/portraits.sh` regenerates them: each run draws one window in a
+  LÖVE window sized exactly to it, so there is nothing to crop.
 
-### ⚠️ Ломающее
+### 🐞 Fixed
 
-- **Кадр оверлея — версия 5.** Советов теперь восемь, а не четыре, структура
-  выросла с 440 до 712 байт. **`shm-bridge.exe` нужно обновить** — мост,
-  собранный под 440 байт, маппит слишком мало, CSP молча отказывается открыть
-  маппинг, и панель бесконечно «ждёт AC Pro Engineer». Кнопка **[B]** на
-  карточке оверлея тянет свежий.
+- **Pressing `[B]` on the launcher's overlay card killed the application.**
+  `reqwest::blocking` builds a private tokio runtime and drops it while
+  constructing a client, and dropping a runtime from a thread already inside one
+  panics. `fetch_bridge_now` called it straight from the key handler, which runs
+  inside `#[tokio::main]` — so the one key that fetches a bridge was the one key
+  that could not be pressed. Both of the bridge's requests now run on a thread
+  with no runtime context.
+- **The key hints lied.** Every tab now has its own line at the bottom right,
+  built from the same bindings that handle the keypress, so it cannot disagree
+  with them; `the_hints_only_name_keys_that_do_something` walks every tab and
+  requires the key a hint names to do what the hint claims. There used to be
+  hints on two tabs of nine, and one of the two promised `'D' — Download` on a
+  screen where `D` reached no handler at all. Also: `D` in the setup list now
+  opens the browser, and the Analysis hint gained `E` for CSV export, which had
+  worked all along and was written down nowhere.
+- **The help page (F1) and the launcher line** are printed from the bindings
+  too. The launcher named two keys out of six: `←/→`, `O`, `H` and `Q` all
+  worked and were mentioned nowhere.
+- **"F1: Dashboard", "F5: Analysis" — the tabs were never on function keys.**
+  That is what the README's headings said, what the help pages' headings said,
+  and what the guide said ("Look at the Analysis Tab (F5)"), while tabs actually
+  switched on the digits. The help headings are printed from the binding now,
+  and the README and the guide talk about the digit and the tab rather than a
+  key that does nothing.
+- **The panel forgot every setting when its window was closed.** The manifest
+  said `LAZY = FULL`, which unloads the script when the last window closes —
+  close the panel to look at the track, open it again, and the defaults are
+  back. Saving also relied on assigning a value to itself in the storage proxy,
+  which cannot be verified from this side. It is `LAZY = ON` now, only keys that
+  actually changed are written, and each is read back after the write. The Save
+  button says how many stuck.
+- **The plate behind the engineer's advice took up a corner of the window.** The
+  rectangle was drawn exactly 140 pixels tall: in the advice window that is a
+  band across the top, with the text running out below it. It now fills the
+  advice window, matches the block's height in the panel, and has symmetrical
+  padding (it was 4 left, 3 top, 0 right).
+- **`A / S / D` in the settings category caption** — there are five categories
+  and three were named. The other two could only be reached with the arrows.
+  It is `A/S/D/F/G` now.
+- **Category names were clipped**: the width was counted in bytes, so `ОВЕРЛЕЙ`
+  took twice the room the arithmetic thought it did and the key tag ran off the
+  edge as `[F`.
+- **"Dump settings to console"** wrote seventy lines into a buffer that keeps
+  twelve, so only the end of the alphabet was ever visible. Three keys to a
+  line, forty lines.
+- **The tyre life bars were drawn over their own labels.** `Gauge::label`
+  centres the text on the bar, so half the string sank into the coloured
+  rectangle. Three columns now: wheel and percentage on the left, the bar in the
+  middle, circles on the right. The bar scales between your `wear_critical`
+  threshold and a new tyre rather than between 94 % and 100 %, so an empty bar
+  means "finished by your own threshold" rather than "below 94".
+- **`Calc...`** was a sentence cut in half that hung there for a whole stint.
+  The projection needs a completed lap; until there is one, there is a dash.
+- **The bar colours come from the same thresholds** as the engineer's advice —
+  98/96 used to be hard-coded into them.
+- **"Laps left" counted to `wear_warning − 2`** rather than to the end of the
+  tyre, and "no data" was encoded as 99.0 — so a fresh set on a short lap looked
+  like missing data.
 
-### ✨ Добавлено
+### 🐞 Fixed — the panel and its harness
 
-- **Сколько строк совета выводить — ползунок 1–8**, а не четыре радиокнопки.
-  Рядом написано, сколько строк реально прислало приложение: «поставил 8, вижу
-  3» — это инженеру есть что сказать только три раза, а не сломанная настройка.
-  В приложении тот же предел поднят до 8 (Настройки → ОВЕРЛЕЙ).
-- **Панель работает до заезда и в боксах.** Приложение публикует кадр и с
-  экрана лаунчера, и когда AC ещё ничего не отдаёт. Панель различает два
-  состояния: «жду машину» (всё в порядке, телеметрия начнётся на трассе) и «жду
-  AC Pro Engineer» (приложение не запущено). Раньше было только второе — и оно
-  отправляло искать несуществующую поломку в мосте и префиксе Proton. В окне
-  статуса появилась строка `машина: в боксах / на трассе`.
-- **Свои клавиши** — новая категория **KEYS [G]** в настройках терминала.
-  ENTER назначает, DEL возвращает стандарт, ESC отменяет; клавиша, уже занятая
-  другим действием, не записывается молча, а объясняет, кем занята. Работает
-  одинаково на Linux и Windows, хранится в `config.json` текстом
-  (`f10`, `ctrl+s`, `shift+tab`) — можно править руками. Раскладка учитывается:
-  привязал на `s` — работает и `ы`.
+- **A nested `ui.tabBar` took the outer one down with it.** The harness set the
+  current tab bar back to `nil` instead of restoring the parent, so every
+  `ui.tabItem` in the *outer* bar after a nested one drew no label and ran its
+  body unconditionally. The settings window lost four of its six tabs and drew
+  their contents stacked under whichever one was selected.
+- **`##id` was drawn as part of the label.** ImGui hides everything from `##`
+  onward; the panel depends on it, because nearly every control is
+  `ui.checkbox('##showHeader')` with the caption drawn beside it at a chosen
+  size — CSP's font tiers cannot be scaled. Every setting in the harness read
+  `##showHeader` in front of its name.
+- **The corner readouts ran off the right edge of the telemetry window.** `row`
+  is measured for "44.82 L": the value at 46 % of the width in body text. The
+  string "26.8 psi 90°C 521°C 98%" did not fit at any window size, because the
+  text scales with the width and the overflow stays the same fraction of the
+  line. Those rows now use a narrow caption column and caption-sized text. The
+  mapping name in the status window was losing its `.v1` for the same reason —
+  and that is exactly the character worth reading there.
+- **The `status` window was missing from the harness** although the manifest
+  declares it alongside the other four. The fifth window could only be seen in
+  game.
 
-### 🐞 Исправлено
+### 🧱 Structure
 
-- **Подсказки клавиш врали.** Справа снизу теперь на **каждой** вкладке своя
-  строка, и собирается она из тех же привязок, которые обрабатывают нажатие —
-  соврать физически не может, а тест `the_hints_only_name_keys_that_do_something`
-  проходит по каждой вкладке и требует, чтобы названная клавиша делала именно
-  то, что написано. Раньше подсказки были на двух вкладках из девяти, и одна из
-  двух обещала `'D' — Download` на экране, где `D` не обрабатывалась вовсе.
-  Заодно: `D` в списке сетапов теперь открывает браузер (там есть что качать),
-  а в подсказке Analysis появился `E` — экспорт CSV, который работал всё это
-  время и нигде не был написан.
-- **Строка помощи (F1) и строка лаунчера** тоже печатаются из привязок.
-  Лаунчер называл две клавиши из шести: `←/→`, `O`, `H` и `Q` работали и нигде
-  не упоминались.
-- **«F1: Dashboard», «F5: Analysis» — вкладки никогда не были на F-клавишах.**
-  Так было написано в заголовках README, в заголовках страниц помощи и в
-  тексте руководства («Look at the Analysis Tab (F5)»), а переключались вкладки
-  цифрами. Заголовки страниц помощи теперь печатаются из привязки, README и
-  руководство говорят про цифры и про вкладку, а не про клавишу.
-- **Панель забывала все настройки при закрытии окна.** В манифесте стояло
-  `LAZY = FULL` — CSP выгружает скрипт, когда закрыто последнее окно. Закрыл
-  панель посмотреть на трассу, открыл — настройки по умолчанию. Плюс сохранение
-  полагалось на самоприсваивание значения в прокси хранилища, чего проверить
-  изнутри нельзя. Теперь `LAZY = ON`, пишутся только реально изменившиеся ключи,
-  и каждый перечитывается после записи. Кнопка «Сохранить» говорит, сколько
-  записалось.
-- **Плашка под советами инженера занимала угол окна.** Прямоугольник рисовался
-  высотой ровно 140 пикселей: в окне советов это полоса сверху, а текст уходил
-  за её нижний край. Теперь в окне советов плашка занимает окно, в панели —
-  высоту самого блока, и поля симметричные (было 4 слева, 3 сверху, 0 справа).
-- **`A / S / D` в подписи категорий настроек** — категорий пять, а названы были
-  три. Две новые открывались только стрелками. Теперь `A/S/D/F/G`.
-- **Названия категорий обрезались**: ширина считалась в байтах, поэтому
-  «ОВЕРЛЕЙ» занимал вдвое больше, чем думала арифметика, и метка клавиши
-  вылезала за край как `[F`.
-- **«Dump settings to console»** писал семьдесят строк в буфер на двенадцать,
-  так что видно было только конец алфавита. Три ключа в строку, сорок строк.
+- **The Lua panel is split into modules.** It was one file of 2,429 lines; it is
+  now `ac_pro_engineer.lua` (the entry point, 138 lines) and `acpe/` — settings,
+  language, theme, layout, formatting, frame, blocks, widgets, console, and one
+  file per window under `acpe/windows/`. The layering runs one way:
+  settings → i18n/theme → layout → format → frame → blocks → windows. The
+  installer writes the whole tree (19 files) and uninstalling removes the
+  folders too; `every_lua_file_in_the_app_folder_is_shipped` will not let a new
+  module be forgotten.
+- The panel's version still equals the release's and is checked by tests —
+  `PANEL_VERSION`, `VERSION` in the manifest and `Cargo.toml` have to agree.
 
-### 🔧 Ядро инженера
+### 🔧 The engineer's core
 
-- **Четыре угла одной проблемы — теперь одна строка.** «FL COLD / FR COLD /
-  RL COLD / RR COLD» занимало все слоты кадра и читалось как шум. Теперь это
-  «All four COLD: 55 °C», а два колеса называются осью или стороной («Fronts»,
-  «Rears», «Left side»). Так же свёрнуты давления, износ и тормоза. Гистерезис
-  остался поколёсным — плоское пятно на одном колесе не сбрасывает таймеры
-  остальных.
-- **Износ больше не кричит на третьем круге.** Критичность считалась как
-  `wear_warning − 2`, поэтому при стандартных настройках шина с остатком 93.9 %
-  — то есть в середине первого стинта — приходила как CRITICAL «WORN OUT».
-  Появился отдельный порог `wear_critical` (по умолчанию 85 %) и своя строка в
-  Настройки → ИНЖЕНЕР.
-- **Советы о давлении — в выбранных единицах.** Совет про температуру давно шёл
-  через форматтер, а совет про давление печатал сырые psi: у тех, кто работает
-  в bar, на дашборде было одно, а в совете о нём — другое.
-- **Тормоза называются колёсами, а не номерами.** Было «Brake 1»…«Brake 4» —
-  единственное место в приложении, где углы нумеровались.
+- **Four corners of one problem are now one line.** "FL COLD / FR COLD / RL COLD
+  / RR COLD" filled every slot in the frame and read as noise. It is "All four
+  COLD: 55 °C" now, and two wheels are named as an axle or a side ("Fronts",
+  "Rears", "Left side"). Pressures, wear and brakes are folded the same way. The
+  hysteresis stays per wheel — a flat spot on one tyre does not reset the timers
+  on the others.
+- **Wear no longer screams on lap three.** Critical was computed as
+  `wear_warning − 2`, so with the default settings a tyre with 93.9 % left —
+  the middle of a first stint — arrived as CRITICAL "WORN OUT". There is a
+  separate `wear_critical` threshold now (85 % by default) with its own row in
+  Settings → ENGINEER.
+- **Pressure advice comes in the units you chose.** The temperature advice has
+  gone through the formatter for a long time; the pressure advice printed raw
+  psi, so anyone working in bar saw one number on the dashboard and a different
+  one in the advice about it.
+- **Brakes are named after wheels, not numbers.** It was "Brake 1"…"Brake 4" —
+  the only place in the application where the corners were numbered.
+
+### 📖 Documentation
+
+- **The README was rewritten.** Installation separately for Windows and Linux, a
+  section on the in-game panel and the bridge, every screen with a picture, the
+  full key table, **every command-line flag** (there were none documented) and
+  every environment variable, a reference for `config.json` with each key and
+  its default, and a "what to do if" section with symptoms, causes and checks in
+  order. Search keywords and section links, so a question about the application
+  can be answered without opening the source.
+- **The panel's windows are documented with the rest of the screens.** "Every
+  screen" now covers both halves of the application: the terminal's nine tabs,
+  then the panel's five windows and all six tabs of its settings — each with a
+  description of what is in it and what it is for, rather than a one-line
+  caption. The descriptions are written against the panel's code: what each
+  threshold means, why the colour limits are yours, why the palette needs both a
+  swatch and a picker, and which console command is the only way to turn
+  developer mode on. The overlay section keeps installation and the bridge.
+- **Everything in this repository is written in English.** The changelog's
+  recent entries and the README's one Russian paragraph were not. Russian
+  remains what it should be: a translation of the program, in `acpe/i18n.lua`
+  and the terminal's own strings.
+- **`ac_pro_engineer --help` finally says something.** Five of the seven flags
+  had no description at all.
 
 ## [v0.3.4] - 2026-08-05
 
-> ### ⚠️ Оверлей в этом релизе — ДЕМО
+> ### ⚠️ The overlay in this release is a DEMO
 >
-> Превью, а не готовая функция. Публикуется, чтобы его можно было проверить на
-> живых машинах — это единственное, чего нельзя сделать при разработке.
+> A preview, not a finished feature. It is published so that it can be checked
+> on real machines, which is the one thing that cannot be done while developing
+> it.
 >
-> - **На Windows не запускалось ни разу.** Тесты проходят кросс-компиляцией,
->   clippy чист под Windows-таргет, но ни одна строка там не выполнялась.
-> - **Внутри игры автором изменений не проверялось.** Панель прогоняется под
->   LuaJIT и LÖVE, каждый её вызов `ui.*` сверяется с установленным CSP — это
->   не то же самое, что сессия.
-> - Часть подписей консоли и префиксы `Wear:`, `T:`, `B:` пока не переведены.
+> - **It has never once been run on Windows.** The tests pass by
+>   cross-compilation and clippy is clean against the Windows target, but not a
+>   line of it has executed there.
+> - **It has not been checked in game by the author of these changes.** The
+>   panel is driven under LuaJIT and LÖVE and every `ui.*` call it makes is
+>   checked against the installed CSP — that is not the same as a session.
+> - Some console captions and the `Wear:`, `T:`, `B:` prefixes are not
+>   translated yet.
 >
-> Официальный релиз — после реальных заездов на обеих системах. Сообщайте, что
-> сломалось: окно статуса панели теперь показывает все версии сразу.
+> The official release comes after real sessions on both systems. Report what
+> breaks: the panel's status window now shows every version at once.
 
-**Главное:** до этого релиза оверлей на Linux не мог работать ни у кого.
-v0.3.3 был затегирован за одиннадцать минут до коммита, научившего
-`shm-bridge` маппингу оверлея, поэтому все опубликованные мосты создавали
-только собственные страницы AC. Проверено сканированием артефакта.
+**The point:** before this release the overlay could not work for anyone on
+Linux. v0.3.3 was tagged eleven minutes before the commit that taught
+`shm-bridge` to map the overlay, so every published bridge created only AC's own
+pages. Confirmed by scanning the artifact.
 
-### ⚠️ Ломающее
+### ⚠️ Breaking
 
-- **Кадр оверлея — версия 4**: добавилась версия приложения, чтобы панель
-  понимала, что игра рисует её старую копию. Поле последнее, смещения не
-  сдвинулись. Приложение, панель и `shm-bridge.exe` должны быть из одного
-  релиза; панель ставится сама, мост — по **[B]** на карточке оверлея.
+- **Overlay frame version 4**: the application's version was added, so the panel
+  can tell that the game is drawing an older copy of it. The field is last, so
+  no offset moved. The application, the panel and `shm-bridge.exe` have to come
+  from the same release; the panel installs itself, the bridge comes from **[B]**
+  on the overlay card.
 
-### 🐞 Исправлено
+### 🐞 Fixed
 
-- **Панель не загружалась вовсе.** `ui.Icons and ui.Icons.Settings` на уровне
-  файла: `ui.Icons` достаточно быть truthy, чтобы его проиндексировали, а
-  таблица-аргумент строится до `pcall`, так что тот её не защищает. Все окна
-  рисовали текст ошибки вместо панели.
-- **Оба переключателя dev-режима падали в nil.** `applyDemo` и `DEMO_ADVICE`
-  стояли ниже вызывающих, то есть были для них глобалами. Четвёртый случай
-  этой ловушки здесь.
-- **Обе версии панели врали.** `manifest.ini` показывал `1.0` одиннадцать
-  релизов подряд, собственной версии у панели не было.
-- **Оба харнесса рапортовали OK на сломанной панели** — LuaJIT рисовал 27
-  строк вместо 140, LÖVE не считал ошибкой падение при загрузке.
-- **Карточка оверлея обрезала свою же диагностику** на 66 колонках.
+- **The panel did not load at all.** `ui.Icons and ui.Icons.Settings` at file
+  level: `ui.Icons` only has to be truthy to be indexed, and the table argument
+  is built before `pcall`, so `pcall` does not protect it. Every window drew the
+  error text instead of the panel.
+- **Both developer-mode switches fell through to nil.** `applyDemo` and
+  `DEMO_ADVICE` were declared below their callers, which makes them globals to
+  those callers. The fourth instance of that trap here.
+- **Both of the panel's versions lied.** `manifest.ini` showed `1.0` for eleven
+  releases running, and the panel had no version of its own.
+- **Both harnesses reported OK on a broken panel** — LuaJIT drew 27 strings
+  instead of 140, and LÖVE did not count a load failure as an error.
+- **The overlay card clipped its own diagnostics** at 66 columns.
 
-### 🚀 Добавлено
+### 🚀 Added
 
-- **Мост сообщает, кто он.** Пишет `/dev/shm/acpe-bridge.info` и вкомпиливает
-  свою версию в бинарник, чтобы его можно было опознать и не запуская.
-- **Карточка судит все три части**, а **[B]** качает опубликованный мост,
-  проверяя его перед заменой. Старый сохраняется как `.previous`.
-- **Проверка обновления моста при старте** — только смотрит; качает по клавише.
-  Версия самого приложения этим путём не трогается.
-- **Панель говорит, что игра держит её старую копию**, и предлагает
-  перезапустить AC. Отключается в Panel → Blocks.
-- **`bridge_probe`** — какой мост на диске, какой запущен, заработает ли оверлей.
-- **`--export-overlay <папка>`** — выгрузить панель для ручной установки.
-- **`proton-setup.sh` в архиве** — команды `protontricks`, без которых CSP не
-  грузится вовсе. Шрифтов в архиве нет и быть не может: терминал рисует своим
-  шрифтом, панель — через DirectWrite от CSP, а шрифты ставятся в префикс
-  (`corefonts`), что и делает скрипт.
+- **The bridge says who it is.** It writes `/dev/shm/acpe-bridge.info` and
+  compiles its version into its own binary, so it can be identified without
+  being run.
+- **The card judges all three pieces**, and **[B]** downloads the published
+  bridge, verifying it before it replaces anything. The old one is kept as
+  `.previous`.
+- **A bridge update check at startup** — it only looks; fetching is a keypress.
+  The application's own version is not touched by this path.
+- **The panel says the game is holding an older copy of it** and offers to
+  restart AC. Switched off in Panel → Blocks.
+- **`bridge_probe`** — which bridge is on disk, which is running, and whether
+  the overlay can work at all.
+- **`--export-overlay <dir>`** — write the panel out for a manual install.
+- **`proton-setup.sh` in the archive** — the `protontricks` commands without
+  which CSP does not load at all. There are no fonts in the archive and there
+  cannot be: the terminal draws with its own font, the panel through CSP's
+  DirectWrite, and fonts are installed into the prefix (`corefonts`), which is
+  what the script does.
 
 
 ## [v0.3.2] - 2026-08-04
