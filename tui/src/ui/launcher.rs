@@ -285,6 +285,20 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         },
     ]));
 
+    // Why it is not installed, when the answer is known.
+    //
+    // The application writes the panel by itself and says whether the files
+    // are there — and when writing them failed, said only that they were not,
+    // which reads as "it has not got round to it yet" rather than as an error.
+    // A game folder that cannot be written to is the likeliest cause and the
+    // one nobody guesses, so the operating system's own words go on the card.
+    if !report.current && app.overlay_install_status.starts_with("could not install") {
+        lines.push(Line::from(vec![
+            Span::styled("         ", dim),
+            Span::styled(app.overlay_install_status.clone(), bad),
+        ]));
+    }
+
     // Three pieces have to agree on the shape of a frame. All three are named
     // here, because "which one is old" is the question, and the answer used to
     // require reading files in two directories and a Wine prefix.

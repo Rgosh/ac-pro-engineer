@@ -10,6 +10,8 @@ close its window, and shows up to eight lines of advice instead of four. There
 is one overlay now rather than two. In the terminal, every key does what the
 screen says it does, and every one of them can be rebound.
 
+Run in a real session on Linux (Proton) and on Windows 10.
+
 ### ⚠️ Breaking
 
 - **The overlay frame grew from 440 to 712 bytes** (version 5, eight advice
@@ -52,6 +54,17 @@ screen says it does, and every one of them can be rebound.
 
 ### 🐞 Fixed
 
+- **The panel now really does install itself.** Two separate reasons it did
+  not. Windows detection started from two literal paths under Program Files and
+  read Steam's library list only out of a root found that way, so a machine
+  with Steam anywhere else had no libraries at all and the game was
+  unfindable — it asks the registry first now, then the environment, then every
+  mounted drive, and it will also find a copy that is in no Steam library.
+  And the install was attempted once, while the application was starting, and
+  never again: whatever went wrong that one time meant no panel for the rest of
+  the session, recorded in a log file and nowhere anyone would look. It is
+  retried when Assetto Corsa starts, and a failure now says so on the launcher
+  card in the operating system's own words.
 - **The panel forgot everything.** Closing its window unloaded the script, and
   the settings table was CSP's storage proxy rather than a table — so a ticked
   box was not merely unsaved, it was lost on the next frame. Settings are also

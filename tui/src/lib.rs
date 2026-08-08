@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 use tracing::metadata::LevelFilter;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
@@ -412,6 +412,11 @@ impl AppState {
             // Installed from the binary that writes the struct it reads, so
             // the two can never be out of step. Cheap and idempotent: it only
             // writes when the files differ.
+            //
+            // This is no longer the only attempt — see `ensure_overlay_installed`.
+            // It used to be, and a first run that could not reach the game
+            // folder for any reason left the panel uninstalled for the whole
+            // session with nothing on screen to say so.
             overlay_writer: {
                 ac_core::overlay::install::install_on_startup(config.ac_install_override());
                 match ac_core::overlay::shared_writer::OverlayWriter::open() {
@@ -498,6 +503,48 @@ impl AppState {
         self.overlay_report =
             ac_core::overlay::install::describe(self.config.ac_install_override());
         self.bridge_status = ac_core::overlay::bridge::status(ac_core::updater::CURRENT_VERSION);
+    }
+
+    /// Put the panel in the game folder if it is not already there.
+    ///
+    /// The install used to happen once, while the application was being
+    /// constructed, and never again. Every reason that attempt can fail — the
+    /// game not installed yet, Steam not unpacked, a folder that briefly could
+    /// not be written — therefore meant no panel for the whole session, with
+    /// the failure recorded in a log file and nowhere a user would look. The
+    /// report on screen said the panel was missing without ever saying that
+    /// putting it there had been tried and had not worked.
+    ///
+    /// So: try again whenever the game folder is looked at afresh, and keep
+    /// what happened. `install` compares the files first, so the normal case
+    /// is a read of nineteen small files and no write at all.
+    pub fn ensure_overlay_installed(&mut self) {
+        use ac_core::overlay::install::{InstallOutcome, install};
+
+        self.refresh_overlay_report();
+        if self.overlay_report.game_root.is_none() || self.overlay_report.current {
+            return;
+        }
+
+        match install(self.config.ac_install_override()) {
+            Ok(InstallOutcome::Installed { updated }) => {
+                info!("Installed the in-game overlay ({updated} file(s) written)");
+                self.overlay_install_status = format!("installed, {updated} file(s) written");
+                // The report above was taken before the files were written, so
+                // leaving it would have the card still reading "not installed"
+                // over a panel that is now there.
+                self.refresh_overlay_report();
+            }
+            Ok(InstallOutcome::AlreadyCurrent) => {}
+            Ok(InstallOutcome::NoGameFound) => {}
+            // The one that used to be silent. A game folder that cannot be
+            // written to is the likeliest cause and the least guessable: it
+            // looks exactly like the panel never having been installed.
+            Err(error) => {
+                warn!(error = ?error, "Could not install the in-game overlay");
+                self.overlay_install_status = format!("could not install: {error}");
+            }
+        }
     }
 
     /// Ask the release page whether there is a bridge worth taking.
@@ -1037,7 +1084,18 @@ impl AppState {
         // Kept above the early return so the launcher can read
         // `is_game_running` rather than running its own scan on every frame.
         let process_active = self.game_watcher.is_running();
+        let game_just_started = process_active && !self.is_game_running;
         self.is_game_running = process_active;
+
+        // Assetto Corsa starting is the one moment worth looking again: it is
+        // when a game installed since this application opened has certainly
+        // finished unpacking, and it is the last point at which writing the
+        // panel still helps — AC reads `apps/lua` while it loads, so a panel
+        // written now is in the list the *next* time the game starts rather
+        // than never. Once per start, not per frame.
+        if game_just_started {
+            self.ensure_overlay_installed();
+        }
 
         if self.stage != AppStage::Running {
             // The launcher is where the application spends the minutes before
@@ -1349,6 +1407,55 @@ impl From<AppLogLevel> for tracing::metadata::LevelFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The panel goes into the game folder without anyone asking, and it has
+    /// to go in on a game that appeared *after* the application started.
+    ///
+    /// The install used to run once, while `AppState` was being built, and
+    /// never again — so a first attempt that found nothing, or could not
+    /// write, left the panel missing for the whole session however long the
+    /// application then sat there with the game running. This is the retry,
+    /// driven the way the running application drives it.
+    #[test]
+    fn a_game_that_appears_later_still_gets_the_panel() {
+        let game = std::env::temp_dir().join("acpe-late-game");
+        let _ = std::fs::remove_dir_all(&game);
+        std::fs::create_dir_all(game.join("apps").join("lua")).expect("game folder");
+
+        let mut app = AppState::new();
+        app.config.ac_install_path = game.clone();
+
+        // Nothing there yet, which is what the first attempt saw.
+        app.refresh_overlay_report();
+        assert!(
+            !app.overlay_report.current,
+            "the folder was just created empty"
+        );
+
+        app.ensure_overlay_installed();
+
+        let panel = game.join("apps").join("lua").join("ac_pro_engineer");
+        assert!(
+            panel.join("ac_pro_engineer.lua").is_file(),
+            "the entry point is what CSP looks for"
+        );
+        assert!(
+            panel.join("acpe").join("frame.lua").is_file(),
+            "and the modules it requires"
+        );
+        assert!(app.overlay_report.current, "the report agrees afterwards");
+
+        // And it is idempotent: a second pass writes nothing and says nothing.
+        app.overlay_install_status.clear();
+        app.ensure_overlay_installed();
+        assert!(
+            app.overlay_install_status.is_empty(),
+            "an up-to-date panel is not news: {}",
+            app.overlay_install_status
+        );
+
+        let _ = std::fs::remove_dir_all(&game);
+    }
 
     #[test]
     fn demo_mode_executes_full_telemetry_pipeline() {
