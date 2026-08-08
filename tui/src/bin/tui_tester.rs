@@ -156,6 +156,22 @@ fn create_populated_app_state() -> AppState {
         }
     }
 
+    // The curated frame goes in last, so the history ends where the live
+    // readouts are.
+    //
+    // The header's rev bar reads `physics_history.last()` and the cockpit
+    // reads the live physics — the same tick in the running application, and
+    // two unrelated numbers here, because the loop above walks a sine and the
+    // mock is set to one good-looking frame. Every Dashboard screenshot went
+    // out with "4505 / 12500 RPM" across the top and "11450 RPM" in the
+    // cockpit underneath it, which reads as the program disagreeing with
+    // itself.
+    app.physics_history.push(phys);
+    if let Some(mut g) = app.mock_graphics {
+        g.i_current_time = 42_500;
+        app.graphics_history.push(g);
+    }
+
     // Lap Data for Analysis
     let mock_lap = LapData {
         lap_number: 4,
@@ -202,12 +218,17 @@ fn create_populated_app_state() -> AppState {
         car_control_score: 95.0,
         scrubbing_incidents: 0,
         max_steering_over_rotation: 0.0,
+        // Nought to one, which is the scale `TelemetryAnalyzer` produces —
+        // every field there is `score / 100.0`. Written as percentages here,
+        // they were a hundred times too big, and the Analysis tab's Inputs box
+        // multiplies by a hundred to display them: every screenshot of it went
+        // out reading "Aggression: 8800.0%".
         radar_stats: RadarStats {
-            consistency: 94.0,
-            car_control: 95.0,
-            aggression: 88.0,
-            smoothness: 93.0,
-            tyre_mgmt: 91.0,
+            consistency: 0.94,
+            car_control: 0.95,
+            aggression: 0.88,
+            smoothness: 0.93,
+            tyre_mgmt: 0.91,
         },
         telemetry_trace: trace_points,
         bounds_min_x: -160.0,
@@ -216,8 +237,38 @@ fn create_populated_app_state() -> AppState {
         bounds_max_y: 90.0,
     };
 
-    app.analyzer.laps.push(mock_lap);
-    app.analyzer.best_lap_index = Some(0);
+    // A stint, not a lap. The Strategy tab's pace chart plots lap times against
+    // lap number and the Analysis tab lists them, and with one lap in the
+    // analyzer both drew a single dot in an empty box — a picture of a feature
+    // not working. Five laps with a plausible spread: a slower first flying
+    // lap, two quick ones, a scrappy one, then the best.
+    for (number, delta_ms) in [(1, 1_480), (2, 320), (3, 640), (4, 2_050)] {
+        let mut lap = mock_lap.clone();
+        // Numbered from one, the way a driver counts them and the way the
+        // chart's axis reads.
+        lap.lap_number = number;
+        lap.lap_time_ms = mock_lap.lap_time_ms + delta_ms;
+        // The sectors have to add up to the lap, or the Analysis tab shows a
+        // split that disagrees with the time beside it.
+        lap.sectors[2] += delta_ms;
+        app.analyzer.laps.push(lap);
+    }
+    let mut best = mock_lap.clone();
+    best.lap_number = 5;
+    app.analyzer.laps.push(best);
+
+    // The Engineer tab's DRIVING STYLE box reads the live driving style and
+    // the frame counters, neither of which anything filled — so beside a
+    // populated advice feed it drew Smoothness 50%, Aggression 50% and Trail
+    // Braking 0%, which is the neutral state the engineer sits at before it
+    // has seen a lap. It reads as the panel not working.
+    app.engineer.driving_style.smoothness = 91.8;
+    app.engineer.driving_style.aggression = 74.0;
+    app.engineer.driving_style.trail_braking = 88.4;
+    app.engineer.stats.lockup_frames_front = 2;
+    app.engineer.stats.wheel_spin_frames = 1;
+    // The last one is the quickest, so it is the reference the ghost uses.
+    app.analyzer.best_lap_index = Some(app.analyzer.laps.len() - 1);
 
     // Engineer Recommendations
     app.recommendations.push(Recommendation {
@@ -304,11 +355,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .settings
         .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
 
-    // 4. Analysis_Radar
+    // 4. Analysis_Traces — the TELEMETRY sub-tab.
+    //
+    // This was called `Analysis_Radar` and the README captioned it "Driver
+    // radar", describing a screen that scores braking and consistency. There
+    // is no radar sub-tab: `next_tab` lands on TELEMETRY, and the scores are
+    // the Driving Evaluation box on OVERVIEW, which the shot above already
+    // shows. The picture and its caption had never agreed.
     app.active_tab = AppTab::Analysis;
     app.ui_state.analysis.next_tab();
     terminal.draw(|f| renderer.render(f, &app))?;
-    capture(&terminal, width, height, screenshot_dir, "Analysis_Radar")?;
+    capture(&terminal, width, height, screenshot_dir, "Analysis_Traces")?;
 
     // 4b. Overlay_Diagnostics — the answer to "why is the panel blank",
     // which until this release only existed as a cargo example.

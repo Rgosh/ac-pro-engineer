@@ -292,10 +292,12 @@ Lap history and traces: throttle, brake, steering and speed against distance,
 with a ghost lap overlaid. `S` saves the selected lap, `L` loads one from disk,
 `C` toggles the ghost, `E` exports MoTeC-compatible CSV.
 
-![Driver radar](screenshots/Analysis_Radar.png)
+![Telemetry traces](screenshots/Analysis_Traces.png)
 
-A second sub-tab scores braking, throttle control, consistency, racing line and
-tyre management, with a coach report explaining each number.
+`←/→` moves between five sub-tabs. **TELEMETRY** is the traces above — delta
+against your best, speed, both pedals and steering against time. **DYNAMICS**,
+**ENGINE** and **TRACTION** break the same lap down further, and **OVERVIEW**
+carries the sector split, the driving scores and the per-corner temperatures.
 
 ### 6 — Strategy
 
