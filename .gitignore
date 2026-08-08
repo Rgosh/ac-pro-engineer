@@ -4,6 +4,10 @@
 /releases/
 *.pdb
 *.exe
+# The bridge keeps the copy it replaced, beside the new one. `*.exe` does not
+# match it, so a single press of [B] left an 861 KB binary showing up as
+# untracked in every `git status` afterwards.
+*.exe.previous
 
 
 
