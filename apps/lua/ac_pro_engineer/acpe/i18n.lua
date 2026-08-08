@@ -117,6 +117,17 @@ local RUSSIAN = {
   ['Save now'] = 'Сохранить',
   ['Reset to defaults'] = 'Сбросить',
   ['Default palette'] = 'Палитра по умолчанию',
+  ['Changed'] = 'Изменено',
+  ['Everything is as it ships.'] = 'Всё как из коробки.',
+  ['Anything you change appears here, with a way back.'] =
+    'Всё, что вы поменяете, появится здесь — и отсюда же вернётся обратно.',
+  ['search'] = 'поиск',
+  ['reset'] = 'сброс',
+  ['was'] = 'было',
+  ['Reset everything'] = 'Сбросить всё',
+  ['%d of %d settings changed'] = 'изменено %d из %d настроек',
+  ['nothing matching "%s" among the %d changed'] =
+    'среди %d изменённых нет ничего по запросу «%s»',
   ['settings are saved as you change them'] = 'настройки сохраняются сразу',
   ['could not write a settings file'] = 'не удалось записать файл настроек',
   ["CSP's own storage is working too"] = 'хранилище CSP тоже работает',

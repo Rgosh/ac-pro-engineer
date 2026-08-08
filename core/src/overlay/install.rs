@@ -88,6 +88,10 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/theme.lua"),
     ),
     (
+        "acpe/windows/changed.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/changed.lua"),
+    ),
+    (
         "acpe/windows/dev.lua",
         include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/dev.lua"),
     ),

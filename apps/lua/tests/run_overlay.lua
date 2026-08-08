@@ -567,6 +567,48 @@ for i = survivedFrom + 1, #drawn do
 end
 print('a checkbox outlives storage that forgets: OK')
 
+-- ---------------------------------------------------------------------------
+-- The Changed tab lists what was changed, and undoes it
+--
+-- Eighty-five settings across six tabs, and the one making the panel look
+-- wrong is the one you do not remember touching. This is the list of
+-- everything that differs from the defaults, so it has to actually name them
+-- and its reset has to actually work.
+-- ---------------------------------------------------------------------------
+
+local liveSettings = package.loaded['acpe.settings'].values
+liveSettings.engineerLines = 7
+
+local changedFrom = #drawn
+local listed, listError = pcall(script.windowSettings, 0.016)
+if not listed then
+  print('\nFAILED: the Changed tab threw: ' .. tostring(listError))
+  os.exit(1)
+end
+
+local listing = table.concat(drawn, '\n', changedFrom + 1, #drawn)
+if not listing:find('engineerLines', 1, true) then
+  print('\nFAILED: a changed setting is not in the list of changed settings.')
+  os.exit(1)
+end
+
+-- The way back, through the button beside it.
+buttonPressed = 'reset##acpeResetengineerLines'
+local undone, undoError = pcall(script.windowSettings, 0.016)
+buttonPressed = nil
+if not undone then
+  print('\nFAILED: resetting one setting threw: ' .. tostring(undoError))
+  os.exit(1)
+end
+
+local default = package.loaded['acpe.settings'].DEFAULTS.engineerLines
+if liveSettings.engineerLines ~= default then
+  print('\nFAILED: reset left engineerLines at ' .. tostring(liveSettings.engineerLines)
+    .. ', expected the default ' .. tostring(default))
+  os.exit(1)
+end
+print('the Changed tab lists and undoes: OK')
+
 
 -- ---------------------------------------------------------------------------
 -- A published frame with no car in it is not the same as no application

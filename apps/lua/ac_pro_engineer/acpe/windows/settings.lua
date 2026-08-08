@@ -21,6 +21,7 @@ local console = require('acpe.console')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
 local dev = require('acpe.windows.dev')
+local changed = require('acpe.windows.changed')
 
 local COLOR = theme.COLOR
 local tr = i18n.tr
@@ -383,6 +384,13 @@ return function(dt)
         end
       end
     end)
+
+    -- Everything that is not as it ships, in one list with a way back. Named
+    -- with the count so it answers "have I changed anything" without being
+    -- opened, which is most of what it is for.
+    local changedCount = changed.count()
+    ui.tabItem(changedCount > 0 and (tr('Changed') .. ' ' .. changedCount)
+      or tr('Changed'), changed.body)
 
     -- The same two panels that have windows of their own, here as tabs: one
     -- window to open when the question is "what is going on", rather than
