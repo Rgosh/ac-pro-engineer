@@ -25,7 +25,7 @@ local contentWidth = layout.contentWidth
 
 local M = {}
 
-local search = { text = '' }
+local search = ''
 
 --- Every key whose value is not the one it ships with.
 ---
@@ -64,10 +64,15 @@ function M.body()
     return
   end
 
+  -- `ui.inputText`, not `inputTextBox`: the latter is the LÖVE harness's own
+  -- invention and CSP has no such function, which
+  -- `the_overlay_app_only_calls_ui_functions_csp_provides` catches — it would
+  -- have been a nil call in the game and an error where the list should be.
   ui.setNextItemWidth(contentWidth())
-  ui.inputTextBox('##acpeChangedSearch', search, tr('search'))
+  local typed = ui.inputText('##acpeChangedSearch', search)
+  search = typed or search
 
-  local needle = search.text:lower()
+  local needle = search:lower()
   local matched = 0
 
   for _, key in ipairs(keys) do
@@ -90,7 +95,7 @@ function M.body()
 
   if matched == 0 then
     say('caption', string.format(tr('nothing matching "%s" among the %d changed'),
-      search.text, #keys), COLOR.dim)
+      search, #keys), COLOR.dim)
   end
 
   ui.separator()
