@@ -66,7 +66,15 @@ fn set_console_icon() {
 }
 
 #[derive(Parser, Debug)]
-#[command(version, about)]
+// `name` and `about` spelled out rather than taken from the crate. Clap uses
+// the *package* name, so `ac_pro_engineer --version` answered "ac_tui 0.3.5" —
+// a name that appears nowhere a user can see, on the one command whose whole
+// job is to identify the program.
+#[command(
+    name = "ac_pro_engineer",
+    version,
+    about = "AC Pro Engineer — telemetry, race engineering and an in-game overlay for Assetto Corsa"
+)]
 struct AppArgs {
     /// Do not write a log file at all.
     ///
