@@ -26,7 +26,7 @@ overlay app.
 > overlay, Assetto Corsa Linux, Assetto Corsa Proton, Steam Deck sim racing,
 > shared memory telemetry, ratatui TUI, Rust sim racing tools.
 
-![The launcher](screenshots/Launcher.png)
+![AC Pro Engineer launcher, showing the Assetto Corsa install, CSP and bridge it found](screenshots/Launcher.png)
 
 > ⭐ **If this is useful, star the repo.** It is the only marketing this project
 > has.
@@ -237,7 +237,7 @@ it.
 
 ### Launcher
 
-![Launcher](screenshots/Launcher.png)
+![The launcher screen: Assetto Corsa install, CSP status, overlay version and bridge](screenshots/Launcher.png)
 
 Where the application waits before a session, and where it reports what it found:
 your Assetto Corsa install, whether CSP is there, whether the overlay is current,
@@ -246,7 +246,7 @@ open, `Q` to quit.
 
 ### 1 — Dashboard
 
-![Dashboard](screenshots/Dashboard.png)
+![Dashboard tab: per-corner tyre temperature, pressure and wear, shift bar, TC, ABS, engine map and brake bias](screenshots/Dashboard.png)
 
 Mission control. Per-corner tyre temperature, pressure and life; speed, gear and
 a shift bar that turns colour through the power band rather than at the limiter;
@@ -254,7 +254,7 @@ TC, ABS, engine map and brake bias; session, car, track, fuel and time remaining
 
 ### 2 — Telemetry
 
-![Telemetry](screenshots/Telemetry.png)
+![Telemetry tab: dynamic pressures, tyre core temperature, suspension travel and a friction circle](screenshots/Telemetry.png)
 
 The raw feed: dynamic pressures, tyre core temperature, suspension travel, and a
 friction circle showing lateral against longitudinal g. Use it on an out-lap to
@@ -262,7 +262,7 @@ watch the tyres come in evenly.
 
 ### 3 — Engineer
 
-![Engineer](screenshots/Engineer.png)
+![Engineer tab: live race-engineer advice beside a driving style read-out](screenshots/Engineer.png)
 
 Three sub-tabs, `←/→` between them:
 
@@ -274,25 +274,25 @@ Three sub-tabs, `←/→` between them:
 
 ### 4 — Setup
 
-![Setups](screenshots/Setup_1.png)
+![Setup tab: local Assetto Corsa car setups compared field by field against a reference](screenshots/Setup_1.png)
 
 Your local setups for the current car, compared field by field against a
 reference. Press `B` for the **Setup Cloud**:
 
-![Setup Cloud](screenshots/Setup_cloud.png)
+![Setup Cloud browser: community Assetto Corsa setups by car, installed without restarting the game](screenshots/Setup_cloud.png)
 
 Browse by car, read the setup's details, and press `D` to install it straight
 into Assetto Corsa. No restart.
 
 ### 5 — Analysis
 
-![Analysis](screenshots/Analysis_Overview.png)
+![Analysis tab: lap history, sector splits, driving scores and per-corner temperatures](screenshots/Analysis_Overview.png)
 
 Lap history and traces: throttle, brake, steering and speed against distance,
 with a ghost lap overlaid. `S` saves the selected lap, `L` loads one from disk,
 `C` toggles the ghost, `E` exports MoTeC-compatible CSV.
 
-![Telemetry traces](screenshots/Analysis_Traces.png)
+![Analysis telemetry traces: delta, speed, throttle, brake and steering against time](screenshots/Analysis_Traces.png)
 
 `←/→` moves between five sub-tabs. **TELEMETRY** is the traces above — delta
 against your best, speed, both pedals and steering against time. **DYNAMICS**,
@@ -301,7 +301,7 @@ carries the sector split, the driving scores and the per-corner temperatures.
 
 ### 6 — Strategy
 
-![Strategy](screenshots/Strategy.png)
+![Strategy tab: fuel calculator, tyre life projection, track conditions and race pace history](screenshots/Strategy.png)
 
 The pit wall. Fuel per lap measured from your own laps, laps remaining in the
 tank, fuel needed to finish and how far short you are; tyre life projected
@@ -309,7 +309,7 @@ forward; track grip, air and road temperature.
 
 ### 7 — FFB
 
-![FFB](screenshots/FFB_Tuning.png)
+![FFB tab: force feedback clipping over time with the input traces beside it](screenshots/FFB_Tuning.png)
 
 Force feedback clipping over time, with the input traces beside it. If the graph
 is red you are driving blind through the wheel — lower the gain in AC until the
@@ -317,7 +317,7 @@ peaks barely touch yellow.
 
 ### 8 — Settings
 
-![Settings](screenshots/Settings.png)
+![Settings tab: system, display, engineer, overlay and key categories](screenshots/Settings.png)
 
 Five categories, `A` `S` `D` `F` `G` or `←/→`:
 
@@ -328,12 +328,12 @@ Five categories, `A` `S` `D` `F` `G` or `←/→`:
   `[I]` install / `[U]` uninstall the panel, and `[C]` for diagnostics
 - **KEYS** — rebind anything
 
-![Key bindings](screenshots/Settings_Keys.png)
+![Settings, KEYS category: every action with the key it is bound to, all rebindable](screenshots/Settings_Keys.png)
 
 `[C]` on **OVERLAY** answers the one question this program gets asked most —
 *why is the panel blank* — without leaving the application:
 
-![Overlay diagnostics](screenshots/Overlay_Diagnostics.png)
+![Overlay diagnostics: the application, the shm-bridge on disk and the one running, with a verdict](screenshots/Overlay_Diagnostics.png)
 
 All three pieces that have to agree about a frame, what each one is, and what to
 do about the one that does not fit. `[R]` measures again, so starting the bridge
@@ -343,21 +343,21 @@ terminal.
 
 ### 9 — Guide
 
-![Guide](screenshots/Guide.png)
+![Guide tab: sixteen chapters of car setup and vehicle dynamics reference](screenshots/Guide.png)
 
 Sixteen chapters of setup and physics reference, from trail braking to wet
 setups to a troubleshooting index. `↑/↓` to move between them.
 
 ### Help
 
-![Help](screenshots/Help_Modal.png)
+![The F1 help page, listing the keys for the tab you are on](screenshots/Help_Modal.png)
 
 `F1` or `?` anywhere opens a page about the tab you are on. Every key it names is
 printed from your bindings.
 
 ### In-game — the panel
 
-![The panel](screenshots/Overlay_Main.png)
+![The in-game CSP overlay panel in Assetto Corsa: speed, gear, rev bar, four corners, delta, fuel and session](screenshots/Overlay_Main.png)
 
 The window CSP opens as **AC Pro Engineer**, and the one that is on screen while
 you drive. Top to bottom: speed with the gear beside it, a rev bar that changes
@@ -374,7 +374,7 @@ fuel.
 
 ### In-game — advice
 
-![Advice](screenshots/Overlay_Engineer.png)
+![The overlay's advice window: engineer lines with severity markers](screenshots/Overlay_Engineer.png)
 
 The same engineer lines as the block at the bottom of the panel, in a window of
 their own — so they can sit where your eyes already go instead of pushing the
@@ -387,7 +387,7 @@ stays in the reading colour, because a wall of red is a wall nobody reads.
 
 ### In-game — telemetry
 
-![Telemetry](screenshots/Overlay_Telemetry.png)
+![The overlay's telemetry window: every field in the shared-memory frame as it arrived](screenshots/Overlay_Telemetry.png)
 
 Every field in the frame, as it arrived, with no interpretation on top: car,
 fuel, timing, session, the four corners in a row each, and the flag bits the
@@ -398,7 +398,7 @@ switch is off.
 
 ### In-game — status
 
-![Status](screenshots/Overlay_Status.png)
+![The overlay's status window: the shared mapping, the frame, and the panel and application versions](screenshots/Overlay_Status.png)
 
 The link, in three parts. **LINK** — the mapping's full name, whether it opened,
 whether the frame is live or stale, and whether there is a car on track.
@@ -414,7 +414,7 @@ current, the versions match and the panel keeps drawing.
 
 ### In-game settings — Panel
 
-![Panel settings](screenshots/Overlay_Settings_Panel.png)
+![Overlay settings, Panel tab: which blocks the in-game panel draws](screenshots/Overlay_Settings_Panel.png)
 
 Which blocks the panel draws, in five sub-tabs.
 
@@ -435,7 +435,7 @@ Which blocks the panel draws, in five sub-tabs.
 
 ### In-game settings — Advice
 
-![Advice settings](screenshots/Overlay_Settings_Advice.png)
+![Overlay settings, Advice tab: how many engineer lines, markers, wrapping and severity filter](screenshots/Overlay_Settings_Advice.png)
 
 How much the engineer says and how it reads. How many lines to draw, of the
 eight the frame can carry, with the number actually arriving printed
@@ -448,7 +448,7 @@ reading a sentence against a bright sky.
 
 ### In-game settings — Look
 
-![Look settings](screenshots/Overlay_Settings_Look.png)
+![Overlay settings, Look tab: accent colour and an editable palette for the in-game panel](screenshots/Overlay_Settings_Look.png)
 
 Three sub-tabs.
 
@@ -464,7 +464,7 @@ Three sub-tabs.
 
 ### In-game settings — Units
 
-![Units settings](screenshots/Overlay_Settings_Units.png)
+![Overlay settings, Units tab: Celsius or Fahrenheit, psi or bar, and where settings are saved](screenshots/Overlay_Settings_Units.png)
 
 °C or °F, psi or bar, km/h or mph, litres or gallons, whether lap times are
 written short, and whether numbers carry their unit. Every one re-formats the
@@ -488,7 +488,7 @@ the list and `ac_pro_engineer_overlay.lua` are then the same vocabulary, so
 
 ### In-game settings — Console
 
-![Console settings](screenshots/Overlay_Settings_Console.png)
+![Overlay settings, Console tab: 4K and VR presets and a typed command line](screenshots/Overlay_Settings_Console.png)
 
 For what has no widget, and for what is faster to type than to find. One-press
 presets for 4K, 1080p, VR, bigger, smaller, developer mode and reset; then a
@@ -499,7 +499,7 @@ itself off. `--help` lists the rest.
 
 ### In-game settings — Dev
 
-![Dev settings](screenshots/Overlay_Settings_Dev.png)
+![Overlay settings, Dev tab: draw the panel with no session, and the raw frame numbers](screenshots/Overlay_Settings_Dev.png)
 
 Red, and only in the window once developer mode is on — from the console's
 `Dev` button or `--dev-mode`.
@@ -675,7 +675,7 @@ The status bar tells three states apart on purpose:
 
 ### The in-game panel says "Waiting for AC Pro Engineer"
 
-![Waiting for the application](screenshots/Overlay_Waiting.png)
+![The overlay panel saying AC Pro Engineer is not running, in large centred text](screenshots/Overlay_Waiting.png)
 
 In order, cheapest first:
 
