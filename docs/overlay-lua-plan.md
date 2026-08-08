@@ -3,6 +3,12 @@
 Design for replacing the overlay with a Lua app that draws inside Assetto
 Corsa, while all computation stays in Rust.
 
+> **Done, as of v0.3.5.** The panel ships, and step 8 below resolved the way it
+> reads: `native_window.rs`, `openxr.rs`, `provider.rs`, `state.rs` and the
+> whole `OverlayManager` are gone, along with the F10 and F11 bindings and the
+> control centre in the terminal. Kept as the record of why the panel is shaped
+> the way it is; read it in the past tense.
+
 ## Why the current overlay does not work
 
 - `NativeWindowProvider` is `#[cfg(target_os = "windows")]` only, 422 lines of

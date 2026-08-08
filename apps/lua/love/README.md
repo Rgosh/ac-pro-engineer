@@ -77,17 +77,43 @@ it has never seen, including ones built around `ui.begin`/`ac.onRenderWidget`.
 
 ## The windows
 
-The app declares two in its manifest, and CSP opens a third from the gear:
+Five, all of them declared in the app's manifest:
 
 | Window | `FUNCTION_MAIN` | |
 |---|---|---|
 | AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel, session |
 | AC Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
-| settings | `FUNCTION_SETTINGS` | every section on or off, engineer output, text size, VR mode, units |
+| AC Pro Engineer — telemetry | `windowTelemetry` | every field in the frame, as it arrived |
+| AC Pro Engineer — status | `windowStatus` | is the mapping open, is anything arriving, do the versions agree |
+| settings | `windowSettings` | every section on or off, engineer output, text size, VR mode, units |
 
 Each is a separate entry in CSP's sidebar in game, moved and sized separately.
-The harness draws all three through the same chrome, so what is arranged here
-is what can be arranged there.
+The harness draws all five through the same chrome, so what is arranged here is
+what can be arranged there. Open the ones that start closed from the **Harness**
+tab, or with `--status`, `--settings` and the Telemetry checkbox.
+
+## Portraits, for the README
+
+```bash
+./portraits.sh
+```
+
+One picture per window and one per settings tab, cropped to the window and
+written into `screenshots/`. Each is a separate run of the harness with
+`--portrait ID`, which draws that window alone in a LÖVE window sized exactly to
+it, so nothing needs cropping afterwards.
+
+Portraits get storage that remembers nothing, so a run always starts from the
+panel's defaults — otherwise the run that photographs the Dev tab leaves
+developer mode on in every picture after it.
+
+| | |
+|---|---|
+| `--portrait ID` | `main`, `engineer`, `telemetry`, `status` or `settings` |
+| `--app-tab PATH` | a tab inside the app, `Look/Colour` for a nested one |
+| `--app-dev` | turn the panel's own developer mode on, for the Dev tab |
+| `--size WxH` | the size to draw the portrait's window at |
+| `--shot NAME` | where it lands in the save directory |
 
 ## The tabs
 

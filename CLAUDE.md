@@ -147,6 +147,27 @@ Runs the panel under LÖVE for 120 frames and exits non-zero if it threw. Add
 `--shot name.png` to get a picture; the harness's own README explains the rest.
 
 ```bash
+./apps/lua/love/portraits.sh
+```
+
+Every picture of the panel in the README, regenerated: each window on its own
+and each settings tab on its own, cropped to the window. Run it after any panel
+edit that changes what is on screen — it is also the fastest way to *see* a
+layout change, since it takes about a minute and needs no game.
+
+Two harness bugs hid real ones until v0.3.5, and both are worth knowing about
+because they made the harness agree with a panel that was wrong:
+
+- **a nested `ui.tabBar` cleared `currentTabBar` instead of restoring its
+  parent**, so every `ui.tabItem` in the *outer* bar after a nested one drew no
+  label and ran its body unconditionally. The settings window lost four of its
+  six tabs and stacked their contents under whichever one was selected.
+- **`##id` was drawn as part of the label.** ImGui hides everything from `##`
+  onward; the panel relies on that for nearly every control, because the
+  caption is drawn separately at a chosen size. Every setting read
+  `##showHeader Speed and gear`.
+
+```bash
 cargo run --bin simulator
 ```
 
@@ -206,7 +227,7 @@ in the game, with every window drawing the error.
 ## The terminal's key map
 
 `tui/src/keys.rs` is the only thing that decides what a key does, and the only
-thing that prints one. Bindings live in `config.json` as text (`f10`, `ctrl+s`,
+thing that prints one. Bindings live in `config.json` as text (`f1`, `ctrl+s`,
 `shift+tab`); `resolve` turns a keypress into an `Action`, `describe` turns a
 binding into something to draw.
 
@@ -220,7 +241,17 @@ test exists because the Setup tab promised `'D' - Download` on a screen where
 Adding an action means: a field on `KeyBindings`, an entry in `keys::all`, a
 case in `keys::set`, a case in `keys::action_of`, and an arm in `resolve`. Two
 tests count fields off the serialised struct, so forgetting the first three
-fails rather than going quietly missing.
+fails rather than going quietly missing. Removing one means the same five
+places, plus every test that reached for it by index — `keys::all` is ordered,
+and the Settings screen's tests address rows by number.
+
+**There is one overlay, and no key toggles it.** F10 and F11 used to drive a
+second one: a layered Win32 window drawn by the application, with a control
+centre in the terminal. On Linux its provider was `None`, so F10 logged a line
+and did nothing; on Windows it drew a worse copy of what the panel draws. Gone
+in v0.3.5, along with `OverlayManager`, `native_window.rs`, `openxr.rs`,
+`provider.rs`, `state.rs`, `ui/overlay.rs` and the `--overlay-test-*` flags.
+`core/src/overlay/` is now only the frame and the things that carry it.
 
 ## Lua traps that have cost real time
 

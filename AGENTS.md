@@ -20,7 +20,7 @@ RaceEngineer/
 │       ├── discord.rs       # Discord Rich Presence integration
 │       ├── engineer.rs      # Real-time engineer recommendations and advice engine
 │       ├── memory.rs        # Cross-platform shared memory reader (Win32 / dev/shm)
-│       ├── overlay/         # In-game / VR / desktop overlay manager
+│       ├── overlay/         # The in-game CSP panel: its frame, writer, bridge and installer
 │       ├── process.rs       # Process checker for acs.exe / simulator.exe
 │       ├── records.rs       # Track and car lap record manager
 │       ├── session_info.rs  # Active session metadata
@@ -32,7 +32,7 @@ RaceEngineer/
 │       ├── main.rs          # ac_pro_engineer binary entry point and main event loop
 │       ├── bin/
 │       │   ├── simulator.rs # Mock telemetry simulator binary
-│       │   └── tui_tester.rs# Automated headless TUI menu & action test runner (generates SVG/txt screenshots)
+│       │   └── tui_tester.rs# Automated headless TUI menu & action test runner (generates PNG screenshots)
 │       └── ui/              # TUI components, layouts, theme engine, and tab widgets
 ├── shm-bridge/              # Shared Memory Bridge binary for Wine/Proton to Linux /dev/shm
 └── tests_suite/             # Integration tests for core logic, Linux distro mocks, & overlay
@@ -74,8 +74,8 @@ All commands must pass cleanly without warnings or errors.
    - Always gate Win32 API calls (`windows` crate, `std::os::windows`) with `#[cfg(target_os = "windows")]` or `#[cfg(windows)]`.
    - Provide non-Windows compilation stubs so `cargo check --workspace` succeeds on Linux native targets.
 
-2. **Overlay Manager**:
-   - `OverlayMode::NativeDesktop` and `OverlayMode::StandaloneTest` rely on Win32 overlay windows on Windows. On non-Windows targets, match arms must fallback cleanly to `None`.
+2. **The overlay**:
+   - There is one overlay and it is the CSP Lua panel under `apps/lua/`. The desktop side only writes the frame it reads; nothing in `core/src/overlay/` draws a window. A second, Win32-only desktop overlay used to live here behind F10 — it did nothing at all on Linux and duplicated the panel on Windows, and it was removed in v0.3.5.
 
 ---
 
@@ -83,7 +83,7 @@ All commands must pass cleanly without warnings or errors.
 
 - **No `unwrap()` Calls**: Never call `.unwrap()` in production or library code. Use `anyhow::Context`, `?` operator, `expect()`, or safe fallbacks (`unwrap_or_default`, `unwrap_or_else`).
 - **Mutex Safety**: Use the `SafeLock` extension trait (`mutex.safe_lock()`) instead of raw `.lock().unwrap()` to avoid panicking on poisoned mutexes.
-- **TUI Visual Testing**: Always run `cargo run --bin tui_tester` after modifying UI tabs or widgets. Inspect generated visual outputs in `screenshots/` to verify layout rendering across English and Russian languages.
+- **TUI Visual Testing**: Always run `cargo run --bin tui_tester` after modifying UI tabs or widgets. Inspect generated visual outputs in `screenshots/` to verify layout rendering across English and Russian languages. The overlay panel has its own equivalent: `apps/lua/love/portraits.sh` renders every panel window and settings tab to the same folder.
 - **Git Branching**: Development work must take place on a dedicated branch with incremental commits after each verified build. History uses `fix/...` and `feature/...` prefixes.
 
 ---
