@@ -104,6 +104,17 @@ them can be rebound.
   shape and one keystroke away from the same crash. Every blocking request in
   the crate is now either behind that hop or the first thing on a thread of its
   own.
+- **The screen that says nothing is working now says it loudly.** When the panel
+  cannot reach the application it has one job — say so to someone glancing at it
+  from a driving seat — and it said so in CSP's own font at a tier that cannot
+  be scaled: a few small words in the top-left corner of an otherwise empty
+  window, unchanged while the panel itself grew to fill a 4K screen. There is a
+  headline sized from the window now, the explanation under it at the panel's
+  own body size, the block centred. Four screens use it: waiting for the
+  application, waiting for the car, the mapping missing, and a frame version
+  mismatch. Five of the sentences they draw had never been translated,
+  including both halves of the mapping-missing screen — the one a Linux driver
+  reads most.
 - **The panel forgot every checkbox, and the reason was not that it failed to
   save.** `settings = stored` made the panel's live settings table *be* CSP's
   `ac.storage` proxy, so every read and write went through its metatable. A

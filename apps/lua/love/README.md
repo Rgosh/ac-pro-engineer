@@ -112,6 +112,7 @@ developer mode on in every picture after it.
 | `--portrait ID` | `main`, `engineer`, `telemetry`, `status` or `settings` |
 | `--app-tab PATH` | a tab inside the app, `Look/Colour` for a nested one |
 | `--app-dev` | turn the panel's own developer mode on, for the Dev tab |
+| `--app-stopped` | freeze the feed, so the panel draws what a closed application looks like |
 | `--size WxH` | the size to draw the portrait's window at |
 | `--shot NAME` | where it lands in the save directory |
 

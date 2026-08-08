@@ -639,6 +639,8 @@ The status bar tells three states apart on purpose:
 
 ### The in-game panel says "Waiting for AC Pro Engineer"
 
+![Waiting for the application](screenshots/Overlay_Waiting.png)
+
 In order, cheapest first:
 
 1. **Is the desktop application running?** The panel draws nothing without it.

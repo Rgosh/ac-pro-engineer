@@ -46,6 +46,11 @@ shot Overlay_Engineer  engineer  380x180
 shot Overlay_Telemetry telemetry 400x700
 shot Overlay_Status    status    380x330
 
+# What the panel shows when it cannot reach the application. Its own picture
+# because it is the screen a driver is most likely to meet first, and because
+# the README's troubleshooting section is where they will be looking.
+shot Overlay_Waiting   main      360x470 --app-stopped
+
 # The settings window, one picture per tab: it is the one window a driver reads
 # through rather than glances at, and a single shot of it says nothing about the
 # five tabs it is not showing.
