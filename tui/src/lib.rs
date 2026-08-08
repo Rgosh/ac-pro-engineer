@@ -678,7 +678,7 @@ impl AppState {
             }
             Ok(InstallOutcome::AlreadyCurrent) => "already up to date".to_string(),
             Ok(InstallOutcome::NoGameFound) => {
-                "no Assetto Corsa found — set the path in Settings".to_string()
+                "no Assetto Corsa found — set ac_install_path in config.json".to_string()
             }
             Err(error) => format!("failed: {error}"),
         };

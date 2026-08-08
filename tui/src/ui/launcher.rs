@@ -84,8 +84,12 @@ fn render_overlay_offer(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             "Assetto Corsa is here, but CSP is not — the panel needs it.",
             Style::default().fg(Color::Yellow),
         ))),
+        // Not "set the path in Settings": that screen has no such row and
+        // never has had one, so the message sent people to a dead end. The
+        // only way to point this at an install it cannot find is
+        // `ac_install_path` in the config file.
         None => lines.push(Line::from(Span::styled(
-            "No Assetto Corsa found yet — set the path in Settings first.",
+            "No Assetto Corsa found — set ac_install_path in config.json.",
             Style::default().fg(Color::Red),
         ))),
     }
@@ -252,7 +256,7 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ])),
         None => lines.push(Line::from(vec![
             Span::styled("game     ", dim),
-            Span::styled("not found — set the path in Settings", bad),
+            Span::styled("not found — set ac_install_path in config.json", bad),
         ])),
     }
 
