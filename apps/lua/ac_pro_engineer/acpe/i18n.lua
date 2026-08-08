@@ -109,6 +109,8 @@ local RUSSIAN = {
   ['Reset to defaults'] = 'Сбросить',
   ['Default palette'] = 'Палитра по умолчанию',
   ['settings are saved as you change them'] = 'настройки сохраняются сразу',
+  ['could not write a settings file'] = 'не удалось записать файл настроек',
+  ["CSP's own storage is working too"] = 'хранилище CSP тоже работает',
   ['storage unavailable: settings last for this session'] =
     'хранилище недоступно: настройки только на эту сессию',
   ['%d saved'] = 'сохранено: %d',

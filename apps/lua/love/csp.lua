@@ -1028,7 +1028,11 @@ end
 
 --- Put CSP's globals in place. `frameSource` is a function returning the table
 --- the overlay reads its telemetry from.
-function csp.install(frameSource, storageFile)
+--- Where the app's own settings file goes. The panel asks CSP for a folder
+--- and keeps its settings there; without this it falls back to a path relative
+--- to the working directory, which under the harness is the middle of the
+--- checkout.
+function csp.install(frameSource, storageFile, settingsDir)
   buildFonts()
 
   _G.vec2 = function(x, y) return { x = x or 0, y = y or 0 } end
@@ -1046,6 +1050,12 @@ function csp.install(frameSource, storageFile)
     }),
     readMemoryMappedFile = function(_name, _layout) return frameSource() end,
     storage = makeStorage(storageFile == nil and 'app-settings.lua' or storageFile),
+    -- CSP's folder API, enough of it for the panel to find somewhere to keep
+    -- its settings file.
+    FolderID = { ExtCfgUser = 1, Cfg = 2 },
+    getFolder = function()
+      return settingsDir or love.filesystem.getSaveDirectory()
+    end,
     log = function(...) csp.log(...) end,
     warn = function(...) csp.log(...) end,
     debug = function() end,

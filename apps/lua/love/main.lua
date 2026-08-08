@@ -172,8 +172,16 @@ function love.load(args)
   -- settings file and the run that photographed the Dev tab left developer
   -- mode on in every picture after it.
   local storageFile = 'app-settings.lua'
-  if config.portrait ~= nil then storageFile = false end
-  csp.install(function() return sim.frame end, storageFile)
+  -- The panel keeps a settings file of its own as well as using `ac.storage`.
+  -- A portrait gets a fresh directory for both, emptied on the way in, so the
+  -- pictures are taken from the panel's defaults however the last run left it.
+  local settingsDir = nil
+  if config.portrait ~= nil then
+    storageFile = false
+    settingsDir = '/tmp/acpe-portrait-settings'
+    os.execute('rm -rf ' .. settingsDir .. ' && mkdir -p ' .. settingsDir)
+  end
+  csp.install(function() return sim.frame end, storageFile, settingsDir)
   ui = _G.ui
   harness.titleFont = love.graphics.newFont(12)
   harness.statusFont = love.graphics.newFont(11)

@@ -346,9 +346,20 @@ return function(dt)
       ui.popFont()
 
       ui.separator()
-      if storeActive then
+      -- Where they went, not just that they went. "Did it save" was a question
+      -- the panel could not answer, and a driver whose settings kept reverting
+      -- had nothing to look at.
+      local file, fileError = store.file()
+      if file ~= nil then
         say('caption', tr('settings are saved as you change them'), COLOR.dim)
-      else
+        say('caption', file, COLOR.dim)
+      elseif fileError ~= nil then
+        say('caption', tr('could not write a settings file'), COLOR.warn)
+        say('caption', fileError, COLOR.dim)
+      end
+      if storeActive then
+        say('caption', tr("CSP's own storage is working too"), COLOR.dim)
+      elseif file == nil then
         say('caption', tr('storage unavailable: settings last for this session'), COLOR.warn)
         if storeError ~= nil then
           say('caption', storeError, COLOR.dim)

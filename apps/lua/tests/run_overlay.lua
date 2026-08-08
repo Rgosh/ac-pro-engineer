@@ -13,6 +13,7 @@ local drawn = {}          -- everything the app tried to render
 local calls = {}          -- every stubbed call, to prove the paths ran
 local sliderMoved = nil   -- {id, value}: pretend the driver dragged that one
 local buttonPressed = nil -- label: pretend the driver clicked that one
+local checkboxClicked = nil -- id: pretend the driver ticked that one
 local carPresent = true   -- false publishes a frame with CONNECTED cleared
 
 local function note(name) calls[name] = (calls[name] or 0) + 1 end
@@ -99,8 +100,19 @@ local function synthesise(b)
   ffi.copy(f.app_version, os.getenv('ACPE_APP_VERSION') or currentPanelVersion())
 end
 
+-- Somewhere for the panel's own settings file, which is the copy that has to
+-- survive a CSP whose `ac.storage` does not. Its own directory, emptied first,
+-- so a run cannot pass on what the last one left and cannot write into the
+-- checkout.
+local SETTINGS_DIR = os.getenv('ACPE_SETTINGS_DIR') or '/tmp/acpe-overlay-test'
+os.execute('rm -rf ' .. SETTINGS_DIR .. ' && mkdir -p ' .. SETTINGS_DIR)
+
 ac = {
   StructItem = setmetatable({}, { __index = function() return function() return 0 end end }),
+  -- CSP's folder API, which is where the panel looks first for somewhere to
+  -- keep its file.
+  FolderID = { ExtCfgUser = 1 },
+  getFolder = function() return SETTINGS_DIR end,
   readMemoryMappedFile = function(name, layout)
     local b = ffi.new('F[1]')
     -- A real published frame when one is there — that is what the cargo test
@@ -217,7 +229,13 @@ ui = setmetatable({
   -- toggle inverted, including `freezeDisplay`, which stops it reading the
   -- frame at all. A harness that clicks every control it draws is not driving
   -- the panel, it is fighting it.
-  checkbox = function() note('checkbox'); return false end,
+  -- One named box at a time, the same way `sliderMoved` drags one slider.
+  -- A checkbox is what a driver actually changes in this window, and until
+  -- this existed nothing here had ever clicked one.
+  checkbox = function(id)
+    note('checkbox')
+    return checkboxClicked ~= nil and id == checkboxClicked
+  end,
   button = function(label)
     note('button')
     return buttonPressed ~= nil and label == buttonPressed
@@ -305,6 +323,10 @@ local ALLOWED_GLOBALS = {
   bit = true, ipairs = true, pairs = true, math = true, string = true,
   table = true, pcall = true, require = true, tonumber = true,
   tostring = true, type = true,
+  -- `acpe/persist.lua` keeps the settings in a file. It reads this once, into
+  -- a local, and checks it is there before using it — CSP's sandbox is not
+  -- guaranteed to hand a script the file library.
+  io = true,
 }
 
 -- Every file, not just the entry point. The panel is a dozen modules now, and
@@ -413,7 +435,16 @@ print('settings reach storage: OK')
 -- output, and the sample printed at the end -- which is what the cargo test
 -- greps for the published speed -- came out as nothing but settings captions.
 local reloadedFrom = #drawn
-savedValues.devMode = true
+
+-- Developer mode on, so the reloaded copy has a Dev tab to dump from. Through
+-- the panel's own store rather than by poking `savedValues`: the panel keeps a
+-- file as well as storage now, and a value written into storage behind its
+-- back is one the two sources disagree about — which is exactly the case the
+-- file is designed to win.
+local store = package.loaded['acpe.settings']
+store.values.devMode = true
+store.save()
+
 local reloaded, reloadError = loadPanel()
 if not reloaded then
   print('\nFAILED: the panel would not load a second time: ' .. tostring(reloadError))
@@ -445,6 +476,96 @@ if restored ~= '2' then
   os.exit(1)
 end
 print('settings survive a reload: OK')
+
+-- ---------------------------------------------------------------------------
+-- A checkbox survives a CSP whose storage does not
+--
+-- Everything above proves the panel talks to `ac.storage` and reads back what
+-- it wrote. None of it proves anything about a build where storage accepts a
+-- write and forgets it — which is a black box from the panel's side, and is
+-- what a driver reports as "it does not save the checkboxes".
+--
+-- So: tick a box, throw storage away, reload, and ask the panel what it draws.
+-- The only thing that can carry the answer across is the panel's own file.
+-- ---------------------------------------------------------------------------
+
+-- Tick "Tyres and brakes" off. A checkbox, because that is what the report is
+-- about, and this one has a visible consequence in another window.
+checkboxClicked = '##showTyres'
+local ticked, tickError = pcall(script.windowSettings, 0.016)
+checkboxClicked = nil
+if not ticked then
+  print('\nFAILED: clicking a checkbox threw: ' .. tostring(tickError))
+  os.exit(1)
+end
+
+if package.loaded['acpe.settings'].values.showTyres ~= false then
+  print('\nFAILED: the box was clicked and the setting did not change.')
+  os.exit(1)
+end
+
+-- The file has to exist and hold it, or there is nothing to survive on.
+local settingsFile = package.loaded['acpe.persist'].path()
+if settingsFile == nil then
+  print('\nFAILED: the panel never wrote a settings file, so nothing it is told')
+  print('outlives a build whose ac.storage does not persist.')
+  os.exit(1)
+end
+
+local onDisk = io.open(settingsFile, 'r')
+local body = onDisk and onDisk:read('*a') or ''
+if onDisk then onDisk:close() end
+if not body:match('%["showTyres"%]%s*=%s*false') then
+  print('\nFAILED: ' .. settingsFile .. ' does not hold showTyres = false.')
+  print(body)
+  os.exit(1)
+end
+
+-- Now a CSP whose storage is write-only: it takes assignments, hands back the
+-- defaults, and remembers nothing. Before the file existed this lost every
+-- setting the driver had ever changed.
+ac.storage = function(defaults)
+  storageAsked = storageAsked + 1
+  local forgetful = {}
+  for key, value in pairs(defaults) do forgetful[key] = value end
+  return setmetatable({}, {
+    __index = forgetful,
+    __newindex = function() end,
+    __pairs = function() return pairs(forgetful) end,
+  })
+end
+
+local survivedFrom = #drawn
+local reloadedAgain, reloadAgainError = loadPanel()
+if not reloadedAgain then
+  print('\nFAILED: the panel would not load against forgetful storage: '
+    .. tostring(reloadAgainError))
+  os.exit(1)
+end
+pcall(script.update, 0.016)
+
+if package.loaded['acpe.settings'].values.showTyres ~= false then
+  print('\nFAILED: with ac.storage forgetting everything, the reloaded panel')
+  print('reads showTyres = '
+    .. tostring(package.loaded['acpe.settings'].values.showTyres)
+    .. ', expected the false it was told to keep.')
+  print('This is the report: the checkboxes do not stay where they are put.')
+  os.exit(1)
+end
+
+-- And it has to reach the screen, not just the table.
+local drewMain, mainError = pcall(script.windowMain, 0.016)
+if not drewMain then
+  print('\nFAILED: windowMain after the forgetful reload: ' .. tostring(mainError))
+  os.exit(1)
+end
+for i = survivedFrom + 1, #drawn do
+  if drawn[i]:match('TYRES') then
+    print('\nFAILED: the tyres block was switched off and the panel drew it anyway.')
+    os.exit(1)
+  end
+end
+print('a checkbox outlives storage that forgets: OK')
 
 -- ---------------------------------------------------------------------------
 -- A published frame with no car in it is not the same as no application

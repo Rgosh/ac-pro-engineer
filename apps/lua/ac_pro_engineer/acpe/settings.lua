@@ -11,6 +11,8 @@
 -- Everything else requires this module and takes `.values` as its local
 -- `settings`, so every `settings.foo` in the panel reads the one table.
 
+local persist = require('acpe.persist')
+
 local M = {}
 
 local DEFAULTS = {
@@ -111,6 +113,23 @@ table.sort(SETTING_KEYS)
 local storageActive = false
 local storageError = nil
 
+--- CSP's storage, kept beside the settings rather than used as them.
+---
+--- `settings` used to *be* this proxy: `settings = stored`, and every read and
+--- write in the panel went through its metatable. That is the bug behind "the
+--- checkboxes do not stay where they are put". A proxy is free to accept an
+--- assignment and do nothing with it, and on a build where it does, the write
+--- never lands anywhere at all — not on disk and not even in memory, because
+--- there was no memory, only the proxy. Reading the value back gave whatever
+--- the proxy felt like returning, so the box drew itself unticked again on the
+--- very next frame and there was nothing to inspect.
+---
+--- Now the panel owns a plain table, storage is read once into it and written
+--- on save, and a storage that forgets costs the *file* nothing. It is also
+--- cheaper: these are read every frame in the draw path, and a plain field is
+--- not a metatable call.
+local storage = nil
+
 --- Ask CSP for persistent storage, both ways it is spelled.
 ---
 --- The prefixed form is what the documentation shows; the bare form is what
@@ -123,23 +142,47 @@ if type(ac) == 'table' and type(ac.storage) == 'function' then
     ok, stored = pcall(ac.storage, DEFAULTS)
   end
   if ok and stored ~= nil then
-    settings = stored
+    storage = stored
     storageActive = true
     storageError = nil
+    -- Read out, once. Anything storage cannot answer for keeps its default.
+    for _, key in ipairs(SETTING_KEYS) do
+      local ok2, value = pcall(function() return storage[key] end)
+      if ok2 and value ~= nil and type(value) == type(DEFAULTS[key]) then
+        settings[key] = value
+      end
+    end
   elseif storageError == nil then
     storageError = tostring(stored)
   end
 end
 
+--- The panel's own file, applied over whatever storage had.
+---
+--- It wins, and deliberately: the file is only ever written by a change the
+--- driver made, so when the two disagree the file is the one that reflects
+--- what they chose. Storage that quietly forgot everything hands back the
+--- defaults, and defaults must not overwrite a real setting.
+---
+--- Values are checked against the defaults' types, so a file edited by hand
+--- into nonsense costs one setting rather than the panel.
+local fileValues = persist.load()
+if fileValues ~= nil then
+  for _, key in ipairs(SETTING_KEYS) do
+    local value = fileValues[key]
+    if value ~= nil and type(value) == type(DEFAULTS[key]) then
+      settings[key] = value
+    end
+  end
+end
+
 --- What was last written, so a save can tell what actually changed.
 ---
---- Seeded from storage as soon as it is available: everything in there is
---- already on disk, and starting from an empty table made the first frame of
---- the settings window rewrite all seventy keys.
+--- Seeded from the values that survived both sources, so the first frame of
+--- the settings window does not rewrite all seventy keys. Seeded whether or
+--- not storage is active, because the file is written either way.
 local lastSaved = {}
-if storageActive then
-  for _, key in ipairs(SETTING_KEYS) do lastSaved[key] = settings[key] end
-end
+for _, key in ipairs(SETTING_KEYS) do lastSaved[key] = settings[key] end
 
 --- How the last save went, for the line under the Save button.
 local saveReport = { written = 0, failed = 0, ever = false }
@@ -156,22 +199,34 @@ local saveReport = { written = 0, failed = 0, ever = false }
 --- Called from every control and once at the end of the settings frame, so a
 --- value set directly — accents, palette entries, presets — is caught even
 --- though nothing wired it to a save.
+local fileError = nil
+
 local function saveSettings()
-  if not storageActive then return 0, 0 end
-  local written, failed = 0, 0
+  local written, failed, changed = 0, 0, false
   for _, key in ipairs(SETTING_KEYS) do
     local value = settings[key]
     if lastSaved[key] ~= value then
-      local ok = pcall(function() settings[key] = value end)
-      if ok and settings[key] == value then
-        lastSaved[key] = value
-        written = written + 1
-      else
-        -- Left out of lastSaved on purpose, so the next frame tries again.
-        failed = failed + 1
+      changed = true
+      if storageActive then
+        -- Best effort. Whether it stuck is checked, but a storage that lies
+        -- about it no longer costs the setting: the file below is the copy
+        -- that has to survive.
+        local ok = pcall(function() storage[key] = value end)
+        if not ok then failed = failed + 1 end
       end
+      lastSaved[key] = value
+      written = written + 1
     end
   end
+
+  -- The file, whenever anything moved, and regardless of what storage did.
+  -- This is the copy that survives a CSP build whose storage does not.
+  if changed then
+    local path, why = persist.save(settings, SETTING_KEYS)
+    fileError = path == nil and why or nil
+    if path == nil then failed = failed + 1 end
+  end
+
   if written > 0 or failed > 0 then
     saveReport.written, saveReport.failed, saveReport.ever = written, failed, true
   end
@@ -207,6 +262,14 @@ M.report = saveReport
 --- Whether CSP gave us somewhere to write, and why not if it did not.
 function M.storage()
   return storageActive, storageError
+end
+
+--- The file the settings are kept in, and the last reason a write failed.
+---
+--- Shown in the Units tab, because "where did it save" is the question behind
+--- "did it save", and until now the panel could not answer either.
+function M.file()
+  return persist.path(), fileError
 end
 
 return M
