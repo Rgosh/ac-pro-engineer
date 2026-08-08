@@ -56,3 +56,6 @@ windows = { workspace = true, features = [
 tar = { workspace = true }
 flate2 = { workspace = true }
 zip = { workspace = true }
+# Only so `net` can prove that a blocking client builds inside a runtime. This
+# crate has no async in it and must not grow any.
+tokio = { workspace = true, features = ["rt-multi-thread"] }

@@ -8,6 +8,7 @@ pub mod crash_logger;
 pub mod discord;
 pub mod engineer;
 pub mod memory;
+pub mod net;
 pub mod overlay;
 pub mod process;
 pub mod records;

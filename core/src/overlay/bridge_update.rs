@@ -136,27 +136,33 @@ fn classify_asset(name: &str) -> Option<Delivery> {
 /// release that *ships one* is the answer, and it is not always the newest
 /// release. Drafts and prereleases are skipped.
 pub fn latest_published() -> Result<RemoteBridge, String> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("AC-Pro-Engineer-Bridge-Check")
-        .timeout(HTTP_TIMEOUT)
-        .build()
-        .map_err(|e| format!("could not build an HTTP client: {e}"))?;
-
     let url = format!("https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases");
     info!("Looking for a published shm-bridge at {url}");
 
-    let response = client
-        .get(&url)
-        .send()
-        .map_err(|e| format!("could not reach GitHub: {e}"))?;
+    // Off the caller's thread: this is reached both from a background thread
+    // and straight from the terminal's key handler, and `reqwest::blocking`
+    // panics on the second if the caller is inside an async runtime. See
+    // `crate::net`.
+    let releases: Vec<GitHubRelease> = crate::net::off_runtime(|| {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("AC-Pro-Engineer-Bridge-Check")
+            .timeout(HTTP_TIMEOUT)
+            .build()
+            .map_err(|e| format!("could not build an HTTP client: {e}"))?;
 
-    if !response.status().is_success() {
-        return Err(format!("GitHub answered {}", response.status()));
-    }
+        let response = client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("could not reach GitHub: {e}"))?;
 
-    let releases: Vec<GitHubRelease> = response
-        .json()
-        .map_err(|e| format!("could not read GitHub's answer: {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!("GitHub answered {}", response.status()));
+        }
+
+        response
+            .json()
+            .map_err(|e| format!("could not read GitHub's answer: {e}"))
+    })?;
 
     let mut found: Vec<RemoteBridge> = Vec::new();
     for release in releases {
@@ -199,25 +205,30 @@ pub fn latest_published() -> Result<RemoteBridge, String> {
 /// kept as `<name>.previous` — replacing the only copy of a binary the user
 /// cannot rebuild is not a thing to do without a way back.
 pub fn download_to(remote: &RemoteBridge, destination: &Path) -> Result<PathBuf, String> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("AC-Pro-Engineer-Bridge-Check")
-        .timeout(HTTP_TIMEOUT)
-        .build()
-        .map_err(|e| format!("could not build an HTTP client: {e}"))?;
+    // Same reason as above: `[B]` on the launcher's overlay card calls this
+    // one keystroke after `latest_published`, from the same thread.
+    let bytes: Vec<u8> = crate::net::off_runtime(|| {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("AC-Pro-Engineer-Bridge-Check")
+            .timeout(HTTP_TIMEOUT)
+            .build()
+            .map_err(|e| format!("could not build an HTTP client: {e}"))?;
 
-    let mut response = client
-        .get(&remote.url)
-        .send()
-        .map_err(|e| format!("could not reach GitHub: {e}"))?;
+        let mut response = client
+            .get(&remote.url)
+            .send()
+            .map_err(|e| format!("could not reach GitHub: {e}"))?;
 
-    if !response.status().is_success() {
-        return Err(format!("download answered {}", response.status()));
-    }
+        if !response.status().is_success() {
+            return Err(format!("download answered {}", response.status()));
+        }
 
-    let mut bytes: Vec<u8> = Vec::new();
-    response
-        .copy_to(&mut bytes)
-        .map_err(|e| format!("download broke off: {e}"))?;
+        let mut bytes: Vec<u8> = Vec::new();
+        response
+            .copy_to(&mut bytes)
+            .map_err(|e| format!("download broke off: {e}"))?;
+        Ok(bytes)
+    })?;
 
     let bytes = match remote.delivery {
         Delivery::Executable => bytes,

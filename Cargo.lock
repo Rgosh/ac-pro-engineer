@@ -17,6 +17,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "tokio",
  "tracing",
  "walkdir",
  "windows",
