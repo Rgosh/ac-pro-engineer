@@ -25,6 +25,7 @@ local harness = {
   settingsOpen = false,
   engineerOpen = true,
   telemetryOpen = false,
+  statusOpen = false,
   testFrames = 0,
   fps = 0,
   lastError = nil,
@@ -43,6 +44,19 @@ local ui
 local consoleState = { text = '' }
 local consoleHistory = {}
 local runConsole
+
+-- And again: `love.load` sets up a portrait, but the helpers that do it need
+-- the window table, which is defined with the drawing code below. Declared
+-- here so `love.load` closes over these locals rather than over three globals
+-- that are nil at the point it runs.
+local applyAppTab
+local applyAppDeveloperMode
+local enterPortrait
+
+--- One window, alone, on a canvas exactly its size. `nil` for the harness
+--- proper. Read by `love.draw`, which skips the control panel and the other
+--- windows when it is set.
+local portrait = nil
 
 -- ---------------------------------------------------------------------------
 -- Loading the overlay
@@ -148,14 +162,28 @@ function love.load(args)
   harness.settingsOpen = S.settingsOpen
   harness.engineerOpen = S.engineerOpen
   harness.telemetryOpen = S.telemetryOpen
+  harness.statusOpen = S.statusOpen
 
-  csp.install(function() return sim.frame end, 'app-settings.lua')
+  -- A portrait gets storage that remembers nothing, so every picture is taken
+  -- from the panel's defaults regardless of what the last run left behind.
+  --
+  -- An if, not `cond and false or name`: that idiom yields the *fallback*
+  -- whenever the middle value is false, so it handed every portrait the real
+  -- settings file and the run that photographed the Dev tab left developer
+  -- mode on in every picture after it.
+  local storageFile = 'app-settings.lua'
+  if config.portrait ~= nil then storageFile = false end
+  csp.install(function() return sim.frame end, storageFile)
   ui = _G.ui
   harness.titleFont = love.graphics.newFont(12)
   harness.statusFont = love.graphics.newFont(11)
   csp.setScale(S.uiScale)
   csp.selectTab('harness', S.tab)
   loadApp()
+
+  applyAppTab(config.appTab)
+  applyAppDeveloperMode(config.appDev)
+  enterPortrait(config.portrait)
 
   love.window.setTitle('AC Pro Engineer — overlay harness')
   love.keyboard.setKeyRepeat(true)
@@ -299,6 +327,21 @@ local windows = {
     end,
   },
   {
+    id = 'status',
+    title = 'AC Pro Engineer — status',
+    fn = 'windowStatus',
+    closable = true,
+    size = function() return S.statusWidth, S.statusHeight end,
+    resize = function(w, h) S.statusWidth, S.statusHeight = w, h end,
+    minimum = { 220, 140 },
+    isOpen = function() return harness.statusOpen end,
+    onClose = function()
+      harness.statusOpen = false
+      S.statusOpen = false
+      config.save()
+    end,
+  },
+  {
     id = 'settings',
     title = 'AC Pro Engineer — settings',
     fn = 'windowSettings',
@@ -317,7 +360,7 @@ local windows = {
 
 -- Back to front. Pressing anywhere in a window raises it, so the one being
 -- worked on is the one on top.
-local order = { 'main', 'engineer', 'telemetry', 'settings' }
+local order = { 'main', 'engineer', 'telemetry', 'status', 'settings' }
 local drag = { id = nil, offsetX = 0, offsetY = 0 }
 local resize = { id = nil, offsetX = 0, offsetY = 0 }
 
@@ -332,6 +375,84 @@ end
 
 local function positionOf(id)
   return S[id .. 'X'] or 24, S[id .. 'Y'] or 46
+end
+
+-- ---------------------------------------------------------------------------
+-- Portraits: one window, alone, sized to itself
+--
+-- The README needs a picture of each of the app's windows, and of each tab in
+-- its settings — a screenshot of the whole harness is a picture of the
+-- harness. These three set that up: pick the tab, unlock the developer tabs if
+-- the picture is of one, and shrink the LÖVE window down to exactly the window
+-- being photographed so `--shot` needs no cropping afterwards.
+-- ---------------------------------------------------------------------------
+
+--- Open the app's settings on a tab, given as `Tab` or `Tab/Subtab`.
+---
+--- The nested bars are named after their parent — `acpePanel`, `acpeLook`,
+--- `acpeDev` — so the path maps onto them without a table of exceptions.
+--- Selecting a bar that has not been drawn yet is fine: `csp.selectTab`
+--- creates the state, and the first draw finds its label already chosen.
+function applyAppTab(path)
+  if path == nil then return end
+  local parts = {}
+  for part in tostring(path):gmatch('[^/]+') do parts[#parts + 1] = part end
+  if parts[1] ~= nil then csp.selectTab('acpeSettings', parts[1]) end
+  if parts[2] ~= nil then csp.selectTab('acpe' .. parts[1], parts[2]) end
+end
+
+--- Turn on the panel's *own* developer mode, which is what puts the Dev tab in
+--- its settings window at all.
+---
+--- Reached through `package.loaded` rather than `require`: the app's modules
+--- are resolved by the preload loader in `loadApp`, so the harness has no path
+--- to them by name, but the instances the app just loaded are right there.
+function applyAppDeveloperMode(on)
+  if not on then return end
+  local store = package.loaded['acpe.settings']
+  if store == nil or store.values == nil then
+    csp.log('--app-dev: the panel has no settings module loaded')
+    return
+  end
+  store.values.devMode = true
+end
+
+--- Draw `id` alone, at the size it asks for, in a window that fits it exactly.
+function enterPortrait(id)
+  if id == nil then return end
+
+  local window = windowById(id)
+  if window == nil then
+    print('--portrait: no window called ' .. tostring(id))
+    love.event.quit(1)
+    return
+  end
+
+  -- Nothing about a portrait is a preference, and writing any of it back would
+  -- leave the next ordinary run drawing one window on a small black square.
+  config.save = function() end
+
+  if config.sizeOverride ~= nil and window.resize ~= nil then
+    window.resize(config.sizeOverride[1], config.sizeOverride[2])
+  end
+
+  harness.engineerOpen = id == 'engineer'
+  harness.telemetryOpen = id == 'telemetry'
+  harness.statusOpen = id == 'status'
+  harness.settingsOpen = id == 'settings'
+  S.showFps = false
+
+  local w, h = window.size()
+  local margin = 18
+  local width = w + margin * 2
+  local height = h + csp.TITLE_HEIGHT + margin * 2
+  portrait = { id = id, margin = margin, width = width, height = height }
+  S[id .. 'X'], S[id .. 'Y'] = margin, margin
+  love.window.setMode(width, height, {
+    resizable = false,
+    highdpi = true,
+    vsync = 1,
+  })
 end
 
 local function raise(id)
@@ -688,6 +809,11 @@ local function harnessSettingsTab()
     S.telemetryOpen = harness.telemetryOpen
     config.save()
   end
+  if ui.checkbox('Status window', harness.statusOpen) then
+    harness.statusOpen = not harness.statusOpen
+    S.statusOpen = harness.statusOpen
+    config.save()
+  end
   if ui.checkbox('Settings window', harness.settingsOpen) then
     harness.settingsOpen = not harness.settingsOpen
     S.settingsOpen = harness.settingsOpen
@@ -697,8 +823,10 @@ local function harnessSettingsTab()
   if ui.button('Reset layout') then
     for _, key in ipairs({
       'mainX', 'mainY', 'engineerX', 'engineerY', 'settingsX', 'settingsY',
+      'telemetryX', 'telemetryY', 'statusX', 'statusY',
       'panelWidth', 'panelHeight', 'engineerWidth', 'engineerHeight',
-      'settingsWidth', 'settingsHeight',
+      'settingsWidth', 'settingsHeight', 'telemetryWidth', 'telemetryHeight',
+      'statusWidth', 'statusHeight',
     }) do
       S[key] = config.defaults[key]
     end
@@ -746,6 +874,8 @@ function runConsole(line)
   S = config.values
   harness.settingsOpen = S.settingsOpen
   harness.engineerOpen = S.engineerOpen
+  harness.telemetryOpen = S.telemetryOpen
+  harness.statusOpen = S.statusOpen
   if S.uiScale ~= before then csp.setScale(S.uiScale) end
   config.save()
 
@@ -841,8 +971,65 @@ local function drawControlPanel(x, y, w, h)
   end
 end
 
+--- Take the `--shot` screenshot, if one was asked for, and quit afterwards.
+---
+--- Three seconds in, so the tab bar has its labels, the simulation has moved
+--- off its starting values, and a frozen feed has had time to time out. A
+--- couple of frames after that before quitting, because `captureScreenshot`
+--- hands the image over at the end of the frame rather than during it.
+local function shoot()
+  if config.shot == nil then return end
+
+  -- A portrait resizes the window on the way in and the window manager takes a
+  -- few frames to agree, while drawing carries on regardless. Counting from
+  -- the first frame caught the window mid-resize about one batch run in ten
+  -- and wrote a picture two thirds the size, cropped on two edges — and
+  -- nothing failed, because a cropped PNG is still a PNG.
+  if portrait ~= nil then
+    harness.waited = (harness.waited or 0) + 1
+    if love.graphics.getWidth() ~= portrait.width
+      or love.graphics.getHeight() ~= portrait.height then
+      if harness.waited > 900 then
+        print(string.format('--portrait: asked for %dx%d, the window is %dx%d',
+          portrait.width, portrait.height,
+          love.graphics.getWidth(), love.graphics.getHeight()))
+        love.event.quit(1)
+      end
+      return
+    end
+  end
+
+  harness.shotFrames = (harness.shotFrames or 0) + 1
+  if harness.shotFrames == 180 then
+    love.graphics.captureScreenshot(config.shot)
+  elseif harness.shotFrames > 190 then
+    print('screenshot: ' .. love.filesystem.getSaveDirectory() .. '/' .. config.shot)
+    love.event.quit(0)
+  end
+end
+
 function love.draw()
   love.graphics.clear(0.05, 0.05, 0.06)
+
+  if portrait ~= nil then
+    -- One window, nothing else: no control panel, no other windows, and the
+    -- pointer parked off-screen so a stray hover does not light a widget up in
+    -- the picture.
+    csp.input.x, csp.input.y = -1000, -1000
+    local window = windowById(portrait.id)
+    if window ~= nil then
+      -- `drawWindow` lays the backdrop for the main panel itself; every other
+      -- window is drawn straight onto whatever is behind it, which in a
+      -- portrait is nothing.
+      if portrait.id ~= 'main' then
+        local w, h = window.size()
+        drawBackdrop(portrait.margin, portrait.margin, w, h + csp.TITLE_HEIGHT)
+      end
+      drawWindow(window)
+    end
+    shoot()
+    return
+  end
 
   -- The control panel is the backdrop the windows float over, so it is drawn
   -- first — and while it is drawn the pointer is moved out of the way if it is
@@ -868,18 +1055,8 @@ function love.draw()
       harness.fps, S.source, sim.frame.sequence, S.paused and 'paused' or 'running'), 24, 8)
   end
 
-  -- A screenshot of the harness itself, for a README or a bug report. Taken
-  -- three seconds in, so the tab bar has its labels, the simulation has moved
-  -- off its starting values, and a frozen feed has had time to time out.
-  if config.shot ~= nil then
-    harness.shotFrames = (harness.shotFrames or 0) + 1
-    if harness.shotFrames == 180 then
-      love.graphics.captureScreenshot(config.shot)
-    elseif harness.shotFrames > 190 then
-      print('screenshot: ' .. love.filesystem.getSaveDirectory() .. '/' .. config.shot)
-      love.event.quit(0)
-    end
-  end
+  -- A screenshot of the harness itself, for a README or a bug report.
+  shoot()
 
   -- Input edges last exactly one frame, and the frame ends here.
   csp.input.pressed = false

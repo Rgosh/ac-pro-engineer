@@ -24,6 +24,7 @@ config.defaults = {
   settingsOpen = false,      -- the app's settings window, as the gear opens it
   engineerOpen = true,       -- the advice window, its own window in game too
   telemetryOpen = false,     -- the raw-frame window, also its own in game
+  statusOpen = false,        -- the link window, the fifth one the manifest declares
 
   -- Where each window sits. Flat keys because the saved file is a table of
   -- scalars, and a window position is the one setting nobody wants to retype
@@ -32,6 +33,7 @@ config.defaults = {
   engineerX = 24, engineerY = 440,
   telemetryX = 336, telemetryY = 46,
   settingsX = 336, settingsY = 46,
+  statusX = 336, statusY = 580,
 
   -- Sizes too: in game the driver drags a window's corner and CSP remembers
   -- it, so the harness has to be able to answer "does it still read at that
@@ -39,6 +41,7 @@ config.defaults = {
   engineerWidth = 280, engineerHeight = 150,
   telemetryWidth = 340, telemetryHeight = 480,
   settingsWidth = 420, settingsHeight = 520,
+  statusWidth = 340, statusHeight = 300,
   tab = 'Telemetry',
   devMode = false,           -- unlocks the simulation controls and the console
 }
@@ -96,6 +99,7 @@ Options:
   --paused                  start with the simulation stopped
   --bounds                  outline the overlay's content rectangle
   --settings                start with the app's settings window open
+  --status                  start with the link window open
   --no-engineer             start with the advice window closed
   --tab NAME                open on Telemetry, App settings, Harness, Dev or Log
   --dev-mode                unlock the simulation controls and the console
@@ -103,6 +107,10 @@ Options:
   --reset                   discard saved settings and start from defaults
   --test                    run headless for a few seconds, then exit
   --shot NAME               save a screenshot into the save directory and exit
+  --portrait ID             draw one window alone, cropped to it, for --shot:
+                            main, engineer, telemetry, status or settings
+  --app-tab PATH            open the app on a tab, e.g. Look/Colour
+  --app-dev                 turn the panel's own developer mode on
   --help                    this text
 
 Settings changed in the window are saved and reused next time; a flag wins for
@@ -142,6 +150,9 @@ function config.applyArguments(args)
       if w then
         config.values.panelWidth = tonumber(w)
         config.values.panelHeight = tonumber(h)
+        -- Kept separately so `--portrait` can apply it to whichever window it
+        -- is drawing, rather than only ever to the main panel.
+        config.sizeOverride = { tonumber(w), tonumber(h) }
       end
     elseif a == '--background' then
       local v = next_()
@@ -154,6 +165,8 @@ function config.applyArguments(args)
       config.values.showBounds = true
     elseif a == '--settings' then
       config.values.settingsOpen = true
+    elseif a == '--status' then
+      config.values.statusOpen = true
     elseif a == '--no-engineer' then
       config.values.engineerOpen = false
     elseif a == '--dev-mode' then
@@ -166,6 +179,15 @@ function config.applyArguments(args)
       testMode = true
     elseif a == '--shot' then
       config.shot = next_() or 'harness.png'
+    -- The three below are for generating the README's pictures, so they are
+    -- deliberately not saved: a run that took a portrait should not leave the
+    -- next one drawing one window on a black square.
+    elseif a == '--portrait' then
+      config.portrait = next_()
+    elseif a == '--app-tab' then
+      config.appTab = next_()
+    elseif a == '--app-dev' then
+      config.appDev = true
     end
     i = i + 1
   end
