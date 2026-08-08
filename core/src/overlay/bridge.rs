@@ -618,8 +618,11 @@ mod tests {
 
         // With nothing matching, the search order decides, as it always did.
         assert_eq!(
-            choose_executable(&[stale.clone()], crate::updater::CURRENT_VERSION),
-            Some(stale),
+            choose_executable(
+                std::slice::from_ref(&stale),
+                crate::updater::CURRENT_VERSION
+            ),
+            Some(stale.clone()),
             "an old bridge is still better than no bridge, and the card says so"
         );
 
