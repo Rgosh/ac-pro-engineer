@@ -5,6 +5,13 @@
 Telemetry, race engineering and an in-game overlay for Assetto Corsa.
 Full documentation is in README.md next to this file.
 
+This archive holds both builds:
+
+  ac_pro_engineer.exe    Windows
+  ac_pro_engineer        Linux / Steam Deck
+  shm-bridge.exe         Linux only — see below
+  overlay/               the in-game panel, for a manual install
+
 
 [ WINDOWS ]
 
@@ -29,10 +36,18 @@ is a Linux-only piece.
 
 [ LINUX & STEAM DECK ]
 
-This archive is the Windows build. The Linux build ships as its own
-archive and additionally needs shm-bridge.exe, which is run inside the
-game's Proton prefix through protontricks — see the "Linux / Steam Deck
-/ Proton" section of README.md.
+Run ./ac_pro_engineer — the native Linux binary, not the .exe.
+
+Assetto Corsa itself runs under Proton, so its telemetry lives inside the
+game's prefix. shm-bridge.exe passes it out and must be running for the
+application to see anything. Keep it next to the binary; the launcher
+card reports its version and whether it fits, and [B] there fetches a
+current one. protontricks is required to start it inside the prefix.
+
+CSP needs Windows libraries that Proton ships only as stubs. If Content
+Manager opens on a black screen or the game crashes when a Lua script
+runs, that is what proton-setup.sh in this folder installs. The full
+sequence is under "Linux / Steam Deck / Proton" in README.md.
 
 
 [ IF YOUR ANTIVIRUS COMPLAINS ]
