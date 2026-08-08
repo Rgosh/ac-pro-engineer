@@ -464,6 +464,17 @@ Underneath: whether CSP's storage is available at all, `Save now` and
 as you change them, and a button that saves silently is a button people press
 twice and still do not believe.
 
+### In-game settings — Changed
+
+Everything that differs from the defaults: what it is now, what it was, a search
+box, and a reset beside each line. The tab carries the count in its own label,
+so *have I changed anything* is answered without opening it — and when the panel
+is behaving oddly, the setting you do not remember touching is on this list.
+
+The names are the settings file's keys rather than the captions, deliberately:
+the list and `ac_pro_engineer_overlay.lua` are then the same vocabulary, so
+*which line do I edit* has one answer.
+
 ### In-game settings — Console
 
 ![Console settings](screenshots/Overlay_Settings_Console.png)
