@@ -698,28 +698,36 @@ async fn main() -> Result<(), anyhow::Error> {
                                 continue;
                             }
 
+                            // Resolved from the bindings rather than matched
+                            // as letters, so these three rebind like every
+                            // other key and the caption below them is printed
+                            // from what they actually are.
                             if app_lock.ui_state.settings.category
                                 == ac_tui::ui::tabs::settings::SettingsCategory::Overlay
                             {
-                                if matches!(key.code, KeyCode::Char('i') | KeyCode::Char('I')) {
-                                    app_lock.overlay_confirm = Some(ac_tui::OverlayAction::Install);
-                                    app_lock.overlay_confirm_selection = 1;
-                                    continue;
-                                }
-                                if matches!(key.code, KeyCode::Char('u') | KeyCode::Char('U')) {
-                                    app_lock.overlay_confirm =
-                                        Some(ac_tui::OverlayAction::Uninstall);
-                                    app_lock.overlay_confirm_selection = 1;
-                                    continue;
-                                }
-                                // Measured on the way in, not held from
-                                // startup: the answer changes when the bridge
-                                // is started, which is exactly what someone
-                                // does between two looks at this screen.
-                                if matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C')) {
-                                    app_lock.refresh_overlay_diagnosis();
-                                    app_lock.show_overlay_diagnosis = true;
-                                    continue;
+                                match action {
+                                    Some(keys::Action::OverlayInstall) => {
+                                        app_lock.overlay_confirm =
+                                            Some(ac_tui::OverlayAction::Install);
+                                        app_lock.overlay_confirm_selection = 1;
+                                        continue;
+                                    }
+                                    Some(keys::Action::OverlayUninstall) => {
+                                        app_lock.overlay_confirm =
+                                            Some(ac_tui::OverlayAction::Uninstall);
+                                        app_lock.overlay_confirm_selection = 1;
+                                        continue;
+                                    }
+                                    // Measured on the way in, not held from
+                                    // startup: the answer changes when the
+                                    // bridge is started, which is exactly what
+                                    // someone does between two looks at this.
+                                    Some(keys::Action::OverlayDiagnostics) => {
+                                        app_lock.refresh_overlay_diagnosis();
+                                        app_lock.show_overlay_diagnosis = true;
+                                        continue;
+                                    }
+                                    _ => {}
                                 }
                             }
 

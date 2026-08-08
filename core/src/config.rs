@@ -279,6 +279,12 @@ pub struct KeyBindings {
     pub quit: String,
     #[serde(default = "key_screenshot")]
     pub screenshot: String,
+    #[serde(default = "key_overlay_install")]
+    pub overlay_install: String,
+    #[serde(default = "key_overlay_uninstall")]
+    pub overlay_uninstall: String,
+    #[serde(default = "key_overlay_diagnostics")]
+    pub overlay_diagnostics: String,
     #[serde(default = "key_language")]
     pub language: String,
     #[serde(default = "key_next_tab")]
@@ -328,6 +334,15 @@ fn key_quit() -> String {
 }
 fn key_screenshot() -> String {
     "ctrl+s".to_string()
+}
+fn key_overlay_install() -> String {
+    "i".to_string()
+}
+fn key_overlay_uninstall() -> String {
+    "u".to_string()
+}
+fn key_overlay_diagnostics() -> String {
+    "c".to_string()
 }
 fn key_language() -> String {
     "ctrl+l".to_string()
@@ -390,6 +405,9 @@ impl Default for KeyBindings {
             help: key_help(),
             quit: key_quit(),
             screenshot: key_screenshot(),
+            overlay_install: key_overlay_install(),
+            overlay_uninstall: key_overlay_uninstall(),
+            overlay_diagnostics: key_overlay_diagnostics(),
             language: key_language(),
             next_tab: key_next_tab(),
             prev_tab: key_prev_tab(),

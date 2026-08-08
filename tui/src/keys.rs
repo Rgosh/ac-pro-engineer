@@ -35,6 +35,9 @@ pub enum Action {
     AnalysisExport,
     SetupBrowser,
     SetupDownload,
+    OverlayInstall,
+    OverlayUninstall,
+    OverlayDiagnostics,
 }
 
 /// A parsed binding: what to press, and with what held down.
@@ -354,6 +357,15 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
             (&keys.setup_browser, Action::SetupBrowser),
             (&keys.setup_download, Action::SetupDownload),
         ],
+        // Only on Settings, and in practice only while the OVERLAY category is
+        // showing — but that is a screen the key handler knows about and this
+        // table does not, and a letter that does nothing on four of five
+        // categories is better than a letter written into a string.
+        AppTab::Settings => &[
+            (&keys.overlay_install, Action::OverlayInstall),
+            (&keys.overlay_uninstall, Action::OverlayUninstall),
+            (&keys.overlay_diagnostics, Action::OverlayDiagnostics),
+        ],
         _ => &[],
     };
 
@@ -377,6 +389,21 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
         ("help", "Help", keys.help.as_str()),
         ("quit", "Back / quit", keys.quit.as_str()),
         ("screenshot", "Screenshot", keys.screenshot.as_str()),
+        (
+            "overlay_install",
+            "Install the panel",
+            keys.overlay_install.as_str(),
+        ),
+        (
+            "overlay_uninstall",
+            "Remove the panel",
+            keys.overlay_uninstall.as_str(),
+        ),
+        (
+            "overlay_diagnostics",
+            "Overlay diagnostics",
+            keys.overlay_diagnostics.as_str(),
+        ),
         ("language", "Switch language", keys.language.as_str()),
         ("next_tab", "Next tab", keys.next_tab.as_str()),
         ("prev_tab", "Previous tab", keys.prev_tab.as_str()),
@@ -440,6 +467,9 @@ pub fn action_of(field: &str) -> Option<Action> {
         "help" => Action::Help,
         "quit" => Action::Quit,
         "screenshot" => Action::Screenshot,
+        "overlay_install" => Action::OverlayInstall,
+        "overlay_uninstall" => Action::OverlayUninstall,
+        "overlay_diagnostics" => Action::OverlayDiagnostics,
         "language" => Action::Language,
         "next_tab" => Action::NextTab,
         "prev_tab" => Action::PrevTab,
@@ -505,6 +535,9 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
         "help" => keys.help = value,
         "quit" => keys.quit = value,
         "screenshot" => keys.screenshot = value,
+        "overlay_install" => keys.overlay_install = value,
+        "overlay_uninstall" => keys.overlay_uninstall = value,
+        "overlay_diagnostics" => keys.overlay_diagnostics = value,
         "language" => keys.language = value,
         "next_tab" => keys.next_tab = value,
         "prev_tab" => keys.prev_tab = value,
@@ -533,6 +566,36 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
 /// reuse letters the global ones do not want — but silently shadowing a
 /// binding that already wins is, because the losing one simply stops working
 /// with nothing on screen to say why.
+/// Which tab a binding belongs to, or `None` when it fires everywhere.
+///
+/// Kept beside [`resolve`]'s tab table and checked against it by
+/// `every_tab_local_binding_knows_which_tab_it_is_on`, because the two
+/// disagreeing is a clash reported for keys that cannot meet, or a real clash
+/// waved through.
+fn scope_of(field: &str) -> Option<AppTab> {
+    match field {
+        "analysis_save" | "analysis_load" | "analysis_compare" | "analysis_export" => {
+            Some(AppTab::Analysis)
+        }
+        "setup_browser" | "setup_download" => Some(AppTab::Setup),
+        "overlay_install" | "overlay_uninstall" | "overlay_diagnostics" => Some(AppTab::Settings),
+        _ => None,
+    }
+}
+
+/// Can these two bindings ever be pressed in the same place?
+///
+/// Two tab-local keys on different tabs cannot: a letter meaning one thing on
+/// Analysis and another on Setup is the design. A global one shadows a
+/// tab-local one everywhere, because [`resolve`] checks the globals first, so
+/// that pair *is* a clash.
+fn can_collide(a: &str, b: &str) -> bool {
+    match (scope_of(a), scope_of(b)) {
+        (Some(left), Some(right)) => left == right,
+        _ => true,
+    }
+}
+
 pub fn conflict(keys: &KeyBindings, field: &str, value: &str) -> Option<&'static str> {
     let wanted = parse(value)?;
 
@@ -550,7 +613,9 @@ pub fn conflict(keys: &KeyBindings, field: &str, value: &str) -> Option<&'static
 
     all(keys)
         .into_iter()
-        .find(|(name, _, current)| *name != field && parse(current) == Some(wanted))
+        .find(|(name, _, current)| {
+            *name != field && can_collide(field, name) && parse(current) == Some(wanted)
+        })
         .map(|(_, label, _)| label)
 }
 
@@ -756,6 +821,46 @@ mod tests {
         // clash to work out from the outside.
         assert!(conflict(&keys, "analysis_save", "q").is_some());
         assert!(conflict(&keys, "analysis_save", "?").is_some());
+    }
+
+    /// `scope_of` and the tab table inside `resolve` are two statements about
+    /// the same thing, and they disagreeing is either a clash reported between
+    /// keys that can never meet, or a real one waved through.
+    #[test]
+    fn every_tab_local_binding_knows_which_tab_it_is_on() {
+        let keys = KeyBindings::default();
+        for (field, _, _) in all(&keys) {
+            let Some(tab) = scope_of(field) else { continue };
+            let action = action_of(field).expect("a listed binding has an action");
+            // It fires on its own tab...
+            let value = all(&keys)
+                .into_iter()
+                .find(|(name, _, _)| *name == field)
+                .map(|(_, _, current)| current.to_string())
+                .expect("listed");
+            let binding = parse(&value).expect("a default binding parses");
+            assert_eq!(
+                resolve(KeyEvent::new(binding.code, binding.modifiers), &keys, tab),
+                Some(action),
+                "{field} claims {tab:?} and does not fire there"
+            );
+        }
+    }
+
+    /// Two tab-local keys on different tabs are not a clash. `C` compares laps
+    /// on Analysis and opens the overlay diagnostics on Settings, and refusing
+    /// one because of the other is refusing a binding that already works.
+    #[test]
+    fn a_letter_on_two_different_tabs_is_not_a_clash() {
+        let keys = KeyBindings::default();
+        assert_eq!(keys.analysis_compare, "c");
+        assert_eq!(keys.overlay_diagnostics, "c");
+        assert_eq!(conflict(&keys, "overlay_diagnostics", "c"), None);
+        assert_eq!(conflict(&keys, "analysis_compare", "c"), None);
+
+        // A global one still shadows a tab-local one, because `resolve` checks
+        // the globals first.
+        assert!(conflict(&keys, "screenshot", "c").is_some());
     }
 
     /// Q and ? have closed the help since the first release, and the modal

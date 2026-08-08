@@ -1379,10 +1379,26 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
             false,
         ),
         (
-            if is_ru {
-                "Карточка при запуске  [I] ставит, [U] удаляет, [C] проверка".to_string()
-            } else {
-                "Startup card  [I] installs, [U] removes, [C] diagnostics".to_string()
+            {
+                // Printed from the bindings, never typed. A caption naming a
+                // key that has been rebound is the exact failure
+                // `the_hints_only_name_keys_that_do_something` exists to stop,
+                // and these three were the last hard-coded ones left.
+                let keys = &app.config.keys;
+                let install = crate::keys::describe(&keys.overlay_install);
+                let remove = crate::keys::describe(&keys.overlay_uninstall);
+                let check = crate::keys::describe(&keys.overlay_diagnostics);
+                if is_ru {
+                    format!(
+                        "Карточка при запуске  [{install}] ставит, [{remove}] удаляет, \
+                         [{check}] проверка"
+                    )
+                } else {
+                    format!(
+                        "Startup card  [{install}] installs, [{remove}] removes, \
+                         [{check}] diagnostics"
+                    )
+                }
             },
             if overlay.startup_card { "ON" } else { "OFF" }.to_string(),
             true,
