@@ -105,6 +105,22 @@ them can be rebound.
   example now prints the same report rather than owning it, so the answer a
   user reads is the answer a bug report quotes.
 
+- **A `Changed` tab in the panel's settings.** Eighty-five settings across six
+  tabs, and the one making the panel look wrong is the one you do not remember
+  touching; the only way back was Reset to defaults, which throws away the
+  eighty-four that were fine. The tab lists everything that differs from the
+  defaults with what it is now and what it was, a search box, and a reset
+  beside each line. It carries the count in its own label, so "have I changed
+  anything" is answered without opening it. The names are the keys rather than
+  the captions, so this list and `ac_pro_engineer_overlay.lua` are the same
+  vocabulary.
+- **New advice looks different from advice that has been there four laps.** A
+  line that arrived within the last six seconds is drawn in its full severity
+  colour and the settled lines a shade back. Tracked by the sentence rather
+  than the slot — the application packs what it has to say into the slots in
+  order, so a line moving from second to first has not changed. One switch,
+  `Pick out new advice`, on by default.
+
 ### 🐞 Fixed
 
 - **Pressing `[B]` on the launcher's overlay card killed the application.**
