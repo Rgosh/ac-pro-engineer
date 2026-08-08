@@ -215,6 +215,21 @@ local function widgetId(label, x, y)
   return string.format('%s@%d,%d', label, math.floor(x), math.floor(y))
 end
 
+--- What ImGui actually draws for a label.
+---
+--- Everything from `##` onward is the widget's identity, not its caption — it
+--- is how two checkboxes on the same screen can both say "Enabled" and still
+--- be told apart. The panel leans on this heavily: nearly every control is
+--- `ui.checkbox('##showHeader')` with the caption drawn beside it at a chosen
+--- size, because CSP's font tiers cannot be scaled. Drawing the raw string put
+--- `##showHeader` on screen in front of every setting.
+local function caption(label)
+  label = tostring(label)
+  local cut = label:find('##', 1, true)
+  if cut == nil then return label end
+  return label:sub(1, cut - 1)
+end
+
 local function itemWidth(fallback)
   local w = L.nextItemWidth or fallback
   L.nextItemWidth = nil
@@ -384,7 +399,8 @@ csp.colors = COL
 function ui.button(label, size, _flags)
   local f = font()
   local padX, padY = 10, 5
-  local w = (size and size.x) or itemWidth(f:getWidth(label) + padX * 2)
+  local shown = caption(label)
+  local w = (size and size.x) or itemWidth(f:getWidth(shown) + padX * 2)
   local h = (size and size.y) or (f:getHeight() + padY * 2)
   local x, y = L.x, L.y
 
@@ -397,7 +413,7 @@ function ui.button(label, size, _flags)
   gfx.rectangle('fill', x, y, w, h, 3, 3)
   setColor(hot and COL.text or COL.textDim)
   gfx.setFont(f)
-  gfx.print(label, x + (w - f:getWidth(label)) * 0.5, y + padY)
+  gfx.print(shown, x + (w - f:getWidth(shown)) * 0.5, y + padY)
 
   itemSize(w, h)
   return hot and csp.input.released and csp.input.activeId == id
@@ -406,7 +422,7 @@ end
 function ui.checkbox(label, checked)
   local f = font()
   local box = f:getHeight() + 2
-  local w = box + 6 + f:getWidth(label)
+  local w = box + 6 + f:getWidth(caption(label))
   local h = box
   local x, y = L.x, L.y
 
@@ -422,7 +438,7 @@ function ui.checkbox(label, checked)
   end
   setColor(hot and COL.text or COL.textDim)
   gfx.setFont(f)
-  gfx.print(label, x + box + 6, y)
+  gfx.print(caption(label), x + box + 6, y)
 
   itemSize(w, h)
   return hot and csp.input.released and csp.input.activeId == id
@@ -431,7 +447,7 @@ end
 function ui.radioButton(label, active)
   local f = font()
   local r = (f:getHeight()) * 0.5
-  local w = r * 2 + 6 + f:getWidth(label)
+  local w = r * 2 + 6 + f:getWidth(caption(label))
   local h = r * 2
   local x, y = L.x, L.y
 
@@ -447,7 +463,7 @@ function ui.radioButton(label, active)
   end
   setColor(hot and COL.text or COL.textDim)
   gfx.setFont(f)
-  gfx.print(label, x + r * 2 + 6, y)
+  gfx.print(caption(label), x + r * 2 + 6, y)
 
   itemSize(w, h)
   return hot and csp.input.released and csp.input.activeId == id
@@ -488,7 +504,10 @@ function ui.slider(label, value, min, max, format, power)
   setColor(hot and COL.accent or COL.accentDim)
   gfx.rectangle('fill', x, y, w * t, h, 3, 3)
 
-  local text = string.format(label .. '  ' .. (format or (integer and '%.0f' or '%.3f')), value)
+  local shown = caption(label)
+  local text = string.format(
+    (shown ~= '' and (shown .. '  ') or '') .. (format or (integer and '%.0f' or '%.3f')),
+    value)
   setColor(COL.text)
   gfx.setFont(f)
   gfx.print(text, x + 6, y + 3)
@@ -625,10 +644,18 @@ function ui.tabBar(id, a, b)
   itemSize(math.max(0, cursor - x), h)
   ui.offsetCursorY(4)
 
+  -- Restored, not cleared. A tab bar nested inside another one — which is how
+  -- the panel's settings window is built — used to set this back to `nil` on
+  -- the way out, so every `ui.tabItem` in the *outer* bar after the nested one
+  -- saw no bar at all. Those items fell to the "no bar" path, which draws no
+  -- label and runs the body unconditionally: the outer bar lost four of its
+  -- five tabs and drew their contents stacked underneath whichever one was
+  -- selected.
+  local parent = currentTabBar
   state.pending = {}
   currentTabBar = state
   local ok, err = pcall(content)
-  currentTabBar = nil
+  currentTabBar = parent
   state.labels = state.pending
   if not ok then error(err, 0) end
 end
@@ -948,12 +975,19 @@ for k, v in pairs(ui) do uiProxy[k] = v end
 
 --- Persistent app settings, the way `ac.storage` works in game: hand it a table
 --- of defaults, get back a table whose writes are saved.
+---
+--- `saveName` of `false` is storage that starts at the defaults and remembers
+--- nothing, which is what a screenshot run wants: the pictures have to be the
+--- same every time, and a run that turned developer mode on to photograph the
+--- Dev tab used to leave it on in every picture taken after it.
 local function makeStorage(saveName)
   local saved = {}
-  local ok, chunk = pcall(love.filesystem.load, saveName)
-  if ok and chunk then
-    local good, value = pcall(chunk)
-    if good and type(value) == 'table' then saved = value end
+  if saveName ~= false then
+    local ok, chunk = pcall(love.filesystem.load, saveName)
+    if ok and chunk then
+      local good, value = pcall(chunk)
+      if good and type(value) == 'table' then saved = value end
+    end
   end
 
   return function(defaults, _prefix)
@@ -968,6 +1002,7 @@ local function makeStorage(saveName)
     end
 
     local function persist()
+      if saveName == false then return end
       local out = { 'return {' }
       for k, v in pairs(values) do
         if type(v) == 'string' then
@@ -1010,7 +1045,7 @@ function csp.install(frameSource, storageFile)
       __index = function() return function() return 0 end end,
     }),
     readMemoryMappedFile = function(_name, _layout) return frameSource() end,
-    storage = makeStorage(storageFile or 'app-settings.lua'),
+    storage = makeStorage(storageFile == nil and 'app-settings.lua' or storageFile),
     log = function(...) csp.log(...) end,
     warn = function(...) csp.log(...) end,
     debug = function() end,
