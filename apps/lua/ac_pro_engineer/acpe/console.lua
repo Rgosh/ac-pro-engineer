@@ -38,6 +38,10 @@ local function consoleSay(line)
   while #consoleLines > CONSOLE_LINES do table.remove(consoleLines, 1) end
 end
 
+-- Declared above `runCommand`, which writes it: a local declared after its
+-- callers is a global to them, and this file has been bitten by that before.
+local lastCommand = ''
+
 local COMMANDS = {
   ['--help'] = function()
     consoleSay('--scale N   --width N   --bar N   --backing N')
@@ -68,6 +72,12 @@ local function runCommand(line)
   for word in tostring(line):gmatch('%S+') do words[#words + 1] = word end
   if #words == 0 then return end
   consoleSay('> ' .. line)
+  -- Recorded here rather than at the two places that read the text field, so
+  -- `Again` means the last command whatever ran it. The quick buttons above
+  -- the prompt go through this function and did not set it, so pressing `4K`
+  -- and then `Again` re-ran whatever had been *typed* before that — or, on a
+  -- session where nothing had been, nothing at all.
+  lastCommand = line
 
   local index = 1
   while index <= #words do
@@ -134,8 +144,6 @@ local QUICK = {
   { 'Reset', '--reset' },
 }
 
-local lastCommand = ''
-
 local function drawConsoleBody()
   say('caption', tr('QUICK'), COLOR.label)
   for index, entry in ipairs(QUICK) do
@@ -149,13 +157,11 @@ local function drawConsoleBody()
   local typed, _, entered = ui.inputText('##acpeConsole', consoleInput)
   consoleInput = typed or consoleInput
   if entered then
-    lastCommand = consoleInput
     runCommand(consoleInput)
     consoleInput = ''
   end
 
   if ui.button('Run') then
-    lastCommand = consoleInput
     runCommand(consoleInput)
     consoleInput = ''
   end

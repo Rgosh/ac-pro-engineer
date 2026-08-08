@@ -660,6 +660,158 @@ if liveFrame.messageIsNew(2) then
 end
 print('new advice is told apart from settled advice: OK')
 
+-- ---------------------------------------------------------------------------
+-- Every button in the settings window does what its label says
+--
+-- The window is built from buttons whose effect is a line of Lua somewhere
+-- else, and a button that silently does nothing looks exactly like a button
+-- that worked. Each of these is pressed the way a driver presses it — one
+-- frame, one button — and checked by what it changed.
+-- ---------------------------------------------------------------------------
+
+local liveStore = package.loaded['acpe.settings']
+local vals = liveStore.values
+
+--- Press one button, by the exact label it draws, and hand back what threw.
+local function press(label)
+  buttonPressed = label
+  local ok, err = pcall(script.windowSettings, 0.016)
+  buttonPressed = nil
+  return ok, err
+end
+
+local function require_(condition, message)
+  if not condition then
+    print('\nFAILED: ' .. message)
+    os.exit(1)
+  end
+end
+
+-- The console's quick buttons. Each is a command line, and each has to leave
+-- the setting it names in the state it names.
+for key, value in pairs(liveStore.DEFAULTS) do vals[key] = value end
+
+local ok, err = press('4K')
+require_(ok, '"4K" threw: ' .. tostring(err))
+require_(vals.fontScale == 2 and vals.contentWidth == 680 and vals.barHeight == 12,
+  '"4K" left scale=' .. tostring(vals.fontScale) .. ' width=' .. tostring(vals.contentWidth)
+  .. ' bar=' .. tostring(vals.barHeight) .. ', expected 2 / 680 / 12')
+
+ok, err = press('1080p')
+require_(ok, '"1080p" threw: ' .. tostring(err))
+require_(vals.fontScale == 1 and vals.contentWidth == 360 and vals.barHeight == 6,
+  '"1080p" did not put the panel back to 1 / 360 / 6')
+
+ok, err = press('VR')
+require_(ok, '"VR" threw: ' .. tostring(err))
+require_(vals.vrMode == true and vals.fontScale == 1.6,
+  '"VR" left vrMode=' .. tostring(vals.vrMode) .. ' scale=' .. tostring(vals.fontScale))
+
+ok, err = press('Smaller')
+require_(ok, '"Smaller" threw: ' .. tostring(err))
+require_(vals.fontScale == 0.85, '"Smaller" left scale=' .. tostring(vals.fontScale))
+
+ok, err = press('Bigger')
+require_(ok, '"Bigger" threw: ' .. tostring(err))
+require_(vals.fontScale == 1.2, '"Bigger" left scale=' .. tostring(vals.fontScale))
+
+-- Developer mode is a toggle, so it has to go both ways.
+local before = vals.devMode
+ok, err = press('Dev')
+require_(ok, '"Dev" threw: ' .. tostring(err))
+require_(vals.devMode ~= before, '"Dev" did not toggle developer mode')
+ok = press('Dev')
+require_(vals.devMode == before, '"Dev" pressed twice did not come back')
+
+-- Reset puts everything back, including what the presses above changed.
+vals.fontScale = 2.5
+ok, err = press('Reset')
+require_(ok, '"Reset" threw: ' .. tostring(err))
+require_(vals.fontScale == liveStore.DEFAULTS.fontScale,
+  '"Reset" left scale=' .. tostring(vals.fontScale))
+
+-- The Units tab's two, which are the ones a driver presses when they do not
+-- believe the settings saved.
+ok, err = press('Save now')
+require_(ok, '"Save now" threw: ' .. tostring(err))
+require_(liveStore.report.ever, '"Save now" did not record that it saved')
+
+vals.engineerLines = 8
+ok, err = press('Reset to defaults')
+require_(ok, '"Reset to defaults" threw: ' .. tostring(err))
+require_(vals.engineerLines == liveStore.DEFAULTS.engineerLines,
+  '"Reset to defaults" left engineerLines=' .. tostring(vals.engineerLines))
+
+-- The Look tab's palette button.
+vals.colorText = '0.10,0.10,0.10'
+ok, err = press('Default palette')
+require_(ok, '"Default palette" threw: ' .. tostring(err))
+require_(vals.colorText == liveStore.DEFAULTS.colorText,
+  '"Default palette" left colorText=' .. tostring(vals.colorText))
+
+-- The Dev tab's two, which are only reachable with developer mode on.
+vals.devMode = true
+vals.showTyres = false
+ok, err = press('Everything on')
+require_(ok, '"Everything on" threw: ' .. tostring(err))
+require_(vals.showTyres == true and vals.devIgnoreFlags == true,
+  '"Everything on" left showTyres=' .. tostring(vals.showTyres)
+  .. ' devIgnoreFlags=' .. tostring(vals.devIgnoreFlags))
+
+ok, err = press('Leave developer mode')
+require_(ok, '"Leave developer mode" threw: ' .. tostring(err))
+require_(vals.devMode == false and vals.devIgnoreFlags == false,
+  '"Leave developer mode" left devMode=' .. tostring(vals.devMode))
+
+-- The console's own four. `Again` and `Clear` are the two that can quietly do
+-- nothing, because both are about state the button does not itself set.
+local liveConsole = package.loaded['acpe.console']
+
+ok, err = press('Help')
+require_(ok, '"Help" threw: ' .. tostring(err))
+
+local helpFrom = #drawn
+ok = press('Clear')
+local afterClear = #drawn
+ok, err = press('Help')
+require_(ok, '"Help" after "Clear" threw: ' .. tostring(err))
+local helpLines = table.concat(drawn, '\n', afterClear + 1, #drawn)
+require_(helpLines:find('--scale', 1, true) ~= nil,
+  '"Help" did not print the command list')
+
+-- `Again` repeats the last command, and a quick button is a command. This is
+-- the path that was broken: the presets went straight to `runCommand` without
+-- recording themselves, so `4K` then `Again` re-ran whatever had been typed
+-- before — or nothing at all on a session where nothing had been.
+ok, err = press('4K')
+require_(ok, '"4K" threw: ' .. tostring(err))
+vals.fontScale = 1.0
+ok, err = press('Again')
+require_(ok, '"Again" threw: ' .. tostring(err))
+require_(vals.fontScale == 2,
+  '"Again" did not repeat the quick button before it; scale is '
+  .. tostring(vals.fontScale))
+
+-- And the typed path still records itself.
+liveConsole.run('--scale 1.5')
+vals.fontScale = 1.0
+ok, err = press('Again')
+require_(ok, '"Again" after a typed command threw: ' .. tostring(err))
+require_(vals.fontScale == 1.5,
+  '"Again" did not repeat a typed command; scale is ' .. tostring(vals.fontScale))
+
+-- An unknown command is answered rather than swallowed.
+local unknownFrom = #drawn
+liveConsole.run('--nonsense')
+ok, err = pcall(script.windowSettings, 0.016)
+require_(ok, 'drawing after an unknown command threw: ' .. tostring(err))
+local said = table.concat(drawn, '\n', unknownFrom + 1, #drawn)
+require_(said:find('unknown', 1, true) ~= nil,
+  'an unknown command was swallowed instead of answered')
+
+for key, value in pairs(liveStore.DEFAULTS) do vals[key] = value end
+print('every button in the settings window does what it says: OK')
+
 
 -- ---------------------------------------------------------------------------
 -- A published frame with no car in it is not the same as no application
