@@ -310,14 +310,6 @@ fn get_help_content(tab_index: usize, keys: &KeyBindings) -> (&'static str, Vec<
                     keys::describe(&keys.screenshot)
                 )),
                 owned(format!(
-                    "⚠️ {}: Toggle the in-game overlay",
-                    keys::describe(&keys.overlay_toggle)
-                )),
-                owned(format!(
-                    "⚠️ {}: Overlay Control Center",
-                    keys::describe(&keys.overlay_menu)
-                )),
-                owned(format!(
                     "⚠️ {} / Q: Exit safely",
                     keys::describe(&keys.quit)
                 )),

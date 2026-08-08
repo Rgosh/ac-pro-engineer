@@ -24,8 +24,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub enum Action {
     Help,
     Quit,
-    OverlayToggle,
-    OverlayMenu,
     Screenshot,
     Language,
     NextTab,
@@ -316,8 +314,6 @@ pub fn matches(binding: &str, key: KeyEvent) -> bool {
 /// means the same thing everywhere.
 pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action> {
     let global = [
-        (&keys.overlay_toggle, Action::OverlayToggle),
-        (&keys.overlay_menu, Action::OverlayMenu),
         (&keys.screenshot, Action::Screenshot),
         (&keys.language, Action::Language),
         (&keys.help, Action::Help),
@@ -380,12 +376,6 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
     vec![
         ("help", "Help", keys.help.as_str()),
         ("quit", "Back / quit", keys.quit.as_str()),
-        (
-            "overlay_toggle",
-            "Toggle overlay",
-            keys.overlay_toggle.as_str(),
-        ),
-        ("overlay_menu", "Overlay menu", keys.overlay_menu.as_str()),
         ("screenshot", "Screenshot", keys.screenshot.as_str()),
         ("language", "Switch language", keys.language.as_str()),
         ("next_tab", "Next tab", keys.next_tab.as_str()),
@@ -449,8 +439,6 @@ pub fn action_of(field: &str) -> Option<Action> {
     Some(match field {
         "help" => Action::Help,
         "quit" => Action::Quit,
-        "overlay_toggle" => Action::OverlayToggle,
-        "overlay_menu" => Action::OverlayMenu,
         "screenshot" => Action::Screenshot,
         "language" => Action::Language,
         "next_tab" => Action::NextTab,
@@ -504,8 +492,8 @@ pub fn hints(tab: AppTab) -> &'static [(&'static str, &'static str, &'static str
             ("help", "Help", "Помощь"),
         ],
         _ => &[
-            ("overlay_toggle", "Overlay", "Оверлей"),
-            ("overlay_menu", "Overlay menu", "Меню оверлея"),
+            ("screenshot", "Screenshot", "Снимок"),
+            ("language", "Language", "Язык"),
             ("help", "Help", "Помощь"),
         ],
     }
@@ -516,8 +504,6 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
     match field {
         "help" => keys.help = value,
         "quit" => keys.quit = value,
-        "overlay_toggle" => keys.overlay_toggle = value,
-        "overlay_menu" => keys.overlay_menu = value,
         "screenshot" => keys.screenshot = value,
         "language" => keys.language = value,
         "next_tab" => keys.next_tab = value,
@@ -689,8 +675,12 @@ mod tests {
             Some(Action::Help)
         );
         assert_eq!(
-            resolve(press(KeyCode::F(10)), &keys, AppTab::Dashboard),
-            Some(Action::OverlayToggle)
+            resolve(
+                KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
+                &keys,
+                AppTab::Dashboard
+            ),
+            Some(Action::Screenshot)
         );
         assert_eq!(
             resolve(press(KeyCode::Char('3')), &keys, AppTab::Dashboard),
@@ -733,9 +723,13 @@ mod tests {
     #[test]
     fn a_rebound_key_replaces_the_default() {
         let mut keys = KeyBindings::default();
-        set(&mut keys, "overlay_toggle", "ctrl+o".to_string());
+        set(&mut keys, "screenshot", "ctrl+o".to_string());
         assert_eq!(
-            resolve(press(KeyCode::F(10)), &keys, AppTab::Dashboard),
+            resolve(
+                KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
+                &keys,
+                AppTab::Dashboard
+            ),
             None
         );
         assert_eq!(
@@ -744,7 +738,7 @@ mod tests {
                 &keys,
                 AppTab::Dashboard
             ),
-            Some(Action::OverlayToggle)
+            Some(Action::Screenshot)
         );
     }
 
@@ -754,12 +748,9 @@ mod tests {
     #[test]
     fn a_clash_is_reported_against_the_binding_it_shadows() {
         let keys = KeyBindings::default();
-        assert_eq!(
-            conflict(&keys, "overlay_menu", "f10"),
-            Some("Toggle overlay")
-        );
-        assert_eq!(conflict(&keys, "overlay_toggle", "f10"), None);
-        assert_eq!(conflict(&keys, "overlay_menu", "f9"), None);
+        assert_eq!(conflict(&keys, "language", "ctrl+s"), Some("Screenshot"));
+        assert_eq!(conflict(&keys, "screenshot", "ctrl+s"), None);
+        assert_eq!(conflict(&keys, "language", "f9"), None);
 
         // The fixed aliases shadow anything tab-local, and that is the hardest
         // clash to work out from the outside.
@@ -790,10 +781,10 @@ mod tests {
     #[test]
     fn a_configured_binding_beats_a_fixed_alias() {
         let mut keys = KeyBindings::default();
-        set(&mut keys, "overlay_toggle", "q".to_string());
+        set(&mut keys, "screenshot", "q".to_string());
         assert_eq!(
             resolve(press(KeyCode::Char('q')), &keys, AppTab::Dashboard),
-            Some(Action::OverlayToggle)
+            Some(Action::Screenshot)
         );
     }
 

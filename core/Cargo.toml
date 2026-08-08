@@ -37,17 +37,15 @@ tar = { workspace = true }
 flate2 = { workspace = true }
 
 [target.'cfg(target_os="windows")'.dependencies]
+# Shared memory and the process check, and nothing else. The window, menu and
+# GDI features were here for `native_window.rs`, the desktop overlay removed in
+# v0.3.5 — the panel draws inside the game now, and this crate opens mappings.
 windows = { workspace = true, features = [
     "Win32_System_Memory",
     "Win32_Foundation",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Security",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_System_Console",
-    "Win32_System_LibraryLoader",
-    "Win32_Graphics_Gdi",
-    "Win32_UI_Controls",
 ] }
 
 # Both archive readers are compiled under cfg(test) regardless of host, so the

@@ -1459,7 +1459,7 @@ mod tests {
     fn a_key_another_action_already_has_is_refused() {
         let mut state = on_keys();
         let mut config = AppConfig::default();
-        // Index 2 is the overlay toggle; F1 is the help.
+        // Index 2 is the screenshot; F1 is the help.
         state.selected_index = 2;
         state.capturing = true;
 
@@ -1469,7 +1469,7 @@ mod tests {
         );
 
         assert!(!changed);
-        assert_eq!(config.keys.overlay_toggle, "f10", "left as it was");
+        assert_eq!(config.keys.screenshot, "ctrl+s", "left as it was");
         let message = state.key_message.expect("a reason to show the driver");
         assert!(message.contains("F1"), "{message}");
         assert!(message.contains("Help"), "{message}");

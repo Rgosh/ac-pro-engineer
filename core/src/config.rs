@@ -277,10 +277,6 @@ pub struct KeyBindings {
     pub help: String,
     #[serde(default = "key_quit")]
     pub quit: String,
-    #[serde(default = "key_overlay_toggle")]
-    pub overlay_toggle: String,
-    #[serde(default = "key_overlay_menu")]
-    pub overlay_menu: String,
     #[serde(default = "key_screenshot")]
     pub screenshot: String,
     #[serde(default = "key_language")]
@@ -329,12 +325,6 @@ fn key_help() -> String {
 }
 fn key_quit() -> String {
     "esc".to_string()
-}
-fn key_overlay_toggle() -> String {
-    "f10".to_string()
-}
-fn key_overlay_menu() -> String {
-    "f11".to_string()
 }
 fn key_screenshot() -> String {
     "ctrl+s".to_string()
@@ -399,8 +389,6 @@ impl Default for KeyBindings {
         Self {
             help: key_help(),
             quit: key_quit(),
-            overlay_toggle: key_overlay_toggle(),
-            overlay_menu: key_overlay_menu(),
             screenshot: key_screenshot(),
             language: key_language(),
             next_tab: key_next_tab(),

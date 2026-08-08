@@ -2,9 +2,6 @@
 pub mod core_tests;
 
 #[cfg(test)]
-pub mod overlay_tests;
-
-#[cfg(test)]
 pub mod fixtures;
 
 #[cfg(test)]

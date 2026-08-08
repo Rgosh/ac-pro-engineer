@@ -1,5 +1,4 @@
 use ac_core::config::Language;
-use ac_core::overlay::OverlayMode;
 use ac_core::updater::UpdateStatus;
 // Only the Linux startup path reaches into `platform`.
 use ac_tui::keys;
@@ -88,15 +87,6 @@ struct AppArgs {
     /// Write the log to this file instead of under the config directory.
     #[arg(long, conflicts_with = "silent")]
     log: Option<PathBuf>,
-
-    /// Draw the desktop overlay window with made-up numbers, to position it
-    /// without starting the game. Windows only; does nothing elsewhere.
-    #[arg(long = "overlay-test-d")]
-    overlay_test_d: bool,
-
-    /// The same, in the VR compositor rather than on the desktop.
-    #[arg(long = "overlay-test-vr")]
-    overlay_test_vr: bool,
 
     #[arg(
         short = 'd',
@@ -212,14 +202,6 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let overlay_mode = if args.overlay_test_d {
-        OverlayMode::StandaloneTest
-    } else if args.overlay_test_vr {
-        OverlayMode::VR
-    } else {
-        OverlayMode::NativeDesktop
-    };
-
     if !args.silent
         && let Err(error) = setup_logging(args.log.as_ref(), args.log_level.unwrap_or_default())
     {
@@ -252,7 +234,7 @@ async fn main() -> Result<(), anyhow::Error> {
     #[cfg(target_os = "windows")]
     set_console_icon();
 
-    let mut app = AppState::new(overlay_mode);
+    let mut app = AppState::new();
     if args.demo {
         app.enable_demo_simulation();
     }
@@ -320,8 +302,6 @@ async fn main() -> Result<(), anyhow::Error> {
             if app.launcher_selection == 5 {
                 app.updater.recheck_if_stale();
             }
-
-            app.overlay_manager.render_manual_state();
 
             terminal.draw(|f| renderer.render(f, &app))?;
 
@@ -546,14 +526,7 @@ async fn main() -> Result<(), anyhow::Error> {
             {
                 let mut app_lock = app_arc.safe_lock();
 
-                app_lock.overlay_manager.render_manual_state();
-
-                terminal.draw(|f| {
-                    renderer.render(f, &app_lock);
-                    if app_lock.show_overlay_menu {
-                        ac_tui::ui::overlay::render(f, f.size(), &app_lock);
-                    }
-                })?;
+                terminal.draw(|f| renderer.render(f, &app_lock))?;
 
                 // Measured around the draw only, so it reports the cost of
                 // rendering rather than the frame budget the loop sleeps out.
@@ -577,47 +550,6 @@ async fn main() -> Result<(), anyhow::Error> {
                 // used to be three independent claims about the key map, and
                 // two of them were wrong.
                 let action = keys::resolve(key, &app_lock.config.keys, app_lock.active_tab);
-
-                if action == Some(keys::Action::OverlayToggle) {
-                    app_lock.overlay_manager.toggle();
-                    let active = app_lock.overlay_manager.is_active;
-                    info!("Master overlay toggled to {}", active);
-                    continue;
-                }
-
-                if action == Some(keys::Action::OverlayMenu) {
-                    app_lock.show_overlay_menu = !app_lock.show_overlay_menu;
-                    continue;
-                }
-
-                if app_lock.show_overlay_menu {
-                    match key.code {
-                        KeyCode::Esc => {
-                            app_lock.show_overlay_menu = false;
-                        }
-                        KeyCode::Up => {
-                            if app_lock.overlay_menu_selection > 0 {
-                                app_lock.overlay_menu_selection -= 1;
-                            }
-                        }
-                        KeyCode::Down => {
-                            if app_lock.overlay_menu_selection < 1 {
-                                app_lock.overlay_menu_selection += 1;
-                            }
-                        }
-                        KeyCode::Enter => match app_lock.overlay_menu_selection {
-                            0 => {
-                                app_lock.overlay_manager.toggle();
-                            }
-                            1 => {
-                                app_lock.overlay_manager.toggle_unlocked();
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    }
-                    continue;
-                }
 
                 if app_lock.show_help {
                     // Whatever opens the help closes it, plus the fixed
@@ -1088,11 +1020,14 @@ fn step(current: usize, total: usize, forward: bool) -> usize {
     }
 }
 
-/// Write the current frame to `<data>/screenshots/<timestamp>.svg`.
+/// Write the current frame to `<data>/screenshots/<timestamp>.png`.
 ///
 /// Named by timestamp so repeated presses accumulate rather than overwrite —
 /// the point is usually to capture a sequence, or something that just
 /// happened and may not happen again.
+///
+/// A PNG, because the thing a driver does with this is paste it into a bug
+/// report or a Discord message, and neither of those opens an SVG.
 fn save_screenshot(
     buffer: &ratatui::buffer::Buffer,
     width: u16,
@@ -1103,11 +1038,11 @@ fn save_screenshot(
     std::fs::create_dir_all(&dir)?;
 
     let name = format!(
-        "ac_pro_engineer_{}.svg",
+        "ac_pro_engineer_{}.png",
         chrono::Local::now().format("%Y%m%d_%H%M%S%.3f")
     );
     let path = dir.join(name);
 
-    ac_tui::ui::screenshot::buffer_to_svg(buffer, width, height, &path)?;
+    ac_tui::ui::screenshot::buffer_to_png(buffer, width, height, &path, 2.0)?;
     Ok(path)
 }

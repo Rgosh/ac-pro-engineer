@@ -1216,7 +1216,7 @@ mod tests {
     /// sentence rather than the first 64 columns of it was to run the
     /// application and look.
     fn card_text(status: BridgeStatus, width: u16, height: u16) -> String {
-        let mut app = AppState::new(ac_core::overlay::OverlayMode::External);
+        let mut app = AppState::new();
         app.stage = AppStage::Launcher;
         app.onboarding = OverlayOnboarding::Done;
         app.show_first_run_prompt = false;

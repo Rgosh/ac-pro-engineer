@@ -11,7 +11,6 @@ use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
 use ac_core::memory::SharedMemory;
-use ac_core::overlay::{OverlayManager, OverlayMode};
 use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -280,7 +279,6 @@ pub struct AppState {
     pub engineer: Engineer,
     pub analyzer: TelemetryAnalyzer,
     pub ui_state: UIState,
-    pub overlay_manager: OverlayManager,
     /// Publishes frames to the in-game Lua overlay, when the shared block
     /// could be opened. `None` is not worth stopping for — the overlay simply
     /// never appears, and everything else works.
@@ -355,7 +353,6 @@ pub struct AppState {
     pub is_demo_mode: bool,
     pub demo_tick_counter: u64,
     pub show_help: bool,
-    pub show_overlay_menu: bool,
     /// How long the last rendered frame took, and how long ago the background
     /// tick last completed.
     ///
@@ -363,11 +360,18 @@ pub struct AppState {
     /// so when one stalls it is usually because the other is holding the lock.
     /// Neither was observable, which made that a guess.
     pub perf: PerfStats,
-    pub overlay_menu_selection: usize,
+}
+
+/// So `AppState::default()` and `AppState::new()` mean the same thing, which
+/// is what a reader assumes and what clippy insists on.
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppState {
-    pub fn new(overlay_mode: OverlayMode) -> Self {
+    pub fn new() -> Self {
         let mut config = AppConfig::load().unwrap_or_default();
         let mut show_success = false;
         let is_first_run = config.last_run_version == "0.0.0" || config.last_run_version.is_empty();
@@ -379,8 +383,6 @@ impl AppState {
             config.last_run_version = ac_core::updater::CURRENT_VERSION.to_string();
             let _res = config.save();
         }
-
-        let overlay_manager = OverlayManager::new(overlay_mode);
 
         let setup_manager = SetupManager::new();
         setup_manager.set_documents_override(&config.ac_documents_path);
@@ -400,7 +402,6 @@ impl AppState {
             engineer: Engineer::new(&config),
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
-            overlay_manager,
             // Installed from the binary that writes the struct it reads, so
             // the two can never be out of step. Cheap and idempotent: it only
             // writes when the files differ.
@@ -455,9 +456,7 @@ impl AppState {
             overlay_confirm: None,
             overlay_confirm_selection: 1,
             show_help: false,
-            show_overlay_menu: false,
             perf: PerfStats::default(),
-            overlay_menu_selection: 0,
         };
 
         state.refresh_overlay_report();
@@ -870,7 +869,6 @@ impl AppState {
             self.engineer.stats.current_delta = delta;
         }
 
-        self.overlay_manager.update(&self.session_info);
         self.publish_overlay_frame(&phys, &gfx);
 
         // Sector splits are captured on the transition *out* of a sector,
@@ -892,11 +890,6 @@ impl AppState {
             }
             self.last_sector_index = current_sector;
         }
-
-        let s = &mut self.overlay_manager.state;
-        s.speed_kmh = phys.speed_kmh as i32;
-        s.gear = (phys.gear - 1).max(0);
-        s.rpm = phys.rpms;
 
         let completed_laps = gfx.completed_laps;
         if self.current_lap_number == -1 {
@@ -981,12 +974,6 @@ impl AppState {
         self.recommendations = self
             .engineer
             .analyze_live(&phys, &gfx, active_setup.as_ref());
-
-        self.overlay_manager.state.engineer_messages = self
-            .recommendations
-            .iter()
-            .map(|rec| rec.message.clone())
-            .collect();
     }
 
     pub fn tick(&mut self) {
@@ -1035,20 +1022,6 @@ impl AppState {
         }
 
         if !self.is_connected {
-            if self.overlay_manager.mode == OverlayMode::StandaloneTest {
-                let s = &mut self.overlay_manager.state;
-                s.speed_kmh = (s.speed_kmh + 1) % 320;
-                s.rpm = (s.rpm + 75) % 9000;
-                s.gear = (s.speed_kmh / 50) + 1;
-
-                if s.rpm > 8000 {
-                    s.engineer_messages = vec!["SHIFT UP NOW!".to_string()];
-                } else if s.speed_kmh > 280 {
-                    s.engineer_messages = vec!["HEAVY BRAKING AHEAD".to_string()];
-                } else {
-                    s.engineer_messages.clear();
-                }
-            }
             // AC running with nothing in its shared memory yet: the menus, the
             // loading screen, the seconds in the garage before the session
             // starts. The application is fine, and now says so.
@@ -1122,17 +1095,13 @@ impl AppState {
         frame.target_pressure_rear = self.config.target_hot_pressure_rear;
 
         frame.set_flag(flags::CONNECTED, self.is_connected);
-        // Both sides have to agree: the overlay manager knows whether there is
-        // anything to show right now, the config carries what the driver asked
-        // for in the Settings tab.
-        frame.set_flag(
-            flags::SHOW_TELEMETRY,
-            self.overlay_manager.state.show_telemetry && self.config.overlay.show_telemetry,
-        );
-        frame.set_flag(
-            flags::SHOW_ENGINEER,
-            self.overlay_manager.state.show_engineer && self.config.overlay.show_engineer,
-        );
+        // What the driver asked for in the Settings tab, and nothing else.
+        // These used to be ANDed with a second pair of switches on the old
+        // desktop-overlay manager, which nothing ever set to false — so a
+        // block the driver had switched off in the config could still be
+        // published, and the reason lived two structs away.
+        frame.set_flag(flags::SHOW_TELEMETRY, self.config.overlay.show_telemetry);
+        frame.set_flag(flags::SHOW_ENGINEER, self.config.overlay.show_engineer);
         frame.set_flag(flags::SHOW_SESSION, self.config.overlay.show_session);
         frame.set_flag(flags::SHOW_TIMING, self.config.overlay.show_timing);
         frame.set_flag(
@@ -1347,7 +1316,7 @@ mod tests {
 
     #[test]
     fn demo_mode_executes_full_telemetry_pipeline() {
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.is_demo_mode = true;
         app.mock_static = Some(ac_core::ac_structs::AcStatic::default());
         app.stage = AppStage::Running;
@@ -1360,7 +1329,11 @@ mod tests {
 
         assert_eq!(app.physics_history.len(), 10);
         assert_eq!(app.graphics_history.len(), 10);
-        assert!(app.overlay_manager.state.speed_kmh > 0);
+        assert!(
+            app.physics_history
+                .last()
+                .is_some_and(|p| p.speed_kmh > 0.0)
+        );
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
     }
@@ -1378,7 +1351,7 @@ mod tests {
     fn the_launcher_still_publishes_a_frame() {
         use ac_core::overlay::frame::{OverlayFrame, flags};
 
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.overlay_writer =
             ac_core::overlay::shared_writer::OverlayWriter::open_named("acpe-test-idle").ok();
         let Some(path) = app.overlay_writer.as_ref().map(|w| w.backing_path()) else {
@@ -1415,7 +1388,7 @@ mod tests {
     /// increment and could land the split in the following lap.
     #[test]
     fn final_sector_is_derived_from_the_lap_time() {
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.track_sector_count = 3;
         app.current_lap_sectors = [30_000, 35_000, 0];
 
@@ -1436,7 +1409,7 @@ mod tests {
     /// would take it as a personal best and never let go of it.
     #[test]
     fn final_sector_stays_empty_when_earlier_splits_are_missing() {
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.track_sector_count = 3;
         app.current_lap_sectors = [30_000, 0, 0];
 
@@ -1449,7 +1422,7 @@ mod tests {
     /// different lap, so it is discarded rather than recorded.
     #[test]
     fn final_sector_rejects_an_implausible_remainder() {
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.track_sector_count = 3;
         // The two known splits already exceed the lap time.
         app.current_lap_sectors = [60_000, 50_000, 0];
@@ -1462,7 +1435,7 @@ mod tests {
     /// Two-sector mod tracks exist, and AcStatic says so.
     #[test]
     fn final_sector_honours_a_two_sector_track() {
-        let mut app = AppState::new(OverlayMode::External);
+        let mut app = AppState::new();
         app.track_sector_count = 2;
         app.current_lap_sectors = [45_000, 0, 0];
 

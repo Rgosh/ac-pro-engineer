@@ -6,7 +6,6 @@ pub mod file_menu;
 pub mod help_overlay;
 pub mod launcher;
 pub mod localization;
-pub mod overlay;
 pub mod screenshot;
 pub mod tabs;
 pub mod widgets;
@@ -15,7 +14,6 @@ pub struct UIState {
     pub theme: ac_core::config::Theme,
     pub layout_mode: LayoutMode,
     pub blink_state: bool,
-    pub overlay_mode: bool,
     pub last_blink: std::time::Instant,
     pub settings: tabs::settings::SettingsState,
     pub analysis: tabs::analysis::AnalysisState,
@@ -49,7 +47,6 @@ impl UIState {
             theme: ac_core::config::Theme::default(),
             layout_mode: LayoutMode::Auto,
             blink_state: false,
-            overlay_mode: false,
             last_blink: std::time::Instant::now(),
             settings: tabs::settings::SettingsState::new(),
             analysis: tabs::analysis::AnalysisState::new(),
@@ -152,11 +149,7 @@ impl UIRenderer {
         match app.stage {
             AppStage::Launcher => launcher::render(f, f.size(), app),
             AppStage::Running => {
-                if app.ui_state.overlay_mode {
-                    overlay::render(f, f.size(), app);
-                } else {
-                    self.render_main_app(f, app);
-                }
+                self.render_main_app(f, app);
 
                 if app.overlay_confirm.is_some() {
                     tabs::settings::render_confirm_popup(f, f.size(), app);

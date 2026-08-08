@@ -113,7 +113,7 @@ mod tests {
         let fixture = TelemetrySessionFixture::generate_3_lap_session();
         assert_eq!(fixture.samples.len(), 630);
 
-        let mut app = AppState::new(ac_core::overlay::OverlayMode::External);
+        let mut app = AppState::new();
         app.config.auto_save = false;
 
         // Process all 630 telemetry samples through the full application pipeline
