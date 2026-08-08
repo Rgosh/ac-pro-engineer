@@ -104,6 +104,19 @@ them can be rebound.
   shape and one keystroke away from the same crash. Every blocking request in
   the crate is now either behind that hop or the first thing on a thread of its
   own.
+- **A checkout ran whichever bridge happened to be nearest, not the one built
+  for it.** There were two different searches for `shm-bridge.exe`: the
+  launcher's card and `bridge_probe` used one that knows about
+  `target/x86_64-pc-windows-gnu/release/`, and the code that actually spawns the
+  bridge had its own that did not — so the card could judge one file while the
+  application launched another. Both searched the working directory first, so a
+  single stale `shm-bridge.exe` at the root of a checkout shadowed the one just
+  cross-compiled: the old one was spawned, reported out of date, and `[B]`
+  offered to download a third. A bridge carrying this build's version now wins
+  wherever it is, and the directory order only decides between copies that are
+  all wrong. `cargo build --release -p shm-bridge --target
+  x86_64-pc-windows-gnu` then `cargo run` uses what you just built, with nothing
+  to copy or delete.
 - **The key hints lied.** Every tab now has its own line at the bottom right,
   built from the same bindings that handle the keypress, so it cannot disagree
   with them; `the_hints_only_name_keys_that_do_something` walks every tab and
