@@ -1,13 +1,16 @@
-//! Rendering a drawn terminal buffer to a standalone SVG.
+//! Rendering a drawn terminal buffer to a PNG.
 //!
 //! Shared by the screenshot hotkey and by `tui_tester`, which generates the
-//! images in the README. Producing an SVG rather than a bitmap keeps the text
-//! selectable and the file small, and needs no image encoder.
+//! images in the README. SVG is still how the picture is *described* — laying
+//! out a grid of coloured glyphs is a dozen lines of it and a font rasteriser
+//! otherwise — but it is now an intermediate held in memory rather than a file
+//! anyone has to keep. Two files per screen meant two things to regenerate,
+//! two things to review, and one of them GitHub would not render inline.
 
 use std::fs;
 use std::path::Path;
 
-pub fn escape_xml(s: &str) -> String {
+fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -15,22 +18,8 @@ pub fn escape_xml(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-/// Render `buffer` to an SVG file at `output_path`.
-pub fn buffer_to_svg(
-    buffer: &ratatui::buffer::Buffer,
-    width: u16,
-    height: u16,
-    output_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(output_path, svg_string(buffer, width, height))?;
-    Ok(())
-}
-
-/// The SVG itself, so the PNG writer below can rasterise exactly this rather
-/// than draw the same thing a second way.
+/// The picture, described. Rasterised by [`buffer_to_png`] and never written
+/// out on its own.
 fn svg_string(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) -> String {
     let char_w = 10u32;
     let char_h = 20u32;
@@ -148,11 +137,10 @@ fn svg_string(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) -> Stri
 
 /// Render `buffer` to a PNG file at `output_path`.
 ///
-/// The SVG above is the record — exact, diffable, and produced from the same
-/// buffer the terminal drew. This rasterises it, because a README on GitHub
-/// wants a bitmap and because "here is a picture of the program" should not
-/// require anyone to install a converter. Same pixels either way: nothing is
-/// drawn twice or by hand.
+/// The only screenshot format this project produces. The SVG above describes
+/// the frame; this rasterises it, because a README on GitHub wants a bitmap
+/// and because "here is a picture of the program" should not require anyone to
+/// install a converter.
 ///
 /// `scale` is a multiplier on the SVG's own size — 2.0 gives a crisp image on
 /// a high-DPI screen at half the on-screen width.
@@ -213,15 +201,12 @@ mod tests {
     }
 
     #[test]
-    fn renders_the_buffer_contents_into_the_svg() {
+    fn renders_the_buffer_contents_into_the_drawing() {
         let area = Rect::new(0, 0, 20, 3);
         let mut buffer = Buffer::empty(area);
         buffer.set_string(0, 0, "ENGINE START", ratatui::style::Style::default());
 
-        let path = scratch_dir("shot_contents").join("out.svg");
-        buffer_to_svg(&buffer, area.width, area.height, &path).expect("write svg");
-
-        let svg = fs::read_to_string(&path).expect("read svg");
+        let svg = svg_string(&buffer, area.width, area.height);
         assert!(svg.starts_with("<svg"), "starts with an svg root element");
         assert!(svg.trim_end().ends_with("</svg>"), "and closes it");
         // The glyphs are emitted one <text> element per cell, so the string
@@ -235,7 +220,8 @@ mod tests {
     }
 
     /// A terminal shows plenty of characters that are not valid raw XML, and
-    /// an ampersand alone would make the file unopenable.
+    /// an ampersand alone would make the intermediate unparseable — which
+    /// now means the PNG fails to render rather than a file failing to open.
     #[test]
     fn escapes_characters_that_would_break_the_xml() {
         assert_eq!(escape_xml("a & b"), "a &amp; b");
@@ -246,21 +232,27 @@ mod tests {
         let mut buffer = Buffer::empty(area);
         buffer.set_string(0, 0, "a<b&c", ratatui::style::Style::default());
 
-        let path = scratch_dir("shot_escape").join("out.svg");
-        buffer_to_svg(&buffer, area.width, area.height, &path).expect("write svg");
-
-        let svg = fs::read_to_string(&path).expect("read svg");
+        let svg = svg_string(&buffer, area.width, area.height);
         assert!(svg.contains("&lt;"), "the < is escaped");
         assert!(svg.contains("&amp;"), "and so is the &");
     }
 
+    /// The one screenshot format there is, produced end to end: an empty
+    /// buffer still has to reach a file, because that is the path the hotkey
+    /// takes on a screen that happens to be blank.
     #[test]
-    fn creates_the_file_even_for_an_empty_buffer() {
-        let area = Rect::new(0, 0, 1, 1);
+    fn writes_a_png_even_for_an_empty_buffer() {
+        let area = Rect::new(0, 0, 4, 2);
         let buffer = Buffer::empty(area);
 
-        let path = scratch_dir("shot_empty").join("out.svg");
-        buffer_to_svg(&buffer, area.width, area.height, &path).expect("write svg");
-        assert!(path.exists());
+        let path = scratch_dir("shot_empty").join("out.png");
+        buffer_to_png(&buffer, area.width, area.height, &path, 1.0).expect("write png");
+
+        let bytes = fs::read(&path).expect("read png");
+        assert_eq!(
+            &bytes[..8],
+            b"\x89PNG\r\n\x1a\n",
+            "and it is a PNG, not whatever the encoder felt like"
+        );
     }
 }

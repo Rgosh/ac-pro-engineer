@@ -2,20 +2,21 @@ use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic, StringU16_33};
 use ac_core::analyzer::{LapData, RadarStats, TelemetryPoint};
 use ac_core::config::Language;
 use ac_core::engineer::{Recommendation, Severity};
-use ac_core::overlay::OverlayMode;
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
-use ac_tui::ui::screenshot::{buffer_to_png, buffer_to_svg};
+use ac_tui::ui::screenshot::buffer_to_png;
 use ac_tui::{AppStage, AppState, AppTab, SafeLock};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::fs;
 use std::path::Path;
 
-/// Write one screenshot, twice: the SVG is the exact record of what was drawn,
-/// the PNG is what a README can show.
+/// Write one screenshot of what the terminal just drew.
 ///
-/// Both come from the same buffer and the same SVG, so they cannot disagree.
+/// One file per screen. This used to write an SVG beside every PNG on the
+/// grounds that the SVG was the exact record — but nothing ever read one, they
+/// doubled what a screenshot refresh put in a diff, and GitHub will not show
+/// one inline anyway.
 fn capture(
     terminal: &ratatui::Terminal<TestBackend>,
     width: u16,
@@ -24,16 +25,15 @@ fn capture(
     name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let buffer = terminal.backend().buffer();
-    buffer_to_svg(buffer, width, height, &dir.join(format!("{name}.svg")))?;
-    // Two, for a screen that is 1416 CSS pixels wide: readable inline on
-    // GitHub and still crisp when opened.
+    // Scaled by two, for a screen that is 1416 CSS pixels wide: readable
+    // inline on GitHub and still crisp when opened.
     buffer_to_png(buffer, width, height, &dir.join(format!("{name}.png")), 2.0)?;
-    println!("  [OK] Rendered {name}.svg + {name}.png");
+    println!("  [OK] Rendered {name}.png");
     Ok(())
 }
 
 fn create_populated_app_state() -> AppState {
-    let mut app = AppState::new(OverlayMode::External);
+    let mut app = AppState::new();
     app.config.language = Language::English;
     app.is_connected = true;
     app.is_game_running = true;
@@ -244,7 +244,7 @@ fn create_populated_app_state() -> AppState {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Rendering every screen to SVG and PNG...");
+    println!("Rendering every screen to PNG...");
 
     let width = 140;
     let height = 40;
@@ -259,7 +259,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(screenshot_dir)?;
     }
 
-    // 1. Launcher.svg
+    // 1. Launcher
     app.stage = AppStage::Launcher;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Launcher")?;
@@ -285,14 +285,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         capture(&terminal, width, height, screenshot_dir, name)?;
     }
 
-    // 3. Setup_cloud.svg
+    // 3. Setup_cloud
     app.active_tab = AppTab::Setup;
     *app.setup_manager.browser_active.safe_lock() = true;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Setup_cloud")?;
     *app.setup_manager.browser_active.safe_lock() = false;
 
-    // 3b. Settings_Keys.svg — twenty-three rows in a pane that holds about
+    // 3b. Settings_Keys — twenty-three rows in a pane that holds about
     // thirty, so this is the screenshot that shows when it stops fitting.
     app.active_tab = AppTab::Settings;
     app.ui_state
@@ -304,27 +304,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .settings
         .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
 
-    // 4. Analysis_Radar.svg
+    // 4. Analysis_Radar
     app.active_tab = AppTab::Analysis;
     app.ui_state.analysis.next_tab();
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Analysis_Radar")?;
 
-    // 5. Help_Modal.svg
+    // 5. Help_Modal
     // AppState::show_help, not UIState::show_help. The renderer checks the
     // former; the latter was read by nothing, which is why every generated
-    // Help_Modal.svg was byte-identical to the screenshot before it.
+    // Help_Modal.png was byte-identical to the screenshot before it.
     app.show_help = true;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Help_Modal")?;
     app.show_help = false;
 
-    // 6. Overlay_Control.svg
-    app.ui_state.overlay_mode = true;
-    terminal.draw(|f| renderer.render(f, &app))?;
-    capture(&terminal, width, height, screenshot_dir, "Overlay_Control")?;
-    app.ui_state.overlay_mode = false;
-
-    println!("\nDone. SVG is the record; PNG is what the README shows.");
+    println!("\nDone.");
     Ok(())
 }
