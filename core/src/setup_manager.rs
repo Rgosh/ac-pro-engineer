@@ -811,52 +811,58 @@ impl SetupManager {
     }
 }
 
+/// Off the caller's thread, like every blocking request in this crate: this is
+/// reached from a background thread today, and `reqwest::blocking` panics if a
+/// future caller reaches it from inside an async runtime. See [`crate::net`].
 fn fetch_manifest() -> Result<Vec<ManifestItem>, String> {
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Client build error: {}", e)),
-    };
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/manifest.json",
         GITHUB_USER_REPO, GITHUB_BRANCH
     );
-    let resp = match client.get(&url).send() {
-        Ok(r) => r,
-        Err(e) => return Err(format!("Network error: {}", e)),
-    };
-    if !resp.status().is_success() {
-        return Err(format!("HTTP status {}", resp.status()));
-    }
-    resp.json::<Vec<ManifestItem>>()
-        .map_err(|e| format!("JSON parse error: {}", e))
+    crate::net::off_runtime(|| {
+        let client = match reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Client build error: {}", e)),
+        };
+        let resp = match client.get(&url).send() {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Network error: {}", e)),
+        };
+        if !resp.status().is_success() {
+            return Err(format!("HTTP status {}", resp.status()));
+        }
+        resp.json::<Vec<ManifestItem>>()
+            .map_err(|e| format!("JSON parse error: {}", e))
+    })
 }
 
+/// Same again — see [`fetch_manifest`].
 fn fetch_server_setups(car: &str) -> Result<Vec<CarSetup>, String> {
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Client build error: {}", e)),
-    };
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}.json",
         GITHUB_USER_REPO, GITHUB_BRANCH, car
     );
-    let resp = match client.get(&url).send() {
-        Ok(r) => r,
-        Err(e) => return Err(format!("Network error: {}", e)),
-    };
-    if !resp.status().is_success() {
-        return Err(format!("HTTP status {}", resp.status()));
-    }
-    let mut setups = match resp.json::<Vec<CarSetup>>() {
-        Ok(s) => s,
-        Err(e) => return Err(format!("JSON parse error: {}", e)),
-    };
+    let mut setups = crate::net::off_runtime(|| {
+        let client = match reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Client build error: {}", e)),
+        };
+        let resp = match client.get(&url).send() {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Network error: {}", e)),
+        };
+        if !resp.status().is_success() {
+            return Err(format!("HTTP status {}", resp.status()));
+        }
+        resp.json::<Vec<CarSetup>>()
+            .map_err(|e| format!("JSON parse error: {}", e))
+    })?;
     for s in &mut setups {
         s.is_remote = true;
         s.car_id = car.to_string();

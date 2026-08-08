@@ -16,6 +16,12 @@
 //! is correct wherever the caller happens to be. One thread spawn against a
 //! network round trip is not a cost worth reasoning about, and it means a
 //! future caller cannot reintroduce the crash by calling from the wrong place.
+//!
+//! **Every blocking request in this crate goes through here**, except the
+//! updater's two — those are the first thing inside a `thread::spawn` of their
+//! own, and are long closures reporting progress and writing files rather than
+//! one request that returns a value. A new one belongs here unless it is
+//! demonstrably already on a fresh thread.
 
 use std::thread;
 
