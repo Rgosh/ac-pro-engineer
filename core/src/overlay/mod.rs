@@ -15,6 +15,7 @@
 
 pub mod bridge;
 pub mod bridge_update;
+pub mod diagnosis;
 pub mod frame;
 pub mod install;
 pub mod shared_writer;

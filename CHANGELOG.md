@@ -92,6 +92,19 @@ them can be rebound.
   `apps/lua/love/portraits.sh` regenerates them: each run draws one window in a
   LÖVE window sized exactly to it, so there is nothing to crop.
 
+### ✨ Added — after the release notes above were written
+
+- **`[C]` on Settings → OVERLAY: the whole bridge report, in the application.**
+  *Why is the panel blank* is the question this program gets asked most, and
+  until now it had exactly one answer:
+  `cargo run -p ac_core --example bridge_probe` — a command someone who
+  downloaded a release cannot run and has no reason to know about. The screen
+  names all three pieces that have to agree about a frame, what each one is,
+  and what to do about the one that does not fit; `[R]` measures again, so
+  starting the bridge in another window and pressing it is the whole loop. The
+  example now prints the same report rather than owning it, so the answer a
+  user reads is the answer a bug report quotes.
+
 ### 🐞 Fixed
 
 - **Pressing `[B]` on the launcher's overlay card killed the application.**

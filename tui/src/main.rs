@@ -559,6 +559,22 @@ async fn main() -> Result<(), anyhow::Error> {
                 // two of them were wrong.
                 let action = keys::resolve(key, &app_lock.config.keys, app_lock.active_tab);
 
+                // Ahead of the help and of every tab: it is opened over
+                // whatever was on screen and closed again, and Esc has to
+                // reach it rather than dropping the session to the launcher.
+                if app_lock.show_overlay_diagnosis {
+                    match key.code {
+                        KeyCode::Char('r') | KeyCode::Char('R') => {
+                            app_lock.refresh_overlay_diagnosis()
+                        }
+                        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                            app_lock.show_overlay_diagnosis = false
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 if app_lock.show_help {
                     // Whatever opens the help closes it, plus the fixed
                     // aliases the modal names in nine places. Resolved rather
@@ -694,6 +710,15 @@ async fn main() -> Result<(), anyhow::Error> {
                                     app_lock.overlay_confirm =
                                         Some(ac_tui::OverlayAction::Uninstall);
                                     app_lock.overlay_confirm_selection = 1;
+                                    continue;
+                                }
+                                // Measured on the way in, not held from
+                                // startup: the answer changes when the bridge
+                                // is started, which is exactly what someone
+                                // does between two looks at this screen.
+                                if matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C')) {
+                                    app_lock.refresh_overlay_diagnosis();
+                                    app_lock.show_overlay_diagnosis = true;
                                     continue;
                                 }
                             }

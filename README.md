@@ -313,11 +313,22 @@ Five categories, `A` `S` `D` `F` `G` or `←/→`:
 - **SYSTEM** — language, update rate, history size, autosave
 - **DISPLAY** — pressure and temperature units
 - **ENGINEER** — every alert threshold, target hot pressures, ghost delta
-- **OVERLAY** — which blocks the overlay gets, how many advice lines, and
-  `[I]` install / `[U]` uninstall the panel
+- **OVERLAY** — which blocks the overlay gets, how many advice lines,
+  `[I]` install / `[U]` uninstall the panel, and `[C]` for diagnostics
 - **KEYS** — rebind anything
 
 ![Key bindings](screenshots/Settings_Keys.png)
+
+`[C]` on **OVERLAY** answers the one question this program gets asked most —
+*why is the panel blank* — without leaving the application:
+
+![Overlay diagnostics](screenshots/Overlay_Diagnostics.png)
+
+All three pieces that have to agree about a frame, what each one is, and what to
+do about the one that does not fit. `[R]` measures again, so starting the bridge
+in another window and pressing it is the whole loop. The same report is printed
+by `cargo run -p ac_core --example bridge_probe` for anyone already in a
+terminal.
 
 ### 9 — Guide
 

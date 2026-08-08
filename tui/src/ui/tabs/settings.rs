@@ -712,6 +712,130 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 /// What the last install or removal did, over the settings that asked for it.
+/// The whole bridge report, full screen.
+///
+/// Everything the application knows about whether the overlay can work, which
+/// until now lived only in `cargo run -p ac_core --example bridge_probe` — a
+/// command someone who downloaded a release cannot run and has no reason to
+/// know about, answering the single most common question about this program.
+pub fn render_diagnosis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    use ac_core::overlay::diagnosis::Tone;
+
+    let report = &app.overlay_diagnosis;
+
+    let width = 84.min(area.width.saturating_sub(2));
+    // Sized to what it has to say. A box that is always full height leaves
+    // half a screen of empty border under a six-line answer, which reads as
+    // something having failed to load.
+    let content = report
+        .lines
+        .iter()
+        .map(|line| {
+            // A heading costs a blank line above it, and anything longer than
+            // the box wraps onto more.
+            let text = line.label.len() + line.value.len() + 6;
+            let wrapped = text.div_ceil((width as usize).max(1));
+            wrapped.max(1) + usize::from(line.tone == Tone::Heading)
+        })
+        .sum::<usize>()
+        + 6; // the verdict, the footer, and the blank lines around them
+    let height = (content as u16 + 2).min(area.height.saturating_sub(2));
+
+    let popup = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, popup);
+    let is_ru = app.config.language == Language::Russian;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .style(Style::default().fg(if report.workable {
+            Color::Green
+        } else {
+            Color::Red
+        }))
+        .title(if is_ru {
+            " ПРОВЕРКА ОВЕРЛЕЯ "
+        } else {
+            " OVERLAY DIAGNOSTICS "
+        })
+        .title_alignment(Alignment::Center);
+
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+
+    let mut lines: Vec<Line<'_>> = Vec::with_capacity(report.lines.len() + 4);
+    for entry in &report.lines {
+        match entry.tone {
+            Tone::Heading => {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    entry.value.to_uppercase(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )));
+            }
+            Tone::Action => lines.push(Line::from(Span::styled(
+                format!("    {}", entry.value),
+                Style::default().fg(Color::Yellow),
+            ))),
+            tone => {
+                let colour = match tone {
+                    Tone::Good => Color::Green,
+                    Tone::Warn => Color::Yellow,
+                    Tone::Bad => Color::Red,
+                    _ => Color::White,
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  {:<17}", entry.label),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(entry.value.clone(), Style::default().fg(colour)),
+                ]));
+            }
+        }
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        format!(
+            "  {} {}",
+            if is_ru { "ОВЕРЛЕЙ" } else { "OVERLAY" },
+            report.verdict
+        ),
+        Style::default()
+            .fg(if report.workable {
+                Color::Green
+            } else {
+                Color::Red
+            })
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "  [R] проверить заново   ESC закрыть"
+        } else {
+            "  [R] check again   ESC to close"
+        },
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    // Wrapped: the paths and the explanations are longer than any width this
+    // is likely to get, and a clipped path is the one thing on this screen
+    // nobody can act on.
+    f.render_widget(
+        Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
+        inner,
+    );
+}
+
 pub fn render_result_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let width = 62.min(area.width.saturating_sub(4));
     let height = 9;
@@ -1256,9 +1380,9 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         ),
         (
             if is_ru {
-                "Карточка при запуске  [I] ставит, [U] удаляет".to_string()
+                "Карточка при запуске  [I] ставит, [U] удаляет, [C] проверка".to_string()
             } else {
-                "Startup card  [I] installs, [U] removes".to_string()
+                "Startup card  [I] installs, [U] removes, [C] diagnostics".to_string()
             },
             if overlay.startup_card { "ON" } else { "OFF" }.to_string(),
             true,

@@ -310,6 +310,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Analysis_Radar")?;
 
+    // 4b. Overlay_Diagnostics — the answer to "why is the panel blank",
+    // which until this release only existed as a cargo example.
+    app.active_tab = AppTab::Settings;
+    app.ui_state
+        .settings
+        .set_category(ac_tui::ui::tabs::settings::SettingsCategory::Overlay);
+    app.show_overlay_diagnosis = true;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(
+        &terminal,
+        width,
+        height,
+        screenshot_dir,
+        "Overlay_Diagnostics",
+    )?;
+    app.show_overlay_diagnosis = false;
+    app.ui_state
+        .settings
+        .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
+
     // 5. Help_Modal
     // AppState::show_help, not UIState::show_help. The renderer checks the
     // former; the latter was read by nothing, which is why every generated

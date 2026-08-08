@@ -159,6 +159,12 @@ impl UIRenderer {
                     tabs::settings::render_result_popup(f, f.size(), app);
                 }
 
+                // Over everything, including the help: it is opened to answer
+                // one question and closed again.
+                if app.show_overlay_diagnosis {
+                    tabs::settings::render_diagnosis(f, f.size(), app);
+                }
+
                 if app.show_help {
                     let tab_idx = match app.active_tab {
                         AppTab::Dashboard => 0,

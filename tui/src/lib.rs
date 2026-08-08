@@ -342,6 +342,13 @@ pub struct AppState {
     /// Settings tab, where a status line at the bottom of a card nobody is
     /// looking at is the same as no answer at all.
     pub overlay_result_popup: bool,
+    /// The bridge report, and whether it is on screen.
+    ///
+    /// Held rather than computed per frame: it reads a file in `/dev/shm` and
+    /// scans a binary for a version marker, which is not work to do sixty
+    /// times a second behind a screen nobody has opened.
+    pub show_overlay_diagnosis: bool,
+    pub overlay_diagnosis: ac_core::overlay::diagnosis::Report,
     /// Asked for, not yet done. Writing into someone's game folder is worth a
     /// second keystroke — [U] and [I] are neighbours on the keyboard, and one
     /// of them deletes.
@@ -453,6 +460,8 @@ impl AppState {
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_result_popup: false,
+            show_overlay_diagnosis: false,
+            overlay_diagnosis: ac_core::overlay::diagnosis::report(),
             overlay_confirm: None,
             overlay_confirm_selection: 1,
             show_help: false,
@@ -501,6 +510,11 @@ impl AppState {
     ///
     /// Skipped on Windows, where there is no bridge, and skipped when the one
     /// already running is current — the common case should cost nothing.
+    /// Ask all three pieces again. What `[R]` on the diagnostics screen does.
+    pub fn refresh_overlay_diagnosis(&mut self) {
+        self.overlay_diagnosis = ac_core::overlay::diagnosis::report();
+    }
+
     pub fn check_for_bridge_update(&self) {
         use ac_core::overlay::bridge::{self, BridgeStatus};
         use ac_core::overlay::bridge_update;
