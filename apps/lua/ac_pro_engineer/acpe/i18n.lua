@@ -117,6 +117,7 @@ local RUSSIAN = {
   ['Save now'] = 'Сохранить',
   ['Reset to defaults'] = 'Сбросить',
   ['Default palette'] = 'Палитра по умолчанию',
+  ['Pick out new advice'] = 'Выделять новые советы',
   ['Changed'] = 'Изменено',
   ['Everything is as it ships.'] = 'Всё как из коробки.',
   ['Anything you change appears here, with a way back.'] =

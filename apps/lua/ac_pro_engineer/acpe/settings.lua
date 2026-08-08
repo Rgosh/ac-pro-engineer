@@ -58,6 +58,9 @@ local DEFAULTS = {
   engineerBullet = 'severity',   -- severity | > | dot | none
   engineerWrap = true,
   engineerHighlight = true,
+  -- A line that arrived a second ago and one that has been there four laps are
+  -- the same three words in the same colour, and the eye stops going to them.
+  engineerEmphasiseNew = true,
 
   sectionLabels = true,
   -- A newer panel sitting on disk is worth one line, and worth being

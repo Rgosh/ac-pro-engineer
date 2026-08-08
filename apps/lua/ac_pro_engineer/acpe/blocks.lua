@@ -336,6 +336,17 @@ local function drawEngineerMessages(withLabel)
       -- doing the same here is the whole point of shipping severity across.
       local markColor = SEVERITY_COLOR[level] or COLOR.text
       local textColor = settings.engineerHighlight and markColor or COLOR.text
+      -- Just arrived: full severity colour whatever the highlight setting
+      -- says, and the settled lines a shade back, so the new one is the one
+      -- the eye lands on. Both together — brightening one without settling
+      -- the others is not a difference at a glance in a moving car.
+      if settings.engineerEmphasiseNew then
+        if frame.messageIsNew(i) then
+          textColor = markColor
+        elseif not settings.engineerHighlight then
+          textColor = COLOR.label
+        end
+      end
       local line = shown.messages[i]
       if settings.engineerUppercase then line = line:upper() end
       if settings.engineerNumbered then line = i .. '. ' .. line end

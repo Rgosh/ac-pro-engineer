@@ -252,15 +252,59 @@ local function applyDemo()
   end
 end
 
+-- How long a line of advice counts as new, and when each one was first seen.
+--
+-- Keyed by the sentence rather than by slot: the application packs whatever it
+-- has to say into the slots in order, so a line that was second last lap can
+-- be first this lap without having changed. Comparing slots would call every
+-- line new every time something above it cleared.
+local NEW_FOR_SECONDS = 6.0
+local firstSeen = {}
+local clock = 0
+
+--- Remember which sentences are on this frame, and forget the ones that left.
+---
+--- Pruned every time, so this cannot grow across a session: the table only
+--- ever holds what the application is currently saying, which is at most the
+--- eight slots the frame carries.
+local function markMessageArrivals()
+  local present = {}
+  for i = 1, MESSAGE_SLOTS do
+    local text = shown.messages[i]
+    if text ~= nil and text ~= '' then
+      present[text] = true
+      if firstSeen[text] == nil then firstSeen[text] = clock end
+    end
+  end
+  for text in pairs(firstSeen) do
+    if not present[text] then firstSeen[text] = nil end
+  end
+end
+
+--- Has the advice in this slot only just arrived?
+---
+--- What makes a new warning look different from the one that has been sitting
+--- there for four laps. Without it they are the same three words in the same
+--- colour, and the eye stops going to them.
+function M.messageIsNew(index)
+  local text = shown.messages[index]
+  if text == nil or text == '' then return false end
+  local seen = firstSeen[text]
+  return seen ~= nil and (clock - seen) < NEW_FOR_SECONDS
+end
+
 --- One tick. Called by `script.update`, which is the only caller.
 function M.update(dt)
   -- Frozen on purpose: a held frame is the only way to read a number that was
   -- there for a tenth of a second.
   if settings.freezeDisplay then return end
 
+  clock = clock + dt
+
   if settings.devDemo then
     applyDemo()
     format.rebuild(shown)
+    markMessageArrivals()
     i18n.speak(bit.band(shown.flags, FLAG_RUSSIAN) ~= 0)
     isLive = true
     return
@@ -279,6 +323,7 @@ function M.update(dt)
 
   if readFrame() then
     format.rebuild(shown)
+    markMessageArrivals()
     i18n.speak(bit.band(shown.flags, FLAG_RUSSIAN) ~= 0)
     secondsSinceChange = 0
     isLive = shown.version == EXPECTED_VERSION and shown.sequence ~= 0
@@ -301,6 +346,12 @@ function M.configure(expected, panel)
   EXPECTED_VERSION = expected
   PANEL_VERSION = panel
 end
+
+-- Reached by the LuaJIT harness so the arrival rule can be driven directly.
+-- The alternative is publishing eight frames a second apart and hoping, which
+-- tests the harness's patience rather than the rule.
+M.markArrivalsForTest = markMessageArrivals
+M.advanceClockForTest = function(seconds) clock = clock + seconds end
 
 M.MMF_NAME = MMF_NAME
 M.MESSAGE_KEYS = MESSAGE_KEYS

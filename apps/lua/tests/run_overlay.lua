@@ -609,6 +609,57 @@ if liveSettings.engineerLines ~= default then
 end
 print('the Changed tab lists and undoes: OK')
 
+-- ---------------------------------------------------------------------------
+-- New advice is told apart from advice that has been there four laps
+--
+-- Tracked by the sentence, not by the slot: the application packs what it has
+-- to say into the slots in order, so a line that was second last lap is first
+-- this lap without having changed. Slot tracking would call everything new
+-- every time a line above it cleared, which is no signal at all.
+-- ---------------------------------------------------------------------------
+
+local liveFrame = package.loaded['acpe.frame']
+local liveShown = liveFrame.shown
+
+liveShown.message_count = 2
+liveShown.messages[1] = 'Rear tyres are going off'
+liveShown.messages[2] = 'Box this lap'
+liveShown.message_severity[1] = 1
+liveShown.message_severity[2] = 2
+liveFrame.markArrivalsForTest()
+
+if not liveFrame.messageIsNew(1) or not liveFrame.messageIsNew(2) then
+  print('\nFAILED: advice that just arrived does not count as new.')
+  os.exit(1)
+end
+
+-- The same two sentences, in the other order, six seconds later. Neither is
+-- new any more, and swapping places must not make them look new again.
+liveShown.messages[1] = 'Box this lap'
+liveShown.messages[2] = 'Rear tyres are going off'
+liveFrame.advanceClockForTest(7.0)
+liveFrame.markArrivalsForTest()
+
+if liveFrame.messageIsNew(1) or liveFrame.messageIsNew(2) then
+  print('\nFAILED: settled advice is still counted as new after it moved slot.')
+  os.exit(1)
+end
+
+-- One of them clears and a different one arrives. Only the arrival is new.
+liveShown.messages[1] = 'Front brakes are past 700 C'
+liveShown.messages[2] = 'Rear tyres are going off'
+liveFrame.markArrivalsForTest()
+
+if not liveFrame.messageIsNew(1) then
+  print('\nFAILED: a sentence the panel has never shown is not counted as new.')
+  os.exit(1)
+end
+if liveFrame.messageIsNew(2) then
+  print('\nFAILED: a sentence that has been there all along counts as new.')
+  os.exit(1)
+end
+print('new advice is told apart from settled advice: OK')
+
 
 -- ---------------------------------------------------------------------------
 -- A published frame with no car in it is not the same as no application
