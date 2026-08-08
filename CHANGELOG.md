@@ -100,7 +100,10 @@ them can be rebound.
   panics. `fetch_bridge_now` called it straight from the key handler, which runs
   inside `#[tokio::main]` — so the one key that fetches a bridge was the one key
   that could not be pressed. Both of the bridge's requests now run on a thread
-  with no runtime context.
+  with no runtime context, and so do the Setup Cloud's two, which were the same
+  shape and one keystroke away from the same crash. Every blocking request in
+  the crate is now either behind that hop or the first thing on a thread of its
+  own.
 - **The key hints lied.** Every tab now has its own line at the bottom right,
   built from the same bindings that handle the keypress, so it cannot disagree
   with them; `the_hints_only_name_keys_that_do_something` walks every tab and
