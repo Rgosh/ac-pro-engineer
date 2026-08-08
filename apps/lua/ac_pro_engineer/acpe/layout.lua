@@ -202,6 +202,21 @@ local function row(label, value, color)
   say('body', value, color or COLOR.text)
 end
 
+--- A row whose value is four numbers rather than one.
+---
+--- `row` is measured for "44.82 L": a two-character label and the value at
+--- 46% of the width in body text. The telemetry window's corner readouts are
+--- "26.8 psi  90°C  521°C  98%", and they ran off the right-hand edge at every
+--- window size — widening the window does not help, because the text scales
+--- with the width, so the overflow is the same fraction of the line however
+--- big the window is. Narrow label column, caption-sized value.
+local function denseRow(label, value, color)
+  local width = contentWidth()
+  say('caption', label, COLOR.dim)
+  ui.sameLine(width * 0.20)
+  say('caption', value, color or COLOR.text)
+end
+
 M.TEXT_SIZES = TEXT_SIZES
 M.BULLETS = BULLETS
 M.BULLET_NAMES = BULLET_NAMES
@@ -217,6 +232,7 @@ M.gap = gap
 M.sectionLabel = sectionLabel
 M.stat = stat
 M.row = row
+M.denseRow = denseRow
 M.contentWidth = contentWidth
 M.nextColumn = nextColumn
 M.push = pushLayoutStyle

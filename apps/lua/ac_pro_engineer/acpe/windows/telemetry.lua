@@ -21,6 +21,7 @@ local pushRole = layout.pushRole
 local sectionLabel = layout.sectionLabel
 local contentWidth = layout.contentWidth
 local row = layout.row
+local denseRow = layout.denseRow
 local text = format.text
 local shown = frame.shown
 local hasFlag = frame.hasFlag
@@ -63,7 +64,7 @@ local function drawTelemetryBody()
 
   sectionLabel('CORNERS')
   for i = 1, 4 do
-    row(TYRE_LABEL[i], string.format('%s  %s  %s  %.0f%%',
+    denseRow(TYRE_LABEL[i], string.format('%s  %s  %s  %.0f%%',
       pressureText(shown.tyre_pressure_psi[i]),
       tempText(shown.tyre_temp_c[i]),
       tempText(shown.brake_temp_c[i]),

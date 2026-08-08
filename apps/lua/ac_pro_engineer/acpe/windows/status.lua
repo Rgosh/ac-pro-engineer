@@ -28,7 +28,11 @@ local M = {}
 
 local function drawStatusBody()
   sectionLabel('LINK')
-  row('mapping', frame.MMF_NAME, frame.opened() and COLOR.good or COLOR.bad)
+  -- The mapping's name is the longest string in the panel, and at 46% of the
+  -- width in body text it lost its `.v1` off the right-hand edge — which is
+  -- precisely the character that matters when the question is whether the
+  -- bridge mapped the name this build looks for.
+  layout.denseRow('mapping', frame.MMF_NAME, frame.opened() and COLOR.good or COLOR.bad)
   row('state', not frame.opened() and 'not opened' or (frame.live() and 'live' or 'stale'),
     frame.live() and COLOR.good or COLOR.warn)
   -- Live and no car is the normal state in a pit garage, and it used to be
