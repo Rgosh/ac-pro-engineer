@@ -123,6 +123,29 @@ them can be rebound.
 
 ### 🐞 Fixed
 
+- **`[B]` fetched the newest published bridge, not the one for this release.**
+  The bridge is not republished every time, so those are usually different
+  things — and a v0.3.5 application beside a v0.3.4 bridge cannot work at all.
+  Pressing `[B]` found v0.3.4 as the newest carrying a bridge, compared it with
+  the v0.3.4 already on disk and said "nothing to fetch": correct by its own
+  rule, useless to the person reading it, indistinguishable from "everything is
+  fine". It now takes this release's own bridge first, replaces an older one
+  under a newer application, and when there is genuinely nothing to take it
+  says which of the two situations that is — with the command to build one.
+- **Three overlay keys were written into a string.** `[I]`, `[U]` and `[C]` were
+  matched as letters and printed as letters, which is the one thing this
+  project's own rules forbid: a caption naming a key that has been rebound is
+  worse than no caption. All three are bindings now, listed in Settings → KEYS
+  and rebindable. That exposed the conflict checker comparing every binding
+  against every other regardless of where it fires — so it would have refused
+  `C` for either `analysis_compare` or the new diagnostics, a key that already
+  works on both tabs. Tab-local keys sharing a letter is the design; the
+  checker knows that now.
+- **`Again` in the panel's console repeated the wrong command.** It re-runs the
+  last one, and the last one was recorded only when it came from the text
+  field. The seven quick buttons go straight to the runner and did not record
+  themselves, so `4K` then `Again` re-ran whatever had been typed before — and
+  nothing at all on a session where nothing had been.
 - **Pressing `[B]` on the launcher's overlay card killed the application.**
   `reqwest::blocking` builds a private tokio runtime and drops it while
   constructing a client, and dropping a runtime from a thread already inside one

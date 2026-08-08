@@ -201,7 +201,16 @@ cargo run -p ac_core --example bridge_probe
 ```
 
 It reports the bridge on disk, the bridge running, and the version, protocol and
-mapped size of each against what this build needs. The launcher's overlay card
+mapped size of each against what this build needs. The same report is a screen
+in the application — `[C]` on **Settings → OVERLAY** — so none of this needs a
+terminal or a checkout.
+
+**Which bridge `[B]` fetches.** The one published with *this* release, and only
+if there is none, the newest there is. The bridge is not republished every time,
+so "newest published" is often older than the application asking for it — and a
+bridge one release behind can be the one that cannot serve the frame. If no
+bridge for this release has been published, the card says exactly that and gives
+you the command to build one, rather than "nothing to fetch". The launcher's overlay card
 shows the same verdict in one line, and **[B]** on that card downloads a
 published bridge — verifying it before it replaces anything and keeping the old
 one as `shm-bridge.exe.previous`.
@@ -527,14 +536,17 @@ sub-tabs, so one window answers "what is going on" instead of three.
 | **D** | Setup | Download the selected setup, or open the browser |
 | **PgUp / PgDn** | Setup | Scroll the details pane |
 | **A S D F G** | Settings | Jump to a settings category |
-| **I** / **U** | Settings → OVERLAY | Install / uninstall the in-game panel |
+| **I** / **U** | Settings → OVERLAY | Install / remove the in-game panel |
+| **C** | Settings → OVERLAY | Overlay diagnostics — why the panel is blank |
 | **O** / **H** | Launcher | Open the review page / hide that banner |
 
 **All of these are defaults.** **Settings → KEYS `[G]`** rebinds any of them:
 `ENTER` arms the capture, the next key you press becomes the binding, `DEL`
 restores the default and `ESC` cancels. A key another action already holds is
 refused with the name of the action holding it, rather than silently shadowing
-it. `?` and `Q` stay fixed, because the help modal names them in places a binding
+it — and two keys on *different* tabs are not a clash, so `C` compares laps on
+Analysis and opens the overlay diagnostics on Settings without either refusing
+the other. `?` and `Q` stay fixed, because the help modal names them in places a binding
 cannot reach.
 
 Bindings are stored as text in `config.json` (`"f1"`, `"ctrl+s"`,
