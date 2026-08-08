@@ -309,6 +309,35 @@ them can be rebound.
   one in the advice about it.
 - **Brakes are named after wheels, not numbers.** It was "Brake 1"…"Brake 4" —
   the only place in the application where the corners were numbered.
+- **The camber advice stopped firing on every straight.** It read the
+  inner-minus-outer tyre temperature of the frame in front of it, and on a
+  straight a correctly cambered tyre has no spread at all — so above 50 km/h it
+  published "FL/FR/RL/RR contact patch inefficient", four of the panel's eight
+  lines, about a car that was fine. Camber only shows in that spread while the
+  tyre is loaded sideways, so the spread is now averaged over the frames where
+  the car is actually cornering (above 0.5 g), and nothing is said until there
+  is a second of that behind it. The four corners are folded into one line the
+  same way the wear and pressure advice already was.
+- **The camber advice names the camber the car is running.** It used to print
+  the setup file's `CAMBER_LF VALUE=-9` as "now: -9" beside a game showing
+  −1.3°: that number is a step index into a range that lives inside the car's
+  `data.acd`, so nothing outside AC can turn it into degrees. AC publishes
+  `camberRAD` per wheel in shared memory and the application had been carrying
+  the field unread since the struct was written. The advice reads it, and
+  negates the right-hand corners — AC reports each wheel in its own frame, so a
+  symmetric car reads −1.3° on the left and +1.3° on the right.
+- **The post-stint camber verdict was backwards half the time.** The Setup
+  Wizard took `(inner − outer).abs()`, and the sign is the entire message: a
+  front tyre whose *outer* edge ran 13 °C hotter is a car short of negative
+  camber, and `abs` sent it to the branch that says to take camber out. It also
+  judged the whole front axle from FL alone, which reads a track's handedness as
+  a setup problem; it is both fronts now, and an outer edge running hot is named
+  as itself rather than reported as an evenly warmed tyre.
+- The simulator writes `camber_rad` and the three-lap test fixture writes an
+  outer tyre temperature. The fixture had an 88 °C inner edge against a default
+  0 °C outer one — an 88-degree spread no tyre has run — and the "the engineer
+  produced advice" assertion in the integration test was resting entirely on the
+  camber lines that spread produced.
 
 ### 📖 Documentation
 

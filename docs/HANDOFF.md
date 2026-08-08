@@ -1,8 +1,8 @@
 # Handoff — the in-game overlay
 
-State as of 2026-08-07, at v0.3.5. Read this first in a new session.
+State as of 2026-08-08, at v0.3.5. Read this first in a new session.
 
-`main` is pushed to `origin`, 231 tests, clippy and fmt clean on Linux **and**
+`main` is pushed to `origin`, 308 tests, clippy and fmt clean on Linux **and**
 `x86_64-pc-windows-gnu`. Check both before pushing:
 
 ```bash
@@ -142,6 +142,19 @@ top of the release. What changed under it:
 - **the engineer groups per-corner findings.** Four cold tyres are one line, not
   four, so a car with four problems does not publish four lines about one of
   them.
+- **camber is judged on cornering frames, and reported in degrees.** The check
+  read the inner-minus-outer tyre temperature of the current frame, which on a
+  straight is zero for a tyre with the right camber — so above 50 km/h it filled
+  four of the panel's eight lines with "contact patch inefficient" about a car
+  that was fine. It is averaged over frames above 0.5 g now, grouped into one
+  line, and the "now:" in the advice comes from `camberRAD` in AC's physics page
+  rather than from `CAMBER_LF VALUE=` in the setup file. That value is a step
+  index into a range inside the car's `data.acd` — an abarth500 at `VALUE=-9`
+  runs about −1.3°, and no reading of the file gets from one to the other, so
+  the shared-memory field is the only source of camber in degrees this program
+  has. `setup_manager::generate_diff` still divides it by ten to label the setup
+  comparison; the column is a difference between two setups, so it is
+  proportional but the unit on it is a guess.
 
 ## The one thing that blocked a beta, and how v0.3.4 answered it
 
