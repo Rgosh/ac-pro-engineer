@@ -104,6 +104,28 @@ them can be rebound.
   shape and one keystroke away from the same crash. Every blocking request in
   the crate is now either behind that hop or the first thing on a thread of its
   own.
+- **The panel forgot every checkbox, and the reason was not that it failed to
+  save.** `settings = stored` made the panel's live settings table *be* CSP's
+  `ac.storage` proxy, so every read and write went through its metatable. A
+  proxy that accepts an assignment and does nothing with it did not merely fail
+  to persist the value — it lost it outright, because there was no table
+  underneath holding it. Tick a box, and the next frame read it back out of the
+  proxy and drew it unticked again. The panel owns a plain table now; storage is
+  read out of once and written to on save, and it is also cheaper, since these
+  are read every frame in the draw path.
+- **The settings are kept in a file as well.** `ac_pro_engineer_overlay.lua`, in
+  the folder CSP names, written on every change and read at startup, winning
+  over storage when they disagree — it is only ever written by a change the
+  driver made. Plain text that can be opened, edited or deleted, which makes
+  "did it save" a question with an answer; the Units tab shows the path. Where
+  the Lua sandbox withholds file access the panel behaves exactly as before and
+  says so.
+- **Settings typed into the console did not redraw or save.** No
+  `format.rebuild`, so a unit typed there did not reach the drawn strings until
+  the next frame arrived from the application — with the feed stopped,
+  `--units f` appeared to do nothing. And no `store.save`, so it lasted until
+  some other control happened to trigger one. The seven one-press buttons go
+  through the same function.
 - **A checkout ran whichever bridge happened to be nearest, not the one built
   for it.** There were two different searches for `shm-bridge.exe`: the
   launcher's card and `bridge_probe` used one that knows about
