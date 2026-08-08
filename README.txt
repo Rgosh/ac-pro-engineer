@@ -1,36 +1,55 @@
 ========================================
-       AC PRO ENGINEER v0.2.2
+       AC PRO ENGINEER v0.3.5
 ========================================
 
-Thank you for downloading AC Pro Engineer!
+Telemetry, race engineering and an in-game overlay for Assetto Corsa.
+Full documentation is in README.md next to this file.
 
-[ INSTALLATION FOR WINDOWS ]
-Open the "Windows" folder and run the executable (ac_pro_engineer.exe). No installation is required. 
-Make sure Assetto Corsa or ACC is running so the app can connect to the shared memory and read telemetry.
 
-[ LINUX & STEAM DECK USERS ]
-AC Pro Engineer now fully supports Linux and Steam Deck natively!
+[ WINDOWS ]
 
-How it works: The app uses a custom background process (`shm-bridge.exe`) that is injected directly into the game's Proton/Wine sandbox. This allows the native Linux application to read the game's memory with zero lag.
+Run ac_pro_engineer.exe. There is nothing to install.
 
-1. Open the "Linux" folder.
-2. Ensure both the native binary (`ac_pro_engineer`) and the `shm-bridge.exe` file are kept together in the same folder.
-3. You must have `protontricks` installed on your system to bridge the telemetry out of the game's sandbox.
-4. Run `./ac_pro_engineer` in your terminal.
+Start Assetto Corsa as well — the application reads the game's shared
+memory, so with no session running it sits on its launcher screen.
 
-*Note for advanced users: If you use a custom Proton/Wine prefix (like Lutris, Heroic) or a Flatpak version of Protontricks, you can set the `AC_PROTON_PATH` environment variable before launching the app.*
-*(e.g., AC_PROTON_PATH="flatpak run com.github.Matoking.protontricks" ./ac_pro_engineer)*
+The in-game panel installs itself into Assetto Corsa the first time the
+application starts. Then, in game: CSP's app sidebar -> enable
+"AC Pro Engineer". If the automatic install cannot work (a game folder
+it may not write to, an install in an unusual place, a second copy of
+AC), the panel is also in the overlay\ folder here — drop the
+ac_pro_engineer folder into:
 
-[ IMPORTANT: ANTIVIRUS FALSE POSITIVES ]
-If Windows Defender or your antivirus software flags this file, please know that it is a FALSE POSITIVE.
-Why does this happen? 
-1. The application is new and currently lacks an expensive digital publisher certificate.
-2. The core functionality requires the app to read the memory of another running process (the game's telemetry), which heuristics often mistake for malicious behavior.
+    <Assetto Corsa>\apps\lua\
 
-Please add the executable to your antivirus exclusions/whitelist to use the tool. The project is completely open-source, and you can verify the code yourself.
+The panel needs Custom Shaders Patch. It does not need shm-bridge.exe:
+on Windows the application creates the shared mapping itself. The bridge
+is a Linux-only piece.
+
+
+[ LINUX & STEAM DECK ]
+
+This archive is the Windows build. The Linux build ships as its own
+archive and additionally needs shm-bridge.exe, which is run inside the
+game's Proton prefix through protontricks — see the "Linux / Steam Deck
+/ Proton" section of README.md.
+
+
+[ IF YOUR ANTIVIRUS COMPLAINS ]
+
+It is a false positive. Two reasons together trip the heuristics: the
+binary is new and carries no publisher certificate, and reading another
+process's memory is exactly what telemetry is. Add it to your
+exclusions. The whole thing is open source and can be built from the
+repository below.
+
 
 [ LINKS & SUPPORT ]
-Source Code & Issue Tracker: https://github.com/Rgosh/ac-pro-engineer
-Updates & Reviews: https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/
 
-Enjoy your racing!
+Source and issues:
+  https://github.com/Rgosh/ac-pro-engineer
+
+Updates and reviews:
+  https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/
+
+Enjoy your racing.

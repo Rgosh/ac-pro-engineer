@@ -552,6 +552,23 @@ mod tests {
         );
     }
 
+    /// `README.txt` is the first file anyone opens in a downloaded archive,
+    /// and it announces a version in its banner. It said v0.2.2 for thirteen
+    /// releases — including in a build handed to someone to test — alongside
+    /// install directions for a bundle layout that had stopped existing.
+    ///
+    /// Every other version in this project is pinned by a test; this is the
+    /// one a user reads first and it was the one nothing checked.
+    #[test]
+    fn the_readme_announces_this_builds_version() {
+        let readme = include_str!("../../../README.txt");
+        let expected = format!("AC PRO ENGINEER v{}", env!("CARGO_PKG_VERSION"));
+        assert!(
+            readme.contains(&expected),
+            "README.txt's banner is stale; it should read {expected}"
+        );
+    }
+
     /// The report is what the launcher card draws, so reading the release out
     /// of an installed panel has to work on a panel this installer wrote.
     #[test]
