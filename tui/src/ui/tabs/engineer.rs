@@ -784,7 +784,16 @@ fn render_sector_advice(
         )));
         lines.push(Line::from("——————————————————————————————————————"));
 
-        let front_camber_diff: f32 = (fl_temp_i - fl_temp_o).abs();
+        // Inner minus outer, keeping its sign, over both front tyres.
+        //
+        // This was `(fl_temp_i - fl_temp_o).abs()`, and the sign is the whole
+        // point: a front tyre whose *outer* edge ran 13° hotter than its inner
+        // one is a car with too little negative camber, and `abs` sent it to
+        // the branch that says to take camber out — the opposite of the fix.
+        // One corner is also the wrong sample. A lap has left and right
+        // corners, so FL and FR average out; either one on its own reads the
+        // track's handedness as a camber problem.
+        let front_camber_diff: f32 = ((fl_temp_i - fl_temp_o) + (fr_temp_i - fr_temp_o)) / 2.0;
         if front_camber_diff > 12.0 {
             lines.push(Line::from(vec![
                 warn_tag.clone(),
@@ -812,13 +821,24 @@ fn render_sector_advice(
                 Style::default().fg(Color::Gray),
             )));
         } else if front_camber_diff < 4.0 {
+            // Below zero the outer edge is the hot one, which is the same
+            // verdict for a different reason and deserves to be named as
+            // itself rather than reported as an evenly warmed tyre.
+            let outer_hotter = front_camber_diff < 0.0;
             lines.push(Line::from(vec![
                 warn_tag.clone(),
                 Span::styled(
-                    if is_ru {
-                        " Шина прогрета слишком равномерно."
-                    } else {
-                        " Tyre heated too evenly."
+                    match (outer_hotter, is_ru) {
+                        (true, true) => format!(
+                            " Внешняя часть горячее внутренней ({}).",
+                            fmt.format_temp_delta(-front_camber_diff)
+                        ),
+                        (true, false) => format!(
+                            " Outer edge hotter than inner ({}).",
+                            fmt.format_temp_delta(-front_camber_diff)
+                        ),
+                        (false, true) => " Шина прогрета слишком равномерно.".to_string(),
+                        (false, false) => " Tyre heated too evenly.".to_string(),
                     },
                     Style::default().fg(Color::Yellow),
                 ),
