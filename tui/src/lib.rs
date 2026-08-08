@@ -530,8 +530,12 @@ impl AppState {
         }
 
         let offer = self.bridge_offer.clone();
+        let wanted = ac_core::updater::CURRENT_VERSION;
         thread::spawn(move || {
-            let Ok(remote) = bridge_update::latest_published() else {
+            // This release's own bridge if it is published, and only otherwise
+            // the newest. Asking for "the newest" offered a v0.3.4 bridge to a
+            // v0.3.5 application, which is the version that cannot serve it.
+            let Ok(remote) = bridge_update::best_for(wanted) else {
                 // Offline, rate-limited, no release with a bridge in it. None
                 // of those is worth a message on a card about the overlay.
                 return;
@@ -541,9 +545,9 @@ impl AppState {
                 .as_deref()
                 .and_then(bridge::version_in_executable);
 
-            if bridge_update::is_worth_fetching(&remote.version, local.as_deref()) {
+            if bridge_update::should_fetch(&remote.version, local.as_deref(), wanted) {
                 info!(
-                    "A published shm-bridge v{} is newer than the one here ({})",
+                    "A published shm-bridge v{} is worth taking over the one here ({})",
                     remote.version,
                     local.as_deref().unwrap_or("unknown")
                 );
@@ -580,7 +584,11 @@ impl AppState {
             return;
         }
 
-        let remote = match bridge_update::latest_published() {
+        // The bridge published with *this* release, not merely the newest one
+        // there is. The two are usually different, because the bridge is not
+        // republished every time.
+        let wanted = ac_core::updater::CURRENT_VERSION;
+        let remote = match bridge_update::best_for(wanted) {
             Ok(remote) => remote,
             Err(error) => {
                 self.bridge_fetch_status = format!("could not check GitHub: {error}");
@@ -601,19 +609,33 @@ impl AppState {
         };
 
         let local = bridge::version_in_executable(&destination);
-        if !bridge_update::is_worth_fetching(&remote.version, local.as_deref()) {
-            self.bridge_fetch_status = format!(
-                "the bridge here is v{} and the newest published is v{} — nothing to fetch",
-                local.as_deref().unwrap_or("?"),
-                remote.version
-            );
+        if !bridge_update::should_fetch(&remote.version, local.as_deref(), wanted) {
+            let here = local.as_deref().unwrap_or("?");
+            // Naming which of the two situations it is. "Nothing to fetch"
+            // used to be the answer both when everything was fine and when
+            // the bridge was too old and no replacement existed — and in the
+            // second case the panel does not work, so the message read as the
+            // application refusing to help.
+            self.bridge_fetch_status = if here == wanted {
+                format!("the bridge here is v{here}, the same release as this application")
+            } else {
+                format!(
+                    "the bridge here is v{here} and the newest published is v{} —                      no bridge for v{wanted} has been published yet, so build one:                      cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu",
+                    remote.version
+                )
+            };
             return;
         }
 
         self.bridge_fetch_status = match bridge_update::download_to(&remote, &destination) {
             Ok(path) => format!(
-                "fetched shm-bridge v{} into {} — restart it to pick it up",
+                "fetched shm-bridge v{}{} into {} — restart it to pick it up",
                 remote.version,
+                if remote.version == wanted {
+                    ""
+                } else {
+                    " (not this release's own; no bridge for it is published yet)"
+                },
                 path.display()
             ),
             Err(error) => format!("could not fetch v{}: {error}", remote.version),

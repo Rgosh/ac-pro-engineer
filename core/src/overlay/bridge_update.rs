@@ -92,6 +92,32 @@ pub fn is_worth_fetching(remote: &str, local: Option<&str>) -> bool {
     }
 }
 
+/// Whether fetching `remote` improves on `local` for an application at
+/// `app_version`.
+///
+/// [`is_worth_fetching`] answers "is the remote newer", which is the wrong
+/// question. What matters is whether the bridge on this machine is the one
+/// built for the application running it: a v0.3.4 bridge under a v0.3.5
+/// application maps too few bytes and the panel waits forever, and "the newest
+/// published is also v0.3.4" is not a reason to leave it there — it is a reason
+/// to say that no bridge for this release has been published yet.
+pub fn should_fetch(remote: &str, local: Option<&str>, app_version: &str) -> bool {
+    match local {
+        // Nothing here, or something built before the version marker existed.
+        None => true,
+        // Already the same file.
+        Some(local) if local == remote => false,
+        // Already the application's own bridge. Something newer existing does
+        // not make this one wrong, and replacing it cannot help.
+        Some(local) if local == app_version => false,
+        // Worth it when it is the application's own version, and otherwise
+        // only when it is actually newer than what is here.
+        Some(local) => {
+            remote == app_version || compare_versions(remote, local) == std::cmp::Ordering::Greater
+        }
+    }
+}
+
 /// How a release delivers the bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delivery {
@@ -136,6 +162,40 @@ fn classify_asset(name: &str) -> Option<Delivery> {
 /// release that *ships one* is the answer, and it is not always the newest
 /// release. Drafts and prereleases are skipped.
 pub fn latest_published() -> Result<RemoteBridge, String> {
+    published_bridges()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("no release of {GITHUB_OWNER}/{GITHUB_REPO} publishes {BRIDGE_EXE}"))
+}
+
+/// The bridge to fetch for an application at `app_version`.
+///
+/// **The release's own bridge first**, and only then the newest one there is.
+/// The two are not usually the same thing: the bridge is not republished with
+/// every release, so "newest published" is often older than the application
+/// asking — and picking it produced the worst possible answer, "the bridge
+/// here is v0.3.4 and the newest published is v0.3.4 — nothing to fetch", on a
+/// machine where the panel could not work *because* the bridge was v0.3.4.
+///
+/// A bridge from the same release as the application is the one guaranteed to
+/// map the frame this build writes. Anything else is a guess that happens to
+/// be right most of the time.
+pub fn best_for(app_version: &str) -> Result<RemoteBridge, String> {
+    let published = published_bridges()?;
+    if let Some(exact) = published
+        .iter()
+        .find(|bridge| bridge.version == app_version)
+    {
+        return Ok(exact.clone());
+    }
+    published
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("no release of {GITHUB_OWNER}/{GITHUB_REPO} publishes {BRIDGE_EXE}"))
+}
+
+/// Every published bridge, newest release first.
+pub fn published_bridges() -> Result<Vec<RemoteBridge>, String> {
     let url = format!("https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases");
     info!("Looking for a published shm-bridge at {url}");
 
@@ -192,10 +252,7 @@ pub fn latest_published() -> Result<RemoteBridge, String> {
     }
 
     found.sort_by(|a, b| compare_versions(&b.version, &a.version));
-    found
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("no release of {GITHUB_OWNER}/{GITHUB_REPO} publishes {BRIDGE_EXE}"))
+    Ok(found)
 }
 
 /// Download `remote` and put it at `destination`.
@@ -413,6 +470,33 @@ mod tests {
     #[test]
     fn a_bridge_with_no_marker_is_always_worth_replacing() {
         assert!(is_worth_fetching("0.3.3", None));
+    }
+
+    /// The decision that matters is "is this the bridge for the application
+    /// running", not "is it newer". The middle case is the one this branch
+    /// exists for, and the one that used to leave a driver stuck.
+    #[test]
+    fn the_bridge_for_this_release_is_the_one_worth_having() {
+        // Nothing here at all, or something older than the marker.
+        assert!(should_fetch("0.3.5", None, "0.3.5"));
+
+        // The application's own bridge is published and this machine has an
+        // older one: take it, even though it is only one patch apart.
+        assert!(should_fetch("0.3.5", Some("0.3.4"), "0.3.5"));
+
+        // The application's own bridge is *not* published, and the newest is
+        // the same one already here. Nothing to fetch — and the caller has to
+        // say so as "none published for this release", not "you are up to
+        // date", because the panel does not work in this state.
+        assert!(!should_fetch("0.3.4", Some("0.3.4"), "0.3.5"));
+
+        // Already the application's own bridge. Something newer existing does
+        // not make this one wrong.
+        assert!(!should_fetch("0.3.6", Some("0.3.5"), "0.3.5"));
+
+        // Neither matches the application, so fall back to newer-is-better.
+        assert!(should_fetch("0.3.4", Some("0.3.3"), "0.3.5"));
+        assert!(!should_fetch("0.3.2", Some("0.3.3"), "0.3.5"));
     }
 
     #[test]
