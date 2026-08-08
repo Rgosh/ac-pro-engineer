@@ -277,6 +277,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 temp_base - 3.0,
             ];
             (*phys).wheels_pressure = [27.4, 27.6, 27.2, 27.4];
+
+            // AC reports camber per wheel, in the wheel's own frame, so the
+            // two sides mirror: the same negative camber reads negative on the
+            // left and positive on the right. Left at zero, everything that
+            // reads this field showed a car with no camber at all.
+            (*phys).camber_rad = [
+                (-1.3f32).to_radians(),
+                1.3f32.to_radians(),
+                (-2.0f32).to_radians(),
+                2.0f32.to_radians(),
+            ];
             (*phys).brake_temp = [480.0, 490.0, 390.0, 400.0];
 
             // Wear counts down from 100 the way AC publishes it, rears faster

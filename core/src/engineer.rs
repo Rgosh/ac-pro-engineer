@@ -111,6 +111,24 @@ pub struct EngineerStats {
     pub predicted_lap_time: f32,
     pub low_speed_rake: f32,
     pub high_speed_rake: f32,
+    /// Inner-minus-outer surface temperature per corner, averaged over the
+    /// frames where the tyre was actually loaded sideways.
+    ///
+    /// A tyre says nothing about camber on a straight. Upright, both edges run
+    /// at the same temperature and the spread reads about zero — which the
+    /// first version of `analyze_camber` read as "contact patch inefficient"
+    /// and published on every straight, four corners at a time, filling the
+    /// panel's eight advice lines with one wrong answer. Camber only shows in
+    /// the spread while the tyre is loaded, so the sample is taken while the
+    /// car is cornering and the verdict comes from the average.
+    ///
+    /// All four corners are sampled rather than the loaded pair: left-handers
+    /// load the right tyres and right-handers the left, so over a lap of a
+    /// circuit both sides get their turn. An oval would skew it.
+    pub camber_spread: [f32; 4],
+    /// Ticks of cornering behind `camber_spread`. Below `CAMBER_MIN_FRAMES`
+    /// the average is one corner's worth of noise and nothing is published.
+    pub camber_frames: u32,
     pub base_tyre_wear: [f32; 4],
     pub stint_laps: i32,
     pub last_lap_count: i32,
@@ -147,6 +165,8 @@ impl EngineerStats {
             predicted_lap_time: 0.0,
             low_speed_rake: 0.0,
             high_speed_rake: 0.0,
+            camber_spread: [0.0; 4],
+            camber_frames: 0,
             base_tyre_wear: [100.0; 4],
             stint_laps: 0,
             last_lap_count: -1,
@@ -248,6 +268,24 @@ impl Engineer {
                 self.stats.high_speed_rake = rake_mm;
             }
             self.stats.high_speed_rake = self.stats.high_speed_rake * 0.98 + rake_mm * 0.02;
+        }
+
+        // acc_g is [lateral, vertical, longitudinal]. Half a g sideways is a
+        // corner being driven; a lane change on a straight does not reach it,
+        // and a straight is where the inner and outer edges of a correctly
+        // cambered tyre read the same temperature.
+        if phys.speed_kmh > 50.0 && phys.acc_g[0].abs() > 0.5 {
+            let first_sample = self.stats.camber_frames == 0;
+            self.stats.camber_frames = self.stats.camber_frames.saturating_add(ticks_norm);
+            for i in 0..4 {
+                let spread = phys.tyre_temp_i[i] - phys.tyre_temp_o[i];
+                if first_sample {
+                    self.stats.camber_spread[i] = spread;
+                } else {
+                    self.stats.camber_spread[i] =
+                        self.stats.camber_spread[i] * 0.98 + spread * 0.02;
+                }
+            }
         }
 
         let current_laps = gfx.completed_laps;
@@ -480,7 +518,7 @@ impl Engineer {
         self.analyze_tyre_temperature(phys, &mut recommendations);
         self.analyze_tyre_wear(phys, &mut recommendations);
 
-        self.analyze_camber(phys, setup, &mut recommendations);
+        self.analyze_camber(phys, &mut recommendations);
         self.analyze_suspension(phys, &mut recommendations);
         self.analyze_brakes(phys, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
@@ -1033,163 +1071,136 @@ impl Engineer {
         push(&worn, Severity::Warning);
     }
 
-    fn analyze_camber(
-        &self,
-        phys: &AcPhysics,
-        setup: Option<&CarSetup>,
-        recs: &mut Vec<Recommendation>,
-    ) {
+    /// The camber a wheel is running, in degrees, in the car's frame rather
+    /// than the wheel's own.
+    ///
+    /// AC publishes `camberRAD` per wheel, and the two sides mirror each other:
+    /// an abarth500 sitting in the pits with the same setting on both front
+    /// wheels reads -0.023 rad on the left and +0.021 on the right. Negating
+    /// the right-hand corners puts all four on one scale, where negative means
+    /// the top of the tyre leans in — which is what a driver means by camber.
+    fn camber_degrees(phys: &AcPhysics, corner: usize) -> f32 {
+        let sign = if corner == 1 || corner == 3 {
+            -1.0
+        } else {
+            1.0
+        };
+        phys.camber_rad[corner].to_degrees() * sign
+    }
+
+    /// Cornering ticks needed before the camber average is worth publishing.
+    /// 60 ticks is a second of load, which is one long corner or two short
+    /// ones — enough that the average is not a single frame of noise.
+    const CAMBER_MIN_FRAMES: u32 = 60;
+
+    /// What the inner and outer edges of a tyre say about its camber.
+    ///
+    /// Judged on `stats.camber_spread`, which is only sampled while the car is
+    /// cornering — see the field. The instantaneous spread this used to read
+    /// is near zero on every straight, so it published four Info lines about
+    /// nothing every time the car left a corner.
+    fn analyze_camber(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
-        if phys.speed_kmh < 50.0 {
+        if self.stats.camber_frames < Self::CAMBER_MIN_FRAMES {
             return;
         }
         let fmt = self.config.formatter();
         let ideal_spread = 8.0;
 
+        let mut too_little: Vec<usize> = Vec::new();
+        let mut too_much: Vec<usize> = Vec::new();
         for i in 0..4 {
-            let temp_i = phys.tyre_temp_i[i];
-            let temp_o = phys.tyre_temp_o[i];
-            let spread = temp_i - temp_o;
-
-            let name = match i {
-                0 => "FL",
-                1 => "FR",
-                2 => "RL",
-                3 => "RR",
-                _ => "",
-            };
-
+            let spread = self.stats.camber_spread[i];
             if spread < 2.0 {
-                let action_text = if let Some(s) = setup {
-                    let current_camber = match i {
-                        0 => s.camber_lf,
-                        1 => s.camber_rf,
-                        2 => s.camber_lr,
-                        3 => s.camber_rr,
-                        _ => 0,
-                    };
-                    if ru {
-                        format!(
-                            "Увеличить развал (сейчас: {}). Если предел -> смягчите ARB",
-                            current_camber
-                        )
-                    } else {
-                        format!(
-                            "Increase Camber (now: {}). If maxed -> soften ARB",
-                            current_camber
-                        )
-                    }
-                } else {
-                    if ru {
-                        "Увеличить отриц. развал".to_string()
-                    } else {
-                        "Increase Neg. Camber".to_string()
-                    }
-                };
-
-                recs.push(Recommendation {
-                    component: if ru {
-                        "Подвеска".to_string()
-                    } else {
-                        "Suspension".to_string()
-                    },
-                    category: if ru {
-                        "Развал".to_string()
-                    } else {
-                        "Camber".to_string()
-                    },
-                    severity: Severity::Info,
-                    // The message hardcoded "C" while the parameter beside it
-                    // was labelled with the configured symbol, so with
-                    // Fahrenheit selected the user saw a Celsius number
-                    // labelled °F. A spread is a difference, so it converts
-                    // by scale only -- `format_temp` would add 32.
-                    message: if ru {
-                        format!(
-                            "{} Пятно контакта не эффективно (I-O: {})",
-                            name,
-                            fmt.format_temp_delta(spread)
-                        )
-                    } else {
-                        format!(
-                            "{} Contact patch inefficient (I-O: {})",
-                            name,
-                            fmt.format_temp_delta(spread)
-                        )
-                    },
-                    action: action_text,
-                    parameters: vec![Parameter {
-                        name: "Temp Spread".to_string(),
-                        current: fmt.temp_delta_val(spread),
-                        target: fmt.temp_delta_val(ideal_spread),
-                        unit: fmt.temp_symbol().to_string(),
-                    }],
-                    confidence: 0.7,
-                });
+                too_little.push(i);
             } else if spread > 15.0 {
-                let action_text = if let Some(s) = setup {
-                    let current_camber = match i {
-                        0 => s.camber_lf,
-                        1 => s.camber_rf,
-                        2 => s.camber_lr,
-                        3 => s.camber_rr,
-                        _ => 0,
-                    };
-                    if ru {
-                        format!(
-                            "Уменьшить развал (сейчас: {}). Если предел -> зажмите ARB",
-                            current_camber
-                        )
-                    } else {
-                        format!(
-                            "Decrease Camber (now: {}). If maxed -> stiffen ARB",
-                            current_camber
-                        )
-                    }
-                } else {
-                    if ru {
-                        "Уменьшить отриц. развал".to_string()
-                    } else {
-                        "Decrease Neg. Camber".to_string()
-                    }
-                };
-
-                recs.push(Recommendation {
-                    component: if ru {
-                        "Подвеска".to_string()
-                    } else {
-                        "Suspension".to_string()
-                    },
-                    category: if ru {
-                        "Развал".to_string()
-                    } else {
-                        "Camber".to_string()
-                    },
-                    severity: Severity::Warning,
-                    message: if ru {
-                        format!(
-                            "{} Перегрев внутренней части (I-O: {})",
-                            name,
-                            fmt.format_temp_delta(spread)
-                        )
-                    } else {
-                        format!(
-                            "{} Inner edge overheating (I-O: {})",
-                            name,
-                            fmt.format_temp_delta(spread)
-                        )
-                    },
-                    action: action_text,
-                    parameters: vec![Parameter {
-                        name: "Temp Spread".to_string(),
-                        current: fmt.temp_delta_val(spread),
-                        target: fmt.temp_delta_val(ideal_spread),
-                        unit: fmt.temp_symbol().to_string(),
-                    }],
-                    confidence: 0.8,
-                });
+                too_much.push(i);
             }
         }
+
+        // Four corners of one problem are one problem — the same grouping the
+        // wear and pressure advice does, and for the same reason: the panel
+        // shows eight lines, and four of them saying "FL", "FR", "RL", "RR"
+        // about one setting crowds out everything else the engineer noticed.
+        let mut push = |corners: &[usize], more_camber: bool| {
+            if corners.is_empty() {
+                return;
+            }
+            let where_ = Self::corner_phrase(corners, ru);
+            // The worst corner of the group is the one worth naming: the
+            // furthest from the window for too little camber, the hottest
+            // inner edge for too much.
+            let spread = corners
+                .iter()
+                .map(|i| self.stats.camber_spread[*i])
+                .fold(f32::NAN, if more_camber { f32::min } else { f32::max });
+            // AC publishes the camber it is running, so the advice can say what
+            // to change *from*. The setup file cannot: `CAMBER_LF VALUE=-9` is
+            // a step index into a range that lives inside the car's `data.acd`,
+            // and printing it read as "now: -9" beside a car showing -1.3°.
+            let now = corners
+                .iter()
+                .map(|i| Self::camber_degrees(phys, *i))
+                .sum::<f32>()
+                / corners.len() as f32;
+            let now_clause = if now.abs() > 0.05 {
+                format!(" ({}: {now:.1}°)", if ru { "сейчас" } else { "now" })
+            } else {
+                String::new()
+            };
+
+            recs.push(Recommendation {
+                component: if ru { "Подвеска" } else { "Suspension" }.to_string(),
+                category: if ru { "Развал" } else { "Camber" }.to_string(),
+                severity: if more_camber {
+                    Severity::Info
+                } else {
+                    Severity::Warning
+                },
+                // The message hardcoded "C" while the parameter beside it
+                // was labelled with the configured symbol, so with
+                // Fahrenheit selected the user saw a Celsius number
+                // labelled °F. A spread is a difference, so it converts
+                // by scale only -- `format_temp` would add 32.
+                message: format!(
+                    "{where_} {} (I-O: {})",
+                    match (more_camber, ru) {
+                        (true, true) => "пятно контакта не эффективно",
+                        (true, false) => "contact patch inefficient",
+                        (false, true) => "перегрев внутренней части",
+                        (false, false) => "inner edge overheating",
+                    },
+                    fmt.format_temp_delta(spread)
+                ),
+                action: match (more_camber, ru) {
+                    (true, true) => {
+                        format!("Больше отриц. развала{now_clause}. Если предел -> смягчите ARB")
+                    }
+                    (true, false) => {
+                        format!("More neg. camber{now_clause}. If maxed -> soften ARB")
+                    }
+                    (false, true) => {
+                        format!("Меньше отриц. развала{now_clause}. Если предел -> зажмите ARB")
+                    }
+                    (false, false) => {
+                        format!("Less neg. camber{now_clause}. If maxed -> stiffen ARB")
+                    }
+                },
+                parameters: corners
+                    .iter()
+                    .map(|i| Parameter {
+                        name: format!("{} I-O", CORNER_NAMES[*i]),
+                        current: fmt.temp_delta_val(self.stats.camber_spread[*i]),
+                        target: fmt.temp_delta_val(ideal_spread),
+                        unit: fmt.temp_symbol().to_string(),
+                    })
+                    .collect(),
+                confidence: if more_camber { 0.7 } else { 0.8 },
+            });
+        };
+
+        push(&too_much, false);
+        push(&too_little, true);
     }
 
     fn analyze_tyre_temperature(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
@@ -1675,6 +1686,138 @@ mod tests {
         ] {
             engineer.alert_timers.insert(key.to_string(), (aged, now));
         }
+    }
+
+    /// Drive `phys` through `update` often enough for the camber average to
+    /// have something behind it.
+    fn drive(engineer: &mut Engineer, phys: &AcPhysics, ticks: u32) {
+        let gfx = AcGraphics::default();
+        let session = crate::session_info::SessionInfo::default();
+        for _ in 0..ticks {
+            engineer.update(phys, &gfx, &session);
+        }
+    }
+
+    /// A tyre says nothing about camber while the car is upright: both edges
+    /// run the same temperature, the spread reads zero, and the old check read
+    /// that as "contact patch inefficient" — four Info lines, on every
+    /// straight, in the eight the panel has.
+    #[test]
+    fn a_straight_is_not_a_camber_problem() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+
+        let phys = AcPhysics {
+            speed_kmh: 240.0,
+            acc_g: [0.0, 1.0, 0.0],
+            tyre_temp_i: [90.0; 4],
+            tyre_temp_o: [90.0; 4],
+            ..Default::default()
+        };
+        drive(&mut engineer, &phys, 600);
+
+        let mut recs = Vec::new();
+        engineer.analyze_camber(&phys, &mut recs);
+        assert!(recs.is_empty(), "ten seconds of straight line: {recs:?}");
+    }
+
+    /// The same spread, measured while the tyre is loaded, is a real answer —
+    /// and it is one line for all four corners rather than four.
+    #[test]
+    fn four_corners_wanting_camber_are_one_piece_of_advice() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+
+        let phys = AcPhysics {
+            speed_kmh: 160.0,
+            acc_g: [1.2, 1.0, 0.0],
+            // Outer edge hotter than inner: not enough negative camber.
+            tyre_temp_i: [90.0; 4],
+            tyre_temp_o: [94.0; 4],
+            camber_rad: [
+                (-1.5f32).to_radians(),
+                1.5f32.to_radians(),
+                (-1.5f32).to_radians(),
+                1.5f32.to_radians(),
+            ],
+            ..Default::default()
+        };
+        drive(&mut engineer, &phys, 120);
+
+        let mut recs = Vec::new();
+        engineer.analyze_camber(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1, "one fact, one line: {recs:?}");
+        assert!(
+            recs[0].message.contains("All four"),
+            "and it says which corners: {}",
+            recs[0].message
+        );
+        // The number in the advice is the camber AC reports, not the setup
+        // file's step index — `CAMBER_LF VALUE=-9` used to be printed as
+        // "now: -9" beside a car the game showed at -1.3°.
+        assert!(
+            recs[0].action.contains("-1.5°"),
+            "the advice names the camber the car is running: {}",
+            recs[0].action
+        );
+    }
+
+    /// Inner edges cooking is the other direction, and it is a warning rather
+    /// than a note.
+    #[test]
+    fn inner_edges_cooking_ask_for_less_camber() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+
+        let phys = AcPhysics {
+            speed_kmh: 160.0,
+            acc_g: [-1.2, 1.0, 0.0],
+            tyre_temp_i: [110.0, 110.0, 90.0, 90.0],
+            tyre_temp_o: [90.0, 90.0, 82.0, 82.0],
+            ..Default::default()
+        };
+        drive(&mut engineer, &phys, 120);
+
+        let mut recs = Vec::new();
+        engineer.analyze_camber(&phys, &mut recs);
+
+        assert_eq!(recs.len(), 1, "{recs:?}");
+        assert!(
+            recs[0].message.contains("Fronts"),
+            "only the fronts are cooking: {}",
+            recs[0].message
+        );
+        assert_eq!(recs[0].severity, Severity::Warning);
+        assert!(
+            recs[0].action.contains("Less neg. camber"),
+            "{}",
+            recs[0].action
+        );
+    }
+
+    /// AC reports camber in each wheel's own frame, so the two sides mirror.
+    /// Reading them raw makes a symmetric car look like it has +1.5° on the
+    /// right, which is a car about to spin rather than a normal setup.
+    #[test]
+    fn the_two_sides_of_the_car_report_camber_on_one_scale() {
+        let phys = AcPhysics {
+            camber_rad: [
+                (-1.3f32).to_radians(),
+                1.3f32.to_radians(),
+                (-2.0f32).to_radians(),
+                2.0f32.to_radians(),
+            ],
+            ..Default::default()
+        };
+        for corner in 0..4 {
+            assert!(
+                Engineer::camber_degrees(&phys, corner) < 0.0,
+                "corner {corner} reads positive on a car with negative camber"
+            );
+        }
+        assert!((Engineer::camber_degrees(&phys, 0) + 1.3).abs() < 0.01);
+        assert!((Engineer::camber_degrees(&phys, 1) + 1.3).abs() < 0.01);
     }
 
     /// Four corners of one problem used to be four recommendations, which is

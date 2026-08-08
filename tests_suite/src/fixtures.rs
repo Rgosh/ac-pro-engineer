@@ -41,12 +41,24 @@ impl TelemetrySessionFixture {
                 // Dynamic tyre state
                 let wear_factor = 1.0 - (total_time / 1000.0) * 0.05;
 
+                let steer = (progress * std::f32::consts::TAU * 4.0).sin() * 0.3;
+                // A lap is corners, and the engineer only judges camber on
+                // frames where the tyre is loaded sideways. With acc_g left at
+                // zero this fixture drove three laps of Monza in a straight
+                // line, and the camber advice it asserted on came from an
+                // outer edge that was never written at all — 88 °C inside
+                // against a default 0 °C outside, an 88-degree spread no tyre
+                // has ever run.
+                let lat_g = steer * (speed_kmh / 120.0) * 3.0;
+                let inner = 88.0 + lap as f32 * 2.0;
+
                 let phys = AcPhysics {
                     speed_kmh,
                     rpms: (5000.0 + (speed_kmh / 220.0) * 3500.0) as i32,
                     gas: if step % 20 < 15 { 0.9 } else { 0.0 },
                     brake: if step % 20 >= 15 { 0.7 } else { 0.0 },
-                    steer_angle: (progress * std::f32::consts::TAU * 4.0).sin() * 0.3,
+                    steer_angle: steer,
+                    acc_g: [lat_g, 1.0, 0.0],
                     tyre_wear: [wear_factor; 4],
                     wheels_pressure: [
                         27.2 + (lap as f32 * 0.3),
@@ -54,7 +66,18 @@ impl TelemetrySessionFixture {
                         26.8,
                         26.9,
                     ],
-                    tyre_temp_i: [88.0 + lap as f32 * 2.0; 4],
+                    // The outer edge runs hotter than the inner: a car that
+                    // wants more negative camber, which is what the engineer
+                    // should say about it.
+                    tyre_temp_i: [inner; 4],
+                    tyre_temp_m: [inner + 1.5; 4],
+                    tyre_temp_o: [inner + 4.0; 4],
+                    camber_rad: [
+                        (-1.5f32).to_radians(),
+                        1.5f32.to_radians(),
+                        (-2.2f32).to_radians(),
+                        2.2f32.to_radians(),
+                    ],
                     // Fuel consumption
                     fuel: (50.0 - total_time * 0.02).max(1.0),
                     ..Default::default()
