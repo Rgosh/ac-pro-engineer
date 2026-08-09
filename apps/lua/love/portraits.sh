@@ -43,6 +43,7 @@ echo "Rendering the overlay's windows to PNG..."
 # The windows the manifest declares, at the sizes it declares them at.
 shot Overlay_Main      main      360x470
 shot Overlay_Engineer  engineer  380x180
+shot Overlay_Debrief   debrief   300x280
 shot Overlay_Telemetry telemetry 400x700
 shot Overlay_Status    status    380x330
 
@@ -56,6 +57,7 @@ shot Overlay_Waiting   main      360x470 --app-stopped
 # five tabs it is not showing.
 shot Overlay_Settings_Panel   settings 460x560 --app-tab Panel/Blocks
 shot Overlay_Settings_Advice  settings 460x560 --app-tab Advice
+shot Overlay_Settings_Debrief settings 460x560 --app-tab Debrief
 shot Overlay_Settings_Look    settings 460x560 --app-tab Look/Colour
 shot Overlay_Settings_Units   settings 460x400 --app-tab Units
 shot Overlay_Settings_Console settings 460x330 --app-tab Console

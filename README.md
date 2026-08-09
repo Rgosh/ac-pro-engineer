@@ -461,6 +461,20 @@ warnings only or critical only. Then wrapping, highlighting, spacing, a rule
 between lines, a count of what was hidden, and a plate behind the text for
 reading a sentence against a bright sky.
 
+### In-game settings — Debrief
+
+![Overlay settings, Debrief tab: how many lines, sectors, what is left, and the wheel bindings](screenshots/Overlay_Settings_Debrief.png)
+
+How much the lap debrief says and how you move through it. Lines to draw — zero
+switches it off and the application stops publishing one at all — the lap time,
+the comparison with the lap before, sector times, what is left of the tyres and
+fuel, and whether a finished lap pulls the window back to it.
+
+Underneath: the wheel bindings. They are sections in Assetto Corsa's own
+`controls.ini`, so a wheel button, a gamepad or a key all work and the panel
+never learns which it was. Nothing is bound by default — a default that is free
+on one wheel steals the pit limiter on another.
+
 ### In-game settings — Look
 
 ![Overlay settings, Look tab: accent colour and an editable palette for the in-game panel](screenshots/Overlay_Settings_Look.png)
