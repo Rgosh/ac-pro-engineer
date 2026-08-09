@@ -183,6 +183,7 @@ return function(dt)
 
       ui.separator()
       controls.toggle('Show the lap time', 'debriefShowTime')
+      controls.toggle('Compare with the lap before', 'debriefShowDelta')
       controls.toggle('Colour the text by severity', 'debriefHighlight')
       -- Off, and a driver who paged back to compare two laps stays where they
       -- put themselves; on, and a lap ending brings them back to it.

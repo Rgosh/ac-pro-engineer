@@ -520,6 +520,20 @@ local function drawDebrief(withLabel)
     header = header .. string.format('   %d/%d', debriefLap, available)
   end
   say('value', header, COLOR.text)
+
+  -- Against the lap before it. "1:31.234" is a number; "1:31.234, half a second
+  -- better than the one before" is the thing a driver actually wanted to know,
+  -- and both numbers are already in the frame — this is arithmetic, not another
+  -- field.
+  local older = shown.debrief[debriefLap + 1]
+  if settings.debriefShowDelta and older ~= nil and older.lap_time_ms > 0
+    and entry.lap_time_ms > 0 then
+    local delta = (entry.lap_time_ms - older.lap_time_ms) / 1000
+    local mark = delta < 0 and '-' or '+'
+    say('caption', string.format('%s%.3f %s %d', mark, math.abs(delta),
+      tr('vs lap'), older.lap_number),
+      delta < 0 and COLOR.good or COLOR.warn)
+  end
   gap(3)
 
   local lines = math.min(entry.line_count or 0, settings.debriefLines, frame.DEBRIEF_LINES)

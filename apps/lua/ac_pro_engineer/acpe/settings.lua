@@ -66,6 +66,7 @@ local DEFAULTS = {
   -- read in different places at different speeds.
   debriefLines = 8,          -- 0 hides the block entirely
   debriefShowTime = true,
+  debriefShowDelta = true,
   debriefHighlight = true,
   debriefFollowNewest = true,   -- a new lap brings the window back to it
   debriefWidth = 320, debriefHeight = 220,
