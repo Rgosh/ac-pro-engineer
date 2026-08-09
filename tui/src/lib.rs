@@ -10,7 +10,6 @@ use ac_core::config::AppConfig;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
-use ac_core::memory::SharedMemory;
 use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -164,73 +163,6 @@ pub enum AppStage {
     Running,
 }
 
-#[cfg(target_os = "windows")]
-static SHM_MEM_DIR: &str = "Local\\";
-#[cfg(not(target_os = "windows"))]
-static SHM_MEM_DIR: &str = "/dev/shm/";
-
-static SHM_MEM_PHYSICS: &str = "acpmf_physics";
-static SHM_MEM_GRAPHICS: &str = "acpmf_graphics";
-static SHM_MEM_STATIC: &str = "acpmf_static";
-
-pub struct Memory {
-    physics_mem: SharedMemory<AcPhysics>,
-    graphics_mem: SharedMemory<AcGraphics>,
-    static_mem: SharedMemory<AcStatic>,
-
-    ac_physics: AcPhysics,
-    ac_graphics: AcGraphics,
-    ac_static: AcStatic,
-}
-
-impl Memory {
-    pub fn try_connect() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            physics_mem: SharedMemory::<AcPhysics>::connect(&Self::get_mem(SHM_MEM_PHYSICS))?,
-            graphics_mem: SharedMemory::<AcGraphics>::connect(&Self::get_mem(SHM_MEM_GRAPHICS))?,
-            static_mem: SharedMemory::<AcStatic>::connect(&Self::get_mem(SHM_MEM_STATIC))?,
-            ac_physics: AcPhysics::default(),
-            ac_graphics: AcGraphics::default(),
-            ac_static: AcStatic::default(),
-        })
-    }
-
-    pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // These two are rewritten by the game while we read them, so they go
-        // through the tear-checking read. The static page is written once at
-        // session load and does not need it.
-        self.ac_physics = self
-            .physics_mem
-            .get_stable()
-            .map_err(|e| anyhow::format_err!("Cannot read physics: {e:?}"))?;
-        self.ac_graphics = self
-            .graphics_mem
-            .get_stable()
-            .map_err(|e| anyhow::format_err!("Cannot read graphics: {e:?}"))?;
-        self.ac_static = self
-            .static_mem
-            .get()
-            .map_err(|e| anyhow::format_err!("Cannot read static: {e:?}"))?;
-        Ok(())
-    }
-
-    fn get_mem(name: &str) -> String {
-        format!("{}{}", SHM_MEM_DIR, name)
-    }
-
-    pub fn physics(&self) -> &AcPhysics {
-        &self.ac_physics
-    }
-
-    pub fn graphics(&self) -> &AcGraphics {
-        &self.ac_graphics
-    }
-
-    pub fn stat(&self) -> &AcStatic {
-        &self.ac_static
-    }
-}
-
 /// Sector count to assume until AcStatic says otherwise. AC's own tracks are
 /// almost all three-sector.
 pub const DEFAULT_SECTOR_COUNT: i32 = 3;
@@ -270,7 +202,7 @@ impl PerfStats {
 }
 
 pub struct AppState {
-    pub mem: Option<Memory>,
+    pub mem: Option<ac_core::games::assetto_corsa::AssettoCorsa>,
     pub setup_manager: SetupManager,
     pub content_manager: ContentManager,
     pub record_manager: RecordManager,
@@ -954,7 +886,7 @@ impl AppState {
         if let Some(ref mock) = self.mock_graphics {
             Some(mock)
         } else {
-            self.mem.as_ref().map(|mem| &mem.ac_graphics)
+            self.mem.as_ref().map(|mem| mem.graphics())
         }
     }
 
@@ -962,7 +894,7 @@ impl AppState {
         if let Some(ref mock) = self.mock_physics {
             Some(mock)
         } else {
-            self.mem.as_ref().map(|mem| &mem.ac_physics)
+            self.mem.as_ref().map(|mem| mem.physics())
         }
     }
 
@@ -970,7 +902,7 @@ impl AppState {
         if let Some(ref mock) = self.mock_static {
             Some(mock)
         } else {
-            self.mem.as_ref().map(|mem| &mem.ac_static)
+            self.mem.as_ref().map(|mem| mem.stat())
         }
     }
 
@@ -1189,13 +1121,16 @@ impl AppState {
             return;
         };
 
-        if let Err(error) = mem.refresh() {
-            error!(error = ?error, "Cannot refresh memory");
+        // A tick that reads nothing is the game being closed or between
+        // sessions, which is a state and not a failure — the panel is told the
+        // application is alive and has no car, which is the distinction v0.3.5
+        // added.
+        if !ac_core::games::Source::poll(mem) {
             self.publish_overlay_idle();
             return;
         }
 
-        let (phys, gfx, stat) = (mem.ac_physics, mem.ac_graphics, mem.ac_static);
+        let (phys, gfx, stat) = (*mem.physics(), *mem.graphics(), *mem.stat());
 
         self.process_tick_logic(phys, gfx, stat);
     }
@@ -1400,10 +1335,15 @@ impl AppState {
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.mem.is_none() {
-            let mut mem = Memory::try_connect()?;
-            mem.refresh()?;
+            let mut mem = ac_core::games::assetto_corsa::AssettoCorsa::connect()?;
+            // One reading before anything is believed: connecting only proves
+            // the mappings exist, and on Linux they can exist with nothing in
+            // them yet — the bridge creates them before the game has published.
+            if !ac_core::games::Source::poll(&mut mem) {
+                return Err("connected to Assetto Corsa but read nothing".into());
+            }
 
-            let st = &mem.ac_static;
+            let st = mem.stat();
             self.session_info.car_name = st.car_model.to_string();
             self.session_info.track_name = st.track.to_string();
             self.session_info.track_config = st.track_configuration.to_string();
