@@ -216,6 +216,27 @@ return function(dt)
       if binds.available() then
         say('caption', tr('click to assign, then press the button'), COLOR.dim)
         binds.drawControls(contentWidth())
+
+        -- What is actually bound, and whether the panel is receiving it. A
+        -- binding that does not arrive looks exactly like one that was never
+        -- made, and both look like nothing happening.
+        local state = binds.state()
+        if state ~= nil then
+          local line = function(label, entry)
+            local text = entry.bound
+            if text == nil or text == '' then text = tr('not bound') end
+            say('caption', label .. ':  ' .. text,
+              entry.bound and COLOR.text or COLOR.dim)
+            if entry.down then
+              ui.sameLine()
+              say('caption', '  ' .. tr('pressed now'), COLOR.good)
+            end
+          end
+          line(tr('previous lap'), state.previousLap)
+          line(tr('next lap'), state.nextLap)
+          say('caption', tr('press a bound button — it should say pressed now'),
+            COLOR.dim)
+        end
       else
         -- The actual reason, not a guess at it. This said "needs Custom Shaders
         -- Patch in a session" to people who were in a session with CSP, which

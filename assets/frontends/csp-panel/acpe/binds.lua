@@ -134,6 +134,36 @@ function M.drawControls(width)
   return changed
 end
 
+--- What each binding is, and whether it is being pressed *right now*.
+---
+--- Returned as data rather than drawn here, so the settings window can lay it
+--- out at the panel's own text size.
+---
+--- The live half is the point. A binding that does not work is otherwise
+--- invisible from both ends: the widget looks the same whether or not the panel
+--- ever receives the button, and the only symptom is that nothing happens —
+--- which is also what a wrong lap index, a closed window and a missing frame
+--- look like. Pressing the button and watching this line tells you in one
+--- second which side is at fault.
+function M.state()
+  local held = ensure()
+  if held == nil then return nil end
+
+  local read = function(button)
+    local ok, bound = pcall(function() return button:boundTo() end)
+    local held_ok, down = pcall(function() return button:down() end)
+    return {
+      bound = ok and bound or nil,
+      down = held_ok and down or false,
+    }
+  end
+
+  return {
+    previousLap = read(held.previousLap),
+    nextLap = read(held.nextLap),
+  }
+end
+
 --- What each button is bound to, or nil. For showing state without the widget.
 function M.boundTo()
   local held = ensure()
