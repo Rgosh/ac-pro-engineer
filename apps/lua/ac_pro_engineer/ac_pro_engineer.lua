@@ -61,6 +61,7 @@ frame.configure(EXPECTED_VERSION, PANEL_VERSION)
 local blocks = require('acpe.blocks')
 local windowMain = require('acpe.windows.main')
 local windowEngineer = require('acpe.windows.engineer')
+local windowDebrief = require('acpe.windows.debrief')
 local windowSettings = require('acpe.windows.settings')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
@@ -75,6 +76,10 @@ end
 
 function script.windowEngineer(dt)
   windowEngineer(dt)
+end
+
+function script.windowDebrief(dt)
+  windowDebrief(dt)
 end
 
 function script.windowSettings(dt)

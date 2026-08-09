@@ -309,6 +309,16 @@ local windows = {
     isOpen = function() return true end,
   },
   {
+    id = 'debrief',
+    title = 'AC Pro Engineer — lap debrief',
+    fn = 'windowDebrief',
+    closable = true,
+    size = function() return S.debriefWidth, S.debriefHeight end,
+    resize = function(w, h) S.debriefWidth, S.debriefHeight = w, h end,
+    minimum = { 200, 120 },   -- MIN_SIZE from the manifest
+    isOpen = function() return true end,
+  },
+  {
     id = 'engineer',
     title = 'AC Pro Engineer — advice',
     fn = 'windowEngineer',

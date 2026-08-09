@@ -458,7 +458,102 @@ M.tyres = drawTyres
 M.timing = drawTiming
 M.fuel = drawFuel
 M.session = drawSession
+-- The newest lap the panel has seen, so "follow the newest" can tell a new lap
+-- from a redraw. Declared above its readers: a local declared after the
+-- functions that use it is a global to them, which is nil.
+local lastNewestLap = -1
+
+-- Which finished lap the debrief window is showing, newest first.
+--
+-- Panel state rather than a setting: it is where you are looking right now,
+-- not how you want the panel to behave, and a driver who paged back to lap 10
+-- does not want to still be there next session.
+local debriefLap = 1
+
+--- Move the debrief to another lap, clamped to what the frame actually holds.
+local function stepDebrief(by)
+  local available = math.max(shown.debrief_lap_count, 1)
+  debriefLap = math.max(1, math.min(available, debriefLap + by))
+end
+
+--- The lap debrief, with its own header and a way to page through the laps.
+--
+-- The lap is chosen here rather than asked for: the frame goes one way, so the
+-- application publishes the last few laps and the panel picks between what has
+-- already arrived. Paging is therefore instant and works with the game paused.
+local function drawDebrief(withLabel)
+  if withLabel ~= false then sectionLabel('DEBRIEF') end
+
+  local available = math.min(shown.debrief_lap_count, frame.DEBRIEF_LAPS)
+  if available == 0 then
+    say('caption', tr('no finished laps yet'), COLOR.dim)
+    return
+  end
+
+  -- A lap that has scrolled out of the frame — the stint moved on while the
+  -- window was showing an older one — lands back on the newest rather than
+  -- drawing an empty box.
+  if debriefLap > available then debriefLap = available end
+  if settings.debriefFollowNewest and shown.debrief[1].lap_number ~= lastNewestLap then
+    debriefLap = 1
+  end
+  lastNewestLap = shown.debrief[1].lap_number
+
+  local entry = shown.debrief[debriefLap]
+
+  -- Header: which lap, how quick, and where in the history it sits.
+  pushRole('caption')
+  if ui.button('<##debriefPrev', vec2(22, 0)) then stepDebrief(1) end
+  ui.sameLine()
+  if ui.button('>##debriefNext', vec2(22, 0)) then stepDebrief(-1) end
+  ui.popFont()
+  ui.sameLine()
+
+  local header = string.format('%s %d', tr('LAP'), entry.lap_number)
+  if settings.debriefShowTime and entry.lap_time_ms > 0 then
+    header = header .. '  ' .. format.lapTimeText(entry.lap_time_ms)
+  end
+  say('value', header, COLOR.text)
+  if available > 1 then
+    say('caption', string.format('%d / %d', debriefLap, available), COLOR.dim)
+  end
+  gap(2)
+
+  local lines = math.min(entry.line_count or 0, settings.debriefLines, frame.DEBRIEF_LINES)
+  if lines == 0 then
+    say('caption', tr('nothing to report'), COLOR.dim)
+    return
+  end
+
+  for line = 1, lines do
+    local body = entry.lines[line]
+    if body ~= '' then
+      local level = entry.severity[line] or 0
+      local markColor = SEVERITY_COLOR[level] or COLOR.text
+      local mark = SEVERITY_MARK[level] or ''
+      local textColor = settings.debriefHighlight and markColor or COLOR.text
+
+      sayAdvice(mark, markColor)
+      ui.sameLine()
+      -- Wrapped the same way the live advice is, and for the same reason:
+      -- `ui.textWrapped` draws in CSP's font, which is not the size the rest
+      -- of this window is drawn at.
+      if settings.engineerWrap then
+        local limit = settings.engineerMaxChars or 64
+        while #body > limit do
+          local cut = body:sub(1, limit):match('^.*()%s') or limit
+          sayAdvice(body:sub(1, cut - 1), textColor)
+          body = body:sub(cut + 1)
+        end
+      end
+      sayAdvice(body, textColor)
+    end
+  end
+end
+
 M.engineer = drawEngineerMessages
+M.debrief = drawDebrief
+M.debriefStep = stepDebrief
 M.waitingForApp = drawWaitingForApp
 M.waitingForCar = drawWaitingForCar
 M.updateNotice = drawUpdateNotice

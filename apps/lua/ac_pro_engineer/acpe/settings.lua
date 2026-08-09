@@ -62,6 +62,14 @@ local DEFAULTS = {
   -- the same three words in the same colour, and the eye stops going to them.
   engineerEmphasiseNew = true,
 
+  -- The lap debrief. Its own numbers rather than the advice's: the two are
+  -- read in different places at different speeds.
+  debriefLines = 4,          -- 0 hides the block entirely
+  debriefShowTime = true,
+  debriefHighlight = true,
+  debriefFollowNewest = true,   -- a new lap brings the window back to it
+  debriefWidth = 320, debriefHeight = 220,
+
   sectionLabels = true,
   -- A newer panel sitting on disk is worth one line, and worth being
   -- able to turn off: a driver who cannot restart mid-session should not

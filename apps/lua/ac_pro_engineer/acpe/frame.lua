@@ -32,6 +32,18 @@ local MESSAGE_KEYS = {
 }
 local MESSAGE_SLOTS = #MESSAGE_KEYS
 
+-- The debrief, named the same way and for the same reason. Laid out lap by
+-- lap: `DEBRIEF_KEYS[lap][line]`. Counting from `#DEBRIEF_KEYS` rather than
+-- from a literal 3 is what stops the next change to the frame having to be
+-- found in six places.
+local DEBRIEF_KEYS = {
+  { 'debrief_0_0', 'debrief_0_1', 'debrief_0_2', 'debrief_0_3' },
+  { 'debrief_1_0', 'debrief_1_1', 'debrief_1_2', 'debrief_1_3' },
+  { 'debrief_2_0', 'debrief_2_1', 'debrief_2_2', 'debrief_2_3' },
+}
+local DEBRIEF_LAPS = #DEBRIEF_KEYS
+local DEBRIEF_LINES = #DEBRIEF_KEYS[1]
+
 -- The frame version this panel reads and the release it came from. Both are
 -- declared in ac_pro_engineer.lua, which is the file the installer greps and
 -- the tests check, and handed here at load time.
@@ -83,10 +95,20 @@ local shown = {
   -- reads the last slot as nil and the advice quietly stops at seven lines.
   messages = {},
   message_severity = {},
+  -- One entry per published lap: its number, its time, and its lines.
+  debrief_lap_count = 0,
+  debrief = {},
 }
 for i = 1, MESSAGE_SLOTS do
   shown.messages[i] = ''
   shown.message_severity[i] = 0
+end
+for lap = 1, DEBRIEF_LAPS do
+  shown.debrief[lap] = { lap_number = 0, lap_time_ms = 0, lines = {}, severity = {} }
+  for line = 1, DEBRIEF_LINES do
+    shown.debrief[lap].lines[line] = ''
+    shown.debrief[lap].severity[line] = 0
+  end
 end
 
 -- Liveness. The sequence standing still for `LIVENESS_TIMEOUT` is how the
@@ -200,6 +222,25 @@ local function readFrame()
     shown.message_severity[i] = 0
   end
 
+  shown.debrief_lap_count = math.min(frame.debrief_lap_count or 0, DEBRIEF_LAPS)
+  for lap = 1, DEBRIEF_LAPS do
+    local entry = shown.debrief[lap]
+    entry.lap_number = frame.debrief_lap_number[lap - 1]
+    entry.lap_time_ms = frame.debrief_lap_time_ms[lap - 1]
+    -- Clamped: a line count larger than the slots would read past the end of
+    -- the keys and hand the window nil where a sentence should be.
+    local lines = math.min(frame.debrief_line_count[lap - 1], DEBRIEF_LINES)
+    for line = 1, lines do
+      entry.lines[line] = frame[DEBRIEF_KEYS[lap][line]]
+      entry.severity[line] = frame.debrief_severity[(lap - 1) * DEBRIEF_LINES + line - 1]
+    end
+    for line = lines + 1, DEBRIEF_LINES do
+      entry.lines[line] = ''
+      entry.severity[line] = 0
+    end
+    entry.line_count = lines
+  end
+
   if frame.sequence ~= seq then return false end
   lastSequence = seq
   return true
@@ -228,6 +269,25 @@ local DEMO_ADVICE = {
   'Traction control is cutting on corner exit',
 }
 
+-- Three finished laps for "draw without a session": a full one, a shorter one
+-- and a lap with a single critical line, so the switcher, the severity colours
+-- and the "this lap had less to say" case are all reachable without a car.
+local DEMO_DEBRIEF = {
+  { lap_number = 12, lap_time_ms = 91234, lines = {
+    { 'Fronts over 28.4 psi (target 27.5)', 1 },
+    { 'Front: inner edge running hot (I-O: 15.0C)', 1 },
+    { 'Lockups: 4', 0 },
+    { 'Coasting 18%', 0 },
+  } },
+  { lap_number = 11, lap_time_ms = 92871, lines = {
+    { 'All four cold 62C', 0 },
+    { 'Rear: outer edge hotter (I-O: -6.0C)', 0 },
+  } },
+  { lap_number = 10, lap_time_ms = 95002, lines = {
+    { 'FL/RL overheating 815C', 2 },
+  } },
+}
+
 local function applyDemo()
   shown.version = EXPECTED_VERSION
   shown.app_version = PANEL_VERSION
@@ -249,6 +309,20 @@ local function applyDemo()
   for i = 1, MESSAGE_SLOTS do
     shown.messages[i] = DEMO_ADVICE[i]
     shown.message_severity[i] = (i - 1) % 3
+  end
+
+  shown.debrief_lap_count = math.min(#DEMO_DEBRIEF, DEBRIEF_LAPS)
+  for lap = 1, DEBRIEF_LAPS do
+    local demo = DEMO_DEBRIEF[lap]
+    local entry = shown.debrief[lap]
+    entry.lap_number = demo and demo.lap_number or 0
+    entry.lap_time_ms = demo and demo.lap_time_ms or 0
+    entry.line_count = demo and math.min(#demo.lines, DEBRIEF_LINES) or 0
+    for line = 1, DEBRIEF_LINES do
+      local source = demo and demo.lines[line]
+      entry.lines[line] = source and source[1] or ''
+      entry.severity[line] = source and source[2] or 0
+    end
   end
 end
 
@@ -356,6 +430,9 @@ M.advanceClockForTest = function(seconds) clock = clock + seconds end
 M.MMF_NAME = MMF_NAME
 M.MESSAGE_KEYS = MESSAGE_KEYS
 M.MESSAGE_SLOTS = MESSAGE_SLOTS
+M.DEBRIEF_KEYS = DEBRIEF_KEYS
+M.DEBRIEF_LAPS = DEBRIEF_LAPS
+M.DEBRIEF_LINES = DEBRIEF_LINES
 M.DEMO_ADVICE = DEMO_ADVICE
 M.debugReadFrame = function() return readFrame(), frame ~= nil, tostring(frame and frame.sequence) end
 M.shown = shown

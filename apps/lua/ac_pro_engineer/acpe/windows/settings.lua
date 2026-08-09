@@ -170,6 +170,24 @@ return function(dt)
       end)
     end)
 
+    ui.tabItem(tr('Debrief'), function()
+      say('caption', tr('LINES'), COLOR.label)
+      -- Zero is a real setting here, unlike the live advice: a driver who
+      -- wants the panel and not the post-lap summary sets this to nothing and
+      -- the application stops publishing it at all.
+      controls.slider('debriefLines', 'debriefLines', 0, frame.DEBRIEF_LINES,
+        'draw up to  %.0f', true)
+      say('caption', string.format(tr('the application is sending %d of %d'),
+        shown.debrief_lap_count, frame.DEBRIEF_LAPS), COLOR.dim)
+
+      ui.separator()
+      controls.toggle('Show the lap time', 'debriefShowTime')
+      controls.toggle('Colour the text by severity', 'debriefHighlight')
+      -- Off, and a driver who paged back to compare two laps stays where they
+      -- put themselves; on, and a lap ending brings them back to it.
+      controls.toggle('Jump to the newest lap', 'debriefFollowNewest')
+    end)
+
     ui.tabItem(tr('Advice'), function()
       say('caption', tr('LINES'), COLOR.label)
       -- A slider, not a radio per line. Four radios were fine while the frame

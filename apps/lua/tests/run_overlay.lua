@@ -344,7 +344,7 @@ print('windowMain: OK')
 
 -- Every window the script exposes, driven the same way CSP drives them: a
 -- new one that throws on its first frame should fail here, not in the pits.
-for _, name in ipairs({ 'windowEngineer', 'windowSettings', 'windowTelemetry', 'windowStatus' }) do
+for _, name in ipairs({ 'windowEngineer', 'windowDebrief', 'windowSettings', 'windowTelemetry', 'windowStatus' }) do
   if script[name] ~= nil then
     local drew, drawError = pcall(script[name], 0.016)
     if not drew then print(name .. ' FAILED: ' .. tostring(drawError)); os.exit(1) end
@@ -962,7 +962,7 @@ local COMBINATIONS = {
     end },
 }
 
-local WINDOWS = { 'windowMain', 'windowEngineer', 'windowSettings',
+local WINDOWS = { 'windowMain', 'windowEngineer', 'windowDebrief', 'windowSettings',
   'windowTelemetry', 'windowStatus' }
 
 for _, combination in ipairs(COMBINATIONS) do
