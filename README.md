@@ -102,7 +102,7 @@ overlay app.
 3. Start Assetto Corsa.
 
 That is all. The application finds your Assetto Corsa install by itself, writes
-the in-game panel into `assettocorsa/apps/lua/ac_pro_engineer/` on startup, and
+the in-game panel into `assettocorsa/assets/frontends/csp-panel/` on startup, and
 creates the shared memory the panel reads. There is no bridge and nothing to
 start in a particular order.
 
@@ -162,7 +162,7 @@ The overlay is a **Custom Shaders Patch Lua app**. You need CSP installed; the
 rest is automatic.
 
 **It installs itself.** Every time the application starts it writes the panel
-into `assettocorsa/apps/lua/ac_pro_engineer/`, and rewrites it whenever it
+into `assettocorsa/assets/frontends/csp-panel/`, and rewrites it whenever it
 differs from what the running build ships. So updating the application updates
 the panel, with no step to forget. Enable **AC Pro Engineer** in CSP's app
 sidebar once and it stays.
@@ -750,7 +750,7 @@ and copy the folder into `assettocorsa/apps/lua/` yourself.
 
 - Custom Shaders Patch has to be installed. The launcher's overlay card says
   whether it found it.
-- The folder has to be `assettocorsa/apps/lua/ac_pro_engineer/` — CSP finds an
+- The folder has to be `assettocorsa/assets/frontends/csp-panel/` — CSP finds an
   app's entry point by folder name.
 - Enable **AC Pro Engineer** in CSP's app sidebar once.
 
@@ -885,14 +885,14 @@ tests_suite/   integration tests over the whole pipeline
 The desktop application computes everything and publishes a 712-byte
 `#[repr(C)]` `OverlayFrame` once per tick. The panel reads fields and calls
 ImGui. **Three artefacts encode that struct** — the application, `shm-bridge.exe`
-and `apps/lua/ac_pro_engineer/frame_layout.lua` — and changing it means changing
+and `assets/frontends/csp-panel/frame_layout.lua` — and changing it means changing
 all three. `core/src/overlay/frame.rs` has the rules; `CLAUDE.md` has the
 procedure and the traps.
 
 The panel itself is a tree:
 
 ```
-apps/lua/ac_pro_engineer/
+assets/frontends/csp-panel/
   ac_pro_engineer.lua      the entry point CSP loads, and nothing else
   frame_layout.lua         GENERATED from the Rust struct
   manifest.ini             the windows CSP opens

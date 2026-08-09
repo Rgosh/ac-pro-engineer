@@ -27,7 +27,7 @@ its first run.
 ## Getting it into the game
 
 The desktop application writes the app into
-`assettocorsa/apps/lua/ac_pro_engineer/` every time it starts, and says what it
+`assettocorsa/assets/frontends/csp-panel/` every time it starts, and says what it
 found in a card on the launcher screen: where the game is, whether CSP is
 there, and whether the files are current. `ENTER` installs them again from
 that card, `[I]` does the same from **Settings → OVERLAY**, and `D` stops the

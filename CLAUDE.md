@@ -8,7 +8,7 @@ overlay work stands right now.
 
 A telemetry and race-engineering suite for Assetto Corsa, in Rust, with two
 faces: a terminal application (`ac_tui`, the binary `ac_pro_engineer`) and an
-in-game panel written in Lua for CSP (`apps/lua/ac_pro_engineer/`).
+in-game panel written in Lua for CSP (`assets/frontends/csp-panel/`).
 
 The split matters. **The application computes; the panel draws.** Lua runs on
 AC's render thread, where a millisecond is a sixth of the frame budget at 165 Hz
@@ -23,12 +23,12 @@ generator that emits its Lua declaration. Three artefacts encode it:
 
 1. the application, which writes it,
 2. `shm-bridge.exe`, which maps it into the Wine prefix on Linux,
-3. `apps/lua/ac_pro_engineer/frame_layout.lua`, which the panel reads it with.
+3. `assets/frontends/csp-panel/frame_layout.lua`, which the panel reads it with.
 
 **Changing the struct means changing all three.** After any edit to the fields:
 
 ```bash
-cargo run -p ac_core --example gen_lua_layout > apps/lua/ac_pro_engineer/frame_layout.lua
+cargo run -p ac_core --example gen_lua_layout > assets/frontends/csp-panel/frame_layout.lua
 ```
 
 ```bash
@@ -190,7 +190,7 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warn
 
 ## How the panel is laid out
 
-One file per thing, under `apps/lua/ac_pro_engineer/`:
+One file per thing, under `assets/frontends/csp-panel/`:
 
 ```
 ac_pro_engineer.lua      the entry point CSP loads, and nothing else

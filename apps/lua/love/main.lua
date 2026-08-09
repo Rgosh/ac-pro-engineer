@@ -67,7 +67,7 @@ local function appDirectory()
   if source:sub(1, 1) ~= '/' then
     source = love.filesystem.getWorkingDirectory() .. '/' .. source
   end
-  return source .. '/../ac_pro_engineer/'
+  return source .. '/../../../assets/frontends/csp-panel/'
 end
 
 --- Load (or reload) the overlay script. Any error is kept and shown rather

@@ -91,9 +91,14 @@ done
 # so this copy is for the case that fails: an unwritable game folder, an install
 # Steam put somewhere unusual, a second copy of AC. Dropping the folder into
 # assettocorsa/apps/lua/ by hand is then the whole remedy.
-if [ -d "apps/lua/ac_pro_engineer" ]; then
+#
+# Copied *to a different name than it has in the tree*: CSP finds an app's entry
+# point by folder name, so this has to land as `ac_pro_engineer` however the
+# sources are organised. The rename that moved the panel under assets/ would
+# otherwise have shipped a folder CSP ignores, silently.
+if [ -d "assets/frontends/csp-panel" ]; then
     mkdir -p "${BUNDLE_DIR}/overlay"
-    cp -r "apps/lua/ac_pro_engineer" "${BUNDLE_DIR}/overlay/"
+    cp -r "assets/frontends/csp-panel" "${BUNDLE_DIR}/overlay/ac_pro_engineer"
     echo "  - Lua overlay copied for manual installation."
 fi
 

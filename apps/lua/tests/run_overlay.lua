@@ -5,7 +5,7 @@
 -- Resolve the app relative to this script, so the harness works from any
 -- checkout.
 local here = debug.getinfo(1, 'S').source:sub(2):match('(.*/)')
-local appDir = here .. '../ac_pro_engineer/'
+local appDir = here .. '../../../assets/frontends/csp-panel/'
 package.path = appDir .. '?.lua;' .. package.path
 local ffi = require('ffi')
 

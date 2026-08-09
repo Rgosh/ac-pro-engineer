@@ -177,7 +177,7 @@ AcTools.CSP.Limited.ACPE.v1
 Layout under the AC install:
 
 ```
-assettocorsa/apps/lua/ac_pro_engineer/
+assettocorsa/assets/frontends/csp-panel/
 ├── manifest.ini
 └── ac_pro_engineer.lua
 ```

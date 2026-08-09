@@ -24,9 +24,9 @@ allocates nothing per frame that can be allocated once.
 |---|---|
 | Struct, generator, flags | `core/src/overlay/frame.rs` |
 | Install / uninstall / describe | `core/src/overlay/install.rs` |
-| The panel | `apps/lua/ac_pro_engineer/` — entry point plus `acpe/` |
-| Generated layout | `apps/lua/ac_pro_engineer/frame_layout.lua` |
-| Manifest, five windows | `apps/lua/ac_pro_engineer/manifest.ini` |
+| The panel | `assets/frontends/csp-panel/` — entry point plus `acpe/` |
+| Generated layout | `assets/frontends/csp-panel/frame_layout.lua` |
+| Manifest, five windows | `assets/frontends/csp-panel/manifest.ini` |
 | LÖVE harness | `apps/lua/love/` — see its README |
 | LuaJIT harness | `apps/lua/tests/run_overlay.lua` |
 | Engineer probe | `core/examples/engineer_probe.rs` |
@@ -35,7 +35,7 @@ Regenerate the layout after touching the struct, and rebuild the bridge if the
 size changed:
 
 ```bash
-cargo run -p ac_core --example gen_lua_layout > apps/lua/ac_pro_engineer/frame_layout.lua
+cargo run -p ac_core --example gen_lua_layout > assets/frontends/csp-panel/frame_layout.lua
 ```
 
 ```bash
@@ -212,7 +212,7 @@ after `187b914`, and v0.3.4 is it. Everything else was already in place:
 | CSP | 0.2.11 b3465 |
 | Prefix | `steamapps/compatdata/244210/pfx`, Proton 9.0 / GE-Proton9-2 |
 | Bridge | `~/projects/RaceEngineer/shm-bridge.exe`, run through protontricks |
-| Panel installs to | `assettocorsa/apps/lua/ac_pro_engineer/` |
+| Panel installs to | `assettocorsa/assets/frontends/csp-panel/` |
 
 There is a second copy of the app in `extension/lua/ac_pro_engineer/` on this
 machine; both are written during development. Delete the second before anyone

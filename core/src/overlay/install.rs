@@ -20,6 +20,11 @@ use tracing::{info, warn};
 ///
 /// CSP finds an app's entry point by folder name, so the main script must be
 /// `<APP_DIR>.lua`.
+///
+/// Deliberately unrelated to where the sources live. The panel sits in
+/// `assets/frontends/csp-panel/` in this tree — it is the Assetto Corsa front
+/// end, not "the overlay", and a second game's front end will sit beside it —
+/// but what CSP loads has to be called this whatever the repository does.
 pub const APP_DIR: &str = "ac_pro_engineer";
 
 /// The app, as shipped. Embedded so it cannot drift from the struct layout
@@ -33,95 +38,95 @@ pub const APP_DIR: &str = "ac_pro_engineer";
 const FILES: &[(&str, &[u8])] = &[
     (
         "ac_pro_engineer.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/ac_pro_engineer.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/ac_pro_engineer.lua"),
     ),
     (
         "frame_layout.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/frame_layout.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/frame_layout.lua"),
     ),
     (
         "manifest.ini",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/manifest.ini"),
+        include_bytes!("../../../assets/frontends/csp-panel/manifest.ini"),
     ),
     (
         "icon.png",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/icon.png"),
+        include_bytes!("../../../assets/frontends/csp-panel/icon.png"),
     ),
     (
         "acpe/binds.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/binds.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/binds.lua"),
     ),
     (
         "acpe/blocks.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/blocks.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/blocks.lua"),
     ),
     (
         "acpe/console.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/console.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/console.lua"),
     ),
     (
         "acpe/controls.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/controls.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/controls.lua"),
     ),
     (
         "acpe/format.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/format.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/format.lua"),
     ),
     (
         "acpe/frame.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/frame.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/frame.lua"),
     ),
     (
         "acpe/i18n.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/i18n.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/i18n.lua"),
     ),
     (
         "acpe/layout.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/layout.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/layout.lua"),
     ),
     (
         "acpe/persist.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/persist.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/persist.lua"),
     ),
     (
         "acpe/settings.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/settings.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/settings.lua"),
     ),
     (
         "acpe/theme.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/theme.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/theme.lua"),
     ),
     (
         "acpe/windows/changed.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/changed.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/changed.lua"),
     ),
     (
         "acpe/windows/debrief.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/debrief.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/debrief.lua"),
     ),
     (
         "acpe/windows/dev.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/dev.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/dev.lua"),
     ),
     (
         "acpe/windows/engineer.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/engineer.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/engineer.lua"),
     ),
     (
         "acpe/windows/main.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/main.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/main.lua"),
     ),
     (
         "acpe/windows/settings.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/settings.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/settings.lua"),
     ),
     (
         "acpe/windows/status.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/status.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/status.lua"),
     ),
     (
         "acpe/windows/telemetry.lua",
-        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/windows/telemetry.lua"),
+        include_bytes!("../../../assets/frontends/csp-panel/acpe/windows/telemetry.lua"),
     ),
 ];
 
@@ -432,7 +437,7 @@ mod tests {
         assert_eq!(
             declared,
             env!("CARGO_PKG_VERSION"),
-            "PANEL_VERSION in apps/lua/ac_pro_engineer/ac_pro_engineer.lua is stale; \
+            "PANEL_VERSION in assets/frontends/csp-panel/ac_pro_engineer.lua is stale; \
              set it to {}",
             env!("CARGO_PKG_VERSION")
         );
@@ -449,7 +454,7 @@ mod tests {
     fn every_lua_file_in_the_app_folder_is_shipped() {
         let root = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../apps/lua/ac_pro_engineer"
+            "/../assets/frontends/csp-panel"
         ));
 
         let mut found = Vec::new();
@@ -507,7 +512,7 @@ mod tests {
         assert_eq!(
             declared,
             crate::overlay::frame::OVERLAY_VERSION,
-            "EXPECTED_VERSION in apps/lua/ac_pro_engineer/ac_pro_engineer.lua is stale; \
+            "EXPECTED_VERSION in assets/frontends/csp-panel/ac_pro_engineer.lua is stale; \
              set it to {}",
             crate::overlay::frame::OVERLAY_VERSION
         );
@@ -555,7 +560,7 @@ mod tests {
         assert_eq!(
             declared,
             env!("CARGO_PKG_VERSION"),
-            "VERSION in apps/lua/ac_pro_engineer/manifest.ini is stale; set it to {}",
+            "VERSION in assets/frontends/csp-panel/manifest.ini is stale; set it to {}",
             env!("CARGO_PKG_VERSION")
         );
     }
@@ -639,7 +644,7 @@ mod tests {
             crate::overlay::frame::lua_struct_declaration(),
             "the embedded Lua declaration is stale; regenerate it with \
              `cargo run -p ac_core --example gen_lua_layout > \
-             apps/lua/ac_pro_engineer/frame_layout.lua`"
+             assets/frontends/csp-panel/frame_layout.lua`"
         );
     }
 

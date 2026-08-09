@@ -1013,7 +1013,7 @@ mod tests {
     fn the_app_manifest_matches_what_csp_expects() {
         let app_dir = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../apps/lua/ac_pro_engineer"
+            "/../assets/frontends/csp-panel"
         ));
         let manifest =
             std::fs::read_to_string(app_dir.join("manifest.ini")).expect("the app manifest");
@@ -1088,7 +1088,7 @@ mod tests {
         // filename would have gone on passing while checking almost nothing.
         let app_dir = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../apps/lua/ac_pro_engineer"
+            "/../assets/frontends/csp-panel"
         ));
         let mut app = String::new();
         let mut stack = vec![app_dir.to_path_buf()];
@@ -1176,7 +1176,7 @@ mod tests {
     fn the_checked_in_lua_matches_the_generator() {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../apps/lua/ac_pro_engineer/frame_layout.lua"
+            "/../assets/frontends/csp-panel/frame_layout.lua"
         );
         let on_disk = std::fs::read_to_string(path).expect(
             "the Lua app ships frame_layout.lua; regenerate with \
@@ -1187,7 +1187,7 @@ mod tests {
             lua_struct_declaration(),
             "frame_layout.lua is stale — regenerate it with \
              `cargo run -p ac_core --example gen_lua_layout > \
-             apps/lua/ac_pro_engineer/frame_layout.lua`"
+             assets/frontends/csp-panel/frame_layout.lua`"
         );
     }
 
