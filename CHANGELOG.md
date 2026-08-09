@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — v0.3.6
+
+**The point:** the engineer had two halves and only one of them ever reached the
+car. The panel could tell you what was happening; it had nothing to say about
+the lap you had just finished. Now it does, with the last three laps to page
+through and a wheel button to page with.
+
+> Not released yet. The frame changed, so a published build will need a matching
+> `shm-bridge.exe` on Linux — see the breaking note.
+
+### ⚠️ Breaking
+
+- **Overlay frame version 6**, 712 bytes to 2384. On Linux this means
+  **`shm-bridge.exe` has to be updated again**; **[B]** on the launcher's
+  overlay card does it. Everything new is appended, so no existing offset moved
+  — a panel or bridge one version behind misreads nothing, it simply does not
+  see the debrief.
+
+### ✨ Added
+
+- **A lap debrief in the game.** Its own window: what the engineer made of the
+  lap you have just finished — pressures and temperatures against your own
+  windows, camber per axle, brakes, and how the lap was driven. `<` and `>` page
+  through the last three laps, and the header says how the lap compared with the
+  one before it.
+- **Wheel buttons for it.** Two bindings assigned inside the app and stored by
+  Assetto Corsa, in the game's own `controls.ini` — so a wheel button, a
+  gamepad or a key all work and the panel never learns which it was. Nothing is
+  bound by default: a default that is free on one wheel steals the pit limiter
+  on another. Settings → Debrief.
+- **Its own settings**: how many lines to draw (zero switches the whole thing
+  off, and the application then publishes none), the lap time, the comparison
+  with the previous lap, colouring by severity, and whether a finished lap
+  pulls the window back to it — off is for comparing two laps without being
+  dragged forward.
+- **Eight lines per lap, not four.** A lap can go wrong in more than four ways
+  at once, and four slots meant whatever came fifth was silently dropped.
+
+### 🐞 Fixed
+
+- **The camber verdict in a debrief was backwards half the time.** The lap
+  summary took the temperature spread's magnitude and threw its sign away, so a
+  front tyre whose *outer* edge ran 13 °C hot — a car short of negative camber —
+  was told to take camber out. There is a test for each direction now.
+- **Four corners of one problem are one line** in the lap summary too, the way
+  the live advice has been since v0.3.5.
+- **A lap that published nothing says nothing.** Every average reads zero on a
+  session that ended before the analyser had anything to average, and zero
+  pressures are not flat tyres.
+- **The LuaJIT harness reported success on a panel that failed to load.** It
+  printed "load: OK" without looking at the result, so the next line failed with
+  a bare "attempt to call a nil value" and no hint of where. It checks the load
+  and that the panel defined an update function.
+- **`README.txt` described an archive that no longer exists** — it was written
+  for a Windows-only bundle while the published one holds both builds and the
+  bridge.
+
+### 🧱 Under it
+
+- The lap summary is **data now, not five hundred lines of ratatui**:
+  `debrief::debrief(&LapData, &AppConfig) -> Vec<Recommendation>`. It lived
+  inside the terminal's renderer, where the analysis and the spans that drew it
+  were the same code — which is exactly why the panel had never had a word to
+  say after a lap.
+
 ## [v0.3.5] - 2026-08-08
 
 **The point:** the in-game overlay stopped being "the panel that sometimes
