@@ -71,6 +71,15 @@ local DEFAULTS = {
   debriefShowRemaining = true,
   debriefShowStint = true,
   debriefCompareToBest = false,
+  -- How the debrief looks. Its own numbers rather than the advice's: it is a
+  -- window read stopped, often on a different part of the screen, and a driver
+  -- who wants a solid black plate behind a wall of text in the pits does not
+  -- want one behind three words on their windscreen.
+  debriefBackground = 0.55,   -- 0 none, 1 solid
+  debriefScale = 1.0,         -- text size, on top of the panel's own
+  debriefLineGap = 4,
+  debriefSeparator = false,   -- a rule between lines
+  debriefUppercase = false,
   debriefHighlightNew = true,
   debriefScroll = true,
   showTyreEdges = false,   -- inner|middle|outer under each corner

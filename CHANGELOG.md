@@ -63,6 +63,11 @@ debrief is a new window you open; the UDP feed is off until you set an address.
 - **How long you have been on this set of tyres**, under the debrief. Not the
   lap count — a driver deciding whether to box wants to know how old the tyres
   are, not how far into the race it is.
+- **The debrief has its own look settings** — backing plate from transparent to
+  solid black, text size, line spacing, a rule between lines, upper case. Its
+  own numbers rather than the advice window's: a driver who wants solid black
+  behind a wall of text in the pits does not want it behind three words on the
+  windscreen.
 - **The debrief window scrolls.** Eight lines plus a header plus sectors do not
   fit a window sized for four, and the overflow used to be cut off at the bottom
   edge with nothing to say it had been.

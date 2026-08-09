@@ -197,13 +197,25 @@ return function(dt)
       controls.toggle('Jump to the newest lap', 'debriefFollowNewest')
 
       ui.separator()
+      say('caption', tr('LOOK'), COLOR.label)
+      -- Its own plate, its own size. A driver who wants solid black behind a
+      -- wall of text in the pits does not want it behind three words on their
+      -- windscreen, which is why these are not the advice window's numbers.
+      controls.slider('debriefBackground', 'debriefBackground', 0, 1,
+        'backing  %.2f')
+      controls.slider('debriefScale', 'debriefScale', 0.6, 2.5, 'text  %.2fx')
+      controls.slider('debriefLineGap', 'debriefLineGap', 0, 16, 'line gap  %.0f px', true)
+      controls.toggle('Rule between lines', 'debriefSeparator')
+      controls.toggle('UPPERCASE', 'debriefUppercase')
+
+      ui.separator()
       say('caption', tr('WHEEL BUTTONS'), COLOR.label)
       -- Assigned here, stored by Assetto Corsa. These are sections in the
       -- game's own `controls.ini`, so a wheel button, a gamepad or a key all
       -- work and the panel never has to know which it was.
       if binds.available() then
         say('caption', tr('click to assign, then press the button'), COLOR.dim)
-        binds.drawControls()
+        binds.drawControls(contentWidth())
       else
         -- The actual reason, not a guess at it. This said "needs Custom Shaders
         -- Patch in a session" to people who were in a session with CSP, which

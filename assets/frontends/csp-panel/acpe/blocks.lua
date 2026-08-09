@@ -469,6 +469,18 @@ M.tyres = drawTyres
 M.timing = drawTiming
 M.fuel = drawFuel
 M.session = drawSession
+--- A debrief line, at the debrief's own text size.
+---
+--- Not `sayAdvice`: that one is sized by `engineerScale`, and the two windows
+--- are read at different distances for different lengths of time.
+local function sayDebrief(text, color)
+  ui.dwriteText(text, textSize('body') * (settings.debriefScale or 1), color)
+end
+
+-- How tall the debrief came out last frame, for the plate above to be drawn to
+-- next time. Declared above its readers, like everything else here.
+local debriefPlateHeight = 0
+
 -- Wheel names for the debrief footer, in AC's array order.
 local CORNER_LABELS = { 'FL', 'FR', 'RL', 'RR' }
 
@@ -497,6 +509,21 @@ end
 -- already arrived. Paging is therefore instant and works with the game paused.
 local function drawDebrief(withLabel)
   if withLabel ~= false then sectionLabel('DEBRIEF') end
+
+  -- A plate behind it, on its own setting. Numbers are read at a glance and
+  -- forgive a busy background; a paragraph of advice over a moving track does
+  -- not, and this window is mostly text.
+  local plateOrigin = ui.getCursor()
+  if settings.debriefBackground > 0.01 then
+    local space = ui.availableSpace()
+    local height = space.y
+    if withLabel ~= false then
+      height = math.min(space.y, math.max(debriefPlateHeight, 1))
+    end
+    ui.drawRectFilled(vec2(plateOrigin.x - 6, plateOrigin.y - 4),
+      vec2(plateOrigin.x + contentWidth() + 6, plateOrigin.y + height + 4),
+      rgbm(0.04, 0.05, 0.07, settings.debriefBackground), 4)
+  end
 
   local available = math.min(shown.debrief_lap_count, frame.DEBRIEF_LAPS)
   if available == 0 then
@@ -612,7 +639,9 @@ local function drawDebrief(withLabel)
       local mark = SEVERITY_MARK[level] or ''
       local textColor = settings.debriefHighlight and markColor or COLOR.text
 
-      sayAdvice(mark, markColor)
+      if settings.debriefUppercase then body = body:upper() end
+
+      sayDebrief(mark, markColor)
       ui.sameLine()
       -- Wrapped the same way the live advice is, and for the same reason:
       -- `ui.textWrapped` draws in CSP's font, which is not the size the rest
@@ -621,11 +650,13 @@ local function drawDebrief(withLabel)
         local limit = settings.engineerMaxChars or 64
         while #body > limit do
           local cut = body:sub(1, limit):match('^.*()%s') or limit
-          sayAdvice(body:sub(1, cut - 1), textColor)
+          sayDebrief(body:sub(1, cut - 1), textColor)
           body = body:sub(cut + 1)
         end
       end
-      sayAdvice(body, textColor)
+      sayDebrief(body, textColor)
+      if settings.debriefSeparator then ui.separator() end
+      if (settings.debriefLineGap or 0) > 0 then gap(settings.debriefLineGap) end
     end
   end
 
@@ -662,6 +693,8 @@ local function drawDebrief(withLabel)
         soonest < 3 and COLOR.bad or (soonest < 6 and COLOR.warn or COLOR.dim))
     end
   end
+
+  debriefPlateHeight = math.max(0, ui.getCursor().y - plateOrigin.y)
 end
 
 M.engineer = drawEngineerMessages

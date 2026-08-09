@@ -101,11 +101,36 @@ end
 ---
 --- `:control()` draws the current binding and takes a new one when clicked, so
 --- the driver assigns a wheel button from inside the app and AC stores it.
-function M.drawControls()
+--- `AlterRealConfig`, value 64.
+---
+--- Without it a change is written to whichever controls preset is derived for
+--- the current car or mode, and a driver using car-specific controls or
+--- presets-per-mode watches the widget accept a button and keep saying it is
+--- unbound. The SDK says to use it for buttons that are "more of a global one,
+--- not relating to currently selected car", and paging a debrief is about as
+--- global as a binding gets.
+---
+--- Written as a number rather than read from `ui.ControlButtonControlFlags`,
+--- because that table is one more thing that has to exist for the widget to
+--- draw at all, and the value is part of the API.
+local ALTER_REAL_CONFIG = 64
+
+--- The rebinding widgets, for the settings window.
+---
+--- `:control()` draws the current binding and takes a new one when clicked, so
+--- the driver assigns a wheel button from inside the app and AC stores it.
+---
+--- The size is given rather than left to default. Unset, it takes "next item
+--- width", which is whatever the last widget left behind — and in a column laid
+--- out by this panel that has been zero, which draws a label with nothing
+--- clickable under it: a binding widget that looks right and cannot be pressed.
+function M.drawControls(width)
   local held = ensure()
   if held == nil then return false end
-  local changed = held.previousLap:control()
-  changed = held.nextLap:control() or changed
+
+  local size = vec2(width or 220, 0)
+  local changed = held.previousLap:control(size, ALTER_REAL_CONFIG)
+  changed = held.nextLap:control(size, ALTER_REAL_CONFIG) or changed
   return changed
 end
 
