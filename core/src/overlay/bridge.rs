@@ -351,18 +351,67 @@ fn candidate_executables() -> Vec<PathBuf> {
         candidates.push(dir.join("Linux").join(BRIDGE_EXE));
     }
 
+    // Relative to the *executable*, not just to the working directory.
+    //
+    // Running a checkout means `target/release/ac_pro_engineer`, and the
+    // cross-compiled bridge is its sibling at
+    // `target/x86_64-pc-windows-gnu/release/shm-bridge.exe`. Searching only
+    // `cwd/target/...` finds that when the shell happens to be at the root of
+    // the repository and finds nothing at all when it is not — which is what
+    // "I ran it out of the target folder and it does not see the bridge" is.
+    // Where the binary is does not depend on where you were standing when you
+    // started it.
+    if let Ok(exe) = std::env::current_exe() {
+        candidates.extend(cross_build_candidates(&exe));
+    }
+
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join(BRIDGE_EXE));
-        candidates.push(
-            cwd.join("target")
-                .join("x86_64-pc-windows-gnu")
-                .join("release")
-                .join(BRIDGE_EXE),
-        );
+        for profile in ["release", "debug"] {
+            candidates.push(
+                cwd.join("target")
+                    .join("x86_64-pc-windows-gnu")
+                    .join(profile)
+                    .join(BRIDGE_EXE),
+            );
+        }
     }
 
     candidates.retain(|path| path.is_file());
+    // The same file can be reached by more than one of the routes above, and a
+    // duplicate would be probed and reported twice.
+    let mut seen = std::collections::HashSet::new();
+    candidates.retain(|path| {
+        let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        seen.insert(key)
+    });
     candidates
+}
+
+/// Where a cross-compiled bridge sits relative to a binary in a checkout.
+///
+/// Pure, and separate from the search above, so it can be checked against made
+/// up paths rather than against whatever this machine happens to have.
+fn cross_build_candidates(exe: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for ancestor in exe.ancestors().take(4) {
+        for profile in ["release", "debug"] {
+            out.push(
+                ancestor
+                    .join("x86_64-pc-windows-gnu")
+                    .join(profile)
+                    .join(BRIDGE_EXE),
+            );
+            out.push(
+                ancestor
+                    .join("target")
+                    .join("x86_64-pc-windows-gnu")
+                    .join(profile)
+                    .join(BRIDGE_EXE),
+            );
+        }
+    }
+    out
 }
 
 /// Find the `shm-bridge.exe` this installation would run.
@@ -397,6 +446,38 @@ fn choose_executable(candidates: &[PathBuf], wanted: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// "I built it and ran it out of the target folder and it does not see the
+    /// bridge."
+    ///
+    /// The binary is `target/release/ac_pro_engineer` and the cross-compiled
+    /// bridge is its sibling at `target/x86_64-pc-windows-gnu/release/`. The
+    /// search used to look under the *working directory*, which finds that only
+    /// when the shell happens to be at the root of the repository — and a
+    /// checkout is very often run from somewhere else. Where the binary is does
+    /// not depend on where you were standing when you started it.
+    #[test]
+    fn the_cross_compiled_bridge_is_found_from_the_binary() {
+        let exe = Path::new("/home/someone/project/target/release/ac_pro_engineer");
+        let candidates = cross_build_candidates(exe);
+
+        assert!(
+            candidates.contains(&PathBuf::from(
+                "/home/someone/project/target/x86_64-pc-windows-gnu/release/shm-bridge.exe"
+            )),
+            "the sibling of the binary it was built beside: {candidates:?}"
+        );
+    }
+
+    /// A debug build finds its own bridge too, rather than only a release one.
+    #[test]
+    fn a_debug_build_looks_for_a_debug_bridge() {
+        let exe = Path::new("/w/target/debug/ac_pro_engineer");
+        let candidates = cross_build_candidates(exe);
+        assert!(candidates.contains(&PathBuf::from(
+            "/w/target/x86_64-pc-windows-gnu/debug/shm-bridge.exe"
+        )));
+    }
 
     fn good_info() -> BridgeInfo {
         BridgeInfo {
