@@ -37,9 +37,9 @@ local MESSAGE_SLOTS = #MESSAGE_KEYS
 -- from a literal 3 is what stops the next change to the frame having to be
 -- found in six places.
 local DEBRIEF_KEYS = {
-  { 'debrief_0_0', 'debrief_0_1', 'debrief_0_2', 'debrief_0_3' },
-  { 'debrief_1_0', 'debrief_1_1', 'debrief_1_2', 'debrief_1_3' },
-  { 'debrief_2_0', 'debrief_2_1', 'debrief_2_2', 'debrief_2_3' },
+  { 'debrief_0_0', 'debrief_0_1', 'debrief_0_2', 'debrief_0_3', 'debrief_0_4', 'debrief_0_5', 'debrief_0_6', 'debrief_0_7' },
+  { 'debrief_1_0', 'debrief_1_1', 'debrief_1_2', 'debrief_1_3', 'debrief_1_4', 'debrief_1_5', 'debrief_1_6', 'debrief_1_7' },
+  { 'debrief_2_0', 'debrief_2_1', 'debrief_2_2', 'debrief_2_3', 'debrief_2_4', 'debrief_2_5', 'debrief_2_6', 'debrief_2_7' },
 }
 local DEBRIEF_LAPS = #DEBRIEF_KEYS
 local DEBRIEF_LINES = #DEBRIEF_KEYS[1]

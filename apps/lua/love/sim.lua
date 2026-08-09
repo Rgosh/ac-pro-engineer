@@ -30,8 +30,8 @@ typedef struct {
   char app_version[16];
   uint32_t debrief_lap_count;
   uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
-  uint32_t debrief_severity[12];
-  char debrief[12][64];
+  uint32_t debrief_severity[24];
+  char debrief[24][64];
 } AcpeFrame;
 ]]
 
@@ -98,17 +98,23 @@ local frame = {
   debrief_lap_number = { [0] = 12, 11, 10 },
   debrief_lap_time_ms = { [0] = 91234, 92871, 95002 },
   debrief_line_count = { [0] = 4, 2, 1 },
-  debrief_severity = { [0] = 1, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0 },
+  debrief_severity = { [0] = 1, 1, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    2, 0, 0, 0, 0, 0, 0, 0 },
   debrief = { [0] =
+    -- lap 12: four lines, then four empty slots
     'Fronts over 28.4 psi (target 27.5)',
     'Front: inner edge running hot (I-O: 15.0C)',
     'Lockups: 4',
     'Coasting 18%',
+    '', '', '', '',
+    -- lap 11
     'All four cold 62C',
     'Rear: outer edge hotter (I-O: -6.0C)',
-    '', '',
+    '', '', '', '', '', '',
+    -- lap 10
     'FL/RL overheating 815C',
-    '', '', '',
+    '', '', '', '', '', '', '',
   },
 }
 
@@ -122,7 +128,7 @@ setmetatable(frame, {
     if slot ~= nil then return rawget(frame, 'messages')[tonumber(slot)] end
     local lap, line = name:match('^debrief_(%d)_(%d)$')
     if lap ~= nil then
-      return rawget(frame, 'debrief')[tonumber(lap) * 4 + tonumber(line)]
+      return rawget(frame, 'debrief')[tonumber(lap) * 8 + tonumber(line)]
     end
     return nil
   end,
@@ -250,7 +256,7 @@ local function readSharedMemory(path)
     frame.debrief_lap_time_ms[i] = raw.debrief_lap_time_ms[i]
     frame.debrief_line_count[i] = raw.debrief_line_count[i]
   end
-  for i = 0, 11 do
+  for i = 0, 23 do
     frame.debrief[i] = ffi.string(raw.debrief[i])
     frame.debrief_severity[i] = raw.debrief_severity[i]
   end

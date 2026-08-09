@@ -37,8 +37,8 @@ typedef struct {
   char app_version[16];
   uint32_t debrief_lap_count;
   uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
-  uint32_t debrief_severity[12];
-  char debrief[12][64];
+  uint32_t debrief_severity[24];
+  char debrief[24][64];
 } F;]]
 
 --- PANEL_VERSION as the app under test declares it.
@@ -128,7 +128,7 @@ local function synthesise(b)
     f.debrief_lap_time_ms[lapIndex] = entry.ms
     f.debrief_line_count[lapIndex] = #entry.lines
     for line = 1, #entry.lines do
-      local slot = lapIndex * 4 + line - 1
+      local slot = lapIndex * 8 + line - 1
       ffi.copy(f.debrief[slot], entry.lines[line][1])
       f.debrief_severity[slot] = entry.lines[line][2]
     end
@@ -182,7 +182,7 @@ ac = {
       -- advice does: an array of strings comes back as raw cdata.
       local lap, line = k:match('^debrief_(%d)_(%d)$')
       if lap ~= nil then
-        return ffi.string(raw.debrief[tonumber(lap) * 4 + tonumber(line)])
+        return ffi.string(raw.debrief[tonumber(lap) * 8 + tonumber(line)])
       end
       if k == 'debrief_lap_number' or k == 'debrief_lap_time_ms'
         or k == 'debrief_line_count' or k == 'debrief_severity' then
@@ -329,11 +329,20 @@ local function loadPanel()
   return pcall(dofile, appDir .. 'ac_pro_engineer.lua')
 end
 
+-- Checked, not assumed. This printed "load: OK" whatever `loadPanel` returned,
+-- so a panel that failed to load at all reported success and the next line —
+-- calling a function the file never got as far as defining — failed with a
+-- bare "attempt to call a nil value" and no hint of where.
 local ok, err = loadPanel()
+if not ok then print('load FAILED: ' .. tostring(err)); os.exit(1) end
+if type(script.update) ~= 'function' then
+  print('load FAILED: the panel defined no script.update')
+  os.exit(1)
+end
 print('load: OK')
 
 for i = 1, 3 do
-  local u, e = pcall(script.update, 0.016)
+  local u, e = xpcall(script.update, debug.traceback, 0.016)
   if not u then print('update FAILED: ' .. tostring(e)); os.exit(1) end
 end
 print('update: OK')

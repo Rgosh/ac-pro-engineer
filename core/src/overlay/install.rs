@@ -48,6 +48,10 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../apps/lua/ac_pro_engineer/icon.png"),
     ),
     (
+        "acpe/binds.lua",
+        include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/binds.lua"),
+    ),
+    (
         "acpe/blocks.lua",
         include_bytes!("../../../apps/lua/ac_pro_engineer/acpe/blocks.lua"),
     ),

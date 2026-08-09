@@ -17,6 +17,7 @@ local layout = require('acpe.layout')
 local format = require('acpe.format')
 local frame = require('acpe.frame')
 local controls = require('acpe.controls')
+local binds = require('acpe.binds')
 local console = require('acpe.console')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
@@ -186,6 +187,18 @@ return function(dt)
       -- Off, and a driver who paged back to compare two laps stays where they
       -- put themselves; on, and a lap ending brings them back to it.
       controls.toggle('Jump to the newest lap', 'debriefFollowNewest')
+
+      ui.separator()
+      say('caption', tr('WHEEL BUTTONS'), COLOR.label)
+      -- Assigned here, stored by Assetto Corsa. These are sections in the
+      -- game's own `controls.ini`, so a wheel button, a gamepad or a key all
+      -- work and the panel never has to know which it was.
+      if binds.available() then
+        say('caption', tr('click to assign, then press the button'), COLOR.dim)
+        binds.drawControls()
+      else
+        say('caption', tr('bindings need Custom Shaders Patch in a session'), COLOR.dim)
+      end
     end)
 
     ui.tabItem(tr('Advice'), function()

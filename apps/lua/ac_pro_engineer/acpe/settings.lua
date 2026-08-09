@@ -64,7 +64,7 @@ local DEFAULTS = {
 
   -- The lap debrief. Its own numbers rather than the advice's: the two are
   -- read in different places at different speeds.
-  debriefLines = 4,          -- 0 hides the block entirely
+  debriefLines = 8,          -- 0 hides the block entirely
   debriefShowTime = true,
   debriefHighlight = true,
   debriefFollowNewest = true,   -- a new lap brings the window back to it

@@ -142,10 +142,12 @@ fn default_target_hot_pressure_front() -> f32 {
 fn default_target_hot_pressure_rear() -> f32 {
     27.0
 }
-/// All four by default. A debrief only appears when a lap has just ended, so
-/// unlike the live advice it is not competing for the screen continuously.
+/// All eight by default. A debrief only appears when a lap has just ended, so
+/// unlike the live advice it is not competing for the screen continuously —
+/// and a lap that went wrong in six ways should say so rather than stopping at
+/// four and leaving the driver to wonder what else there was.
 fn default_debrief_lines() -> u8 {
-    4
+    8
 }
 
 fn default_engineer_lines() -> u8 {

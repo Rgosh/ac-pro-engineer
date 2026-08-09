@@ -62,12 +62,20 @@ local blocks = require('acpe.blocks')
 local windowMain = require('acpe.windows.main')
 local windowEngineer = require('acpe.windows.engineer')
 local windowDebrief = require('acpe.windows.debrief')
+local binds = require('acpe.binds')
 local windowSettings = require('acpe.windows.settings')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
 
 function script.update(dt)
   frame.update(dt)
+
+  -- Polled here and not in the debrief window: `:pressed()` is true for a
+  -- single frame, so whichever window asked first would consume it and the
+  -- other would always see false. It also means a wheel button still pages the
+  -- debrief while the window is behind another one.
+  local step = binds.debriefStep()
+  if step ~= 0 then blocks.debriefStep(step) end
 end
 
 function script.windowMain(dt)

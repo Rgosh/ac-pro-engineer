@@ -57,10 +57,13 @@ pub const DEBRIEF_LAPS: usize = 3;
 
 /// Lines of advice carried per finished lap.
 ///
-/// Fewer than the eight the live engineer gets. Live advice is read at 200 km/h
-/// and wants to be short; a debrief is read stopped, and four lines is what the
-/// smallest window this panel draws can hold without scrolling.
-pub const DEBRIEF_LINES: usize = 4;
+/// Eight, the same as the live engineer, and for a reason that only showed up
+/// once this was driven: a lap can go wrong in more than four ways at once, and
+/// four slots meant the engineer quietly dropped whatever came fifth. The live
+/// advice has the same cap for the same reason. How many are *drawn* is the
+/// driver's setting; how many exist is not something the wire format should be
+/// deciding.
+pub const DEBRIEF_LINES: usize = 8;
 
 /// Total debrief slots, laps times lines. Flat rather than nested: the panel
 /// needs one named field per string, so the generator writes out
@@ -538,7 +541,7 @@ const FIELDS: &[(&str, &str)] = &[
     ),
     (
         "debrief_severity",
-        "ac.StructItem.array(ac.StructItem.uint32(), 12)",
+        "ac.StructItem.array(ac.StructItem.uint32(), 24)",
     ),
     // One named field per line, for the reason the messages above are named:
     // CSP hands back raw cdata for an array of strings. `debrief_<lap>_<line>`,
@@ -547,14 +550,26 @@ const FIELDS: &[(&str, &str)] = &[
     ("debrief_0_1", "ac.StructItem.string(64)"),
     ("debrief_0_2", "ac.StructItem.string(64)"),
     ("debrief_0_3", "ac.StructItem.string(64)"),
+    ("debrief_0_4", "ac.StructItem.string(64)"),
+    ("debrief_0_5", "ac.StructItem.string(64)"),
+    ("debrief_0_6", "ac.StructItem.string(64)"),
+    ("debrief_0_7", "ac.StructItem.string(64)"),
     ("debrief_1_0", "ac.StructItem.string(64)"),
     ("debrief_1_1", "ac.StructItem.string(64)"),
     ("debrief_1_2", "ac.StructItem.string(64)"),
     ("debrief_1_3", "ac.StructItem.string(64)"),
+    ("debrief_1_4", "ac.StructItem.string(64)"),
+    ("debrief_1_5", "ac.StructItem.string(64)"),
+    ("debrief_1_6", "ac.StructItem.string(64)"),
+    ("debrief_1_7", "ac.StructItem.string(64)"),
     ("debrief_2_0", "ac.StructItem.string(64)"),
     ("debrief_2_1", "ac.StructItem.string(64)"),
     ("debrief_2_2", "ac.StructItem.string(64)"),
     ("debrief_2_3", "ac.StructItem.string(64)"),
+    ("debrief_2_4", "ac.StructItem.string(64)"),
+    ("debrief_2_5", "ac.StructItem.string(64)"),
+    ("debrief_2_6", "ac.StructItem.string(64)"),
+    ("debrief_2_7", "ac.StructItem.string(64)"),
 ];
 
 /// How many bytes an `ac.StructItem` declaration occupies.
