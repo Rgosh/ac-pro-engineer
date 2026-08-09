@@ -1,5 +1,5 @@
 ========================================
-       AC PRO ENGINEER v0.3.5
+       AC PRO ENGINEER v0.3.6
 ========================================
 
 Telemetry, race engineering and an in-game overlay for Assetto Corsa.

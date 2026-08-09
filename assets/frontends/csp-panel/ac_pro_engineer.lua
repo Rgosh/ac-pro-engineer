@@ -53,7 +53,7 @@ local EXPECTED_VERSION = 6
 -- ruling out when something in the game looks wrong. Checked against the crate
 -- by `cargo test -p ac_core the_panel_announces`, so it cannot be left behind
 -- at release time.
-local PANEL_VERSION = '0.3.5'
+local PANEL_VERSION = '0.3.6'
 
 local frame = require('acpe.frame')
 frame.configure(EXPECTED_VERSION, PANEL_VERSION)
@@ -62,20 +62,12 @@ local blocks = require('acpe.blocks')
 local windowMain = require('acpe.windows.main')
 local windowEngineer = require('acpe.windows.engineer')
 local windowDebrief = require('acpe.windows.debrief')
-local binds = require('acpe.binds')
 local windowSettings = require('acpe.windows.settings')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
 
 function script.update(dt)
   frame.update(dt)
-
-  -- Polled here and not in the debrief window: `:pressed()` is true for a
-  -- single frame, so whichever window asked first would consume it and the
-  -- other would always see false. It also means a wheel button still pages the
-  -- debrief while the window is behind another one.
-  local step = binds.debriefStep()
-  if step ~= 0 then blocks.debriefStep(step) end
 end
 
 function script.windowMain(dt)

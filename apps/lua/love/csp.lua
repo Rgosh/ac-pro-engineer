@@ -1051,30 +1051,6 @@ function csp.install(frameSource, storageFile, settingsDir)
   _G.ui = uiProxy
 
   _G.ac = {
-  -- A control button, with its methods behind a metatable the way CSP's are.
-  -- The panel used to check `type(button.pressed)` on the object itself, which
-  -- is a question about indexing and not about whether the button works — and
-  -- it refused the real API in a real session.
-  ControlButton = function(id, _defaults)
-    local bound = nil
-    return setmetatable({}, {
-      __index = {
-        pressed = function() return false end,
-        released = function() return false end,
-        down = function() return false end,
-        configured = function() return bound ~= nil end,
-        disabled = function() return false end,
-        holdMode = function() return false end,
-        boundTo = function() return bound end,
-        control = function()
-          ui.dwriteText('bind: ' .. id, 13, rgbm(0.7, 0.7, 0.75, 1))
-          return false
-        end,
-        onPressed = function() return { dispose = function() end } end,
-      },
-    })
-  end,
-
     -- The layout table is CSP's business; the harness only needs the call to
     -- succeed, since the frame it hands back is already a Lua table.
     StructItem = setmetatable({}, {

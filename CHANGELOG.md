@@ -2,17 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — v0.3.6
+## [v0.3.6] - 2026-08-10
 
 **The point:** the engineer had two halves and only one of them ever reached the
 car. The panel could tell you what was happening; it had nothing to say about
 the lap you had just finished. Now it does, with the last three laps to page
-through and a wheel button to page with.
+through.
 
-> Not released yet, and not yet driven: the debrief has only seen synthetic laps
-> under the test harnesses, and the wheel bindings have never had a wheel near
-> them. The frame changed, so a published build will need a matching
-> `shm-bridge.exe` on Linux — see the breaking note.
+> The frame changed, so **Linux needs a matching `shm-bridge.exe`** — see the
+> breaking note. Everything else is optional and off until you turn it on.
 
 Nothing here changes what the application does unless you go and turn it on. The
 debrief is a new window you open; the UDP feed is off until you set an address.
@@ -32,16 +30,19 @@ debrief is a new window you open; the UDP feed is off until you set an address.
   windows, camber per axle, brakes, and how the lap was driven. `<` and `>` page
   through the last three laps, and the header says how the lap compared with the
   one before it.
-- **Wheel buttons for it.** Two bindings assigned inside the app and stored by
-  Assetto Corsa, in the game's own `controls.ini` — so a wheel button, a
-  gamepad or a key all work and the panel never learns which it was. Nothing is
-  bound by default: a default that is free on one wheel steals the pit limiter
-  on another. Settings → Debrief.
 - **Its own settings**: how many lines to draw (zero switches the whole thing
   off, and the application then publishes none), the lap time, the comparison
-  with the previous lap, colouring by severity, and whether a finished lap
-  pulls the window back to it — off is for comparing two laps without being
-  dragged forward.
+  with the previous lap or with your best, sector times, what is left of the
+  tyres and fuel, stint length, colouring by severity, and whether a finished
+  lap pulls the window back to it — off is for comparing two laps without being
+  dragged forward. Plus its own look: backing plate from transparent to solid
+  black, text size, line spacing, a rule between lines, upper case.
+
+  Paging is `<` and `>` in the window. Assigning a wheel button to it was in
+  this release and has been taken out again: it wrote the binding into Assetto
+  Corsa's own `controls.ini` correctly and the press never arrived back. It
+  will return when it works rather than shipping as a control that looks
+  bound and does nothing.
 - **Eight lines per lap, not four.** A lap can go wrong in more than four ways
   at once, and four slots meant whatever came fifth was silently dropped.
 - **Sector times against the session's best**, in the debrief. Four tenths

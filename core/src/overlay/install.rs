@@ -53,10 +53,6 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../assets/frontends/csp-panel/icon.png"),
     ),
     (
-        "acpe/binds.lua",
-        include_bytes!("../../../assets/frontends/csp-panel/acpe/binds.lua"),
-    ),
-    (
         "acpe/blocks.lua",
         include_bytes!("../../../assets/frontends/csp-panel/acpe/blocks.lua"),
     ),

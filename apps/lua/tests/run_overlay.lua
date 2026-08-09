@@ -238,30 +238,6 @@ ac = {
 local savedValues = {}
 local storageAsked = 0
 
--- A control button that behaves like CSP's: methods behind a metatable, so a
--- panel that checks `type(button.pressed)` on the object itself sees nothing.
--- That check is exactly what shipped, and it refused the real API in the real
--- game while this harness — which had no stub at all — reported OK on the
--- fallback branch. The success path is tested now.
-local boundButtons = {}
-ac.ControlButton = function(id, _defaults)
-  local state = { id = id, pressed_ = false, bound = nil }
-  boundButtons[id] = state
-  return setmetatable({}, {
-    __index = {
-      pressed = function() return state.pressed_ end,
-      released = function() return false end,
-      down = function() return state.pressed_ end,
-      configured = function() return state.bound ~= nil end,
-      disabled = function() return false end,
-      holdMode = function() return false end,
-      boundTo = function() return state.bound end,
-      control = function() note('controlButton'); drawn[#drawn + 1] = 'bind: ' .. id; return false end,
-      onPressed = function() return { dispose = function() end } end,
-    },
-  })
-end
-
 ac.storage = function(defaults, _prefix)
   storageAsked = storageAsked + 1
   for key, value in pairs(defaults) do
@@ -763,33 +739,6 @@ end
 print('new advice is told apart from settled advice: OK')
 
 -- ---------------------------------------------------------------------------
--- The wheel bindings reach the settings window
---
--- They did not, in the game, while this harness said everything was fine —
--- because the harness had no `ac.ControlButton` at all, so the panel only ever
--- ran the "no bindings here" branch and nobody noticed it was the only branch
--- being tested. The check that shipped asked whether `button.pressed` was a
--- function *on the object*, and CSP puts its methods behind a metatable, so the
--- real API was refused in a real session.
-do
-  local before = #drawn
-  local fine, err = pcall(script.windowSettings, 0.016)
-  assert(fine, 'windowSettings threw: ' .. tostring(err))
-
-  local widgets, fallback = 0, false
-  for i = before + 1, #drawn do
-    local line = tostring(drawn[i])
-    if line:match('^bind: acpe/Debrief') then widgets = widgets + 1 end
-    if line:find('no wheel bindings available', 1, true) then fallback = true end
-  end
-
-  assert(widgets >= 2,
-    'the two binding widgets were not drawn (' .. widgets .. ' found)')
-  assert(not fallback,
-    'the settings window fell back to "no bindings" with a working ac.ControlButton')
-  print('the wheel bindings reach the settings window: OK')
-end
-
 -- Paging through the debrief actually changes the lap
 --
 -- The whole point of the window is that a driver can look back at the lap

@@ -17,7 +17,6 @@ local layout = require('acpe.layout')
 local format = require('acpe.format')
 local frame = require('acpe.frame')
 local controls = require('acpe.controls')
-local binds = require('acpe.binds')
 local console = require('acpe.console')
 local telemetry = require('acpe.windows.telemetry')
 local status = require('acpe.windows.status')
@@ -208,43 +207,6 @@ return function(dt)
       controls.toggle('Rule between lines', 'debriefSeparator')
       controls.toggle('UPPERCASE', 'debriefUppercase')
 
-      ui.separator()
-      say('caption', tr('WHEEL BUTTONS'), COLOR.label)
-      -- Assigned here, stored by Assetto Corsa. These are sections in the
-      -- game's own `controls.ini`, so a wheel button, a gamepad or a key all
-      -- work and the panel never has to know which it was.
-      if binds.available() then
-        say('caption', tr('click to assign, then press the button'), COLOR.dim)
-        binds.drawControls(contentWidth())
-
-        -- What is actually bound, and whether the panel is receiving it. A
-        -- binding that does not arrive looks exactly like one that was never
-        -- made, and both look like nothing happening.
-        local state = binds.state()
-        if state ~= nil then
-          local line = function(label, entry)
-            local text = entry.bound
-            if text == nil or text == '' then text = tr('not bound') end
-            say('caption', label .. ':  ' .. text,
-              entry.bound and COLOR.text or COLOR.dim)
-            if entry.down then
-              ui.sameLine()
-              say('caption', '  ' .. tr('pressed now'), COLOR.good)
-            end
-          end
-          line(tr('previous lap'), state.previousLap)
-          line(tr('next lap'), state.nextLap)
-          say('caption', tr('press a bound button — it should say pressed now'),
-            COLOR.dim)
-        end
-      else
-        -- The actual reason, not a guess at it. This said "needs Custom Shaders
-        -- Patch in a session" to people who were in a session with CSP, which
-        -- names the one thing that is definitely not the problem and leaves
-        -- them nowhere to go.
-        say('caption', tr('no wheel bindings available'), COLOR.dim)
-        say('caption', binds.reason(), COLOR.dim)
-      end
     end)
 
     ui.tabItem(tr('Advice'), function()
