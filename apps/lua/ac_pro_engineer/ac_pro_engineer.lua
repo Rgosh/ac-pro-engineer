@@ -42,7 +42,7 @@
 -- Declared here rather than in `acpe/frame.lua` because this is the file the
 -- installer reads to report what is installed, and the file
 -- `cargo test -p ac_core the_panel_reads_the_frame` checks.
-local EXPECTED_VERSION = 5
+local EXPECTED_VERSION = 6
 
 -- The release this panel was shipped in, matching the workspace's Cargo
 -- version and the manifest's VERSION.

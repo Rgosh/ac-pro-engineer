@@ -28,6 +28,10 @@ typedef struct {
   char messages[8][64];
   uint32_t message_severity[8];
   char app_version[16];
+  uint32_t debrief_lap_count;
+  uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
+  uint32_t debrief_severity[12];
+  char debrief[12][64];
 } AcpeFrame;
 ]]
 
@@ -52,7 +56,7 @@ sim.FLAG = FLAG
 --- app indexes them — it speaks the struct's dialect, not Lua's.
 local frame = {
   -- Must match ac_core::overlay::frame::OVERLAY_VERSION.
-  version = 5,
+  version = 6,
   sequence = 2,
   speed_kmh = 0,
   fuel_litres = 45,
@@ -88,13 +92,38 @@ local frame = {
   -- the harness does not draw the "restart the game" notice by default; set it
   -- to something else to see that path.
   app_version = '0.3.5',
+  -- Three finished laps of debrief, newest first, so the lap switcher has
+  -- something to switch between without a game running.
+  debrief_lap_count = 3,
+  debrief_lap_number = { [0] = 12, 11, 10 },
+  debrief_lap_time_ms = { [0] = 91234, 92871, 95002 },
+  debrief_line_count = { [0] = 4, 2, 1 },
+  debrief_severity = { [0] = 1, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0 },
+  debrief = { [0] =
+    'Fronts over 28.4 psi (target 27.5)',
+    'Front: inner edge running hot (I-O: 15.0C)',
+    'Lockups: 4',
+    'Coasting 18%',
+    'All four cold 62C',
+    'Rear: outer edge hotter (I-O: -6.0C)',
+    '', '',
+    'FL/RL overheating 815C',
+    '', '', '',
+  },
 }
 
--- The panel reads the messages by name, the way CSP hands them over.
+-- The panel reads the messages by name, the way CSP hands them over. Same for
+-- the debrief: `debrief_<lap>_<line>` rather than a two-dimensional array,
+-- because an array of strings comes back from CSP as raw cdata.
 setmetatable(frame, {
   __index = function(_, key)
-    local slot = tostring(key):match('^message_(%d)$')
+    local name = tostring(key)
+    local slot = name:match('^message_(%d)$')
     if slot ~= nil then return rawget(frame, 'messages')[tonumber(slot)] end
+    local lap, line = name:match('^debrief_(%d)_(%d)$')
+    if lap ~= nil then
+      return rawget(frame, 'debrief')[tonumber(lap) * 4 + tonumber(line)]
+    end
     return nil
   end,
 })
@@ -215,6 +244,16 @@ local function readSharedMemory(path)
 
   frame.version = raw.version
   frame.app_version = ffi.string(raw.app_version)
+  frame.debrief_lap_count = raw.debrief_lap_count
+  for i = 0, 2 do
+    frame.debrief_lap_number[i] = raw.debrief_lap_number[i]
+    frame.debrief_lap_time_ms[i] = raw.debrief_lap_time_ms[i]
+    frame.debrief_line_count[i] = raw.debrief_line_count[i]
+  end
+  for i = 0, 11 do
+    frame.debrief[i] = ffi.string(raw.debrief[i])
+    frame.debrief_severity[i] = raw.debrief_severity[i]
+  end
   frame.sequence = raw.sequence
   frame.speed_kmh = raw.speed_kmh
   frame.fuel_litres = raw.fuel_litres

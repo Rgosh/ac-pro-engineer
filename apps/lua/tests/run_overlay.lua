@@ -35,6 +35,10 @@ typedef struct {
   char messages[8][64];
   uint32_t message_severity[8];
   char app_version[16];
+  uint32_t debrief_lap_count;
+  uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
+  uint32_t debrief_severity[12];
+  char debrief[12][64];
 } F;]]
 
 --- PANEL_VERSION as the app under test declares it.
@@ -60,7 +64,7 @@ end
 -- plausible numbers so a format string that cannot take them fails here.
 local function synthesise(b)
   local f = b[0]
-  f.version = 5            -- EXPECTED_VERSION; a mismatch draws the error page
+  f.version = 6            -- EXPECTED_VERSION; a mismatch draws the error page
   f.sequence = 2           -- even: settled. Zero reads as "never written"
   f.speed_kmh = 214.0
   f.rpm, f.max_rpm, f.gear = 6000, 8000, 4
@@ -98,6 +102,37 @@ local function synthesise(b)
   -- ACPE_APP_VERSION lets a run pretend the application is on another release,
   -- which is the only way to reach the "restart the game" notice from here.
   ffi.copy(f.app_version, os.getenv('ACPE_APP_VERSION') or currentPanelVersion())
+
+  -- Three finished laps, each with its own advice, so the debrief window has
+  -- something to switch between. Full slots on the newest and fewer further
+  -- back: a lap that had less to say must not read the next lap's lines.
+  f.debrief_lap_count = 3
+  local debriefs = {
+    { lap = 12, ms = 91234, lines = {
+      { 'Fronts over 28.4 psi (target 27.5)', 1 },
+      { 'Front: inner edge running hot (I-O: 15.0C)', 1 },
+      { 'Lockups: 4', 0 },
+      { 'Coasting 18%', 0 },
+    } },
+    { lap = 11, ms = 92871, lines = {
+      { 'All four cold 62C', 0 },
+      { 'Rear: outer edge hotter (I-O: -6.0C)', 0 },
+    } },
+    { lap = 10, ms = 95002, lines = {
+      { 'FL/RL overheating 815C', 2 },
+    } },
+  }
+  for lapIndex = 0, 2 do
+    local entry = debriefs[lapIndex + 1]
+    f.debrief_lap_number[lapIndex] = entry.lap
+    f.debrief_lap_time_ms[lapIndex] = entry.ms
+    f.debrief_line_count[lapIndex] = #entry.lines
+    for line = 1, #entry.lines do
+      local slot = lapIndex * 4 + line - 1
+      ffi.copy(f.debrief[slot], entry.lines[line][1])
+      f.debrief_severity[slot] = entry.lines[line][2]
+    end
+  end
 end
 
 -- Somewhere for the panel's own settings file, which is the copy that has to
@@ -143,6 +178,16 @@ ac = {
         return setmetatable({}, { __index = function(_, i) return raw.message_severity[i] end })
       end
       if k == 'app_version' then return ffi.string(raw.app_version) end
+      -- The debrief travels as named string fields for the same reason the
+      -- advice does: an array of strings comes back as raw cdata.
+      local lap, line = k:match('^debrief_(%d)_(%d)$')
+      if lap ~= nil then
+        return ffi.string(raw.debrief[tonumber(lap) * 4 + tonumber(line)])
+      end
+      if k == 'debrief_lap_number' or k == 'debrief_lap_time_ms'
+        or k == 'debrief_line_count' or k == 'debrief_severity' then
+        return setmetatable({}, { __index = function(_, i) return raw[k][i] end })
+      end
       local slot = k:match('^message_(%d)$')
       if slot ~= nil then
         return ffi.string(raw.messages[tonumber(slot)])

@@ -39,6 +39,23 @@ local FRAME_LAYOUT = {
   message_7 = ac.StructItem.string(64),
   message_severity = ac.StructItem.array(ac.StructItem.uint32(), 8),
   app_version = ac.StructItem.string(16),
+  debrief_lap_count = ac.StructItem.uint32(),
+  debrief_lap_number = ac.StructItem.array(ac.StructItem.uint32(), 3),
+  debrief_lap_time_ms = ac.StructItem.array(ac.StructItem.uint32(), 3),
+  debrief_line_count = ac.StructItem.array(ac.StructItem.uint32(), 3),
+  debrief_severity = ac.StructItem.array(ac.StructItem.uint32(), 12),
+  debrief_0_0 = ac.StructItem.string(64),
+  debrief_0_1 = ac.StructItem.string(64),
+  debrief_0_2 = ac.StructItem.string(64),
+  debrief_0_3 = ac.StructItem.string(64),
+  debrief_1_0 = ac.StructItem.string(64),
+  debrief_1_1 = ac.StructItem.string(64),
+  debrief_1_2 = ac.StructItem.string(64),
+  debrief_1_3 = ac.StructItem.string(64),
+  debrief_2_0 = ac.StructItem.string(64),
+  debrief_2_1 = ac.StructItem.string(64),
+  debrief_2_2 = ac.StructItem.string(64),
+  debrief_2_3 = ac.StructItem.string(64),
 }
 
 return FRAME_LAYOUT

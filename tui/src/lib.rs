@@ -338,6 +338,13 @@ pub struct AppState {
     /// rebuild is not a thing to do quietly.
     pub bridge_offer: Arc<Mutex<Option<ac_core::overlay::bridge_update::RemoteBridge>>>,
     pub overlay_install_status: String,
+    /// The last few finished laps and what the engineer made of each, ready
+    /// for the frame.
+    ///
+    /// Kept rather than computed per frame: a debrief is a whole lap's worth of
+    /// averages and it changes once a lap, while the frame goes out sixty times
+    /// a second. Newest first, which is the order the panel draws them in.
+    pub overlay_debrief: Vec<ac_core::overlay::frame::DebriefLap>,
     /// A result worth showing: the install or removal was asked for from the
     /// Settings tab, where a status line at the bottom of a card nobody is
     /// looking at is the same as no answer at all.
@@ -464,6 +471,7 @@ impl AppState {
             bridge_fetch_status: String::new(),
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
+            overlay_debrief: Vec::new(),
             overlay_result_popup: false,
             show_overlay_diagnosis: false,
             overlay_diagnosis: ac_core::overlay::diagnosis::report(),
@@ -545,6 +553,28 @@ impl AppState {
                 self.overlay_install_status = format!("could not install: {error}");
             }
         }
+    }
+
+    /// Recompute the debrief the panel is shown, newest lap first.
+    ///
+    /// `DEBRIEF_LAPS` of them, because that is what the frame carries — the
+    /// panel cannot ask for a lap that was not published, so what it can show
+    /// is decided here.
+    pub fn rebuild_overlay_debrief(&mut self) {
+        use ac_core::overlay::frame::{DEBRIEF_LAPS, DebriefLap};
+
+        self.overlay_debrief = self
+            .analyzer
+            .laps
+            .iter()
+            .rev()
+            .take(DEBRIEF_LAPS)
+            .map(|lap| DebriefLap {
+                lap_number: lap.lap_number.max(0) as u32,
+                lap_time_ms: lap.lap_time_ms.max(0) as u32,
+                advice: ac_core::debrief::debrief(lap, &self.config),
+            })
+            .collect();
     }
 
     /// Ask the release page whether there is a bridge worth taking.
@@ -995,6 +1025,12 @@ impl AppState {
                         self.config.target_tyre_pressure,
                         self.config.update_rate,
                     );
+                    // The lap the analyser has just closed is the one the panel
+                    // wants to hear about, so the debrief is built here and not
+                    // in the publisher: once a lap rather than sixty times a
+                    // second, and the sentences are identical every frame in
+                    // between.
+                    self.rebuild_overlay_debrief();
 
                     // Car specs sharpen the *estimated* reference time, but
                     // they are an enrichment, not a precondition. This whole
@@ -1285,6 +1321,10 @@ impl AppState {
         frame.set_messages_capped(
             &self.recommendations,
             self.config.overlay.engineer_lines as usize,
+        );
+        frame.set_debrief(
+            &self.overlay_debrief,
+            self.config.overlay.debrief_lines as usize,
         );
 
         writer.publish(&frame);

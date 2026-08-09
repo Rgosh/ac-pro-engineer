@@ -21,7 +21,7 @@ use crate::session_info::SessionInfo;
 
 /// Bumped whenever the layout changes. The overlay refuses to draw a version
 /// it does not recognise rather than misreading a struct from another release.
-pub const OVERLAY_VERSION: u32 = 5;
+pub const OVERLAY_VERSION: u32 = 6;
 
 /// Shared memory name. The `AcTools.CSP.Limited.` prefix matters: CSP allows
 /// scripts without IO permission to open shared memory only when the name
@@ -42,6 +42,30 @@ pub const MESSAGE_BYTES: usize = 64;
 /// setting on the application's side and how many are drawn is one on the
 /// panel's.
 pub const MESSAGE_SLOTS: usize = 8;
+
+/// How many finished laps travel with their debrief.
+///
+/// The panel switches between them on its own. It has to: the frame goes one
+/// way, the panel has no channel back to ask for a different lap, and giving it
+/// one would mean a second mapping and a protocol to go with it. Publishing the
+/// last few laps costs a kilobyte and no protocol at all.
+///
+/// Three, because a debrief is read in the pits about the stint you have just
+/// done. The terminal keeps every lap of the session and always will; this is
+/// the recent end of it, at a glance, without taking the helmet off.
+pub const DEBRIEF_LAPS: usize = 3;
+
+/// Lines of advice carried per finished lap.
+///
+/// Fewer than the eight the live engineer gets. Live advice is read at 200 km/h
+/// and wants to be short; a debrief is read stopped, and four lines is what the
+/// smallest window this panel draws can hold without scrolling.
+pub const DEBRIEF_LINES: usize = 4;
+
+/// Total debrief slots, laps times lines. Flat rather than nested: the panel
+/// needs one named field per string, so the generator writes out
+/// `debrief_0_0` .. `debrief_2_3` and the index arithmetic lives in one place.
+pub const DEBRIEF_SLOTS: usize = DEBRIEF_LAPS * DEBRIEF_LINES;
 
 /// Room for the application's version string, e.g. `0.3.4`. NUL-padded.
 ///
@@ -140,10 +164,47 @@ pub struct OverlayFrame {
     /// which copy of the panel the game happens to have in memory. Only the
     /// panel knows that, and only if it is told what the current version is.
     ///
-    /// Last in the struct, so every offset before it is unchanged: a panel or
-    /// a bridge that is one version behind misreads nothing, it simply does
-    /// not see this field.
+    /// Was last in the struct, and everything added since has gone after it
+    /// for the same reason: a field appended to the end moves no offset before
+    /// it.
     pub app_version: [u8; VERSION_BYTES],
+
+    // --- the debrief ------------------------------------------------------
+    //
+    // Everything below is about laps that are over, and all of it is appended
+    // rather than woven in, so every offset above is exactly where v5 left it.
+    /// How many of the debrief laps carry anything, newest at index 0.
+    pub debrief_lap_count: u32,
+
+    /// Which lap each debrief is about, as the driver counts them.
+    pub debrief_lap_number: [u32; DEBRIEF_LAPS],
+
+    /// The lap time, in milliseconds. Zero when it is not known — an out lap
+    /// that AC never timed, mostly.
+    pub debrief_lap_time_ms: [u32; DEBRIEF_LAPS],
+
+    /// How many lines of that lap's debrief are filled in.
+    pub debrief_line_count: [u32; DEBRIEF_LAPS],
+
+    /// Severity per line, laid out the same way as [`Self::debrief`].
+    pub debrief_severity: [u32; DEBRIEF_SLOTS],
+
+    /// The debrief itself: lap `l` line `n` is at `l * DEBRIEF_LINES + n`.
+    /// UTF-8, NUL-padded, truncated on a character boundary.
+    pub debrief: [[u8; MESSAGE_BYTES]; DEBRIEF_SLOTS],
+}
+
+/// One finished lap and what the engineer made of it, ready for the frame.
+///
+/// A small owned struct rather than a borrow of `LapData`: what the panel needs
+/// is the number, the time and the sentences, and carrying the whole lap —
+/// telemetry trace included — through the publisher would mean the frame writer
+/// held a reference into the analyser for as long as it took to copy 768 bytes.
+#[derive(Debug, Clone)]
+pub struct DebriefLap {
+    pub lap_number: u32,
+    pub lap_time_ms: u32,
+    pub advice: Vec<Recommendation>,
 }
 
 /// Severity as it travels in [`OverlayFrame::message_severity`].
@@ -227,6 +288,12 @@ impl OverlayFrame {
             target_pressure_front: 0.0,
             target_pressure_rear: 0.0,
             message_severity: [0; MESSAGE_SLOTS],
+            debrief_lap_count: 0,
+            debrief_lap_number: [0; DEBRIEF_LAPS],
+            debrief_lap_time_ms: [0; DEBRIEF_LAPS],
+            debrief_line_count: [0; DEBRIEF_LAPS],
+            debrief_severity: [0; DEBRIEF_SLOTS],
+            debrief: [[0; MESSAGE_BYTES]; DEBRIEF_SLOTS],
         }
     }
 
@@ -274,6 +341,47 @@ impl OverlayFrame {
         }
 
         self.message_count = taken as u32;
+    }
+
+    /// Copy in the debrief for the most recent finished laps, newest first.
+    ///
+    /// Each entry is a lap number, its time, and that lap's advice. The panel
+    /// switches between them itself — there is no way for it to ask for a
+    /// different one, so everything it might show has to already be here.
+    ///
+    /// `lines_per_lap` caps how many lines of each lap travel, the same way the
+    /// live advice is capped: how much a panel can hold is the panel's
+    /// business, and the application cannot see it.
+    pub fn set_debrief(&mut self, laps: &[DebriefLap], lines_per_lap: usize) {
+        self.debrief = [[0; MESSAGE_BYTES]; DEBRIEF_SLOTS];
+        self.debrief_severity = [severity::INFO; DEBRIEF_SLOTS];
+        self.debrief_lap_number = [0; DEBRIEF_LAPS];
+        self.debrief_lap_time_ms = [0; DEBRIEF_LAPS];
+        self.debrief_line_count = [0; DEBRIEF_LAPS];
+
+        let lines_per_lap = lines_per_lap.min(DEBRIEF_LINES);
+        let taken = laps.len().min(DEBRIEF_LAPS);
+
+        for (lap_index, lap) in laps.iter().take(DEBRIEF_LAPS).enumerate() {
+            self.debrief_lap_number[lap_index] = lap.lap_number;
+            self.debrief_lap_time_ms[lap_index] = lap.lap_time_ms;
+
+            let mut written = 0;
+            for rec in lap.advice.iter().take(lines_per_lap) {
+                let slot = lap_index * DEBRIEF_LINES + written;
+                let text = truncate_on_boundary(&rec.message, MESSAGE_BYTES);
+                self.debrief[slot][..text.len()].copy_from_slice(text.as_bytes());
+                self.debrief_severity[slot] = match rec.severity {
+                    Severity::Critical => severity::CRITICAL,
+                    Severity::Warning => severity::WARNING,
+                    Severity::Info => severity::INFO,
+                };
+                written += 1;
+            }
+            self.debrief_line_count[lap_index] = written as u32;
+        }
+
+        self.debrief_lap_count = taken as u32;
     }
 
     /// Fill in the parts that come from the session rather than from physics.
@@ -415,6 +523,38 @@ const FIELDS: &[(&str, &str)] = &[
         "ac.StructItem.array(ac.StructItem.uint32(), 8)",
     ),
     ("app_version", "ac.StructItem.string(16)"),
+    ("debrief_lap_count", "ac.StructItem.uint32()"),
+    (
+        "debrief_lap_number",
+        "ac.StructItem.array(ac.StructItem.uint32(), 3)",
+    ),
+    (
+        "debrief_lap_time_ms",
+        "ac.StructItem.array(ac.StructItem.uint32(), 3)",
+    ),
+    (
+        "debrief_line_count",
+        "ac.StructItem.array(ac.StructItem.uint32(), 3)",
+    ),
+    (
+        "debrief_severity",
+        "ac.StructItem.array(ac.StructItem.uint32(), 12)",
+    ),
+    // One named field per line, for the reason the messages above are named:
+    // CSP hands back raw cdata for an array of strings. `debrief_<lap>_<line>`,
+    // so `DEBRIEF_LAPS` and `DEBRIEF_LINES` and this list change together.
+    ("debrief_0_0", "ac.StructItem.string(64)"),
+    ("debrief_0_1", "ac.StructItem.string(64)"),
+    ("debrief_0_2", "ac.StructItem.string(64)"),
+    ("debrief_0_3", "ac.StructItem.string(64)"),
+    ("debrief_1_0", "ac.StructItem.string(64)"),
+    ("debrief_1_1", "ac.StructItem.string(64)"),
+    ("debrief_1_2", "ac.StructItem.string(64)"),
+    ("debrief_1_3", "ac.StructItem.string(64)"),
+    ("debrief_2_0", "ac.StructItem.string(64)"),
+    ("debrief_2_1", "ac.StructItem.string(64)"),
+    ("debrief_2_2", "ac.StructItem.string(64)"),
+    ("debrief_2_3", "ac.StructItem.string(64)"),
 ];
 
 /// How many bytes an `ac.StructItem` declaration occupies.
@@ -488,17 +628,36 @@ mod tests {
         let arrays = 16 * 4;
         let messages = MESSAGE_SLOTS * MESSAGE_BYTES;
         let severities = MESSAGE_SLOTS * 4;
+        // The debrief: a lap counter, three arrays of one u32 per lap, a
+        // severity per slot, and the sentences themselves.
+        let debrief_counters = 4 + DEBRIEF_LAPS * 3 * 4;
+        let debrief_severities = DEBRIEF_SLOTS * 4;
+        let debrief_text = DEBRIEF_SLOTS * MESSAGE_BYTES;
         assert_eq!(
             size_of::<OverlayFrame>(),
-            scalars + arrays + messages + severities + VERSION_BYTES
+            scalars
+                + arrays
+                + messages
+                + severities
+                + VERSION_BYTES
+                + debrief_counters
+                + debrief_severities
+                + debrief_text
         );
 
-        // Last in the struct on purpose: a panel or bridge one version behind
-        // must misread nothing, it must simply not see this field.
+        // Everything new goes after `app_version`, never before it: a field
+        // inserted earlier moves every offset behind it, and a panel or bridge
+        // one version behind then misreads the lot rather than simply not
+        // seeing the new part.
         assert_eq!(
             offset_of!(OverlayFrame, app_version),
-            size_of::<OverlayFrame>() - VERSION_BYTES,
-            "app_version has to stay last, or every offset after it moves"
+            scalars + arrays + messages + severities,
+            "app_version has to stay where v5 left it"
+        );
+        assert_eq!(
+            offset_of!(OverlayFrame, debrief_lap_count),
+            scalars + arrays + messages + severities + VERSION_BYTES,
+            "the debrief is appended, so it starts where the struct used to end"
         );
     }
 
@@ -535,13 +694,118 @@ mod tests {
         }
     }
 
+    /// As `advice`, but the severity matters to the caller.
+    fn advice_at(message: &str, severity: Severity) -> Recommendation {
+        Recommendation {
+            severity,
+            ..advice(message)
+        }
+    }
+
+    /// Laps land in their own block of slots. Lap 1 line 0 must not be able to
+    /// read as lap 0 line 4 — the panel indexes by arithmetic, so an off-by-one
+    /// here shows one lap's advice under another lap's number.
+    #[test]
+    fn each_lap_gets_its_own_slots() {
+        let mut frame = OverlayFrame::empty();
+        frame.set_debrief(
+            &[
+                DebriefLap {
+                    lap_number: 7,
+                    lap_time_ms: 91_234,
+                    advice: vec![advice_at("newest", Severity::Critical)],
+                },
+                DebriefLap {
+                    lap_number: 6,
+                    lap_time_ms: 92_000,
+                    advice: vec![advice_at("older", Severity::Info)],
+                },
+            ],
+            DEBRIEF_LINES,
+        );
+
+        assert_eq!(frame.debrief_lap_count, 2);
+        assert_eq!(frame.debrief_lap_number[0], 7);
+        assert_eq!(frame.debrief_lap_time_ms[0], 91_234);
+        assert_eq!(frame.debrief_line_count[0], 1);
+        assert!(String::from_utf8_lossy(&frame.debrief[0]).starts_with("newest"));
+        assert_eq!(frame.debrief_severity[0], severity::CRITICAL);
+
+        // Lap 1 starts a whole DEBRIEF_LINES further along, not right after
+        // whatever lap 0 happened to use.
+        assert!(String::from_utf8_lossy(&frame.debrief[DEBRIEF_LINES]).starts_with("older"));
+        assert_eq!(frame.debrief_severity[DEBRIEF_LINES], severity::INFO);
+        // And the gap between them stays empty.
+        assert_eq!(frame.debrief[1], [0; MESSAGE_BYTES]);
+    }
+
+    /// The cap is the driver's setting, so it has to actually cap.
+    #[test]
+    fn a_lap_publishes_only_as_many_lines_as_asked_for() {
+        let mut frame = OverlayFrame::empty();
+        frame.set_debrief(
+            &[DebriefLap {
+                lap_number: 1,
+                lap_time_ms: 1,
+                advice: vec![advice("one"), advice("two"), advice("three")],
+            }],
+            2,
+        );
+
+        assert_eq!(frame.debrief_line_count[0], 2);
+        assert_eq!(
+            frame.debrief[2], [0; MESSAGE_BYTES],
+            "the third was not written"
+        );
+    }
+
+    /// A stint that ends leaves the frame holding its last debrief otherwise,
+    /// and the panel would draw a lap from the previous session.
+    #[test]
+    fn a_new_debrief_clears_the_one_before_it() {
+        let mut frame = OverlayFrame::empty();
+        frame.set_debrief(
+            &[DebriefLap {
+                lap_number: 4,
+                lap_time_ms: 1,
+                advice: vec![advice("stale")],
+            }],
+            DEBRIEF_LINES,
+        );
+        frame.set_debrief(&[], DEBRIEF_LINES);
+
+        assert_eq!(frame.debrief_lap_count, 0);
+        assert_eq!(frame.debrief_lap_number[0], 0);
+        assert_eq!(frame.debrief_line_count[0], 0);
+        assert_eq!(frame.debrief[0], [0; MESSAGE_BYTES]);
+    }
+
+    /// More laps than the frame carries is a long stint, not an error.
+    #[test]
+    fn more_laps_than_slots_are_dropped_not_overflowed() {
+        let mut frame = OverlayFrame::empty();
+        let laps: Vec<DebriefLap> = (0..DEBRIEF_LAPS + 3)
+            .map(|index| DebriefLap {
+                lap_number: index as u32,
+                lap_time_ms: 1,
+                advice: vec![advice("line")],
+            })
+            .collect();
+        frame.set_debrief(&laps, DEBRIEF_LINES);
+        assert_eq!(frame.debrief_lap_count as usize, DEBRIEF_LAPS);
+    }
+
     /// Every field must be listed for the generator, or the Lua side silently
     /// omits one and every field after it reads from the wrong offset.
     #[test]
     fn the_generator_lists_every_field() {
         // 22 scalars + 4 arrays + MESSAGE_SLOTS messages + their severities +
-        // the application's version.
-        assert_eq!(FIELDS.len(), 22 + 4 + MESSAGE_SLOTS + 1 + 1);
+        // the application's version, then the debrief: its lap count, four
+        // arrays alongside it, and one named string per slot.
+        assert_eq!(
+            FIELDS.len(),
+            22 + 4 + MESSAGE_SLOTS + 1 + 1 + 1 + 4 + DEBRIEF_SLOTS
+        );
 
         // The declared types have to add up to the struct's actual size, which
         // is what catches a field added to the struct but not to FIELDS.

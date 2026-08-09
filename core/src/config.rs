@@ -142,6 +142,12 @@ fn default_target_hot_pressure_front() -> f32 {
 fn default_target_hot_pressure_rear() -> f32 {
     27.0
 }
+/// All four by default. A debrief only appears when a lap has just ended, so
+/// unlike the live advice it is not competing for the screen continuously.
+fn default_debrief_lines() -> u8 {
+    4
+}
+
 fn default_engineer_lines() -> u8 {
     4
 }
@@ -175,6 +181,15 @@ pub struct OverlayConfig {
     /// for all eight.
     #[serde(default = "default_engineer_lines")]
     pub engineer_lines: u8,
+    /// How many lines of each finished lap's debrief reach the overlay, 0 to
+    /// [`crate::overlay::frame::DEBRIEF_LINES`].
+    ///
+    /// Its own setting rather than sharing `engineer_lines`: live advice is
+    /// read at speed and wants to be short, a debrief is read stopped. Zero
+    /// turns the whole thing off, which is what a driver who only wants the
+    /// live panel will do.
+    #[serde(default = "default_debrief_lines")]
+    pub debrief_lines: u8,
     /// Show what was found and installed when the application starts.
     #[serde(default = "default_true")]
     pub startup_card: bool,
@@ -192,6 +207,7 @@ impl Default for OverlayConfig {
             show_timing: true,
             show_fuel: true,
             engineer_lines: default_engineer_lines(),
+            debrief_lines: default_debrief_lines(),
             startup_card: true,
             onboarding_done: false,
         }
