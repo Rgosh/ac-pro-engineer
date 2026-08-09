@@ -480,7 +480,10 @@ fn render_sector_advice(
         let is_oversteering = lap.oversteer_count > lap.understeer_count && lap.oversteer_count > 2;
         let is_understeering =
             lap.understeer_count > lap.oversteer_count && lap.understeer_count > 2;
-        let is_bottoming = fl_rh < 15.0 || fr_rh < 15.0 || rl_rh < 15.0 || rr_rh < 15.0;
+        // The bottoming check moved into `ac_core::debrief`, where it reads
+        // `avg_ride_height` — [front, rear] — rather than four numbers of which
+        // each pair is the same by construction. The car visual below still
+        // colours the wing and splitter from the balance counts.
 
         let car_body_style = Style::default().fg(Color::DarkGray);
         let wheel_style = Style::default()
@@ -648,11 +651,25 @@ fn render_sector_advice(
             car_layout_center[1],
         );
 
+        // The whole of this column used to be computed here — three hundred
+        // lines where the analysis and the spans that draw it were the same
+        // code. It is `ac_core::debrief` now, which is the same function the
+        // in-game panel renders, so the terminal and the overlay cannot give
+        // different advice about the same lap. They could, and did: the camber
+        // verdict here threw away the sign of the temperature spread and told a
+        // car short of camber to take camber out.
+        let advice = ac_core::debrief::debrief(lap, &app.config);
+
         let mut lines = Vec::new();
 
-        let mk_tag = |text: &'static str, color: Color| {
+        let mk_tag = |severity: &ac_core::engineer::Severity| {
+            let (label, color) = match *severity {
+                ac_core::engineer::Severity::Critical => (" CRIT ", Color::Red),
+                ac_core::engineer::Severity::Warning => (" WARN ", Color::Yellow),
+                ac_core::engineer::Severity::Info => (" INFO ", Color::Cyan),
+            };
             Span::styled(
-                text,
+                label,
                 Style::default()
                     .fg(Color::Black)
                     .bg(color)
@@ -660,333 +677,43 @@ fn render_sector_advice(
             )
         };
 
-        // "OK" reads the same in both locales.
-        let ok_tag = mk_tag(" OK ", Color::Green);
-        let warn_tag = mk_tag(
-            if is_ru {
-                " ВНИМАНИЕ "
-            } else {
-                " WARNING "
-            },
-            Color::Yellow,
-        );
-        let crit_tag = mk_tag(
-            if is_ru {
-                " КРИТИЧНО "
-            } else {
-                " CRITICAL "
-            },
-            Color::Red,
-        );
-
-        lines.push(Line::from(Span::styled(
-            if is_ru {
-                "📡 АЭРОДИНАМИКА И КЛИРЕНС"
-            } else {
-                "📡 AERO & RIDE HEIGHT"
-            },
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from("——————————————————————————————————————"));
-
-        if is_bottoming {
+        for rec in &advice {
             lines.push(Line::from(vec![
-                crit_tag.clone(),
+                mk_tag(&rec.severity),
                 Span::styled(
-                    if is_ru {
-                        " УДАРЫ ДНИЩЕМ О ТРАССУ"
-                    } else {
-                        " BOTTOMING OUT DETECTED"
-                    },
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    format!(" {}", rec.message),
+                    Style::default().fg(Color::White),
                 ),
             ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Увеличьте клиренс (Ride Height) или жесткость Packer."
-                } else {
-                    "   >> [ADVICE]: Increase Ride Height or Packer thickness."
-                },
-                Style::default().fg(Color::Yellow),
-            )));
+            if !rec.action.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!("   >> {}", rec.action),
+                    Style::default().fg(Color::Gray),
+                )));
+            }
         }
 
-        if is_oversteering {
+        // Nothing wrong is worth saying out loud. A blank column reads as "the
+        // analysis has not run" rather than as "the lap was clean".
+        if advice.is_empty() {
             lines.push(Line::from(vec![
-                warn_tag.clone(),
                 Span::styled(
-                    if is_ru {
-                        " ИЗБЫТОЧНАЯ ПОВОРАЧИВАЕМОСТЬ (Занос)"
-                    } else {
-                        " OVERSTEER DETECTED"
-                    },
+                    "  OK  ",
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(Color::Black)
+                        .bg(Color::Green)
                         .add_modifier(Modifier::BOLD),
                 ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Увеличьте заднее антикрыло (Rear Wing +)."
-                } else {
-                    "   >> [ADVICE]: Increase REAR WING downforce."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        } else if is_understeering {
-            lines.push(Line::from(vec![
-                warn_tag.clone(),
                 Span::styled(
                     if is_ru {
-                        " НЕДОСТАТОЧНАЯ ПОВОРАЧИВАЕМОСТЬ (Снос)"
+                        " Ничего не нашёл — круг чистый."
                     } else {
-                        " UNDERSTEER DETECTED"
-                    },
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Увеличьте передний сплиттер (Front Splitter +)."
-                } else {
-                    "   >> [ADVICE]: Increase FRONT SPLITTER downforce."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        } else if !is_bottoming {
-            lines.push(Line::from(vec![
-                ok_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " Аэродинамический баланс в норме."
-                    } else {
-                        " Aero balance is optimal."
+                        " Nothing to report — the lap was clean."
                     },
                     Style::default().fg(Color::Green),
                 ),
             ]));
         }
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(Span::styled(
-            if is_ru {
-                "🌡️ ШИНЫ (РАЗВАЛ/ДАВЛЕНИЕ) И ТОРМОЗА"
-            } else {
-                "🌡️ TYRES (CAMBER/PSI) & BRAKES"
-            },
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from("——————————————————————————————————————"));
-
-        // Inner minus outer, keeping its sign, over both front tyres.
-        //
-        // This was `(fl_temp_i - fl_temp_o).abs()`, and the sign is the whole
-        // point: a front tyre whose *outer* edge ran 13° hotter than its inner
-        // one is a car with too little negative camber, and `abs` sent it to
-        // the branch that says to take camber out — the opposite of the fix.
-        // One corner is also the wrong sample. A lap has left and right
-        // corners, so FL and FR average out; either one on its own reads the
-        // track's handedness as a camber problem.
-        let front_camber_diff: f32 = ((fl_temp_i - fl_temp_o) + (fr_temp_i - fr_temp_o)) / 2.0;
-        if front_camber_diff > 12.0 {
-            lines.push(Line::from(vec![
-                warn_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        format!(
-                            " Сильный градиент температуры ({}).",
-                            fmt.format_temp_delta(front_camber_diff)
-                        )
-                    } else {
-                        format!(
-                            " High tyre temp gradient ({}).",
-                            fmt.format_temp_delta(front_camber_diff)
-                        )
-                    },
-                    Style::default().fg(Color::Yellow),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Уменьшите отрицательный развал (Camber)."
-                } else {
-                    "   >> [ADVICE]: Reduce negative Camber."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        } else if front_camber_diff < 4.0 {
-            // Below zero the outer edge is the hot one, which is the same
-            // verdict for a different reason and deserves to be named as
-            // itself rather than reported as an evenly warmed tyre.
-            let outer_hotter = front_camber_diff < 0.0;
-            lines.push(Line::from(vec![
-                warn_tag.clone(),
-                Span::styled(
-                    match (outer_hotter, is_ru) {
-                        (true, true) => format!(
-                            " Внешняя часть горячее внутренней ({}).",
-                            fmt.format_temp_delta(-front_camber_diff)
-                        ),
-                        (true, false) => format!(
-                            " Outer edge hotter than inner ({}).",
-                            fmt.format_temp_delta(-front_camber_diff)
-                        ),
-                        (false, true) => " Шина прогрета слишком равномерно.".to_string(),
-                        (false, false) => " Tyre heated too evenly.".to_string(),
-                    },
-                    Style::default().fg(Color::Yellow),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Увеличьте отрицательный развал (Camber) для зацепа."
-                } else {
-                    "   >> [ADVICE]: Add negative Camber for cornering grip."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        } else {
-            lines.push(Line::from(vec![
-                ok_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " Развал (Camber) настроен оптимально."
-                    } else {
-                        " Camber angles are optimal."
-                    },
-                    Style::default().fg(Color::Green),
-                ),
-            ]));
-        }
-
-        let max_brake_temp = fl_brake.max(fr_brake);
-        let min_brake_temp = rl_brake.min(rr_brake);
-
-        if max_brake_temp > (target_brake_temp + 150.0) {
-            lines.push(Line::from(vec![
-                crit_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " КРИТИЧЕСКИЙ ПЕРЕГРЕВ ТОРМОЗОВ!"
-                    } else {
-                        " CRITICAL BRAKE OVERHEAT!"
-                    },
-                    Style::default().fg(Color::Red),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Откройте воздуховоды (Brake Ducts +)."
-                } else {
-                    "   >> [ADVICE]: Open Brake Ducts immediately."
-                },
-                Style::default().fg(Color::Yellow),
-            )));
-        } else if min_brake_temp < (target_brake_temp - 200.0) {
-            lines.push(Line::from(vec![
-                warn_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " Тормоза переохлаждены."
-                    } else {
-                        " Brakes are overcooled."
-                    },
-                    Style::default().fg(Color::Yellow),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Закройте воздуховоды (Brake Ducts -)."
-                } else {
-                    "   >> [ADVICE]: Close Brake Ducts."
-                },
-                Style::default().fg(Color::Gray),
-            )));
-        }
-
-        let avg_psi = (fl_psi + fr_psi + rl_psi + rr_psi) / 4.0;
-        let target_psi_diff = (avg_psi - target_psi).abs();
-        if target_psi_diff > 0.4 {
-            lines.push(Line::from(vec![
-                crit_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        format!(
-                            " Давление не в окне (дельта: {:+.1} {}).",
-                            fmt.pressure_val(avg_psi - target_psi),
-                            fmt.pressure_symbol()
-                        )
-                    } else {
-                        format!(
-                            " Pressures out of window (delta: {:+.1} {}).",
-                            fmt.pressure_val(avg_psi - target_psi),
-                            fmt.pressure_symbol()
-                        )
-                    },
-                    Style::default().fg(Color::Red),
-                ),
-            ]));
-        }
-
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(Span::styled(
-            if is_ru {
-                "🧠 ЭЛЕКТРОНИКА (ABS/TC) И ПОДВЕСКА"
-            } else {
-                "🧠 ELECTRONICS (ABS/TC) & SUSPENSION"
-            },
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from("——————————————————————————————————————"));
-
-        if lap.lockup_count > 2 {
-            lines.push(Line::from(vec![
-                crit_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        format!(" Блокировки колес ({} раз)!", lap.lockup_count)
-                    } else {
-                        format!(" Wheel lockups ({} times)!", lap.lockup_count)
-                    },
-                    Style::default().fg(Color::Red),
-                ),
-            ]));
-            lines.push(Line::from(Span::styled(
-                if is_ru {
-                    "   >> [СОВЕТ]: Увеличьте ABS (+1) или сместите баланс тормозов назад."
-                } else {
-                    "   >> [ADVICE]: Increase ABS (+1) or move Brake Bias rearwards."
-                },
-                Style::default().fg(Color::Yellow),
-            )));
-        } else {
-            lines.push(Line::from(vec![
-                ok_tag.clone(),
-                Span::styled(
-                    if is_ru {
-                        " Блокировок не обнаружено."
-                    } else {
-                        " No lockups detected."
-                    },
-                    Style::default().fg(Color::Green),
-                ),
-            ]));
-        }
-
-        // A left-versus-right roll asymmetry check used to live here. It
-        // compared fl_rh against fr_rh, which are by construction the same
-        // number — AC has no per-corner ride height to compare — so the
-        // difference was always exactly 0.0 and the warning was unreachable.
-        // Removed rather than left in place looking like a working check.
 
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), layout[1]);
     }

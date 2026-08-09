@@ -306,6 +306,100 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
         );
     }
 
+    // --- balance and ride height ------------------------------------------
+    //
+    // Ported from the terminal's Engineer tab, which had these and the panel
+    // did not. `avg_ride_height` is [front, rear]: AC publishes no per-corner
+    // height, and a left-versus-right roll check used to live here comparing
+    // two numbers that are the same by construction — always exactly 0.0, so
+    // the warning was unreachable.
+    let bottoming = lap
+        .avg_ride_height
+        .iter()
+        .any(|height| *height > 0.0 && *height < 15.0);
+    if bottoming {
+        let lowest = lap
+            .avg_ride_height
+            .iter()
+            .copied()
+            .filter(|height| *height > 0.0)
+            .fold(f32::MAX, f32::min);
+        push(
+            if ru { "Аэро" } else { "Aero" },
+            if ru { "Клиренс" } else { "Ride height" },
+            Severity::Warning,
+            format!(
+                "{} ({:.0} mm)",
+                if ru {
+                    "Пробои по асфальту"
+                } else {
+                    "Bottoming out"
+                },
+                lowest
+            ),
+            if ru {
+                "Выше клиренс / жёстче пружины"
+            } else {
+                "Raise the ride height / stiffer springs"
+            }
+            .to_string(),
+        );
+    }
+
+    // Counted over the lap, so a single moment does not make a verdict. Two of
+    // each is noise in a car being driven near the limit.
+    if lap.oversteer_count > lap.understeer_count && lap.oversteer_count > 2 {
+        push(
+            if ru { "Баланс" } else { "Balance" },
+            if ru {
+                "Избыточная"
+            } else {
+                "Oversteer"
+            },
+            Severity::Info,
+            format!(
+                "{}: {}x",
+                if ru {
+                    "Избыточная"
+                } else {
+                    "Oversteer"
+                },
+                lap.oversteer_count
+            ),
+            if ru {
+                "Мягче задний стаб / больше заднего антикрыла"
+            } else {
+                "Softer rear ARB / more rear wing"
+            }
+            .to_string(),
+        );
+    } else if lap.understeer_count > lap.oversteer_count && lap.understeer_count > 2 {
+        push(
+            if ru { "Баланс" } else { "Balance" },
+            if ru {
+                "Недостаточная"
+            } else {
+                "Understeer"
+            },
+            Severity::Info,
+            format!(
+                "{}: {}x",
+                if ru {
+                    "Недостаточная"
+                } else {
+                    "Understeer"
+                },
+                lap.understeer_count
+            ),
+            if ru {
+                "Мягче передний стаб / больше переднего антикрыла"
+            } else {
+                "Softer front ARB / more front wing"
+            }
+            .to_string(),
+        );
+    }
+
     // --- how it was driven ------------------------------------------------
     //
     // The setup lines above are worth more than these, so they come first and
