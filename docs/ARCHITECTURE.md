@@ -178,6 +178,35 @@ debrief happen once, so those want acknowledging or repeating.
 on, per session, and if it travels through a relay the driver should be told
 that before the first packet leaves.
 
+### The terminal gets it for nothing
+
+Worth saying explicitly because it is the test of whether the abstraction is
+real: the terminal renders from the core, and the core renders from a `Source`.
+A network source therefore shows up in the TUI — every tab, the engineer, the
+analysis, the debrief — with no code written for it. If that turned out not to
+be true, the boundary would be in the wrong place.
+
+### Scaling it up: a championship
+
+Two friends is peer-to-peer. Twenty cars and a room full of people watching is a
+different problem, and the difference is worth planning for even if it is built
+much later:
+
+* **The relay stops being optional.** One driver cannot send to thirty
+  receivers; the sink sends once and the relay fans out.
+* **Every stream needs an identity** — car number, driver name — and receivers
+  need to choose which one they are watching. Peer-to-peer can skip this;
+  a championship cannot.
+* **The rate has to come down.** The computed frame is about 2.5 KB. At the
+  tick rate that is roughly 150 KB/s per car, which is fine for one and is
+  3 MB/s at the relay for twenty. A spectator does not need sixty updates a
+  second — ten is past the point of noticing — so remote sinks should publish at
+  their own rate rather than at the tick's. That is a property of the sink, and
+  designing it in from the first one is much easier than retrofitting it.
+
+None of this changes the core. It is all inside the transport, which is the
+point of separating it.
+
 ## Stages
 
 Each one leaves the tree working, tested and releasable. That matters more than
