@@ -27,6 +27,13 @@ local M = {}
 local DEFAULTS = nil
 
 local buttons = nil
+-- Tried once. Rebuilding these every frame would ask CSP to re-register the
+-- same two inputs sixty times a second.
+local attempted = false
+-- Why there are none, for the settings window to show. A dead end that says
+-- "needs CSP in a session" to somebody who is *in* a session is worse than no
+-- message: it names the one thing that is definitely not the problem.
+local reason = 'not tried yet'
 
 --- Create the bindings, once.
 ---
@@ -35,21 +42,37 @@ local buttons = nil
 --- them on first use keeps the module loadable either way.
 local function ensure()
   if buttons ~= nil then return buttons end
+  if attempted then return nil end
+  attempted = true
+
   if type(ac) ~= 'table' or type(ac.ControlButton) ~= 'function' then
+    reason = 'this CSP has no ac.ControlButton'
     return nil
   end
-  -- Checked, not assumed. A CSP old enough to lack `ac.ControlButton` is one
-  -- case; a stub that answers every name with something that is not a control
-  -- button is another, and the panel meets the second every time it runs under
-  -- a harness. Either way the arrows on screen still work, so a missing
-  -- binding API costs a feature and not the panel.
-  local built = {
-    previousLap = ac.ControlButton('acpe/Debrief: previous lap', DEFAULTS),
-    nextLap = ac.ControlButton('acpe/Debrief: next lap', DEFAULTS),
-  }
-  for _, button in pairs(built) do
-    if type(button) ~= 'table' and type(button) ~= 'userdata' then return nil end
-    if type(button.pressed) ~= 'function' then return nil end
+
+  -- Built and then *used*, both inside pcall.
+  --
+  -- The first version of this checked the shape of what came back — is it a
+  -- table, does it have a `pressed` field — and refused the real thing in the
+  -- real game while accepting nothing. CSP hands back objects whose methods
+  -- live behind a metatable, so `type(button.pressed)` is a question about
+  -- indexing rather than about whether the button works. The only honest test
+  -- of "can I use this" is to use it.
+  local ok, built = pcall(function()
+    local made = {
+      previousLap = ac.ControlButton('acpe/Debrief: previous lap', DEFAULTS),
+      nextLap = ac.ControlButton('acpe/Debrief: next lap', DEFAULTS),
+    }
+    -- Calling it is the test. A stub that answers every name with something
+    -- useless fails here; a real control button returns a boolean.
+    local _ = made.previousLap:pressed()
+    local _ = made.nextLap:pressed()
+    return made
+  end)
+
+  if not ok then
+    reason = 'ac.ControlButton failed: ' .. tostring(built)
+    return nil
   end
 
   buttons = built
@@ -94,5 +117,10 @@ function M.boundTo()
 end
 
 M.available = function() return ensure() ~= nil end
+
+--- Why the bindings are unavailable, when they are.
+function M.reason()
+  return reason
+end
 
 return M

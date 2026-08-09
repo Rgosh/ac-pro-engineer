@@ -205,7 +205,12 @@ return function(dt)
         say('caption', tr('click to assign, then press the button'), COLOR.dim)
         binds.drawControls()
       else
-        say('caption', tr('bindings need Custom Shaders Patch in a session'), COLOR.dim)
+        -- The actual reason, not a guess at it. This said "needs Custom Shaders
+        -- Patch in a session" to people who were in a session with CSP, which
+        -- names the one thing that is definitely not the problem and leaves
+        -- them nowhere to go.
+        say('caption', tr('no wheel bindings available'), COLOR.dim)
+        say('caption', binds.reason(), COLOR.dim)
       end
     end)
 
