@@ -7,8 +7,25 @@ overlay work stands right now.
 ## What this project is
 
 A telemetry and race-engineering suite for Assetto Corsa, in Rust, with two
-faces: a terminal application (`ac_tui`, the binary `ac_pro_engineer`) and an
-in-game panel written in Lua for CSP (`assets/frontends/csp-panel/`).
+faces so far: a terminal application (`ac_tui`, the binary `ac_pro_engineer`)
+and an in-game panel written in Lua for CSP (`assets/frontends/csp-panel/`).
+
+"So far" is doing work in that sentence. `docs/ARCHITECTURE.md` is the plan:
+one folder per game under `core/src/games/`, one `Sink` per place the computed
+frame goes, and any number of front ends. **Read it before adding anything that
+knows what game is running or where the data comes out.** Two parts of it are
+already built:
+
+- `core/src/games/assetto_corsa/` — the structs, the paths and the shared-memory
+  reader. The reader used to live in `tui/src/lib.rs`, which meant a user
+  interface owned the connection to the simulator. It does not now: the core
+  reads the game and the interfaces read the core.
+- `core/src/broadcast/` — the computed frame goes to a list of sinks. Shared
+  memory for the in-game panel, UDP as JSON for anything else: a second front
+  end, a friend watching from another machine, a relay for a championship.
+  **A sink may be slow, may fail, may vanish, and the tick must not notice** —
+  `publish` hands the frame over and never waits, and a sink that fails sixty
+  times running is dropped rather than logged sixty times a second.
 
 The split matters. **The application computes; the panel draws.** Lua runs on
 AC's render thread, where a millisecond is a sixth of the frame budget at 165 Hz
@@ -223,6 +240,25 @@ and it is handed them by `frame.configure` — but the installer greps
 `every_lua_file_in_the_app_folder_is_shipped` fails when one is missed, because
 the alternative is an install missing a `require` target — which fails at load,
 in the game, with every window drawing the error.
+
+## Adding a sink, or a game
+
+Both have a shape now, and both are meant to be additive:
+
+- **A sink** implements `broadcast::Sink`: a name, `publish`, and optionally a
+  `min_interval` if it wants a slower rate than the tick. Remote ones should:
+  a spectator cannot tell above about ten a second, and twenty cars at tick rate
+  is megabytes a second arriving at a relay.
+- **A game** is a folder under `core/src/games/` implementing `Source`. Say
+  honestly what it can report in `Capabilities` — **"not measured" and
+  "measured as zero" are different answers**, and every wrong verdict this
+  project has shipped came from confusing them: four tyres reading zero wear
+  reported as four destroyed tyres, a camber verdict about a lap that published
+  no temperatures.
+
+Do not add a second game until the first one is finished. An abstraction with
+one implementation is a guess, and the guesses are cheaper to fix while there is
+one consumer.
 
 ## The terminal's key map
 

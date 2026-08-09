@@ -222,10 +222,14 @@ every move costs every Linux driver a bridge update.
 3. **The engineer moves onto the model.** Delete the adapter. This is where the
    compound-aware thresholds below belong, because the model is where a compound
    becomes a first-class thing rather than a string match.
-4. **`broadcast`, with the frame as its first transport.** No new behaviour, but
-   the panel now reads from a transport rather than from a hand-wired publisher.
-5. **WebSocket transport + a schema document.** Additive; nothing existing
-   changes. This is the point at which somebody else can write a front end.
+4. ~~**`broadcast`, with sinks.**~~ Done. `Sink`, a `Broadcaster` that fans out
+   and never waits, the shared-memory mapping wearing the same interface, and a
+   UDP sink sending the computed frame as JSON. Off unless `broadcast_to` is
+   set.
+5. **A receiving `Source`, and the settings to switch between sending and
+   receiving.** The half that makes a friend able to watch: a source that reads
+   the UDP messages instead of shared memory, and a frame flag saying whose
+   numbers these are. WebSocket alongside UDP where the client is a browser.
 6. **A second game.** Only now, because until a second source exists every
    abstraction above is a guess. The first one will find three wrong assumptions
    in the model, and that is cheaper to fix with one consumer than five.

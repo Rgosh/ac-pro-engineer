@@ -215,6 +215,14 @@ pub struct AppState {
     /// could be opened. `None` is not worth stopping for — the overlay simply
     /// never appears, and everything else works.
     pub overlay_writer: Option<ac_core::overlay::shared_writer::OverlayWriter>,
+    /// Everywhere else the computed frame goes.
+    ///
+    /// Beside the writer rather than replacing it for now: the mapping is on a
+    /// path with a great deal of behaviour hanging off it — the launcher card,
+    /// the diagnostics screen, the backing-file probe — and moving that into a
+    /// sink is its own change. What this adds is everything that is *not* the
+    /// in-game panel, which is what had no way in at all.
+    pub broadcast: ac_core::broadcast::Broadcaster,
     pub stage: AppStage,
     pub launcher_selection: usize,
     pub is_game_running: bool,
@@ -333,6 +341,36 @@ impl AppState {
         let setup_manager = SetupManager::new();
         setup_manager.set_documents_override(&config.ac_documents_path);
 
+        // Built before the struct literal, where `config` is still ours to
+        // read: it is moved into the state below.
+        let broadcast = {
+            let mut broadcaster = ac_core::broadcast::Broadcaster::new();
+            // Configured, and off unless it is. This is telemetry about a
+            // person; it leaves the machine because they said so.
+            let target = config.overlay.broadcast_to.trim();
+            if !target.is_empty() {
+                match target.parse() {
+                    Ok(address) => match ac_core::broadcast::udp::UdpSink::new(
+                        address,
+                        ac_core::games::assetto_corsa::GAME_ID,
+                        config.overlay.broadcast_name.clone(),
+                        config.overlay.broadcast_hz,
+                    ) {
+                        Ok(sink) => broadcaster.add(Box::new(sink)),
+                        Err(error) => {
+                            warn!(error = ?error, "Could not open the broadcast socket")
+                        }
+                    },
+                    Err(error) => warn!(
+                        target,
+                        error = ?error,
+                        "broadcast_to is not a host:port address"
+                    ),
+                }
+            }
+            broadcaster
+        };
+
         let mut state = Self {
             mem: None,
             mock_physics: None,
@@ -404,6 +442,7 @@ impl AppState {
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_debrief: Vec::new(),
+            broadcast,
             overlay_result_popup: false,
             show_overlay_diagnosis: false,
             overlay_diagnosis: ac_core::overlay::diagnosis::report(),
@@ -1223,6 +1262,7 @@ impl AppState {
         if let Some(writer) = self.overlay_writer.as_mut() {
             writer.publish(&frame);
         }
+        self.broadcast.publish(&frame);
     }
 
     /// Pack the current state into an overlay frame and publish it.
@@ -1302,6 +1342,10 @@ impl AppState {
         frame.stint_laps = self.engineer.stats.stint_laps.max(0) as u32;
 
         writer.publish(&frame);
+        // Everything that is not the in-game panel gets the same frame: a
+        // second front end here, a friend watching from another machine, a
+        // relay for a championship. The core computes once and hands it out.
+        self.broadcast.publish(&frame);
     }
 
     /// Tell the overlay we are going away, so it hides at once rather than
@@ -1310,6 +1354,7 @@ impl AppState {
         if let Some(writer) = self.overlay_writer.as_mut() {
             writer.publish_shutdown();
         }
+        self.broadcast.shutdown();
     }
 
     pub fn disconnect(&mut self) {

@@ -198,6 +198,30 @@ pub struct OverlayConfig {
     /// The overlay has been offered once. Nobody wants to be asked twice.
     #[serde(default)]
     pub onboarding_done: bool,
+    /// Where else to send the computed frame, as `host:port`. Empty is off.
+    ///
+    /// Off by default and staying that way: this is telemetry about a person,
+    /// and it leaves the machine only because they said so. `127.0.0.1:9001`
+    /// feeds another front end on the same computer; an address on the network
+    /// feeds a friend watching, or a relay for a championship.
+    #[serde(default)]
+    pub broadcast_to: String,
+    /// How many times a second to send there.
+    ///
+    /// Ten by default, not the tick rate. A spectator cannot tell the
+    /// difference above about that, and twenty cars at tick rate is megabytes a
+    /// second arriving at a relay.
+    #[serde(default = "default_broadcast_hz")]
+    pub broadcast_hz: f32,
+    /// The name that travels with it, so a receiver watching several drivers
+    /// can tell whose numbers are on screen. Empty uses the player name from
+    /// the game.
+    #[serde(default)]
+    pub broadcast_name: String,
+}
+
+fn default_broadcast_hz() -> f32 {
+    10.0
 }
 
 impl Default for OverlayConfig {
@@ -212,6 +236,9 @@ impl Default for OverlayConfig {
             debrief_lines: default_debrief_lines(),
             startup_card: true,
             onboarding_done: false,
+            broadcast_to: String::new(),
+            broadcast_hz: default_broadcast_hz(),
+            broadcast_name: String::new(),
         }
     }
 }

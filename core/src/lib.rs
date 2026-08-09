@@ -8,6 +8,7 @@ pub use games::assetto_corsa::paths as ac_paths;
 pub use games::assetto_corsa::structs as ac_structs;
 pub mod analyzer;
 pub mod atomic_file;
+pub mod broadcast;
 pub mod config;
 pub mod content_manager;
 pub mod crash_logger;
