@@ -135,6 +135,22 @@ fn create_file_mapping(dir: &Path, file_name: &str, size: usize) -> Result<FileM
         .open(&path)
         .context(format!("Could not open the tmpfs file: {path:?}"))?;
 
+    // Set the length explicitly, every time.
+    //
+    // `create(true)` creates the file when it is missing and *leaves an
+    // existing one exactly as it was* — including its length. The overlay
+    // mapping grew from 712 bytes to 2484 between releases, so a machine that
+    // ran the older bridge has a 712-byte file sitting in /dev/shm, and the new
+    // bridge opened it and carried on at the old size. CSP then refuses the
+    // mapping, the panel waits forever, and every version number in sight says
+    // the bridge is current — because it is. It is the file that is old.
+    //
+    // Truncating is safe here: this is a mapping of live telemetry, rewritten
+    // sixty times a second, and there is nothing in it worth keeping across a
+    // restart.
+    file.set_len(size as u64)
+        .context(format!("Could not size the tmpfs file: {path:?}"))?;
+
     let mapping = FileMapping::new(file_name, &file, size)?;
 
     Ok(mapping)
