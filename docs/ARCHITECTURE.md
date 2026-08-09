@@ -85,9 +85,17 @@ thread, and a 2 KB memcpy from a mapping is the cheapest thing that can possibly
 happen there. A WebSocket in the panel would put a socket read in the draw path,
 which is the one thing the whole design exists to avoid.
 
-WebSocket is for everything that is *not* inside the game: a browser overlay, a
-stream widget, OBS, a phone on the desk, someone else's tool. JSON, one message
-per tick, the same data the frame carries.
+UDP and WebSocket are for everything that is *not* inside the game: a browser
+overlay, a stream widget, OBS, a phone on the desk, a second machine, someone
+else's tool. UDP first because it is the simplest thing that reaches another
+process or another box and it cannot block the tick; WebSocket where a browser
+is the client.
+
+**Sending a driver's data to a remote server is the same shape** — a sink that
+happens to have a hostname rather than a port on localhost. It is worth naming
+now even though nothing does it yet, because it is the requirement that decides
+the abstraction: sinks must be allowed to be slow and to fail without the tick
+noticing, which means the publisher hands over a message and never waits.
 
 ```json
 { "t": "sample", "seq": 12043, "speed_kmh": 214.0, "gear": 5,
@@ -113,11 +121,12 @@ Each one leaves the tree working, tested and releasable. That matters more than
 usual here: the frame version has already moved three times this cycle, and
 every move costs every Linux driver a bridge update.
 
-1. **Assets move.** Mechanical, no behaviour change. Touches `install.rs`,
-   `portraits.sh`, both harnesses and their tests.
-2. **The model and the AC source.** `telemetry::Sample`, the `Source` trait, AC
-   behind it. The engineer keeps its current signatures via a thin adapter, so
-   nothing else changes yet.
+1. ~~**Assets move.**~~ Done. `assets/frontends/csp-panel/`.
+2. ~~**A folder per game, and the core reads it.**~~ Done.
+   `core/src/games/assetto_corsa/` holds the structs, the paths and the shared
+   memory reader that used to live in the terminal, behind a `Source` trait
+   with a `Capabilities` set. The neutral `Sample` is still to come — the
+   engineer takes `AcPhysics` for now.
 3. **The engineer moves onto the model.** Delete the adapter. This is where the
    compound-aware thresholds below belong, because the model is where a compound
    becomes a first-class thing rather than a string match.
