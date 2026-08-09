@@ -39,6 +39,8 @@ typedef struct {
   uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
   uint32_t debrief_severity[24];
   char debrief[24][64];
+  uint32_t debrief_sector_ms[9], best_sector_ms[3];
+  float tyre_temp_inner_c[4], tyre_temp_outer_c[4], tyre_laps_remaining[4];
 } F;]]
 
 --- PANEL_VERSION as the app under test declares it.
@@ -106,19 +108,25 @@ local function synthesise(b)
   -- Three finished laps, each with its own advice, so the debrief window has
   -- something to switch between. Full slots on the newest and fewer further
   -- back: a lap that had less to say must not read the next lap's lines.
+  f.best_sector_ms[0], f.best_sector_ms[1], f.best_sector_ms[2] = 28540, 31120, 31574
+  for i = 0, 3 do
+    f.tyre_temp_inner_c[i] = 92 + i * 3
+    f.tyre_temp_outer_c[i] = 84 + i * 2
+    f.tyre_laps_remaining[i] = 12 - i * 1.5
+  end
   f.debrief_lap_count = 3
   local debriefs = {
-    { lap = 12, ms = 91234, lines = {
+    { lap = 12, ms = 91234, sectors = { 28540, 31120, 31574 }, lines = {
       { 'Fronts over 28.4 psi (target 27.5)', 1 },
       { 'Front: inner edge running hot (I-O: 15.0C)', 1 },
       { 'Lockups: 4', 0 },
       { 'Coasting 18%', 0 },
     } },
-    { lap = 11, ms = 92871, lines = {
+    { lap = 11, ms = 92871, sectors = { 28980, 31640, 32251 }, lines = {
       { 'All four cold 62C', 0 },
       { 'Rear: outer edge hotter (I-O: -6.0C)', 0 },
     } },
-    { lap = 10, ms = 95002, lines = {
+    { lap = 10, ms = 95002, sectors = { 29800, 32400, 32802 }, lines = {
       { 'FL/RL overheating 815C', 2 },
     } },
   }
@@ -127,6 +135,9 @@ local function synthesise(b)
     f.debrief_lap_number[lapIndex] = entry.lap
     f.debrief_lap_time_ms[lapIndex] = entry.ms
     f.debrief_line_count[lapIndex] = #entry.lines
+    for sector = 0, 2 do
+      f.debrief_sector_ms[lapIndex * 3 + sector] = entry.sectors[sector + 1]
+    end
     for line = 1, #entry.lines do
       local slot = lapIndex * 8 + line - 1
       ffi.copy(f.debrief[slot], entry.lines[line][1])
@@ -185,7 +196,10 @@ ac = {
         return ffi.string(raw.debrief[tonumber(lap) * 8 + tonumber(line)])
       end
       if k == 'debrief_lap_number' or k == 'debrief_lap_time_ms'
-        or k == 'debrief_line_count' or k == 'debrief_severity' then
+        or k == 'debrief_line_count' or k == 'debrief_severity'
+        or k == 'debrief_sector_ms' or k == 'best_sector_ms'
+        or k == 'tyre_temp_inner_c' or k == 'tyre_temp_outer_c'
+        or k == 'tyre_laps_remaining' then
         return setmetatable({}, { __index = function(_, i) return raw[k][i] end })
       end
       local slot = k:match('^message_(%d)$')
@@ -247,6 +261,14 @@ end
 
 ui = setmetatable({
   Font = { Small=1, Tiny=2, Monospace=3, Main=4, Italic=5, Title=6, Huge=7 },
+  -- Runs the body. A stub that swallows it would have every check below pass
+  -- against a window that drew nothing at all — the same failure the tab bodies
+  -- had before they were made to run.
+  childWindow = function(_, _, _, body)
+    note('childWindow')
+    if type(body) == 'function' then body() end
+    return true
+  end,
   text = function(s) note('text'); drawn[#drawn+1] = tostring(s) end,
   textColored = function(s) note('textColored'); drawn[#drawn+1] = tostring(s) end,
   -- The panel draws through DirectWrite so it can pick its own sizes; without

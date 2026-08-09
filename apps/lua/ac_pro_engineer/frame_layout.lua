@@ -68,6 +68,11 @@ local FRAME_LAYOUT = {
   debrief_2_5 = ac.StructItem.string(64),
   debrief_2_6 = ac.StructItem.string(64),
   debrief_2_7 = ac.StructItem.string(64),
+  debrief_sector_ms = ac.StructItem.array(ac.StructItem.uint32(), 9),
+  best_sector_ms = ac.StructItem.array(ac.StructItem.uint32(), 3),
+  tyre_temp_inner_c = ac.StructItem.array(ac.StructItem.float(), 4),
+  tyre_temp_outer_c = ac.StructItem.array(ac.StructItem.float(), 4),
+  tyre_laps_remaining = ac.StructItem.array(ac.StructItem.float(), 4),
 }
 
 return FRAME_LAYOUT

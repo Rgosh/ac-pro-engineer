@@ -339,6 +339,14 @@ function ui.drawLine(from, to, color, thickness)
   gfx.setLineWidth(1)
 end
 
+--- A scrollable child region. Draws the body inline: the harness has no
+--- clipping to speak of, and swallowing the body would leave every check below
+--- passing against a window that drew nothing.
+function ui.childWindow(_, _, _, body)
+  if type(body) == 'function' then body() end
+  return true
+end
+
 function ui.separator()
   local w = ui.availableSpaceX()
   gfx.setColor(1, 1, 1, 0.10)

@@ -173,6 +173,17 @@ local function drawTyres()
       if settings.showTyreTemp then
         say('caption', text.tyreTemp[i], tyreTempColor(shown.tyre_temp_c[i]))
       end
+      -- Inner|middle|outer under the average, coloured by the spread rather
+      -- than by the heat: the question these three answer is whether the tyre
+      -- is leaning right, and a tyre can be in its window and still be riding
+      -- on one edge.
+      if settings.showTyreEdges and text.tyreEdges[i] ~= '' then
+        local spread = shown.tyre_temp_inner_c[i] - shown.tyre_temp_outer_c[i]
+        local color = COLOR.good
+        if spread > 15 or spread < 0 then color = COLOR.warn end
+        if spread > 25 or spread < -10 then color = COLOR.bad end
+        say('caption', text.tyreEdges[i], color)
+      end
       if settings.showBrakeTemp then
         if settings.showTyreTemp then ui.sameLine() end
         say('caption', text.brakeTemp[i], brakeColor(shown.brake_temp_c[i]))
@@ -458,6 +469,9 @@ M.tyres = drawTyres
 M.timing = drawTiming
 M.fuel = drawFuel
 M.session = drawSession
+-- Wheel names for the debrief footer, in AC's array order.
+local CORNER_LABELS = { 'FL', 'FR', 'RL', 'RR' }
+
 -- The newest lap the panel has seen, so "follow the newest" can tell a new lap
 -- from a redraw. Declared above its readers: a local declared after the
 -- functions that use it is a global to them, which is nil.
@@ -536,6 +550,35 @@ local function drawDebrief(withLabel)
   end
   gap(3)
 
+  -- Sectors, against the best each has been this session. Four tenths spread
+  -- across a lap is a shrug; four tenths in sector three is a corner to go and
+  -- look at, and the lap time alone cannot tell them apart.
+  if settings.debriefShowSectors and entry.sectors ~= nil then
+    local any = false
+    for sector = 1, 3 do
+      if entry.sectors[sector] > 0 then any = true end
+    end
+    if any then
+      local parts = {}
+      for sector = 1, 3 do
+        local this = entry.sectors[sector]
+        local best = shown.best_sector_ms[sector]
+        if this > 0 and best > 0 and this > best then
+          parts[#parts + 1] = string.format('S%d +%.2f', sector, (this - best) / 1000)
+        elseif this > 0 and best > 0 then
+          -- This *is* the session's best sector. "-0.00" is arithmetically
+          -- true and reads as a rounding error; the time itself says what
+          -- happened.
+          parts[#parts + 1] = string.format('S%d %.2f', sector, this / 1000)
+        elseif this > 0 then
+          parts[#parts + 1] = string.format('S%d %s', sector, format.lapTimeText(this))
+        end
+      end
+      say('caption', table.concat(parts, '   '), COLOR.label)
+      gap(2)
+    end
+  end
+
   local lines = math.min(entry.line_count or 0, settings.debriefLines, frame.DEBRIEF_LINES)
   if lines == 0 then
     say('caption', tr('nothing to report'), COLOR.dim)
@@ -564,6 +607,35 @@ local function drawDebrief(withLabel)
         end
       end
       sayAdvice(body, textColor)
+    end
+  end
+
+  -- What is left, underneath. This is the other question asked in the pits and
+  -- the application has both answers already — they only ever reached the
+  -- terminal, which is on the other monitor with a helmet in the way.
+  if settings.debriefShowRemaining then
+    local worst, corner = nil, nil
+    for i = 1, 4 do
+      local laps = shown.tyre_laps_remaining[i]
+      if laps >= 0 and (worst == nil or laps < worst) then worst, corner = laps, i end
+    end
+    if worst ~= nil or shown.fuel_laps_remaining > 0 then
+      gap(3)
+      ui.separator()
+      local parts = {}
+      if worst ~= nil then
+        parts[#parts + 1] = string.format('%s %s %.1f', tr('tyres'),
+          CORNER_LABELS[corner], worst)
+      end
+      if shown.fuel_laps_remaining > 0 then
+        parts[#parts + 1] = string.format('%s %.1f', tr('fuel'), shown.fuel_laps_remaining)
+      end
+      -- Whichever runs out first is the one that decides the stint, so it is
+      -- the one that gets the colour.
+      local soonest = math.min(worst or 99, shown.fuel_laps_remaining > 0
+        and shown.fuel_laps_remaining or 99)
+      say('caption', table.concat(parts, '   ') .. ' ' .. tr('laps left'),
+        soonest < 3 and COLOR.bad or (soonest < 6 and COLOR.warn or COLOR.dim))
     end
   end
 end

@@ -70,6 +70,10 @@ pub const DEBRIEF_LINES: usize = 8;
 /// `debrief_0_0` .. `debrief_2_3` and the index arithmetic lives in one place.
 pub const DEBRIEF_SLOTS: usize = DEBRIEF_LAPS * DEBRIEF_LINES;
 
+/// Sectors per lap. AC's own tracks are almost all three, and the shared
+/// memory carries three regardless of what the track actually has.
+pub const SECTORS: usize = 3;
+
 /// Room for the application's version string, e.g. `0.3.4`. NUL-padded.
 ///
 /// Sixteen rather than eight: a prerelease tag like `0.4.0-beta.10` is
@@ -195,6 +199,34 @@ pub struct OverlayFrame {
     /// The debrief itself: lap `l` line `n` is at `l * DEBRIEF_LINES + n`.
     /// UTF-8, NUL-padded, truncated on a character boundary.
     pub debrief: [[u8; MESSAGE_BYTES]; DEBRIEF_SLOTS],
+
+    // --- everything a debrief is read *alongside* --------------------------
+    //
+    // Appended in one go rather than a field at a time across releases: each
+    // change to this struct costs every Linux driver a bridge update, and
+    // three of those in a row for three small features is three chances to
+    // end up with a panel that waits forever.
+    /// Sector times for each published lap, `lap * SECTORS + sector`, in
+    /// milliseconds. Zero for a sector the game never timed.
+    pub debrief_sector_ms: [u32; DEBRIEF_LAPS * SECTORS],
+
+    /// The best each sector has been this session, for the debrief to measure
+    /// against. Theoretical rather than achieved — it is the comparison a
+    /// driver makes anyway, and "you lost 0.4 in sector three" is worth more
+    /// than the same four tenths spread across a lap.
+    pub best_sector_ms: [u32; SECTORS],
+
+    /// Inner and outer tyre surface temperatures. The middle one has always
+    /// been [`Self::tyre_temp_c`]; without the other two the panel could show
+    /// how hot a tyre is and not whether it is leaning the right way, which is
+    /// the reading the camber advice is made of.
+    pub tyre_temp_inner_c: [f32; 4],
+    pub tyre_temp_outer_c: [f32; 4],
+
+    /// Laps of life left in each tyre at the current rate. Negative means not
+    /// measured yet — a stint has to be under way before a rate exists, and
+    /// zero is a real answer meaning the tyre is finished.
+    pub tyre_laps_remaining: [f32; 4],
 }
 
 /// One finished lap and what the engineer made of it, ready for the frame.
@@ -207,6 +239,8 @@ pub struct OverlayFrame {
 pub struct DebriefLap {
     pub lap_number: u32,
     pub lap_time_ms: u32,
+    /// The lap's sectors, in milliseconds. Zero for one the game never timed.
+    pub sectors: [u32; SECTORS],
     pub advice: Vec<Recommendation>,
 }
 
@@ -297,6 +331,11 @@ impl OverlayFrame {
             debrief_line_count: [0; DEBRIEF_LAPS],
             debrief_severity: [0; DEBRIEF_SLOTS],
             debrief: [[0; MESSAGE_BYTES]; DEBRIEF_SLOTS],
+            debrief_sector_ms: [0; DEBRIEF_LAPS * SECTORS],
+            best_sector_ms: [0; SECTORS],
+            tyre_temp_inner_c: [0.0; 4],
+            tyre_temp_outer_c: [0.0; 4],
+            tyre_laps_remaining: [-1.0; 4],
         }
     }
 
@@ -385,6 +424,21 @@ impl OverlayFrame {
         }
 
         self.debrief_lap_count = taken as u32;
+    }
+
+    /// Sector times for the published laps, and the best each has been.
+    ///
+    /// Separate from `set_debrief` because they come from a different place:
+    /// the advice is the engineer's, these are the analyser's, and a caller
+    /// that has one does not always have the other.
+    pub fn set_sectors(&mut self, laps: &[DebriefLap], best: [u32; SECTORS]) {
+        self.debrief_sector_ms = [0; DEBRIEF_LAPS * SECTORS];
+        for (lap_index, lap) in laps.iter().take(DEBRIEF_LAPS).enumerate() {
+            for sector in 0..SECTORS {
+                self.debrief_sector_ms[lap_index * SECTORS + sector] = lap.sectors[sector];
+            }
+        }
+        self.best_sector_ms = best;
     }
 
     /// Fill in the parts that come from the session rather than from physics.
@@ -570,6 +624,26 @@ const FIELDS: &[(&str, &str)] = &[
     ("debrief_2_5", "ac.StructItem.string(64)"),
     ("debrief_2_6", "ac.StructItem.string(64)"),
     ("debrief_2_7", "ac.StructItem.string(64)"),
+    (
+        "debrief_sector_ms",
+        "ac.StructItem.array(ac.StructItem.uint32(), 9)",
+    ),
+    (
+        "best_sector_ms",
+        "ac.StructItem.array(ac.StructItem.uint32(), 3)",
+    ),
+    (
+        "tyre_temp_inner_c",
+        "ac.StructItem.array(ac.StructItem.float(), 4)",
+    ),
+    (
+        "tyre_temp_outer_c",
+        "ac.StructItem.array(ac.StructItem.float(), 4)",
+    ),
+    (
+        "tyre_laps_remaining",
+        "ac.StructItem.array(ac.StructItem.float(), 4)",
+    ),
 ];
 
 /// How many bytes an `ac.StructItem` declaration occupies.
@@ -648,6 +722,10 @@ mod tests {
         let debrief_counters = 4 + DEBRIEF_LAPS * 3 * 4;
         let debrief_severities = DEBRIEF_SLOTS * 4;
         let debrief_text = DEBRIEF_SLOTS * MESSAGE_BYTES;
+        // Sector times per lap, the session's best sectors, the two tyre
+        // surface temperatures the middle one was always missing, and the wear
+        // projection.
+        let alongside = (DEBRIEF_LAPS * SECTORS + SECTORS) * 4 + (4 + 4 + 4) * 4;
         assert_eq!(
             size_of::<OverlayFrame>(),
             scalars
@@ -658,6 +736,7 @@ mod tests {
                 + debrief_counters
                 + debrief_severities
                 + debrief_text
+                + alongside
         );
 
         // Everything new goes after `app_version`, never before it: a field
@@ -728,11 +807,13 @@ mod tests {
                 DebriefLap {
                     lap_number: 7,
                     lap_time_ms: 91_234,
+                    sectors: [0; crate::overlay::frame::SECTORS],
                     advice: vec![advice_at("newest", Severity::Critical)],
                 },
                 DebriefLap {
                     lap_number: 6,
                     lap_time_ms: 92_000,
+                    sectors: [0; crate::overlay::frame::SECTORS],
                     advice: vec![advice_at("older", Severity::Info)],
                 },
             ],
@@ -762,6 +843,7 @@ mod tests {
             &[DebriefLap {
                 lap_number: 1,
                 lap_time_ms: 1,
+                sectors: [0; crate::overlay::frame::SECTORS],
                 advice: vec![advice("one"), advice("two"), advice("three")],
             }],
             2,
@@ -783,6 +865,7 @@ mod tests {
             &[DebriefLap {
                 lap_number: 4,
                 lap_time_ms: 1,
+                sectors: [0; crate::overlay::frame::SECTORS],
                 advice: vec![advice("stale")],
             }],
             DEBRIEF_LINES,
@@ -803,6 +886,7 @@ mod tests {
             .map(|index| DebriefLap {
                 lap_number: index as u32,
                 lap_time_ms: 1,
+                sectors: [0; crate::overlay::frame::SECTORS],
                 advice: vec![advice("line")],
             })
             .collect();
@@ -817,9 +901,10 @@ mod tests {
         // 22 scalars + 4 arrays + MESSAGE_SLOTS messages + their severities +
         // the application's version, then the debrief: its lap count, four
         // arrays alongside it, and one named string per slot.
+        // ... and five more arrays alongside the debrief.
         assert_eq!(
             FIELDS.len(),
-            22 + 4 + MESSAGE_SLOTS + 1 + 1 + 1 + 4 + DEBRIEF_SLOTS
+            22 + 4 + MESSAGE_SLOTS + 1 + 1 + 1 + 4 + DEBRIEF_SLOTS + 5
         );
 
         // The declared types have to add up to the struct's actual size, which

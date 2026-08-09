@@ -72,6 +72,7 @@ local text = {
   speed = '0', gear = 'N',
   pressure = { '', '', '', '' },
   tyreTemp = { '', '', '', '' },
+  tyreEdges = { '', '', '', '' },
   brakeTemp = { '', '', '', '' },
   wear = { '', '', '', '' },
   delta = '+0.000', best = '', last = '', current = '',
@@ -103,6 +104,18 @@ function M.rebuild(shown)
       text.pressureDelta[i] = ''
     end
     text.tyreTemp[i] = 'T: ' .. tempText(shown.tyre_temp_c[i])
+    -- Inner / middle / outer, when the driver asks for it. The middle one on
+    -- its own says how hot the tyre is; these three say whether it is leaning
+    -- the right way, which is the reading the camber advice is made of and the
+    -- one the panel could not show.
+    if settings.showTyreEdges then
+      text.tyreEdges[i] = string.format('%s|%s|%s',
+        tempText(shown.tyre_temp_inner_c[i]):gsub('[^%d%-]', ''),
+        tempText(shown.tyre_temp_c[i]):gsub('[^%d%-]', ''),
+        tempText(shown.tyre_temp_outer_c[i]):gsub('[^%d%-]', ''))
+    else
+      text.tyreEdges[i] = ''
+    end
     text.brakeTemp[i] = 'B: ' .. tempText(shown.brake_temp_c[i])
     text.wear[i] = string.format('Wear: %.0f%%', shown.tyre_wear_percent[i])
   end

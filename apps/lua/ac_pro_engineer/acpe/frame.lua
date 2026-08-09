@@ -98,13 +98,18 @@ local shown = {
   -- One entry per published lap: its number, its time, and its lines.
   debrief_lap_count = 0,
   debrief = {},
+  best_sector_ms = { 0, 0, 0 },
+  tyre_temp_inner_c = { 0, 0, 0, 0 },
+  tyre_temp_outer_c = { 0, 0, 0, 0 },
+  tyre_laps_remaining = { -1, -1, -1, -1 },
 }
 for i = 1, MESSAGE_SLOTS do
   shown.messages[i] = ''
   shown.message_severity[i] = 0
 end
 for lap = 1, DEBRIEF_LAPS do
-  shown.debrief[lap] = { lap_number = 0, lap_time_ms = 0, lines = {}, severity = {} }
+  shown.debrief[lap] = { lap_number = 0, lap_time_ms = 0, lines = {}, severity = {},
+    sectors = { 0, 0, 0 } }
   for line = 1, DEBRIEF_LINES do
     shown.debrief[lap].lines[line] = ''
     shown.debrief[lap].severity[line] = 0
@@ -239,6 +244,16 @@ local function readFrame()
       entry.severity[line] = 0
     end
     entry.line_count = lines
+    for sector = 1, 3 do
+      entry.sectors[sector] = frame.debrief_sector_ms[(lap - 1) * 3 + sector - 1]
+    end
+  end
+
+  for i = 1, 3 do shown.best_sector_ms[i] = frame.best_sector_ms[i - 1] end
+  for i = 1, 4 do
+    shown.tyre_temp_inner_c[i] = frame.tyre_temp_inner_c[i - 1]
+    shown.tyre_temp_outer_c[i] = frame.tyre_temp_outer_c[i - 1]
+    shown.tyre_laps_remaining[i] = frame.tyre_laps_remaining[i - 1]
   end
 
   if frame.sequence ~= seq then return false end
@@ -273,17 +288,17 @@ local DEMO_ADVICE = {
 -- and a lap with a single critical line, so the switcher, the severity colours
 -- and the "this lap had less to say" case are all reachable without a car.
 local DEMO_DEBRIEF = {
-  { lap_number = 12, lap_time_ms = 91234, lines = {
+  { lap_number = 12, lap_time_ms = 91234, sectors = { 28540, 31120, 31574 }, lines = {
     { 'Fronts over 28.4 psi (target 27.5)', 1 },
     { 'Front: inner edge running hot (I-O: 15.0C)', 1 },
     { 'Lockups: 4', 0 },
     { 'Coasting 18%', 0 },
   } },
-  { lap_number = 11, lap_time_ms = 92871, lines = {
+  { lap_number = 11, lap_time_ms = 92871, sectors = { 28980, 31640, 32251 }, lines = {
     { 'All four cold 62C', 0 },
     { 'Rear: outer edge hotter (I-O: -6.0C)', 0 },
   } },
-  { lap_number = 10, lap_time_ms = 95002, lines = {
+  { lap_number = 10, lap_time_ms = 95002, sectors = { 29800, 32400, 32802 }, lines = {
     { 'FL/RL overheating 815C', 2 },
   } },
 }
@@ -311,6 +326,12 @@ local function applyDemo()
     shown.message_severity[i] = (i - 1) % 3
   end
 
+  shown.best_sector_ms = { 28540, 31120, 31574 }
+  for i = 1, 4 do
+    shown.tyre_temp_inner_c[i] = 92 + i * 3
+    shown.tyre_temp_outer_c[i] = 84 + i * 2
+    shown.tyre_laps_remaining[i] = 12 - i * 1.5
+  end
   shown.debrief_lap_count = math.min(#DEMO_DEBRIEF, DEBRIEF_LAPS)
   for lap = 1, DEBRIEF_LAPS do
     local demo = DEMO_DEBRIEF[lap]
@@ -318,6 +339,7 @@ local function applyDemo()
     entry.lap_number = demo and demo.lap_number or 0
     entry.lap_time_ms = demo and demo.lap_time_ms or 0
     entry.line_count = demo and math.min(#demo.lines, DEBRIEF_LINES) or 0
+    entry.sectors = demo and demo.sectors or { 0, 0, 0 }
     for line = 1, DEBRIEF_LINES do
       local source = demo and demo.lines[line]
       entry.lines[line] = source and source[1] or ''

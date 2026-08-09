@@ -41,6 +41,17 @@ return function(dt)
   end
 
   local styles, colors = layout.push()
-  blocks.debrief(false)
+  -- Scrolled, because eight lines plus a header plus sectors do not fit a
+  -- window sized for four and the overflow was simply cut off at the bottom
+  -- edge with nothing to say it had been. `ui.childWindow` is the wrapper that
+  -- survives a script error midway, which matters here: this draws advice text
+  -- whose length the panel does not control.
+  if type(ui.childWindow) == 'function' and settings.debriefScroll then
+    ui.childWindow('acpeDebriefScroll', ui.availableSpace(), false, function()
+      blocks.debrief(false)
+    end)
+  else
+    blocks.debrief(false)
+  end
   layout.pop(styles, colors)
 end

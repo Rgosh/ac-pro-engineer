@@ -757,6 +757,7 @@ mod tests {
                 crate::overlay::frame::DebriefLap {
                     lap_number: 12,
                     lap_time_ms: 91_234,
+                    sectors: [0; crate::overlay::frame::SECTORS],
                     advice: vec![Recommendation {
                         component: "Tyres".to_string(),
                         category: "Pressure".to_string(),
@@ -770,6 +771,7 @@ mod tests {
                 crate::overlay::frame::DebriefLap {
                     lap_number: 11,
                     lap_time_ms: 92_871,
+                    sectors: [0; crate::overlay::frame::SECTORS],
                     advice: vec![Recommendation {
                         component: "Tyres".to_string(),
                         category: "Temperature".to_string(),

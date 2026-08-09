@@ -572,9 +572,34 @@ impl AppState {
             .map(|lap| DebriefLap {
                 lap_number: lap.lap_number.max(0) as u32,
                 lap_time_ms: lap.lap_time_ms.max(0) as u32,
+                sectors: [
+                    lap.sectors[0].max(0) as u32,
+                    lap.sectors[1].max(0) as u32,
+                    lap.sectors[2].max(0) as u32,
+                ],
                 advice: ac_core::debrief::debrief(lap, &self.config),
             })
             .collect();
+    }
+
+    /// The best each sector has been this session.
+    ///
+    /// Theoretical: the best first sector and the best third need not have come
+    /// from the same lap, and that is the comparison a driver makes anyway.
+    fn best_sectors(&self) -> [u32; ac_core::overlay::frame::SECTORS] {
+        let mut best = [0u32; ac_core::overlay::frame::SECTORS];
+        for lap in &self.analyzer.laps {
+            for (sector, time) in lap.sectors.iter().enumerate() {
+                if *time <= 0 {
+                    continue;
+                }
+                let time = *time as u32;
+                if best[sector] == 0 || time < best[sector] {
+                    best[sector] = time;
+                }
+            }
+        }
+        best
     }
 
     /// Ask the release page whether there is a bridge worth taking.
@@ -1275,6 +1300,11 @@ impl AppState {
 
         let mut frame = self.overlay_frame_shell();
 
+        // Computed before the writer is borrowed: `best_sectors` reads the
+        // analyser, and the writer borrow is mutable and covers the rest of
+        // this function.
+        let best_sectors = self.best_sectors();
+
         let Some(writer) = self.overlay_writer.as_mut() else {
             return;
         };
@@ -1326,6 +1356,14 @@ impl AppState {
             &self.overlay_debrief,
             self.config.overlay.debrief_lines as usize,
         );
+        frame.set_sectors(&self.overlay_debrief, best_sectors);
+
+        // The tyre's edges, which the panel needs to show whether a tyre is
+        // leaning the right way rather than only how hot it is — the middle one
+        // has been going across since the first frame.
+        frame.tyre_temp_inner_c = phys.tyre_temp_i;
+        frame.tyre_temp_outer_c = phys.tyre_temp_o;
+        frame.tyre_laps_remaining = self.engineer.stats.tyre_laps_remaining;
 
         writer.publish(&frame);
     }

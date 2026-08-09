@@ -78,6 +78,7 @@ return function(dt)
 
         ui.tabItem(tr('Corners'), function()
           controls.toggle('Tyre temperature', 'showTyreTemp')
+          controls.toggle('Inner / middle / outer', 'showTyreEdges')
           controls.toggle('Brake temperature', 'showBrakeTemp')
           controls.toggle('Wear', 'showWear')
           controls.toggle('Distance from target', 'showPressureTarget')
@@ -184,6 +185,10 @@ return function(dt)
       ui.separator()
       controls.toggle('Show the lap time', 'debriefShowTime')
       controls.toggle('Compare with the lap before', 'debriefShowDelta')
+      controls.toggle('Show sector times', 'debriefShowSectors')
+      controls.toggle('Show what is left', 'debriefShowRemaining')
+      controls.toggle('Highlight a new lap', 'debriefHighlightNew')
+      controls.toggle('Scroll when it does not fit', 'debriefScroll')
       controls.toggle('Colour the text by severity', 'debriefHighlight')
       -- Off, and a driver who paged back to compare two laps stays where they
       -- put themselves; on, and a lap ending brings them back to it.

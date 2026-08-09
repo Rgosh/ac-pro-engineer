@@ -14,7 +14,7 @@ through and a wheel button to page with.
 
 ### ⚠️ Breaking
 
-- **Overlay frame version 6**, 712 bytes to 2384. On Linux this means
+- **Overlay frame version 6**, 712 bytes to 2480. On Linux this means
   **`shm-bridge.exe` has to be updated again**; **[B]** on the launcher's
   overlay card does it. Everything new is appended, so no existing offset moved
   — a panel or bridge one version behind misreads nothing, it simply does not
@@ -39,6 +39,22 @@ through and a wheel button to page with.
   dragged forward.
 - **Eight lines per lap, not four.** A lap can go wrong in more than four ways
   at once, and four slots meant whatever came fifth was silently dropped.
+- **Sector times against the session's best**, in the debrief. Four tenths
+  spread across a lap is a shrug; four tenths in sector three is a corner to go
+  and look at, and a lap time on its own cannot tell them apart. A sector that
+  *is* the best shows its time rather than "-0.00".
+- **What is left, under the debrief**: laps of tyre life in the worst corner and
+  laps of fuel, coloured by whichever runs out first. Both numbers existed and
+  only ever reached the terminal — which is on the other monitor with a helmet
+  in the way.
+- **Inner / middle / outer tyre temperatures** in the panel, under each corner.
+  The middle one has been going across since the first frame and says how hot a
+  tyre is; these three say whether it is leaning the right way, which is the
+  reading the camber advice is made of. Coloured by the spread, not the heat: a
+  tyre can be in its window and still riding on one edge. Off by default.
+- **The debrief window scrolls.** Eight lines plus a header plus sectors do not
+  fit a window sized for four, and the overflow used to be cut off at the bottom
+  edge with nothing to say it had been.
 
 ### 🐞 Fixed
 
@@ -60,6 +76,11 @@ through and a wheel button to page with.
   bridge.
 
 ### 🧱 Under it
+
+- **One frame change, not four.** Sectors, the tyre edges and the wear
+  projection were added in a single pass rather than a field at a time: every
+  change to this struct costs every Linux driver a bridge update, and three of
+  those in a row is three chances to end up beside a panel that waits forever.
 
 - The lap summary is **data now, not five hundred lines of ratatui**:
   `debrief::debrief(&LapData, &AppConfig) -> Vec<Recommendation>`. It lived

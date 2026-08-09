@@ -32,6 +32,8 @@ typedef struct {
   uint32_t debrief_lap_number[3], debrief_lap_time_ms[3], debrief_line_count[3];
   uint32_t debrief_severity[24];
   char debrief[24][64];
+  uint32_t debrief_sector_ms[9], best_sector_ms[3];
+  float tyre_temp_inner_c[4], tyre_temp_outer_c[4], tyre_laps_remaining[4];
 } AcpeFrame;
 ]]
 
@@ -95,6 +97,11 @@ local frame = {
   -- Three finished laps of debrief, newest first, so the lap switcher has
   -- something to switch between without a game running.
   debrief_lap_count = 3,
+  debrief_sector_ms = { [0] = 28540, 31120, 31574, 28980, 31640, 32251, 29800, 32400, 32802 },
+  best_sector_ms = { [0] = 28540, 31120, 31574 },
+  tyre_temp_inner_c = { [0] = 95, 98, 101, 104 },
+  tyre_temp_outer_c = { [0] = 86, 88, 90, 92 },
+  tyre_laps_remaining = { [0] = 10.5, 9, 7.5, 6 },
   debrief_lap_number = { [0] = 12, 11, 10 },
   debrief_lap_time_ms = { [0] = 91234, 92871, 95002 },
   debrief_line_count = { [0] = 4, 2, 1 },
@@ -259,6 +266,13 @@ local function readSharedMemory(path)
   for i = 0, 23 do
     frame.debrief[i] = ffi.string(raw.debrief[i])
     frame.debrief_severity[i] = raw.debrief_severity[i]
+  end
+  for i = 0, 8 do frame.debrief_sector_ms[i] = raw.debrief_sector_ms[i] end
+  for i = 0, 2 do frame.best_sector_ms[i] = raw.best_sector_ms[i] end
+  for i = 0, 3 do
+    frame.tyre_temp_inner_c[i] = raw.tyre_temp_inner_c[i]
+    frame.tyre_temp_outer_c[i] = raw.tyre_temp_outer_c[i]
+    frame.tyre_laps_remaining[i] = raw.tyre_laps_remaining[i]
   end
   frame.sequence = raw.sequence
   frame.speed_kmh = raw.speed_kmh
