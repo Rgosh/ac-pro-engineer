@@ -1364,6 +1364,7 @@ impl AppState {
         frame.tyre_temp_inner_c = phys.tyre_temp_i;
         frame.tyre_temp_outer_c = phys.tyre_temp_o;
         frame.tyre_laps_remaining = self.engineer.stats.tyre_laps_remaining;
+        frame.stint_laps = self.engineer.stats.stint_laps.max(0) as u32;
 
         writer.publish(&frame);
     }

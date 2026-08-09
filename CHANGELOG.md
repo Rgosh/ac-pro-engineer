@@ -14,7 +14,7 @@ through and a wheel button to page with.
 
 ### ⚠️ Breaking
 
-- **Overlay frame version 6**, 712 bytes to 2480. On Linux this means
+- **Overlay frame version 6**, 712 bytes to 2484. On Linux this means
   **`shm-bridge.exe` has to be updated again**; **[B]** on the launcher's
   overlay card does it. Everything new is appended, so no existing offset moved
   — a panel or bridge one version behind misreads nothing, it simply does not
@@ -52,6 +52,12 @@ through and a wheel button to page with.
   tyre is; these three say whether it is leaning the right way, which is the
   reading the camber advice is made of. Coloured by the spread, not the heat: a
   tyre can be in its window and still riding on one edge. Off by default.
+- **Compare against your best lap, not just the one before.** People race their
+  own best; the lap before is what says whether the last change helped. Both are
+  there, and the driver's own best lap says so rather than showing "+0.000".
+- **How long you have been on this set of tyres**, under the debrief. Not the
+  lap count — a driver deciding whether to box wants to know how old the tyres
+  are, not how far into the race it is.
 - **The debrief window scrolls.** Eight lines plus a header plus sectors do not
   fit a window sized for four, and the overflow used to be cut off at the bottom
   edge with nothing to say it had been.
@@ -71,6 +77,17 @@ through and a wheel button to page with.
   printed "load: OK" without looking at the result, so the next line failed with
   a bare "attempt to call a nil value" and no hint of where. It checks the load
   and that the panel defined an update function.
+- **The terminal and the panel gave different advice about the same lap.** The
+  post-stint column computed its own verdicts — three hundred lines where the
+  analysis and the spans that drew it were the same code — while the panel
+  rendered the shared function. They had already drifted: this one took the
+  magnitude of the tyre temperature spread and threw the sign away, so a car
+  short of camber was told to take camber out while the panel said to add it.
+  One implementation now, 311 lines lighter, and a clean lap says so instead of
+  leaving an empty column that reads as "the analysis did not run".
+- **`Wear:`, `T:` and `B:` were English in both languages** — the only words in
+  the panel that were, sitting under every corner where they are hardest to
+  miss.
 - **`README.txt` described an archive that no longer exists** — it was written
   for a Windows-only bundle while the published one holds both builds and the
   bridge.

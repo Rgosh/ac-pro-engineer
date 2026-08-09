@@ -34,6 +34,7 @@ typedef struct {
   char debrief[24][64];
   uint32_t debrief_sector_ms[9], best_sector_ms[3];
   float tyre_temp_inner_c[4], tyre_temp_outer_c[4], tyre_laps_remaining[4];
+  uint32_t stint_laps;
 } AcpeFrame;
 ]]
 
@@ -96,6 +97,7 @@ local frame = {
   app_version = '0.3.5',
   -- Three finished laps of debrief, newest first, so the lap switcher has
   -- something to switch between without a game running.
+  stint_laps = 7,
   debrief_lap_count = 3,
   debrief_sector_ms = { [0] = 28540, 31120, 31574, 28980, 31640, 32251, 29800, 32400, 32802 },
   best_sector_ms = { [0] = 28540, 31120, 31574 },
@@ -269,6 +271,7 @@ local function readSharedMemory(path)
   end
   for i = 0, 8 do frame.debrief_sector_ms[i] = raw.debrief_sector_ms[i] end
   for i = 0, 2 do frame.best_sector_ms[i] = raw.best_sector_ms[i] end
+  frame.stint_laps = raw.stint_laps
   for i = 0, 3 do
     frame.tyre_temp_inner_c[i] = raw.tyre_temp_inner_c[i]
     frame.tyre_temp_outer_c[i] = raw.tyre_temp_outer_c[i]

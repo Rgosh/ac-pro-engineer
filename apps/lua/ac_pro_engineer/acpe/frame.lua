@@ -102,6 +102,7 @@ local shown = {
   tyre_temp_inner_c = { 0, 0, 0, 0 },
   tyre_temp_outer_c = { 0, 0, 0, 0 },
   tyre_laps_remaining = { -1, -1, -1, -1 },
+  stint_laps = 0,
 }
 for i = 1, MESSAGE_SLOTS do
   shown.messages[i] = ''
@@ -250,6 +251,7 @@ local function readFrame()
   end
 
   for i = 1, 3 do shown.best_sector_ms[i] = frame.best_sector_ms[i - 1] end
+  shown.stint_laps = frame.stint_laps or 0
   for i = 1, 4 do
     shown.tyre_temp_inner_c[i] = frame.tyre_temp_inner_c[i - 1]
     shown.tyre_temp_outer_c[i] = frame.tyre_temp_outer_c[i - 1]
@@ -327,6 +329,7 @@ local function applyDemo()
   end
 
   shown.best_sector_ms = { 28540, 31120, 31574 }
+  shown.stint_laps = 7
   for i = 1, 4 do
     shown.tyre_temp_inner_c[i] = 92 + i * 3
     shown.tyre_temp_outer_c[i] = 84 + i * 2

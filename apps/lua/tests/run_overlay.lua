@@ -41,6 +41,7 @@ typedef struct {
   char debrief[24][64];
   uint32_t debrief_sector_ms[9], best_sector_ms[3];
   float tyre_temp_inner_c[4], tyre_temp_outer_c[4], tyre_laps_remaining[4];
+  uint32_t stint_laps;
 } F;]]
 
 --- PANEL_VERSION as the app under test declares it.
@@ -114,6 +115,7 @@ local function synthesise(b)
     f.tyre_temp_outer_c[i] = 84 + i * 2
     f.tyre_laps_remaining[i] = 12 - i * 1.5
   end
+  f.stint_laps = 7
   f.debrief_lap_count = 3
   local debriefs = {
     { lap = 12, ms = 91234, sectors = { 28540, 31120, 31574 }, lines = {

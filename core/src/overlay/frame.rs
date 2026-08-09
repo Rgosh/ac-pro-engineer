@@ -227,6 +227,11 @@ pub struct OverlayFrame {
     /// measured yet — a stint has to be under way before a rate exists, and
     /// zero is a real answer meaning the tyre is finished.
     pub tyre_laps_remaining: [f32; 4],
+
+    /// Laps completed on this set of tyres, since the last time the car left
+    /// the pits. Not the same as the lap count: a driver wants to know how old
+    /// the tyres are, not how far into the race it is.
+    pub stint_laps: u32,
 }
 
 /// One finished lap and what the engineer made of it, ready for the frame.
@@ -336,6 +341,7 @@ impl OverlayFrame {
             tyre_temp_inner_c: [0.0; 4],
             tyre_temp_outer_c: [0.0; 4],
             tyre_laps_remaining: [-1.0; 4],
+            stint_laps: 0,
         }
     }
 
@@ -644,6 +650,7 @@ const FIELDS: &[(&str, &str)] = &[
         "tyre_laps_remaining",
         "ac.StructItem.array(ac.StructItem.float(), 4)",
     ),
+    ("stint_laps", "ac.StructItem.uint32()"),
 ];
 
 /// How many bytes an `ac.StructItem` declaration occupies.
@@ -725,7 +732,7 @@ mod tests {
         // Sector times per lap, the session's best sectors, the two tyre
         // surface temperatures the middle one was always missing, and the wear
         // projection.
-        let alongside = (DEBRIEF_LAPS * SECTORS + SECTORS) * 4 + (4 + 4 + 4) * 4;
+        let alongside = (DEBRIEF_LAPS * SECTORS + SECTORS) * 4 + (4 + 4 + 4) * 4 + 4;
         assert_eq!(
             size_of::<OverlayFrame>(),
             scalars
@@ -904,7 +911,7 @@ mod tests {
         // ... and five more arrays alongside the debrief.
         assert_eq!(
             FIELDS.len(),
-            22 + 4 + MESSAGE_SLOTS + 1 + 1 + 1 + 4 + DEBRIEF_SLOTS + 5
+            22 + 4 + MESSAGE_SLOTS + 1 + 1 + 1 + 4 + DEBRIEF_SLOTS + 5 + 1
         );
 
         // The declared types have to add up to the struct's actual size, which

@@ -10,6 +10,9 @@
 -- with the unit setting would be a bug, not a feature.
 
 local settings = require('acpe.settings').values
+-- i18n sits above format in the layering (settings -> i18n/theme -> layout ->
+-- format), so requiring it here is with the grain and not a cycle.
+local tr = require('acpe.i18n').tr
 
 local M = {}
 
@@ -103,7 +106,10 @@ function M.rebuild(shown)
     else
       text.pressureDelta[i] = ''
     end
-    text.tyreTemp[i] = 'T: ' .. tempText(shown.tyre_temp_c[i])
+    -- Translated at last. These three prefixes were English in both languages
+    -- for eleven releases — the only words in the panel that were, and they sit
+    -- under every corner where they are the hardest to miss.
+    text.tyreTemp[i] = tr('T:') .. ' ' .. tempText(shown.tyre_temp_c[i])
     -- Inner / middle / outer, when the driver asks for it. The middle one on
     -- its own says how hot the tyre is; these three say whether it is leaning
     -- the right way, which is the reading the camber advice is made of and the
@@ -116,8 +122,8 @@ function M.rebuild(shown)
     else
       text.tyreEdges[i] = ''
     end
-    text.brakeTemp[i] = 'B: ' .. tempText(shown.brake_temp_c[i])
-    text.wear[i] = string.format('Wear: %.0f%%', shown.tyre_wear_percent[i])
+    text.brakeTemp[i] = tr('B:') .. ' ' .. tempText(shown.brake_temp_c[i])
+    text.wear[i] = string.format('%s %.0f%%', tr('Wear:'), shown.tyre_wear_percent[i])
   end
 
   text.delta = string.format('%+.3f', shown.delta_seconds)

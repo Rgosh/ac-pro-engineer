@@ -73,6 +73,7 @@ local FRAME_LAYOUT = {
   tyre_temp_inner_c = ac.StructItem.array(ac.StructItem.float(), 4),
   tyre_temp_outer_c = ac.StructItem.array(ac.StructItem.float(), 4),
   tyre_laps_remaining = ac.StructItem.array(ac.StructItem.float(), 4),
+  stint_laps = ac.StructItem.uint32(),
 }
 
 return FRAME_LAYOUT

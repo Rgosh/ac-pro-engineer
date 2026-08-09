@@ -539,14 +539,33 @@ local function drawDebrief(withLabel)
   -- better than the one before" is the thing a driver actually wanted to know,
   -- and both numbers are already in the frame — this is arithmetic, not another
   -- field.
-  local older = shown.debrief[debriefLap + 1]
-  if settings.debriefShowDelta and older ~= nil and older.lap_time_ms > 0
-    and entry.lap_time_ms > 0 then
-    local delta = (entry.lap_time_ms - older.lap_time_ms) / 1000
-    local mark = delta < 0 and '-' or '+'
-    say('caption', string.format('%s%.3f %s %d', mark, math.abs(delta),
-      tr('vs lap'), older.lap_number),
-      delta < 0 and COLOR.good or COLOR.warn)
+  if settings.debriefShowDelta and entry.lap_time_ms > 0 then
+    -- Against the previous lap, or against the driver's best. People race
+    -- their own best; the lap before is what says whether the last change
+    -- helped. Both are worth having and neither is right for everyone.
+    local reference, label
+    if settings.debriefCompareToBest and shown.best_lap_ms > 0 then
+      reference, label = shown.best_lap_ms, tr('vs best')
+    else
+      local older = shown.debrief[debriefLap + 1]
+      if older ~= nil and older.lap_time_ms > 0 then
+        reference = older.lap_time_ms
+        label = tr('vs lap') .. ' ' .. older.lap_number
+      end
+    end
+
+    if reference ~= nil then
+      local delta = (entry.lap_time_ms - reference) / 1000
+      if math.abs(delta) < 0.0005 then
+        -- Nought point nought is the driver's own best lap, not a comparison
+        -- that failed.
+        say('caption', tr('this is the best lap'), COLOR.good)
+      else
+        say('caption', string.format('%s%.3f %s',
+          delta < 0 and '-' or '+', math.abs(delta), label),
+          delta < 0 and COLOR.good or COLOR.warn)
+      end
+    end
   end
   gap(3)
 
@@ -629,6 +648,11 @@ local function drawDebrief(withLabel)
       end
       if shown.fuel_laps_remaining > 0 then
         parts[#parts + 1] = string.format('%s %.1f', tr('fuel'), shown.fuel_laps_remaining)
+      end
+      -- How old the tyres are, which is a different question from how far into
+      -- the race it is and the one asked when deciding whether to box.
+      if settings.debriefShowStint and shown.stint_laps > 0 then
+        parts[#parts + 1] = string.format('%s %d', tr('stint'), shown.stint_laps)
       end
       -- Whichever runs out first is the one that decides the stint, so it is
       -- the one that gets the colour.
