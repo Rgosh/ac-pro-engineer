@@ -385,6 +385,21 @@ Severity travels with each line rather than being guessed from the words:
 same three the terminal uses. The marker carries the colour and the sentence
 stays in the reading colour, because a wall of red is a wall nobody reads.
 
+### In-game — the lap debrief
+
+![The overlay's lap debrief window: what the engineer made of a finished lap, with the laps switchable](screenshots/Overlay_Debrief.png)
+
+What the engineer made of the lap you have just finished — pressures and
+temperatures against your windows, camber per axle, brakes, and how it was
+driven. `<` and `>` page through the last three laps.
+
+The paging is local to the panel. The frame only travels one way, so the
+application publishes the recent laps and the window picks between what has
+already arrived: it works with the game paused and asks the application for
+nothing. How many lines to draw, whether to show the lap time and whether a new
+lap jumps the window back to it are all in Settings → Debrief; setting the lines
+to zero stops the application publishing a debrief at all.
+
 ### In-game — telemetry
 
 ![The overlay's telemetry window: every field in the shared-memory frame as it arrived](screenshots/Overlay_Telemetry.png)

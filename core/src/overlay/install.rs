@@ -714,6 +714,8 @@ mod tests {
             return;
         }
 
+        use crate::engineer::{Recommendation, Severity};
+
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
 
         // The harness reads a published frame; write one somewhere private so
@@ -741,6 +743,43 @@ mod tests {
             | crate::overlay::frame::flags::SHOW_FUEL
             | crate::overlay::frame::flags::SHOW_SESSION
             | crate::overlay::frame::flags::SHOW_ENGINEER;
+        // A finished lap, so the debrief window has something to draw and the
+        // new frame fields are checked across the language boundary rather than
+        // only inside Rust. Without this the harness reads a real frame with no
+        // laps in it and the debrief correctly draws "no finished laps yet" —
+        // which is the one path this check is not for.
+        frame.set_debrief(
+            &[
+                crate::overlay::frame::DebriefLap {
+                    lap_number: 12,
+                    lap_time_ms: 91_234,
+                    advice: vec![Recommendation {
+                        component: "Tyres".to_string(),
+                        category: "Pressure".to_string(),
+                        severity: Severity::Warning,
+                        message: "Fronts over 28.4 psi (target 27.5)".to_string(),
+                        action: String::new(),
+                        parameters: Vec::new(),
+                        confidence: 1.0,
+                    }],
+                },
+                crate::overlay::frame::DebriefLap {
+                    lap_number: 11,
+                    lap_time_ms: 92_871,
+                    advice: vec![Recommendation {
+                        component: "Tyres".to_string(),
+                        category: "Temperature".to_string(),
+                        severity: Severity::Info,
+                        message: "All four cold 62C".to_string(),
+                        action: String::new(),
+                        parameters: Vec::new(),
+                        confidence: 1.0,
+                    }],
+                },
+            ],
+            crate::overlay::frame::DEBRIEF_LINES,
+        );
+
         writer.publish(&frame);
 
         let output = std::process::Command::new("luajit")

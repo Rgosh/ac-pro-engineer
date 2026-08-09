@@ -509,15 +509,18 @@ local function drawDebrief(withLabel)
   ui.popFont()
   ui.sameLine()
 
+  -- One line, not two. The counter on its own row sat under the buttons at the
+  -- left edge and read as a stray label rather than as "which of these laps am
+  -- I looking at".
   local header = string.format('%s %d', tr('LAP'), entry.lap_number)
   if settings.debriefShowTime and entry.lap_time_ms > 0 then
     header = header .. '  ' .. format.lapTimeText(entry.lap_time_ms)
   end
-  say('value', header, COLOR.text)
   if available > 1 then
-    say('caption', string.format('%d / %d', debriefLap, available), COLOR.dim)
+    header = header .. string.format('   %d/%d', debriefLap, available)
   end
-  gap(2)
+  say('value', header, COLOR.text)
+  gap(3)
 
   local lines = math.min(entry.line_count or 0, settings.debriefLines, frame.DEBRIEF_LINES)
   if lines == 0 then

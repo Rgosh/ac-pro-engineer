@@ -706,6 +706,66 @@ end
 print('new advice is told apart from settled advice: OK')
 
 -- ---------------------------------------------------------------------------
+-- Paging through the debrief actually changes the lap
+--
+-- The whole point of the window is that a driver can look back at the lap
+-- before, and the buttons that do it are the one part of this panel holding
+-- state of its own. Two failure modes at once: a button whose handler does
+-- nothing, and the opposite — the catch-all stub returns 0 for an unknown
+-- widget, `0` is truthy in Lua, and a button read that way fires every frame
+-- and runs the lap counter off the end by itself.
+do
+  --- The lap the debrief window last drew a header for.
+  local function shownLap()
+    for i = #drawn, 1, -1 do
+      local lap = tostring(drawn[i]):match('^LAP (%d+)')
+      if lap ~= nil then return lap end
+    end
+    return nil
+  end
+
+  local function drawDebrief()
+    local fine, err = pcall(script.windowDebrief, 0.016)
+    assert(fine, 'windowDebrief threw: ' .. tostring(err))
+  end
+
+  -- Nobody is clicking anything, so the lap must sit still.
+  buttonPressed = nil
+  drawDebrief()
+  local newest = shownLap()
+  assert(newest ~= nil, 'the debrief drew no lap header at all')
+  drawDebrief()
+  drawDebrief()
+  assert(shownLap() == newest,
+    'the debrief moved on its own: ' .. tostring(newest) .. ' -> ' .. tostring(shownLap()))
+
+  -- Back one lap.
+  buttonPressed = '<##debriefPrev'
+  drawDebrief()
+  buttonPressed = nil
+  drawDebrief()
+  local older = shownLap()
+  assert(older ~= newest, 'pressing < did not change the lap, still ' .. tostring(older))
+
+  -- And forward again.
+  buttonPressed = '>##debriefNext'
+  drawDebrief()
+  buttonPressed = nil
+  drawDebrief()
+  assert(shownLap() == newest,
+    'pressing > did not come back to the newest lap: ' .. tostring(shownLap()))
+
+  -- Neither end can be paged off.
+  for _ = 1, 6 do
+    buttonPressed = '>##debriefNext'
+    drawDebrief()
+  end
+  buttonPressed = nil
+  drawDebrief()
+  assert(shownLap() == newest, 'paging past the newest lap ran off the end')
+  print('the debrief pages between laps: OK')
+end
+
 -- Every button in the settings window does what its label says
 --
 -- The window is built from buttons whose effect is a line of Lua somewhere
