@@ -115,6 +115,69 @@ front end*. It moves to `assets/frontends/csp-panel/`, and `assets/` is where
 per-game and per-frontend files live from then on. `install.rs` keeps embedding
 it; only the `include_bytes!` paths change.
 
+## The one that decides the shape: watching someone else drive
+
+A driver is on track and cannot look away. A friend runs the same program, sets
+it to receive, and sees the driver's telemetry and the engineer's advice — in
+their own overlay, while spectating the same session in their own copy of AC.
+
+This is worth writing down before the transport is built, because it is the
+requirement that makes the design pay for itself:
+
+**A remote peer is just another `Source`.** The friend's core does not know the
+samples arrived over a socket rather than out of shared memory. The analyser,
+the engineer, the debrief, the frame writer and the panel are unchanged — they
+are already downstream of `Source`, as of the commit that created it. Sharing
+is one new sink; receiving is one new source. Nothing in the middle moves.
+
+```
+driver's machine                          friend's machine
+  AC shared memory                          network source
+        │                                         │
+    core (analyse, advise)  ──[ sink ]──►    core (analyse, advise)
+        │                                         │
+   local frame → panel                     local frame → panel
+```
+
+The friend's panel needs no change at all: their own application writes their
+own local frame, and the numbers in it happen to be someone else's.
+
+### What has to be decided, and what is genuinely hard
+
+**Where the engineer runs.** Two honest options:
+
+* *Send samples, advise locally.* The friend's own thresholds, units and
+  language apply, and they can page the debrief independently. Costs more
+  bandwidth and the receiving core needs enough lap history to be useful.
+* *Send the computed frame.* Far simpler, far smaller, and the friend sees
+  exactly what the driver's engineer is saying — which is what you want when the
+  point is to help the person driving. Their unit and language settings would
+  not apply.
+
+Start with the second. It is the smaller change and the better answer for the
+stated use; the first can be added later as a second message kind.
+
+**The frame needs a flag saying whose numbers these are.** Otherwise the
+receiving panel draws "CONNECTED" and a lap counter about a car the viewer is
+not in, and a bug report arrives about telemetry that does not match the game.
+One bit and a name.
+
+**The network is the hard part, not the data.** Two machines in one flat is a
+UDP socket and nothing else. Two machines behind two home routers is NAT, and
+direct UDP will usually not connect without port forwarding. The options are the
+usual three: forward a port, punch holes, or put a relay in the middle — and a
+relay is the same thing as "send a driver's data to a server", so it solves the
+broadcast case at the same time. That is one piece of infrastructure serving
+both, and it is the only part of this that is not a weekend.
+
+**Losing a packet is fine; losing a lap is not.** Samples are replaced sixty
+times a second, so UDP dropping one costs nothing. A completed lap and its
+debrief happen once, so those want acknowledging or repeating.
+
+**It is telemetry about a person.** Sharing has to be something the driver turns
+on, per session, and if it travels through a relay the driver should be told
+that before the first packet leaves.
+
 ## Stages
 
 Each one leaves the tree working, tested and releasable. That matters more than
