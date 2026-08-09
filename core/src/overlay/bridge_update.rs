@@ -155,6 +155,55 @@ fn classify_asset(name: &str) -> Option<Delivery> {
     None
 }
 
+/// Say what actually went wrong, rather than repeating the status line.
+///
+/// GitHub answers a spent rate limit with **403 Forbidden**, which reads as a
+/// permission problem and sends people looking for a token they do not need.
+/// The allowance is sixty requests an hour per address for an unauthenticated
+/// caller, and this application spends two of them on every start — the update
+/// check and this one — so thirty launches in an hour is enough to hit it,
+/// which is an ordinary afternoon of testing. The headers say so plainly, so
+/// the message should too.
+fn describe_failure(response: &reqwest::blocking::Response) -> String {
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+    };
+
+    let spent = header("x-ratelimit-remaining") == Some(0);
+    if spent {
+        let minutes = header("x-ratelimit-reset")
+            .and_then(|reset| {
+                std::time::UNIX_EPOCH
+                    .checked_add(std::time::Duration::from_secs(reset))
+                    .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|since| since.as_secs())
+            })
+            .and_then(|reset| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|now| reset.saturating_sub(now.as_secs()))
+            })
+            .map(|seconds| seconds.div_ceil(60));
+
+        return match minutes {
+            Some(minutes) if minutes > 0 => format!(
+                "GitHub's hourly limit for this address is used up; it resets in \
+                 about {minutes} min. Nothing is wrong with the application."
+            ),
+            _ => "GitHub's hourly limit for this address is used up; try again shortly. \
+                  Nothing is wrong with the application."
+                .to_string(),
+        };
+    }
+
+    format!("GitHub answered {}", response.status())
+}
+
 /// The newest published bridge.
 ///
 /// Walks every release rather than asking for `releases/latest`, because the
@@ -216,7 +265,7 @@ pub fn published_bridges() -> Result<Vec<RemoteBridge>, String> {
             .map_err(|e| format!("could not reach GitHub: {e}"))?;
 
         if !response.status().is_success() {
-            return Err(format!("GitHub answered {}", response.status()));
+            return Err(describe_failure(&response));
         }
 
         response

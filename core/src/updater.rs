@@ -507,9 +507,26 @@ impl Updater {
             match client.get(&url).send() {
                 Ok(resp) => {
                     if !resp.status().is_success() {
-                        error!("GitHub API returned non-success status: {}", resp.status());
+                        // Same trap as the bridge check: a spent hourly
+                        // allowance comes back as 403, which reads as a
+                        // permission problem. Sixty requests an hour per
+                        // address, two spent per launch.
+                        let spent = resp
+                            .headers()
+                            .get("x-ratelimit-remaining")
+                            .and_then(|value| value.to_str().ok())
+                            .map(|value| value == "0")
+                            .unwrap_or(false);
+                        let message = if spent {
+                            "GitHub's hourly limit for this address is used up; \
+                             the check will work again shortly"
+                                .to_string()
+                        } else {
+                            format!("API error: {}", resp.status())
+                        };
+                        error!("Update check failed: {message}");
                         let mut lock = status.lock().unwrap_or_else(|e| e.into_inner());
-                        *lock = UpdateStatus::Error(format!("API error: {}", resp.status()));
+                        *lock = UpdateStatus::Error(message);
                         return;
                     }
 
