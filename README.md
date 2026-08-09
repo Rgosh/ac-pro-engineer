@@ -678,6 +678,10 @@ a config from an older version keeps working.
 | `alerts.wear_critical` | `85` | And below which it is critical. |
 | `overlay.show_telemetry` / `_engineer` / `_session` / `_timing` / `_fuel` | `true` | Which blocks the overlay is allowed to draw. |
 | `overlay.engineer_lines` | `4` | How many advice lines reach the overlay, 0 to 8. |
+| `overlay.debrief_lines` | `8` | Lines of each finished lap's debrief that reach the overlay, 0 to 8. Zero stops publishing one. |
+| `overlay.broadcast_to` | `""` | Also send the computed frame here as JSON over UDP, `host:port`. Empty is off. |
+| `overlay.broadcast_hz` | `10` | How many times a second to send there. |
+| `overlay.broadcast_name` | `""` | The name that travels with it, so a receiver watching several drivers can tell them apart. |
 | `overlay.startup_card` | `true` | Show the install card when the application starts. |
 | `keys.*` | see [Keyboard](#keyboard) | One key per action, as text. |
 | `data_path` | config directory | Where laps, exports, screenshots and records go. |
@@ -688,6 +692,68 @@ The panel's own settings are **not** here — CSP keeps them in its own storage,
 uninstalling and reinstalling the overlay does not lose them.
 
 ---
+
+## The UDP feed — writing your own front end
+
+The application computes everything and publishes it. The in-game panel reads a
+shared-memory mapping, which is the right transport inside the game and no use
+outside it: it needs a bridge under Proton and it cannot cross a machine. So
+everything else reads UDP.
+
+Set an address and it starts:
+
+```json
+"overlay": { "broadcast_to": "127.0.0.1:9001", "broadcast_hz": 10 }
+```
+
+Off unless you set it. This is telemetry about you, and it leaves the machine
+because you said so.
+
+One JSON object per datagram, ten a second by default, carrying **the computed
+frame** — not raw telemetry. Speed, gear, four corners, lap times, the
+engineer's advice and the last three laps of debrief, already analysed. A
+receiver draws and needs to know nothing about which simulator produced it.
+
+```json
+{
+  "magic": "acpe", "schema": 1, "app_version": "0.3.6",
+  "game": "assetto_corsa", "driver": "", "sequence": 12043,
+  "speed_kmh": 214.0, "gear": 5, "rpm": 7400, "max_rpm": 8500,
+  "fuel_litres": 41.2, "fuel_laps_remaining": 13.3, "delta_seconds": -0.284,
+  "lap_count": 7, "best_lap_ms": 91380, "last_lap_ms": 92450, "stint_laps": 7,
+  "corners": [ { "pressure_psi": 26.8, "temp_c": 88.0, "temp_inner_c": 92.0,
+                 "temp_outer_c": 84.0, "wear_percent": 98.0,
+                 "brake_temp_c": 420.0, "laps_remaining": 10.5 } ],
+  "advice": [ { "severity": 1, "text": "Fronts over 28.4 psi (target 27.5)" } ],
+  "debrief": [ { "lap_number": 12, "lap_time_ms": 91234,
+                 "sectors_ms": [28540, 31120, 31574],
+                 "lines": [ { "severity": 1, "text": "…" } ] } ]
+}
+```
+
+`magic` is always `"acpe"`, so a receiver on a shared port can tell these from
+somebody else's datagrams. `schema` changes when a key changes meaning or
+disappears — not when the panel's own wire format moves, which is a different
+number and none of your business. `severity` is 0 info, 1 warning, 2 critical.
+
+Reading it is about fifteen lines:
+
+```python
+import json, socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(("127.0.0.1", 9001))
+while True:
+    frame = json.loads(sock.recv(65535))
+    print(frame["speed_kmh"], [line["text"] for line in frame["advice"]])
+```
+
+UDP because a lost frame costs nothing — another arrives in a tenth of a second
+— and because a subscriber that stops reading must not be able to stall the loop
+feeding the driver's own overlay.
+
+An address on the network rather than localhost sends it to another machine. See
+`docs/ARCHITECTURE.md` for where that goes: a friend watching, and a relay for a
+championship.
 
 ## Troubleshooting
 

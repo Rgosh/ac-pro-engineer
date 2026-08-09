@@ -9,8 +9,13 @@ car. The panel could tell you what was happening; it had nothing to say about
 the lap you had just finished. Now it does, with the last three laps to page
 through and a wheel button to page with.
 
-> Not released yet. The frame changed, so a published build will need a matching
+> Not released yet, and not yet driven: the debrief has only seen synthetic laps
+> under the test harnesses, and the wheel bindings have never had a wheel near
+> them. The frame changed, so a published build will need a matching
 > `shm-bridge.exe` on Linux — see the breaking note.
+
+Nothing here changes what the application does unless you go and turn it on. The
+debrief is a new window you open; the UDP feed is off until you set an address.
 
 ### ⚠️ Breaking
 
@@ -92,7 +97,32 @@ through and a wheel button to page with.
   for a Windows-only bundle while the published one holds both builds and the
   bridge.
 
+### 🔌 For anyone building on it
+
+- **A UDP feed.** Set `overlay.broadcast_to` and the application sends the
+  computed frame as JSON, ten times a second — speed, corners, lap times, the
+  engineer's advice, the last three laps of debrief, already analysed. Fifteen
+  lines of Python reads it. Off unless you set it: this is telemetry about you.
+  Documented in the README.
+- **Nothing changes for anyone who does not set it.** The in-game panel still
+  reads shared memory, which is the right transport inside the game and no use
+  outside it.
+
 ### 🧱 Under it
+
+- **The core reads the game.** The shared-memory reader lived in the terminal,
+  so a user interface owned the connection to the simulator. It is
+  `core/src/games/assetto_corsa/` now, behind a `Source` trait, with everything
+  Assetto-specific in a folder of its own — a second simulator becomes a folder
+  beside it rather than conditionals through the middle of the engineer.
+- **The computed frame goes to a list of sinks** rather than to one hard-wired
+  writer, and the producer never waits for any of them. Shared memory and UDP
+  are two of those; a sink that fails is dropped rather than allowed to stall
+  the loop feeding the driver's own overlay.
+- **The panel moved to `assets/frontends/csp-panel/`.** It is the Assetto Corsa
+  front end, not "the overlay".
+- `docs/ARCHITECTURE.md` is where the rest of this is going, including watching
+  a friend drive and what a championship would need.
 
 - **One frame change, not four.** Sectors, the tyre edges and the wear
   projection were added in a single pass rather than a field at a time: every
