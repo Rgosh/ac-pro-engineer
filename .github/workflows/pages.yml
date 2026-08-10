@@ -1,0 +1,75 @@
+# The project's site, at whatever address Pages is configured to serve.
+#
+# The page lives in `site/` and the pictures live in `screenshots/`, which is
+# also where the README reads them from — one copy, so a screenshot refresh
+# updates both rather than leaving the site showing a release-old panel. This
+# workflow is what puts the two together.
+#
+# Enable it once in Settings → Pages → Source: **GitHub Actions**. Serving from
+# a branch folder instead would mean keeping a duplicate of every screenshot
+# under `site/`, which is exactly the drift this avoids.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    # Only when something the page shows actually changed. A telemetry fix does
+    # not need a deploy.
+    paths:
+      - 'site/**'
+      - 'screenshots/**'
+      - '.github/workflows/pages.yml'
+  # So it can be published without waiting for a change.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a newer push wins. Not `cancel-in-progress: false`
+# — a queued deploy of an older commit is a site that goes backwards.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp -r site/. _site/
+          # The page references these as `screenshots/…`, the same paths the
+          # README uses, so nothing has to be rewritten in either.
+          cp -r screenshots _site/screenshots
+          # A CNAME in the repo root is honoured if one is ever added, which is
+          # what a custom domain needs. Absent, this is a no-op.
+          if [ -f CNAME ]; then cp CNAME _site/CNAME; fi
+
+      - name: Fail if the page references a picture that is not there
+        # A broken image on a landing page is the kind of thing nobody notices
+        # for a month. Cheap to check, and it catches a screenshot renamed on
+        # one side only.
+        run: |
+          missing=0
+          for src in $(grep -o 'src="screenshots/[^"]*"' _site/index.html | cut -d'"' -f2); do
+            if [ ! -f "_site/$src" ]; then
+              echo "::error::index.html references $src, which does not exist"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
