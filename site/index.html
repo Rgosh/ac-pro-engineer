@@ -350,7 +350,7 @@
     <h2>WHAT YOU GET</h2>
 
     <div class="stats">
-      <div class="stat"><b>65</b><span>FEATURES</span></div>
+      <div class="stat"><b>115</b><span>FEATURES</span></div>
       <div class="stat"><b>9</b><span>TERMINAL TABS</span></div>
       <div class="stat"><b>5</b><span>GAME WINDOWS</span></div>
       <div class="stat"><b>16</b><span>GUIDE CHAPTERS</span></div>
@@ -360,49 +360,49 @@
 
     <div class="grid">
       <div class="card">
-        <h3><span class="k">▸</span> Tyres, properly <span class="n">9</span></h3>
+        <h3><span class="k">▸</span> Tyres, properly <span class="n">11</span></h3>
         <p>Pressure and inner/middle/outer temperature per corner, distance from your
         target, a cold-pressure calculator, wear, remaining life in laps, and camber
         advice that keeps the sign of the spread.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> A real engineer <span class="n">7</span></h3>
+        <h3><span class="k">▸</span> A real engineer <span class="n">9</span></h3>
         <p>Sentences, not thresholds. Four cold tyres is one line. Ranked by severity —
         and every line says how sure it is, so one odd frame does not get the same voice
         as four consistent corners.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> After the lap <span class="n">6</span></h3>
+        <h3><span class="k">▸</span> After the lap <span class="n">7</span></h3>
         <p>A debrief in the car and on the desktop: sectors against the session best,
         what is left of the tyres and fuel, and the last three laps to page through.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> Where the time went <span class="n">12</span></h3>
-        <p>Corners found in the trace, the lap decomposed against a reference, braking
-        point in metres, entry/minimum/exit speed, throttle timing, ghost delta, MoTeC
-        CSV out.</p>
+        <h3><span class="k">▸</span> Where the time went <span class="n">22</span></h3>
+        <p>Corners found in the trace and the lap decomposed against a reference —
+        braking point in metres, entry/minimum/exit speed, throttle timing. Plus ghost
+        deltas, a friction circle, a track map, damper histograms and MoTeC CSV out.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> The car or you <span class="n">4</span></h3>
-        <p>Over a stint, it separates a car that understeers from a driver who turns in
-        early — and refuses to answer before it has four laps, because one lap genuinely
-        cannot tell them apart.</p>
+        <h3><span class="k">▸</span> The car or you <span class="n">12</span></h3>
+        <p>Over a stint it separates a car that understeers from a driver who turns in
+        early, and refuses to answer before it has four laps. Smoothness, trail braking,
+        coasting, grip usage, lockups and over-rotation, all counted rather than felt.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> Fuel &amp; strategy <span class="n">4</span></h3>
+        <h3><span class="k">▸</span> Fuel &amp; strategy <span class="n">8</span></h3>
         <p>Consumption measured from your own laps, laps remaining, what you need to
         finish, how short you are, and the pace drop-off across the stint.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> In the game <span class="n">9</span></h3>
+        <h3><span class="k">▸</span> In the game <span class="n">11</span></h3>
         <p>Five windows as a Custom Shaders Patch app. It installs itself, every block
         switches off on its own, and it computes nothing — Lua runs on the render thread.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> Everything else <span class="n">14</span></h3>
-        <p>Force feedback clipping, setup browser, Linux and Steam Deck, a UDP feed for
-        your own front end, watching a friend drive, sixteen chapters of guide, every key
-        rebindable.</p>
+        <h3><span class="k">▸</span> Everything else <span class="n">35</span></h3>
+        <p>Force feedback clipping with a verdict, a setup browser and comparer, sixteen
+        chapters of setup theory, Linux and Steam Deck, a UDP feed for your own front
+        end, watching a friend drive, and every key rebindable on two layouts.</p>
       </div>
     </div>
     <p class="note" style="margin-top:18px">
@@ -478,13 +478,14 @@
   </section>
 
   <section id="features">
-    <h2>ALL 65 FEATURES</h2>
+    <h2>EVERYTHING IT DOES</h2>
     <p class="lede">
-      Folded, because the full list is long. Open whichever matters to you.
+      The whole list, folded by area. It is longer than most people expect from
+      something that costs nothing — open whichever part matters to you.
     </p>
 
     <details class="fold stacked">
-      <summary>Tyres and brakes <span class="count">9</span></summary>
+      <summary>Tyres and brakes <span class="count">11</span></summary>
       <div class="fold-body"><table><tbody>
         <tr><td>Tyre pressure per corner</td><td>Live, in psi, bar or kPa.</td></tr>
         <tr><td>Inner / middle / outer temperature</td><td>All three per corner, not just the middle. The spread says whether a tyre is leaning the right way, which is what camber advice is made of.</td></tr>
@@ -494,12 +495,14 @@
         <tr><td>Tyre wear</td><td>Per corner, as a percentage of the tread.</td></tr>
         <tr><td>Remaining tyre life in laps</td><td>From the worst corner rather than the average — a set is finished when one corner is.</td></tr>
         <tr><td>Camber advice per axle</td><td>From the inner-minus-outer spread, keeping the sign. An outer edge running hot wants <i>more</i> negative camber; reading only the magnitude gives exactly the opposite advice.</td></tr>
+        <tr><td>Measured only under load</td><td>A tyre says nothing about camber on a straight — both edges run level there. The sample is taken while the car is actually cornering, and the verdict waits for a second of it.</td></tr>
+        <tr><td>Bottoming detection</td><td>Counted per corner from the suspension travel, with a ride-height verdict after the lap.</td></tr>
         <tr><td>Stint length</td><td>How long you have been on this set, which is not the lap count.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>The race engineer <span class="count">7</span></summary>
+      <summary>The race engineer, while you drive <span class="count">9</span></summary>
       <div class="fold-body"><table><tbody>
         <tr><td>Plain-language advice</td><td>"Fronts over 28.4 psi (target 27.5)" with what to do about it.</td></tr>
         <tr><td>Grouped findings</td><td>Four cold tyres is one line. Fronts, rears, left side, right side, all four.</td></tr>
@@ -507,97 +510,163 @@
         <tr><td>Up to eight lines</td><td>With a slider for how many reach the overlay, and the number actually sent printed under it.</td></tr>
         <tr><td>Confidence on every line</td><td>A count of corroborating observations and their spread, not a number picked while writing the rule. One observation is never confident however extreme.</td></tr>
         <tr><td>New advice looks different</td><td>From advice that has been on screen for four laps.</td></tr>
-        <tr><td>Cause and check</td><td>Where a rule can state one: why it is happening, and what to look at next run to know whether the change worked.</td></tr>
+        <tr><td>Cause and check</td><td>Why it is happening, and what to look at next run to know whether the change worked.</td></tr>
+        <tr><td>Shift point</td><td>Rev bar with a configurable offset from the limiter, so the light comes when you want it.</td></tr>
+        <tr><td>Fuel warning</td><td>Raised when what is left falls under the laps you configured.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>After the lap <span class="count">6</span></summary>
+      <summary>The lap debrief <span class="count">7</span></summary>
       <div class="fold-body"><table><tbody>
-        <tr><td>Lap debrief</td><td>Pressures and temperatures against your own windows, camber per axle, brakes, and how the lap was driven — up to eight lines.</td></tr>
+        <tr><td>What the engineer made of the lap</td><td>Pressures and temperatures against your own windows, camber per axle, brakes, and how it was driven — up to eight lines.</td></tr>
         <tr><td>Three laps of history</td><td>Page back through them with the game paused, in the terminal and in the car.</td></tr>
         <tr><td>Sector times against the session best</td><td>Four tenths spread across a lap is a shrug; four tenths in one sector is a corner to go and look at.</td></tr>
         <tr><td>Compare with the previous lap or your best</td><td>Both, because they answer different questions.</td></tr>
         <tr><td>What is left</td><td>Laps of tyre life and laps of fuel, coloured by whichever runs out first.</td></tr>
         <tr><td>A clean lap says so</td><td>Rather than leaving an empty column that reads as "the analysis did not run".</td></tr>
+        <tr><td>A lap that measured nothing says nothing</td><td>Zero pressures are not flat tyres. Every average that was never taken is treated as absent rather than as zero.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>Lap and corner analysis <span class="count">12</span></summary>
+      <summary>Corner-by-corner lap analysis <span class="count">10</span></summary>
       <div class="fold-body"><table><tbody>
-        <tr><td>Corner detection from the trace</td><td>No track data, so it works on mods and on tracks nobody has written a table for.</td></tr>
-        <tr><td>Corner-by-corner decomposition</td><td>Where the time went, with the sections adding up to the lap's own delta.</td></tr>
+        <tr><td>Corners found in the trace</td><td>A stretch where lateral load stays up long enough to be a corner rather than a kink. No track data, so it works on mods and on tracks nobody has written a table for.</td></tr>
+        <tr><td>Where the time went, corner by corner</td><td>Each corner is charged the track from its own entry to the next corner's entry — where a bad exit is actually paid for — so the sections add up to the lap's own delta.</td></tr>
         <tr><td>Only the losses that matter</td><td>One key hides every corner that cost less than a tenth.</td></tr>
         <tr><td>Braking point in metres</td><td>How much later or earlier than the reference, measured on the straight before the corner.</td></tr>
         <tr><td>Entry, minimum and exit speed</td><td>All three against the reference, per corner.</td></tr>
         <tr><td>Throttle timing</td><td>How long after the apex you got back on the power, against the reference.</td></tr>
+        <tr><td>Matched by distance, never by index</td><td>Two laps can detect a different number of corners. Comparing T5 to T5 by position in the list compares two different corners and invents a delta.</td></tr>
+        <tr><td>Chicanes stay two corners</td><td>A left never matches a right, however close together they are.</td></tr>
+        <tr><td>No comparison is not zero</td><td>A corner the reference lap does not have is drawn as no answer, because inventing one is worse than admitting it.</td></tr>
+        <tr><td>Direction, apex and peak load</td><td>Per corner, with the apex taken at the slowest point rather than the tightest — the timing is what this is for.</td></tr>
+      </tbody></table></div>
+    </details>
+
+    <details class="fold stacked">
+      <summary>Laps, ghosts and traces <span class="count">12</span></summary>
+      <div class="fold-body"><table><tbody>
         <tr><td>Ghost delta by distance</td><td>Against your own recorded best lap, not whatever reference the game picked.</td></tr>
-        <tr><td>Traces</td><td>Speed, both pedals, steering, delta, slip and RPM against time and distance.</td></tr>
+        <tr><td>Speed and RPM against time</td><td>The whole lap, plotted.</td></tr>
+        <tr><td>Both pedals and steering</td><td>Throttle, brake and steering angle traces, so a lock-up or a correction is visible rather than remembered.</td></tr>
+        <tr><td>Track map from your own trace</td><td>Drawn from the positions you actually drove, so it needs no track file.</td></tr>
+        <tr><td>Friction circle</td><td>The GG diagram: how much of the tyre's grip you are using, and in which direction you are wasting it.</td></tr>
+        <tr><td>Slip ratio</td><td>Against throttle, so wheelspin is separable from a car that simply has no grip.</td></tr>
         <tr><td>Damper histograms</td><td>Suspension travel distribution per corner.</td></tr>
-        <tr><td>Sector splits</td><td>On tracks with two, three or four sectors.</td></tr>
+        <tr><td>Sector splits</td><td>On tracks with two, three or four sectors, detected rather than assumed.</td></tr>
+        <tr><td>Theoretical optimal lap</td><td>From your best sectors, which need not have come from the same lap.</td></tr>
         <tr><td>Save and load laps</td><td>As JSON with full metadata; load one back as a ghost on another day.</td></tr>
         <tr><td>MoTeC-compatible CSV export</td><td>Named after the car, track and lap.</td></tr>
+        <tr><td>Reference times per car and track</td><td>Kept between sessions, and worked out from the car's own specifications when there is nothing to compare with yet.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>The car or the driving <span class="count">4</span></summary>
+      <summary>How you are driving <span class="count">12</span></summary>
       <div class="fold-body"><table><tbody>
-        <tr><td>Stint-level attribution</td><td>Understeer in the same quantity on every lap while the lap times move about is not following the driving. One that comes and goes is.</td></tr>
+        <tr><td>The car or the driving</td><td>Understeer in the same quantity on every lap while the lap times move about is not following the driving. One that comes and goes is.</td></tr>
         <tr><td>It refuses to answer early</td><td>Below four laps it says so rather than guessing. A car that understeers and a driver who turns in too early produce the same trace.</td></tr>
-        <tr><td>Driving style, counted</td><td>Smoothness, aggression, trail braking, coasting, pedal overlap, full throttle percentage, grip usage.</td></tr>
-        <tr><td>Incidents, counted</td><td>Lockups, wheelspin, understeer and oversteer moments, and over-rotation where the tyres are scrubbing.</td></tr>
+        <tr><td>Smoothness</td><td>How steadily you use the controls, rather than how fast.</td></tr>
+        <tr><td>Aggression</td><td>How hard the car is being asked to work.</td></tr>
+        <tr><td>Trail braking</td><td>How much brake is still on while the car is turning.</td></tr>
+        <tr><td>Coasting</td><td>The share of the lap on neither pedal — usually the cheapest time on the table.</td></tr>
+        <tr><td>Pedal overlap</td><td>Throttle and brake at once, counted.</td></tr>
+        <tr><td>Full throttle percentage</td><td>How much of the lap is spent flat.</td></tr>
+        <tr><td>Grip usage</td><td>How close to the friction circle's edge you actually run.</td></tr>
+        <tr><td>Lockups and wheelspin</td><td>Counted per axle, not guessed from the lap time.</td></tr>
+        <tr><td>Understeer and oversteer moments</td><td>Counted over the lap, so one moment is not a verdict.</td></tr>
+        <tr><td>Over-rotation</td><td>Steering past what the corner needs, with the worst excess angle — the tyres are scrubbing and the lap time shows it.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>Fuel and strategy <span class="count">4</span></summary>
+      <summary>Fuel, stints and strategy <span class="count">8</span></summary>
       <div class="fold-body"><table><tbody>
-        <tr><td>Consumption from your own laps</td><td>Measured, not taken from the car's data files.</td></tr>
-        <tr><td>Laps remaining</td><td>On what is in the tank, with a configurable safety margin and a low-fuel warning.</td></tr>
+        <tr><td>Consumption from your own laps</td><td>Measured lap by lap, not taken from the car's data files — which read zero on lap one anyway.</td></tr>
+        <tr><td>Laps remaining</td><td>On what is in the tank, with a configurable safety margin.</td></tr>
         <tr><td>Fuel needed to finish</td><td>And how short you are, for a race of a given length.</td></tr>
-        <tr><td>Race pace history</td><td>Lap times across the stint, so you can see the drop-off rather than feel it.</td></tr>
+        <tr><td>Fuel per lap, recent history</td><td>The last few laps, so a heavy stint is visible rather than averaged away.</td></tr>
+        <tr><td>Race pace history</td><td>Lap times across the stint, so you see the drop-off rather than feel it.</td></tr>
+        <tr><td>Tyre life projection</td><td>Laps left on this set, beside the fuel, so the shorter one decides the stop.</td></tr>
+        <tr><td>Track conditions</td><td>Air and road temperature and grip, with how they have moved during the session.</td></tr>
+        <tr><td>Predicted lap time</td><td>From the delta as the lap runs, rather than after it ends.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>Force feedback and setups <span class="count">4</span></summary>
+      <summary>Force feedback <span class="count">4</span></summary>
       <div class="fold-body"><table><tbody>
         <tr><td>Clipping meter</td><td>Whether the wheel is saturating and losing every detail above the clip point — the most common reason a car "feels numb".</td></tr>
-        <tr><td>Setup browser</td><td>Community setups by car and track, installed into the game without restarting it.</td></tr>
-        <tr><td>Setup comparison</td><td>Field-by-field difference between two setups.</td></tr>
-        <tr><td>Cold pressure targets per setup</td><td>Read from the setup file rather than assumed.</td></tr>
+        <tr><td>Four verdicts, not a number</td><td>Optimal, light clipping, critical clipping, or a signal too weak to feel.</td></tr>
+        <tr><td>It says which way to go</td><td>"Safe to increase gain" or back it off, rather than leaving you to interpret a percentage.</td></tr>
+        <tr><td>Measured over the lap</td><td>Counted in frames, so one kerb strike is not a diagnosis.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>The in-game overlay <span class="count">9</span></summary>
+      <summary>Setups <span class="count">5</span></summary>
+      <div class="fold-body"><table><tbody>
+        <tr><td>Setup browser</td><td>Community setups by car and track, installed into the game without restarting it.</td></tr>
+        <tr><td>It knows which one you are on</td><td>Matched against the loaded car's fuel, brake bias and pressures.</td></tr>
+        <tr><td>Setup comparison</td><td>Field-by-field difference between two setups — wings, ARBs, camber, toe, springs, dampers, ride height, gearing.</td></tr>
+        <tr><td>Cold pressure targets per setup</td><td>Read from the setup file rather than assumed.</td></tr>
+        <tr><td>Nothing is overwritten quietly</td><td>Installing a setup is an explicit action, and the file it came from is named.</td></tr>
+      </tbody></table></div>
+    </details>
+
+    <details class="fold stacked">
+      <summary>The in-game overlay <span class="count">11</span></summary>
       <div class="fold-body"><table><tbody>
         <tr><td>Five windows</td><td>The main panel, the engineer, telemetry, status and the lap debrief — opened and closed independently.</td></tr>
-        <tr><td>It installs itself</td><td>Every time the application starts, and rewrites itself whenever it differs from the running build.</td></tr>
+        <tr><td>It installs itself</td><td>Every time the application starts, and rewrites itself whenever it differs from the running build. No step to forget.</td></tr>
         <tr><td>Every block switches off</td><td>Independently, from inside the game, and the choice survives closing the window.</td></tr>
         <tr><td>Readable at 4K</td><td>Text drawn at any size rather than at the five fixed tiers the platform offers.</td></tr>
         <tr><td>It works outside a session</td><td>In the garage, in the pits, before the green — and it tells "waiting for the car" apart from "waiting for the application".</td></tr>
         <tr><td>Its own look</td><td>Backing plate from transparent to solid, text size, line spacing, rules between lines, upper case, an editable colour palette.</td></tr>
         <tr><td>A changed-settings tab</td><td>Everything that differs from the defaults, what it was, and a reset beside each line.</td></tr>
         <tr><td>A typed console</td><td>For what has no widget.</td></tr>
-        <tr><td>It computes nothing</td><td>Lua runs on the render thread, where a millisecond is a sixth of the frame budget at 165 Hz.</td></tr>
+        <tr><td>Two languages in the car</td><td>The panel's own words follow the application's language, not the game's.</td></tr>
+        <tr><td>It computes nothing</td><td>Lua runs on the render thread, where a millisecond is a sixth of the frame budget at 165 Hz. Everything is worked out on the desktop side and copied in.</td></tr>
+        <tr><td>A diagnosis when it is blank</td><td>One screen that says which of the application, the bridge and the panel does not fit — the question this project gets asked most.</td></tr>
       </tbody></table></div>
     </details>
 
     <details class="fold stacked">
-      <summary>Platform, integration and comfort <span class="count">10</span></summary>
+      <summary>The built-in guide <span class="count">9</span></summary>
       <div class="fold-body"><table><tbody>
-        <tr><td>Windows, Linux and Steam Deck</td><td>Under Proton, with a bridge for the overlay and a diagnostics screen that says which of the three pieces does not fit.</td></tr>
+        <tr><td>The friction circle</td><td>What the GG diagram is actually telling you, and why the rectangle is slow.</td></tr>
+        <tr><td>Tyre thermodynamics</td><td>Molecular friction, the inner/middle/outer matrix, and what each pattern means.</td></tr>
+        <tr><td>Differential tuning</td><td>Power lock, coast lock, and what each does to entry and exit.</td></tr>
+        <tr><td>Suspension frequencies</td><td>Natural frequency in Hz, the motion ratio trap, packers and bump stops.</td></tr>
+        <tr><td>Dampers</td><td>Bump against rebound, and which one you are actually feeling.</td></tr>
+        <tr><td>Aerodynamics</td><td>The aero seesaw, rake angle, and the weight penalty of downforce.</td></tr>
+        <tr><td>Braking</td><td>Trail braking, lift and coast, and reading the delta.</td></tr>
+        <tr><td>Wet setups</td><td>The golden rules of rain, and why steering goes light.</td></tr>
+        <tr><td>Sixteen chapters in all</td><td>Written to be read between sessions, in the application, offline.</td></tr>
+      </tbody></table></div>
+    </details>
+
+    <details class="fold stacked">
+      <summary>Platform, integration and comfort <span class="count">17</span></summary>
+      <div class="fold-body"><table><tbody>
+        <tr><td>Windows, Linux and Steam Deck</td><td>Under Proton, with a bridge for the overlay and a diagnostics screen that says which piece does not fit.</td></tr>
         <tr><td>About 0.1&nbsp;% of one CPU core</td><td>A terminal application, so no GPU cost at all on the desktop side.</td></tr>
+        <tr><td>Reads the game safely</td><td>The shared-memory pages are re-read until two reads agree, so a frame caught mid-write is discarded rather than drawn.</td></tr>
+        <tr><td>Nine screens</td><td>Dashboard, engineer, telemetry, analysis, setups, strategy, force feedback, settings and the guide.</td></tr>
+        <tr><td>Wide or tall</td><td>Every screen has a second layout for a portrait monitor or a narrow window.</td></tr>
         <tr><td>UDP JSON feed</td><td>The computed frame, ten times a second, for writing your own front end in about fifteen lines.</td></tr>
         <tr><td>Watch another driver</td><td>On the same network: their telemetry and their engineer in your own panel.</td></tr>
         <tr><td>Discord Rich Presence</td><td>Car, track and delta, if you want it.</td></tr>
-        <tr><td>Every key rebindable</td><td>And every on-screen hint printed from the binding, so it cannot tell you the wrong key.</td></tr>
+        <tr><td>Every key rebindable</td><td>Five categories of setting, with conflict detection, and every on-screen hint printed from the binding — so it cannot tell you the wrong key.</td></tr>
+        <tr><td>Works on two keyboard layouts</td><td>A rebound letter keeps working in Cyrillic, because a driver in a race does not stop to switch layout.</td></tr>
         <tr><td>Two languages and three unit systems</td><td>English and Russian; psi, bar or kPa; Celsius or Fahrenheit.</td></tr>
-        <tr><td>Built-in guide</td><td>Sixteen chapters: braking, differentials, aero, tyre thermodynamics, suspension frequencies, dampers, force feedback and wet setups.</td></tr>
-        <tr><td>Updates itself</td><td>Checks the release page and can install the new version without you finding it.</td></tr>
+        <tr><td>Themes</td><td>An editable palette, in the terminal and in the car.</td></tr>
+        <tr><td>Screenshots of the terminal</td><td>One key writes a PNG of what is on screen, for a bug report or a setup thread.</td></tr>
+        <tr><td>A demo mode</td><td>Realistic telemetry with no game running, so the screens can be seen before anything is installed.</td></tr>
+        <tr><td>Updates itself</td><td>Checks the release page, lists what is available, and can install without you finding it.</td></tr>
+        <tr><td>It writes down why it crashed</td><td>A crash log, and a panic handler that puts the terminal back the way it found it.</td></tr>
         <tr><td>No account, no cloud</td><td>Nothing leaves your machine unless you set an address yourself.</td></tr>
       </tbody></table></div>
     </details>

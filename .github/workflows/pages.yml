@@ -99,8 +99,8 @@ jobs:
           bad = []
           if folds != rows: bad.append(f'fold counts sum to {folds}, but there are {rows} rows')
           if cards != rows: bad.append(f'card badges sum to {cards}, but there are {rows} rows')
-          if f'ALL {rows} FEATURES' not in s: bad.append(f'the heading does not say {rows}')
           if f'<b>{rows}</b>' not in s: bad.append(f'the stat strip does not say {rows}')
+          if f'{rows} features' not in s: bad.append(f'the meta description does not say {rows}')
           for b in bad: print(f'::error::{b}')
           sys.exit(1 if bad else 0)
           CHECK
