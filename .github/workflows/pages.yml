@@ -71,6 +71,27 @@ jobs:
           done
           exit $missing
 
+      - name: Fail if the page advertises more features than it lists
+        # The heading, the stat strip, the fold counts and the card badges all
+        # claim a number. A landing page that overstates by six is worse than
+        # one that says nothing, and nobody recounts by hand.
+        run: |
+          python3 - <<'CHECK'
+          import re, sys
+          s = open('_site/index.html', encoding='utf-8').read()
+          feat = s[s.index('id="features"'):s.index('id="compare"')]
+          rows = feat.count('<tr>')
+          folds = sum(int(n) for n in re.findall(r'<span class="count">(\d+)</span>', feat))
+          cards = sum(int(n) for n in re.findall(r'<span class="n">(\d+)</span>', s))
+          bad = []
+          if folds != rows: bad.append(f'fold counts sum to {folds}, but there are {rows} rows')
+          if cards != rows: bad.append(f'card badges sum to {cards}, but there are {rows} rows')
+          if f'ALL {rows} FEATURES' not in s: bad.append(f'the heading does not say {rows}')
+          if f'<b>{rows}</b>' not in s: bad.append(f'the stat strip does not say {rows}')
+          for b in bad: print(f'::error::{b}')
+          sys.exit(1 if bad else 0)
+          CHECK
+
       # No `enablement: true` here: creating a Pages site needs admin scope and
       # the workflow token does not have it — the attempt fails with "Resource
       # not accessible by integration". Pages is switched on once for the
