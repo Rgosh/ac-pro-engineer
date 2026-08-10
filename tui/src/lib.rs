@@ -1273,16 +1273,15 @@ impl AppState {
     fn publish_overlay_frame(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
         use ac_core::overlay::frame::flags;
 
+        // Nowhere for it to go. Both are usually present, and checking is
+        // cheaper than filling in a frame that is dropped on the next line.
+        if self.overlay_writer.is_none() && self.broadcast.is_empty() {
+            return;
+        }
+
         let mut frame = self.overlay_frame_shell();
 
-        // Computed before the writer is borrowed: `best_sectors` reads the
-        // analyser, and the writer borrow is mutable and covers the rest of
-        // this function.
         let best_sectors = self.best_sectors();
-
-        let Some(writer) = self.overlay_writer.as_mut() else {
-            return;
-        };
 
         frame.speed_kmh = phys.speed_kmh;
         frame.rpm = phys.rpms;
@@ -1341,7 +1340,14 @@ impl AppState {
         frame.tyre_laps_remaining = self.engineer.stats.tyre_laps_remaining;
         frame.stint_laps = self.engineer.stats.stint_laps.max(0) as u32;
 
-        writer.publish(&frame);
+        // The mapping is one place a frame goes and not the only one, so a
+        // missing writer skips the writer rather than the whole publish — the
+        // same shape as `publish_overlay_idle`. Written the other way round,
+        // an absent mapping silenced the UDP feed as well, which is exactly
+        // the case of somebody who wants the feed and not the in-game panel.
+        if let Some(writer) = self.overlay_writer.as_mut() {
+            writer.publish(&frame);
+        }
         // Everything that is not the in-game panel gets the same frame: a
         // second front end here, a friend watching from another machine, a
         // relay for a championship. The core computes once and hands it out.
