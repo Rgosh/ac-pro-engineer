@@ -52,6 +52,10 @@ jobs:
           # A CNAME in the repo root is honoured if one is ever added, which is
           # what a custom domain needs. Absent, this is a no-op.
           if [ -f CNAME ]; then cp CNAME _site/CNAME; fi
+          # The sitemap's date comes from the commit being deployed. Written by
+          # hand it would be a date that stops being true on the next edit, and
+          # a sitemap that lies about freshness is worse than none.
+          sed -i "s|LASTMOD|$(git log -1 --format=%cs)|" _site/sitemap.xml
 
       - name: Fail if the page references a picture that is not there
         # A broken image on a landing page is the kind of thing nobody notices
@@ -70,6 +74,13 @@ jobs:
             fi
           done
           exit $missing
+
+      - name: Fail if the sitemap still has its placeholder
+        run: |
+          if grep -q LASTMOD _site/sitemap.xml; then
+            echo "::error::sitemap.xml went out with LASTMOD unsubstituted"
+            exit 1
+          fi
 
       - name: Fail if the page advertises more features than it lists
         # The heading, the stat strip, the fold counts and the card badges all

@@ -1,0 +1,5 @@
+# Everything is public and there is nothing here to keep out of an index.
+User-agent: *
+Allow: /
+
+Sitemap: https://proengineer.app/sitemap.xml
