@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pro Engineer — telemetry and a race engineer for sim racing</title>
-<meta name="description" content="A free, open-source telemetry app and virtual race engineer for sim racing. 65 features across a fast terminal dashboard and an in-game overlay. Windows, Linux and Steam Deck.">
-<meta property="og:title" content="Pro Engineer">
-<meta property="og:description" content="Telemetry and a race engineer for sim racing. Terminal dashboard, in-game overlay, Windows and Linux.">
+<title>Pro Engineer — Assetto Corsa Telemetry &amp; Virtual Race Engineer</title>
+<meta name="description" content="Free, open-source Assetto Corsa telemetry and a virtual race engineer that tells you what to change. Tyre pressures and temperatures, corner-by-corner lap analysis, fuel strategy — in a terminal dashboard and an in-game CSP overlay. Windows, Linux and Steam Deck.">
+<meta property="og:title" content="Pro Engineer — Assetto Corsa Telemetry &amp; Race Engineer">
+<meta property="og:description" content="A race engineer for Assetto Corsa that reads your telemetry and tells you what to change. Free, open source, Windows and Linux.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0a0a0f">
 <meta name="keywords" content="sim racing telemetry, Assetto Corsa telemetry, race engineer app, virtual race engineer, tyre pressure calculator, cold pressure calculator, fuel strategy calculator, stint planner, FFB clipping meter, MoTeC CSV export, ghost lap comparison, corner analysis, lap decomposition, Custom Shaders Patch app, CSP Lua overlay, Assetto Corsa Linux, Assetto Corsa Proton, Steam Deck sim racing, shared memory telemetry, free open source telemetry">
@@ -128,9 +128,24 @@
     color:var(--highlight);font-size:clamp(8px,1.5vw,15px);line-height:1.12;
     margin:0 0 18px;white-space:pre;
   }
-  .logo-sm{display:none;color:var(--highlight);font-size:30px;line-height:1.1;
-    letter-spacing:.02em;margin:0 0 4px;font-weight:700}
-  .logo-sm small{display:block;color:var(--dim);font-size:12px;font-weight:400;letter-spacing:.18em;margin-top:4px}
+  /* A real, visible H1. It used to be hidden on desktop behind the block
+     logo, which left the page's most important heading as `display:none`
+     text — weak for a reader and weak for a crawler. */
+  .h1{font-size:clamp(21px,3vw,27px);margin:0 0 10px;font-weight:700;color:var(--text);line-height:1.25}
+  .h1 span{color:var(--dim);font-weight:400;font-size:clamp(13px,1.6vw,15px);display:block;margin-top:4px}
+
+  /* What the program actually says, on the page. The most persuasive thing
+     here is its own output. */
+  .demo{border:1px solid var(--border);border-radius:6px;overflow:hidden;margin:0 0 22px;background:#07070c}
+  .demo-bar{background:#15151f;border-bottom:1px solid var(--border);padding:6px 12px;
+    color:var(--dim);font-size:11.5px;letter-spacing:.08em}
+  .demo-body{padding:14px 16px;white-space:pre-wrap;font-size:13.5px;line-height:1.75;color:var(--text)}
+  .demo .c{color:var(--dim)}
+  .demo .w{color:var(--text)}
+  .demo .acc{color:var(--accent)}
+  .demo .hi{color:var(--good)}
+  .demo .md{color:var(--warn)}
+  .demo .lo{color:var(--bad)}
   .tagline{font-size:clamp(16px,2.4vw,21px);margin:0 0 6px}
   .tagline b{color:var(--accent);font-weight:600}
   .sub{color:var(--dim);margin:0 0 24px;max-width:64ch}
@@ -248,7 +263,7 @@
     .term-body{padding:20px 15px}
     /* The block logo needs 94 characters of width. It does not have them. */
     .logo{display:none}
-    .logo-sm{display:block}
+    .demo-body{font-size:12.5px;padding:12px 12px}
     section{padding:36px 0 4px}
     h2{font-size:13.5px;letter-spacing:.1em}
     .cta{gap:8px}
@@ -277,7 +292,7 @@
   <div class="term">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="term-title">pro_engineer — telemetry &amp; race engineering</span>
+      <span class="term-title">pro_engineer — assetto corsa telemetry &amp; race engineering</span>
     </div>
 
     <nav class="tabs">
@@ -299,18 +314,29 @@
 ██╔═══╝ ██╔══██╗██║   ██║     ██╔══╝  ██║╚██╗██║██║   ██║██║██║╚██╗██║██╔══╝  ██╔══╝  ██╔══██╗
 ██║     ██║  ██║╚██████╔╝     ███████╗██║ ╚████║╚██████╔╝██║██║ ╚████║███████╗███████╗██║  ██║
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝      ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝</pre>
-      <h1 class="logo-sm">PRO ENGINEER<small>SIM RACING TELEMETRY</small></h1>
+      <h1 class="h1">Pro Engineer<span> — Assetto Corsa telemetry and a virtual race engineer</span></h1>
 
-      <p class="tagline">A <b>race engineer</b> that reads your telemetry and tells you what to change.</p>
+      <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
+
+      <div class="demo" aria-label="Example of the engineer's output">
+        <div class="demo-bar"><span>engineer — live</span></div>
+        <div class="demo-body"><span class="c">$</span> ac_pro_engineer
+<span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span>
+  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts
+<span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span>
+  <span class="c">&gt;&gt;</span> Less negative camber at the rear
+  <span class="c">confirm:</span> the I/M/O spread next run out
+<span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving
+  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span>
+<span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex<span class="cursor"></span></div>
+      </div>
+
       <p class="sub">
-        Free and open source. Reads the simulator's shared memory directly, analyses tyre
-        temperatures and pressures, brake heat, fuel and how you are driving, and says
-        something useful about it — in a fast terminal on your second screen <b>and</b> in
-        the game itself. Assetto Corsa today, built so another simulator is a folder
-        rather than a rewrite.
+        Free and open source. It reads Assetto Corsa's shared memory directly, analyses
+        tyre temperatures and pressures, brake heat, fuel and how you are driving, and
+        says something useful about it — in a fast terminal on your second screen
+        <b>and</b> in the game itself through Custom Shaders Patch.
       </p>
-
-      <p><span class="prompt">$</span> ./pro_engineer<span class="cursor"></span></p>
 
       <div class="cta">
         <a class="btn" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Download</a>
