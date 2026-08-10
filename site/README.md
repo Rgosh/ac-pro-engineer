@@ -5,8 +5,28 @@ third-party anything. The palette is the application's own default theme from
 `core/src/config.rs`, so the site and the program cannot drift apart in look
 without somebody noticing.
 
-Deployed by `.github/workflows/pages.yml` on any push to `main` that touches
-`site/`, `screenshots/` or the workflow itself.
+## Two copies, on purpose
+
+The same page is served from two addresses and neither redirects to the other:
+
+* **proengineer.app** — a host of its own, uploaded by `site/deploy.sh`.
+* **rgosh.github.io/ac-pro-engineer** — GitHub Pages, deployed by
+  `.github/workflows/pages.yml` on any push to `main` that touches `site/`,
+  `screenshots/` or the workflow itself.
+
+Both declare `rel="canonical"` pointing at **proengineer.app**. That is what
+stops two identical pages competing: search engines index the domain and treat
+the github.io copy as the same document, while a person reaching either one
+stays on the address they arrived at.
+
+So a change is deployed twice — push for one, `./site/deploy.sh` for the other.
+
+**`site/deploy.sh` is untracked.** It names a host alias and server paths, and
+the layout of a machine is not something a public repository needs to publish,
+so it is in `.gitignore`. That also means a fresh clone will not have it: keep a
+copy somewhere outside the repository. It contains no credentials — the host is
+an entry in `~/.ssh/config` and its key stays in `~/.ssh`, which is the only
+place a private key belongs.
 
 ## Editing it
 

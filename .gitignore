@@ -35,3 +35,8 @@ config.json
 /gui/
 /gui_paid/
 /ac_pro_gui/
+
+# The deploy script names a host alias and its paths. Nothing secret, but the
+# layout of a server is not something a public repository needs to publish.
+# It lives untracked in site/ — see site/README.md.
+site/deploy.sh
