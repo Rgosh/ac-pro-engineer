@@ -802,6 +802,11 @@ async fn main() -> Result<(), anyhow::Error> {
                             (Some(keys::Action::AnalysisCompare), _) => {
                                 app_lock.ui_state.analysis.toggle_compare();
                             }
+                            (Some(keys::Action::AnalysisFilter), _) => {
+                                let is_ru =
+                                    app_lock.config.language == ac_core::config::Language::Russian;
+                                app_lock.ui_state.analysis.toggle_corners_filter(is_ru);
+                            }
                             (Some(keys::Action::AnalysisExport), _) => {
                                 let sel = app_lock
                                     .ui_state

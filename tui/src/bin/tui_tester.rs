@@ -5,6 +5,7 @@ use ac_core::engineer::{Recommendation, Severity};
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
 use ac_tui::ui::screenshot::buffer_to_png;
+use ac_tui::ui::tabs::analysis::AnalysisSubTab;
 use ac_tui::{AppStage, AppState, AppTab, SafeLock};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -132,7 +133,12 @@ fn create_populated_app_state() -> AppState {
         trace_points.push(TelemetryPoint {
             rpms: 5000,
             time_ms: i * 50,
-            distance: i as f32 * 10.0,
+            // AC publishes normalised car position: 0.0 at the line, 1.0 at
+            // the line again. This was metres-ish (`i * 10.0`), which every
+            // consumer of a trace reads as "three thousand laps" — the delta
+            // graph resamples to a ceiling of 1.0 and drew one sample, and
+            // corner detection saw the whole lap as one straight.
+            distance: i as f32 / 300.0,
             speed: p.speed_kmh,
             gas: p.gas,
             brake: p.brake,
@@ -180,6 +186,7 @@ fn create_populated_app_state() -> AppState {
         valid: true,
         car_model: "Ferrari SF70H".to_string(),
         track_name: "Autodromo Nazionale Monza".to_string(),
+        track_length_m: 5793.0,
         save_date: "2026-07-30".to_string(),
         from_file: false,
         air_temp: 22.5,
@@ -251,6 +258,24 @@ fn create_populated_app_state() -> AppState {
         // The sectors have to add up to the lap, or the Analysis tab shows a
         // split that disagrees with the time beside it.
         lap.sectors[2] += delta_ms;
+
+        // The trace has to lose that time somewhere, or the Corners sub-tab
+        // draws a lap that is 1.5 s slower with every corner at +0.000 — a
+        // picture of the decomposition not working. Most of it goes in one
+        // band of the lap, the way a real mistake does, and the rest is spread
+        // so the straights are not suspiciously perfect.
+        let concentrated = (delta_ms as f32 * 0.6) as i32;
+        let spread = delta_ms - concentrated;
+        for point in lap.telemetry_trace.iter_mut() {
+            let fraction = point.distance.clamp(0.0, 1.0);
+            let mut lost = (spread as f32 * fraction) as i32;
+            if fraction > 0.42 {
+                // All of it by the time the car is out of that corner.
+                let through = ((fraction - 0.42) / 0.08).clamp(0.0, 1.0);
+                lost += (concentrated as f32 * through) as i32;
+            }
+            point.time_ms += lost;
+        }
         app.analyzer.laps.push(lap);
     }
     let mut best = mock_lap.clone();
@@ -362,10 +387,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // is no radar sub-tab: `next_tab` lands on TELEMETRY, and the scores are
     // the Driving Evaluation box on OVERVIEW, which the shot above already
     // shows. The picture and its caption had never agreed.
+    //
+    // Set rather than stepped: `next_tab()` used to land here and now lands on
+    // CORNERS, so a shot captioned "traces" would have quietly become a shot
+    // of a different screen the moment a sub-tab was inserted before it.
     app.active_tab = AppTab::Analysis;
-    app.ui_state.analysis.next_tab();
+    app.ui_state.analysis.current_tab = AnalysisSubTab::Graphs;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Analysis_Traces")?;
+
+    // 4a. Analysis_Corners — where the lap actually went, and the same screen
+    // again with the filter on, which is the half of the feature that decides
+    // what a driver reads.
+    app.ui_state.analysis.current_tab = AnalysisSubTab::Corners;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Analysis_Corners")?;
+
+    app.ui_state.analysis.corners_filter = true;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(
+        &terminal,
+        width,
+        height,
+        screenshot_dir,
+        "Analysis_Corners_Losses",
+    )?;
+    app.ui_state.analysis.corners_filter = false;
+    app.ui_state.analysis.current_tab = AnalysisSubTab::Overview;
 
     // 4b. Overlay_Diagnostics — the answer to "why is the panel blank",
     // which until this release only existed as a cargo example.

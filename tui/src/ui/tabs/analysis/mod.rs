@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub mod corners;
 pub mod dynamics;
 pub mod engine;
 pub mod graphs;
@@ -15,6 +16,7 @@ pub mod traction;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AnalysisSubTab {
     Overview,
+    Corners,
     Graphs,
     Dynamics,
     Engine,
@@ -68,9 +70,60 @@ impl DeltaCache {
     }
 }
 
+/// The corner decomposition for a pair of laps, kept until the pair changes.
+///
+/// Detecting corners walks both traces and `decompose` interpolates a time for
+/// every section boundary in each. That is cheap once and absurd sixty times a
+/// second for an answer that cannot change — the laps are finished.
+#[derive(Default)]
+pub struct CornerCache {
+    /// Both laps' numbers *and* times: a lap number alone is reused across
+    /// sessions and between a driven lap and one loaded from a file, so it is
+    /// not enough on its own to say two laps are the same two laps.
+    key: Option<(i32, i32, i32, i32)>,
+    decomposition: ac_core::corners::Decomposition,
+}
+
+impl CornerCache {
+    pub fn get_or_compute(
+        &mut self,
+        lap: &ac_core::analyzer::LapData,
+        reference: &ac_core::analyzer::LapData,
+    ) -> ac_core::corners::Decomposition {
+        let key = (
+            lap.lap_number,
+            lap.lap_time_ms,
+            reference.lap_number,
+            reference.lap_time_ms,
+        );
+        if self.key != Some(key) {
+            let mine = ac_core::corners::detect(&lap.telemetry_trace);
+            let theirs = ac_core::corners::detect(&reference.telemetry_trace);
+            self.decomposition = ac_core::corners::decompose(
+                &lap.telemetry_trace,
+                &reference.telemetry_trace,
+                &mine,
+                &theirs,
+            );
+            self.key = Some(key);
+        }
+        self.decomposition.clone()
+    }
+
+    pub fn clear(&mut self) {
+        self.key = None;
+        self.decomposition = ac_core::corners::Decomposition::default();
+    }
+}
+
 pub struct AnalysisState {
     pub current_tab: AnalysisSubTab,
     pub delta_cache: RefCell<DeltaCache>,
+    pub corner_cache: RefCell<CornerCache>,
+    /// Show only the corners that cost more than a tenth, on the Corners
+    /// sub-tab. Off by default: a driver looking for the first time wants to
+    /// see the whole lap before they trust the filter to hide most of it.
+    pub corners_filter: bool,
     pub status_message: Option<String>,
     pub status_timer: u16,
     pub load_menu: RefCell<FileMenu>,
@@ -90,6 +143,8 @@ impl AnalysisState {
         Self {
             current_tab: AnalysisSubTab::Overview,
             delta_cache: RefCell::new(DeltaCache::default()),
+            corner_cache: RefCell::new(CornerCache::default()),
+            corners_filter: false,
             status_message: None,
             status_timer: 0,
             load_menu: RefCell::new(FileMenu::new()),
@@ -104,7 +159,8 @@ impl AnalysisState {
             return;
         }
         self.current_tab = match self.current_tab {
-            AnalysisSubTab::Overview => AnalysisSubTab::Graphs,
+            AnalysisSubTab::Overview => AnalysisSubTab::Corners,
+            AnalysisSubTab::Corners => AnalysisSubTab::Graphs,
             AnalysisSubTab::Graphs => AnalysisSubTab::Dynamics,
             AnalysisSubTab::Dynamics => AnalysisSubTab::Engine,
             AnalysisSubTab::Engine => AnalysisSubTab::Traction,
@@ -118,7 +174,8 @@ impl AnalysisState {
         }
         self.current_tab = match self.current_tab {
             AnalysisSubTab::Overview => AnalysisSubTab::Traction,
-            AnalysisSubTab::Graphs => AnalysisSubTab::Overview,
+            AnalysisSubTab::Corners => AnalysisSubTab::Overview,
+            AnalysisSubTab::Graphs => AnalysisSubTab::Corners,
             AnalysisSubTab::Dynamics => AnalysisSubTab::Graphs,
             AnalysisSubTab::Engine => AnalysisSubTab::Dynamics,
             AnalysisSubTab::Traction => AnalysisSubTab::Engine,
@@ -144,6 +201,23 @@ impl AnalysisState {
                 self.status_message = None;
             }
         }
+    }
+
+    /// Show every corner, or only the ones that cost real time.
+    pub fn toggle_corners_filter(&mut self, is_ru: bool) {
+        self.corners_filter = !self.corners_filter;
+        self.set_status(match (self.corners_filter, is_ru) {
+            (true, false) => format!(
+                "Corners: losses over {:.2}s only",
+                corners::LOSS_THRESHOLD_S
+            ),
+            (false, false) => "Corners: showing every corner".to_string(),
+            (true, true) => format!(
+                "Повороты: только потери больше {:.2}с",
+                corners::LOSS_THRESHOLD_S
+            ),
+            (false, true) => "Повороты: показаны все".to_string(),
+        });
     }
 
     pub fn toggle_compare(&mut self) {
@@ -240,6 +314,7 @@ impl AnalysisState {
                     // A loaded lap joins the list and can carry a lap number
                     // already in it, so anything keyed on that number is stale.
                     self.delta_cache.borrow_mut().clear();
+                    self.corner_cache.borrow_mut().clear();
                     self.loaded_file_name = Some(filename.clone());
                     self.compare_mode = true;
                     self.set_status(format!("Loaded: {}", filename));
@@ -312,6 +387,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 AnalysisSubTab::Overview => {
                     overview::render(f, right_layout[1], app, selected_lap, reference)
                 }
+                AnalysisSubTab::Corners => {
+                    corners::render(f, right_layout[1], app, selected_lap, reference)
+                }
                 AnalysisSubTab::Graphs => {
                     graphs::render(f, right_layout[1], app, selected_lap, reference)
                 }
@@ -365,17 +443,32 @@ fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let titles = if is_ru {
-        vec!["ОБЗОР", "ТЕЛЕМЕТРИЯ", "ДИНАМИКА", "ДВИГАТЕЛЬ", "СЦЕПЛЕНИЕ"]
+        vec![
+            "ОБЗОР",
+            "ПОВОРОТЫ",
+            "ТЕЛЕМЕТРИЯ",
+            "ДИНАМИКА",
+            "ДВИГАТЕЛЬ",
+            "СЦЕПЛЕНИЕ",
+        ]
     } else {
-        vec!["OVERVIEW", "TELEMETRY", "DYNAMICS", "ENGINE", "TRACTION"]
+        vec![
+            "OVERVIEW",
+            "CORNERS",
+            "TELEMETRY",
+            "DYNAMICS",
+            "ENGINE",
+            "TRACTION",
+        ]
     };
 
     let selected_idx = match app.ui_state.analysis.current_tab {
         AnalysisSubTab::Overview => 0,
-        AnalysisSubTab::Graphs => 1,
-        AnalysisSubTab::Dynamics => 2,
-        AnalysisSubTab::Engine => 3,
-        AnalysisSubTab::Traction => 4,
+        AnalysisSubTab::Corners => 1,
+        AnalysisSubTab::Graphs => 2,
+        AnalysisSubTab::Dynamics => 3,
+        AnalysisSubTab::Engine => 4,
+        AnalysisSubTab::Traction => 5,
     };
 
     let tabs = Tabs::new(titles)

@@ -14,6 +14,15 @@ pub struct LapData {
 
     pub car_model: String,
     pub track_name: String,
+    /// The track's length in metres, from AC's own spline length.
+    ///
+    /// Carried on the lap rather than looked up, because a lap saved to a file
+    /// is read back on a day when no track is loaded and `corners` still has to
+    /// be able to say "14 m later" rather than "0.003 of a lap later". Zero
+    /// means not known — laps saved before this existed have no value for it,
+    /// and everything that reports metres refuses rather than inventing them.
+    #[serde(default)]
+    pub track_length_m: f32,
     pub save_date: String,
     #[serde(default)]
     pub from_file: bool,
@@ -275,6 +284,9 @@ pub struct TelemetryAnalyzer {
     pub best_sectors: [i32; 3],
     pub world_record: Option<TrackRecord>,
     pub reference_lap: Option<LapData>,
+    /// The loaded track's length in metres, stamped onto every lap processed
+    /// from here on. Set once when a session is recognised; zero until then.
+    pub track_length_m: f32,
 }
 
 pub type Analyzer = TelemetryAnalyzer;
@@ -293,11 +305,21 @@ impl TelemetryAnalyzer {
             best_sectors: [i32::MAX, i32::MAX, i32::MAX],
             world_record: None,
             reference_lap: None,
+            track_length_m: 0.0,
         }
     }
 
     pub fn set_world_record(&mut self, record: TrackRecord) {
         self.world_record = Some(record);
+    }
+
+    /// Tell the analyser how long the track is, so laps recorded from now on
+    /// carry it. Ignores a value AC has not filled in yet, which it has not
+    /// during the first frames of a session.
+    pub fn set_track_length(&mut self, metres: f32) {
+        if metres > 0.0 {
+            self.track_length_m = metres;
+        }
     }
 
     // Ten parameters, all of them distinct lap facts the caller already holds.
@@ -753,6 +775,7 @@ impl TelemetryAnalyzer {
             valid: true,
             car_model: car_name,
             track_name,
+            track_length_m: self.track_length_m,
             save_date,
             from_file: false,
             air_temp,

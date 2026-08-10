@@ -814,6 +814,8 @@ impl AppState {
                 valid: true,
                 car_model: "Ferrari SF70H".to_string(),
                 track_name: "Autodromo Nazionale Monza".to_string(),
+                // Monza, so the corner report has real metres to work in.
+                track_length_m: 5793.0,
                 save_date: "2026-07-31".to_string(),
                 from_file: false,
                 air_temp: 22.5,
@@ -1414,6 +1416,9 @@ impl AppState {
                 st.track_spline_length,
             );
             self.analyzer.set_world_record(rec);
+            // Stamped onto every lap from here, so a corner report can say
+            // "14 m later on the brakes" rather than a fraction of a lap.
+            self.analyzer.set_track_length(st.track_spline_length);
             self.is_connected = true;
 
             self.mem = Some(mem);

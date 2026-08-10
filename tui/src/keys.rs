@@ -33,6 +33,7 @@ pub enum Action {
     AnalysisLoad,
     AnalysisCompare,
     AnalysisExport,
+    AnalysisFilter,
     SetupBrowser,
     SetupDownload,
     OverlayInstall,
@@ -352,6 +353,7 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
             (&keys.analysis_load, Action::AnalysisLoad),
             (&keys.analysis_compare, Action::AnalysisCompare),
             (&keys.analysis_export, Action::AnalysisExport),
+            (&keys.analysis_filter, Action::AnalysisFilter),
         ],
         AppTab::Setup => &[
             (&keys.setup_browser, Action::SetupBrowser),
@@ -445,6 +447,11 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
             keys.analysis_export.as_str(),
         ),
         (
+            "analysis_filter",
+            "Analysis: only real losses",
+            keys.analysis_filter.as_str(),
+        ),
+        (
             "setup_browser",
             "Setup: open browser",
             keys.setup_browser.as_str(),
@@ -486,6 +493,7 @@ pub fn action_of(field: &str) -> Option<Action> {
         "analysis_load" => Action::AnalysisLoad,
         "analysis_compare" => Action::AnalysisCompare,
         "analysis_export" => Action::AnalysisExport,
+        "analysis_filter" => Action::AnalysisFilter,
         "setup_browser" => Action::SetupBrowser,
         "setup_download" => Action::SetupDownload,
         _ => return None,
@@ -514,6 +522,7 @@ pub fn hints(tab: AppTab) -> &'static [(&'static str, &'static str, &'static str
             ("analysis_load", "Load", "Загр"),
             ("analysis_compare", "Ghost", "Призрак"),
             ("analysis_export", "CSV", "CSV"),
+            ("analysis_filter", "Losses", "Потери"),
             ("help", "Help", "Помощь"),
         ],
         AppTab::Setup => &[
@@ -554,6 +563,7 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
         "analysis_load" => keys.analysis_load = value,
         "analysis_compare" => keys.analysis_compare = value,
         "analysis_export" => keys.analysis_export = value,
+        "analysis_filter" => keys.analysis_filter = value,
         "setup_browser" => keys.setup_browser = value,
         "setup_download" => keys.setup_download = value,
         _ => {}
@@ -574,9 +584,8 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
 /// waved through.
 fn scope_of(field: &str) -> Option<AppTab> {
     match field {
-        "analysis_save" | "analysis_load" | "analysis_compare" | "analysis_export" => {
-            Some(AppTab::Analysis)
-        }
+        "analysis_save" | "analysis_load" | "analysis_compare" | "analysis_export"
+        | "analysis_filter" => Some(AppTab::Analysis),
         "setup_browser" | "setup_download" => Some(AppTab::Setup),
         "overlay_install" | "overlay_uninstall" | "overlay_diagnostics" => Some(AppTab::Settings),
         _ => None,

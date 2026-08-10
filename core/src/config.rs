@@ -365,6 +365,9 @@ pub struct KeyBindings {
     pub analysis_compare: String,
     #[serde(default = "key_analysis_export")]
     pub analysis_export: String,
+    /// Show only the corners that cost real time, on the Corners sub-tab.
+    #[serde(default = "key_analysis_filter")]
+    pub analysis_filter: String,
 
     #[serde(default = "key_setup_browser")]
     pub setup_browser: String,
@@ -438,6 +441,9 @@ fn key_analysis_compare() -> String {
 fn key_analysis_export() -> String {
     "e".to_string()
 }
+fn key_analysis_filter() -> String {
+    "f".to_string()
+}
 fn key_setup_browser() -> String {
     "b".to_string()
 }
@@ -470,6 +476,7 @@ impl Default for KeyBindings {
             analysis_load: key_analysis_load(),
             analysis_compare: key_analysis_compare(),
             analysis_export: key_analysis_export(),
+            analysis_filter: key_analysis_filter(),
             setup_browser: key_setup_browser(),
             setup_download: key_setup_download(),
         }
