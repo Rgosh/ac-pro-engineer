@@ -57,27 +57,27 @@ if you later want the proxy, set SSL/TLS to **Full (strict)** at the same time.
 
 ### Then, and only then
 
-Add a file named `CNAME` in the **repository root** containing just the
-hostname:
-
-```
-engineer.pro
-```
-
-The workflow copies it into the deploy. **Add the DNS record first.** A `CNAME`
-file naming a hostname that does not resolve yet takes the site off the
+`CNAME` in the **repository root** holds the hostname — `proengineer.app` — and
+the workflow copies it into the deploy. **The DNS record goes in first.** A
+`CNAME` file naming a hostname that does not resolve yet takes the site off the
 `github.io` address without putting it anywhere else.
 
-Afterwards, in `index.html`, point `rel="canonical"` and `og:url` at the new
-address. Leaving them on the old one tells search engines the new site is a copy
-of the old, which is the opposite of what a move is for.
+Four absolute addresses live in `index.html`: `rel="canonical"`, `og:url`,
+`og:image` and the `url` in the JSON-LD block. They move together with the
+domain and nothing else in the file does — every other path is relative.
 
 ### Subdomain or path
 
-One repository serves **one** custom domain, so `ac.engineer.pro` and
-`iracing.engineer.pro` would need a repository each.
+One repository serves **one** custom domain. `proengineer.app` is this one, so
+`ac.proengineer.app` and `acc.proengineer.app` would each need a repository of
+their own, with their own `CNAME` file and their own deploy.
 
-Paths on one domain — `engineer.pro/ac` — keep everything in one place, and
-search engines treat a subdomain as substantially its own site, so splitting
-across them divides whatever authority the domain earns instead of pooling it.
-Prefer paths unless the two things are genuinely separate projects.
+Paths on one domain — `proengineer.app/ac` — need none of that: the workflow
+copies `site/` wholesale, so a game gets a folder under it and that is the whole
+change. Search engines also treat a subdomain as substantially its own site, so
+splitting across them divides whatever authority the domain earns rather than
+pooling it on one.
+
+Prefer paths while this is one program that supports several games, which is
+what the architecture describes. Subdomains earn their keep when the things
+behind them are genuinely separate products.
