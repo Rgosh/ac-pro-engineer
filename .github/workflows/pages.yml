@@ -67,13 +67,13 @@ jobs:
           done
           exit $missing
 
+      # No `enablement: true` here: creating a Pages site needs admin scope and
+      # the workflow token does not have it — the attempt fails with "Resource
+      # not accessible by integration". Pages is switched on once for the
+      # repository (Settings → Pages → Source: GitHub Actions, or a POST to
+      # /repos/:owner/:repo/pages with build_type=workflow), and this step then
+      # only reads that configuration.
       - uses: actions/configure-pages@v5
-        with:
-          # Turn Pages on for the repository if it is not already. Without this
-          # the first run of this workflow fails on a repository where nobody
-          # has been into Settings → Pages, which is a confusing way to find out
-          # that a deploy needs a switch flipped by hand.
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
