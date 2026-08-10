@@ -4,23 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.3.6] - 2026-08-10
 
-**The point:** the engineer had two halves and only one of them ever reached the
-car. The panel could tell you what was happening; it had nothing to say about
-the lap you had just finished. Now it does, with the last three laps to page
-through.
+**The point:** the panel could tell you what was happening; it had nothing to
+say about the lap you had just finished. Now it does, with the last three laps
+to page through.
 
-> The frame changed, so **Linux needs a matching `shm-bridge.exe`** — see the
-> breaking note. Everything else is optional and off until you turn it on.
-
-Nothing here changes what the application does unless you go and turn it on. The
-debrief is a new window you open; the UDP feed is off until you set an address.
+> The frame changed, so **Linux needs a matching `shm-bridge.exe`** — **[B]** on
+> the launcher's overlay card fetches one. Everything else is optional and off
+> until you turn it on.
 
 ### ⚠️ Breaking
 
-- **Overlay frame version 6**, 712 bytes to 2484. On Linux this means
-  **`shm-bridge.exe` has to be updated again**; **[B]** on the launcher's
-  overlay card does it. Everything new is appended, so no existing offset moved
-  — a panel or bridge one version behind misreads nothing, it simply does not
+- **Overlay frame version 6**, 712 bytes to 2484, so **`shm-bridge.exe` has to
+  be updated on Linux**. Everything new is appended — no existing offset moved,
+  and a panel or bridge one version behind misreads nothing, it simply does not
   see the debrief.
 
 ### ✨ Added
@@ -28,50 +24,32 @@ debrief is a new window you open; the UDP feed is off until you set an address.
 - **A lap debrief in the game.** Its own window: what the engineer made of the
   lap you have just finished — pressures and temperatures against your own
   windows, camber per axle, brakes, and how the lap was driven. `<` and `>` page
-  through the last three laps, and the header says how the lap compared with the
-  one before it.
-- **Its own settings**: how many lines to draw (zero switches the whole thing
-  off, and the application then publishes none), the lap time, the comparison
-  with the previous lap or with your best, sector times, what is left of the
-  tyres and fuel, stint length, colouring by severity, and whether a finished
-  lap pulls the window back to it — off is for comparing two laps without being
-  dragged forward. Plus its own look: backing plate from transparent to solid
-  black, text size, line spacing, a rule between lines, upper case.
-
-  Paging is `<` and `>` in the window. Assigning a wheel button to it was in
-  this release and has been taken out again: it wrote the binding into Assetto
-  Corsa's own `controls.ini` correctly and the press never arrived back. It
-  will return when it works rather than shipping as a control that looks
-  bound and does nothing.
-- **Eight lines per lap, not four.** A lap can go wrong in more than four ways
-  at once, and four slots meant whatever came fifth was silently dropped.
-- **Sector times against the session's best**, in the debrief. Four tenths
-  spread across a lap is a shrug; four tenths in sector three is a corner to go
-  and look at, and a lap time on its own cannot tell them apart. A sector that
-  *is* the best shows its time rather than "-0.00".
-- **What is left, under the debrief**: laps of tyre life in the worst corner and
-  laps of fuel, coloured by whichever runs out first. Both numbers existed and
-  only ever reached the terminal — which is on the other monitor with a helmet
-  in the way.
-- **Inner / middle / outer tyre temperatures** in the panel, under each corner.
-  The middle one has been going across since the first frame and says how hot a
-  tyre is; these three say whether it is leaning the right way, which is the
-  reading the camber advice is made of. Coloured by the spread, not the heat: a
-  tyre can be in its window and still riding on one edge. Off by default.
+  through the last three laps. Eight lines per lap rather than four, because a
+  lap can go wrong in more than four ways at once and whatever came fifth used
+  to be dropped silently.
+- **Sector times against the session's best.** Four tenths spread across a lap
+  is a shrug; four tenths in sector three is a corner to go and look at, and a
+  lap time on its own cannot tell them apart.
+- **What is left**: laps of tyre life in the worst corner, laps of fuel, and how
+  long you have been on this set of tyres. All three existed already and only
+  ever reached the terminal — which is on the other monitor with a helmet in the
+  way.
 - **Compare against your best lap, not just the one before.** People race their
-  own best; the lap before is what says whether the last change helped. Both are
-  there, and the driver's own best lap says so rather than showing "+0.000".
-- **How long you have been on this set of tyres**, under the debrief. Not the
-  lap count — a driver deciding whether to box wants to know how old the tyres
-  are, not how far into the race it is.
-- **The debrief has its own look settings** — backing plate from transparent to
-  solid black, text size, line spacing, a rule between lines, upper case. Its
-  own numbers rather than the advice window's: a driver who wants solid black
-  behind a wall of text in the pits does not want it behind three words on the
-  windscreen.
-- **The debrief window scrolls.** Eight lines plus a header plus sectors do not
-  fit a window sized for four, and the overflow used to be cut off at the bottom
-  edge with nothing to say it had been.
+  own best; the lap before is what says whether the last change helped.
+- **Inner / middle / outer tyre temperatures** under each corner, coloured by
+  the spread rather than the heat: a tyre can be in its window and still riding
+  on one edge. Off by default.
+- **Settings of its own** for all of it — how many lines (zero switches the whole
+  thing off), what to show, whether a finished lap pulls the window back to it,
+  and its own look: backing plate from transparent to solid black, text size,
+  line spacing, a rule between lines, upper case. The window scrolls, which it
+  needs to: eight lines plus a header plus sectors do not fit a window sized for
+  four.
+
+  Assigning a wheel button to the paging was in this release and has been taken
+  out again: the binding was written into Assetto Corsa's own `controls.ini`
+  correctly and the press never arrived back. It returns when it works, rather
+  than shipping as a control that looks bound and does nothing.
 
 ### 🐞 Fixed
 
@@ -79,67 +57,45 @@ debrief is a new window you open; the UDP feed is off until you set an address.
   summary took the temperature spread's magnitude and threw its sign away, so a
   front tyre whose *outer* edge ran 13 °C hot — a car short of negative camber —
   was told to take camber out. There is a test for each direction now.
-- **Four corners of one problem are one line** in the lap summary too, the way
-  the live advice has been since v0.3.5.
+- **The terminal and the panel gave different advice about the same lap.** The
+  post-stint column computed its own verdicts, in three hundred lines where the
+  analysis and the spans that drew it were the same code, and the two had
+  already drifted. One implementation now, 311 lines lighter, and a clean lap
+  says so instead of leaving an empty column that reads as "it did not run".
 - **A lap that published nothing says nothing.** Every average reads zero on a
   session that ended before the analyser had anything to average, and zero
   pressures are not flat tyres.
-- **The LuaJIT harness reported success on a panel that failed to load.** It
-  printed "load: OK" without looking at the result, so the next line failed with
-  a bare "attempt to call a nil value" and no hint of where. It checks the load
-  and that the panel defined an update function.
-- **The terminal and the panel gave different advice about the same lap.** The
-  post-stint column computed its own verdicts — three hundred lines where the
-  analysis and the spans that drew it were the same code — while the panel
-  rendered the shared function. They had already drifted: this one took the
-  magnitude of the tyre temperature spread and threw the sign away, so a car
-  short of camber was told to take camber out while the panel said to add it.
-  One implementation now, 311 lines lighter, and a clean lap says so instead of
-  leaving an empty column that reads as "the analysis did not run".
+- **Four corners of one problem are one line** in the lap summary too, the way
+  the live advice has been since v0.3.5.
 - **`Wear:`, `T:` and `B:` were English in both languages** — the only words in
   the panel that were, sitting under every corner where they are hardest to
   miss.
+- **A spent GitHub allowance said "403 Forbidden"**, which reads as a permission
+  problem and sends people looking for a token they do not need.
+- **The LuaJIT harness reported success on a panel that failed to load.**
 - **`README.txt` described an archive that no longer exists** — it was written
   for a Windows-only bundle while the published one holds both builds and the
   bridge.
-
-### 🔌 For anyone building on it
-
-- **A UDP feed.** Set `overlay.broadcast_to` and the application sends the
-  computed frame as JSON, ten times a second — speed, corners, lap times, the
-  engineer's advice, the last three laps of debrief, already analysed. Fifteen
-  lines of Python reads it. Off unless you set it: this is telemetry about you.
-  Documented in the README.
-- **Nothing changes for anyone who does not set it.** The in-game panel still
-  reads shared memory, which is the right transport inside the game and no use
-  outside it.
 
 ### 🧱 Under it
 
 - **The core reads the game.** The shared-memory reader lived in the terminal,
   so a user interface owned the connection to the simulator. It is
-  `core/src/games/assetto_corsa/` now, behind a `Source` trait, with everything
-  Assetto-specific in a folder of its own — a second simulator becomes a folder
-  beside it rather than conditionals through the middle of the engineer.
+  `core/src/games/assetto_corsa/` now, behind a `Source` trait, so a second
+  simulator becomes a folder beside it rather than conditionals through the
+  middle of the engineer. The panel moved to `assets/frontends/csp-panel/`: it
+  is the Assetto Corsa front end, not "the overlay".
 - **The computed frame goes to a list of sinks** rather than to one hard-wired
-  writer, and the producer never waits for any of them. Shared memory and UDP
-  are two of those; a sink that fails is dropped rather than allowed to stall
-  the loop feeding the driver's own overlay.
-- **The panel moved to `assets/frontends/csp-panel/`.** It is the Assetto Corsa
-  front end, not "the overlay".
-- `docs/ARCHITECTURE.md` is where the rest of this is going, including watching
-  a friend drive and what a championship would need.
-
-- **One frame change, not four.** Sectors, the tyre edges and the wear
-  projection were added in a single pass rather than a field at a time: every
-  change to this struct costs every Linux driver a bridge update, and three of
-  those in a row is three chances to end up beside a panel that waits forever.
-
+  writer, and the producer never waits for any of them — a sink that fails is
+  dropped rather than allowed to stall the loop feeding the driver's overlay.
+- **A raw UDP feed, for anyone who wants to write a front end.** Set
+  `overlay.broadcast_to` and the computed frame goes out as JSON. That is all it
+  is: **nothing ships that reads it, and there is no spectating, no LAN mode and
+  no relay** — this is a documented hook and an address to point at, off unless
+  you set one. `docs/ARCHITECTURE.md` says where it is meant to go.
 - The lap summary is **data now, not five hundred lines of ratatui**:
-  `debrief::debrief(&LapData, &AppConfig) -> Vec<Recommendation>`. It lived
-  inside the terminal's renderer, where the analysis and the spans that drew it
-  were the same code — which is exactly why the panel had never had a word to
-  say after a lap.
+  `debrief::debrief(&LapData, &AppConfig) -> Vec<Recommendation>`, which is
+  exactly why the panel had never had a word to say after a lap.
 
 ## [v0.3.5] - 2026-08-08
 

@@ -214,8 +214,9 @@ pub struct OverlayConfig {
     #[serde(default = "default_broadcast_hz")]
     pub broadcast_hz: f32,
     /// The name that travels with it, so a receiver watching several drivers
-    /// can tell whose numbers are on screen. Empty uses the player name from
-    /// the game.
+    /// can tell whose numbers are on screen. Empty sends an empty name: the
+    /// sink is built once at startup, before any session, and the game's own
+    /// player name is not known then.
     #[serde(default)]
     pub broadcast_name: String,
 }

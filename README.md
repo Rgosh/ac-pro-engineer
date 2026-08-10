@@ -752,9 +752,10 @@ UDP because a lost frame costs nothing — another arrives in a tenth of a secon
 — and because a subscriber that stops reading must not be able to stall the loop
 feeding the driver's own overlay.
 
-An address on the network rather than localhost sends it to another machine. See
-`docs/ARCHITECTURE.md` for where that goes: a friend watching, and a relay for a
-championship.
+That is the whole feature. **Nothing ships that reads this** — there is no
+spectator client, no LAN mode and no relay, and pointing it at another machine
+only means the datagrams arrive there. `docs/ARCHITECTURE.md` is where it is
+meant to go; today it is an address to point at and a schema to write against.
 
 ## Troubleshooting
 
