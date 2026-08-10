@@ -156,13 +156,13 @@
   .card .k{color:var(--highlight)}
 
   figure{margin:0 0 26px}
-  /* The overlay pictures are the size the panel really is — 396px wide, not a
-     thumbnail of something larger. Upscaling them to the column width is what
-     made them look soft, so they are never scaled up, only down on a phone. */
-  .shots{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start;margin:0 0 8px}
-  .shots .native{flex:0 1 auto;max-width:100%}
-  .shots .native img{width:auto;max-width:100%;height:auto;image-rendering:auto}
-  .shots figcaption{max-width:40ch}
+  /* Linked, not embedded: the panel is a few hundred pixels across on a
+     windscreen, so it neither fills a column here nor survives being stretched
+     to fit one. */
+  ul.links{list-style:none;padding:0;margin:0 0 20px}
+  ul.links li{padding:7px 0;border-bottom:1px solid var(--border)}
+  ul.links li::before{content:"▸ ";color:var(--highlight)}
+  ul.links span{color:var(--dim);font-size:14px}
   figure img{
     width:100%;height:auto;display:block;
     border:1px solid var(--border);border-radius:6px;background:#000;
@@ -301,29 +301,28 @@
       A Custom Shaders Patch app. It installs itself every time the application starts, so
       updating one updates the other. Every block can be switched off.
     </p>
-    <div class="shots">
-      <figure class="native">
-        <img src="screenshots/Overlay_Main.png" width="396" height="532" alt="The in-game panel showing speed, gear, tyre pressures and inner, middle and outer temperatures for each corner, with the race engineer's advice underneath" loading="lazy">
-        <figcaption>Tyres, brakes, timing and the engineer. Each block optional.</figcaption>
-      </figure>
-      <figure class="native">
-        <img src="screenshots/Overlay_Telemetry.png" width="436" height="762" alt="The telemetry window of the in-game overlay with per-corner tyre pressure, tyre temperature and brake temperature" loading="lazy">
-        <figcaption>Telemetry, for a second monitor rather than a windscreen.</figcaption>
-      </figure>
-      <figure class="native">
-        <img src="screenshots/Overlay_Debrief.png" width="336" height="342" alt="The lap debrief window of the in-game overlay, showing what the race engineer made of the finished lap with sector times" loading="lazy">
-        <figcaption>The debrief. <code>&lt;</code> <code>&gt;</code> page the last three laps.</figcaption>
-      </figure>
-      <figure class="native">
-        <img src="screenshots/Overlay_Settings_Panel.png" width="496" height="622" alt="The overlay's settings window, showing switches for every block the panel can draw" loading="lazy">
-        <figcaption>Every block, switchable, in the game.</figcaption>
-      </figure>
-    </div>
-    <p class="note" style="margin-top:6px">
-      Shown at the size they actually are on a windscreen — a panel is small on
-      purpose, and blowing these up would misrepresent it.
+    <p class="lede" style="margin-bottom:14px">
+      Five windows you can open and close independently: the main panel, the engineer,
+      telemetry, status, and the lap debrief. Each block inside them switches off on its
+      own, and the choice survives closing the window.
     </p>
-  </section>
+
+    <ul class="links">
+      <li><a href="screenshots/Overlay_Main.png">Main panel</a><span> — speed, gear, four corners, the engineer</span></li>
+      <li><a href="screenshots/Overlay_Telemetry.png">Telemetry</a><span> — pressures, temperatures and brakes in full</span></li>
+      <li><a href="screenshots/Overlay_Debrief.png">Lap debrief</a><span> — what the engineer made of the last lap</span></li>
+      <li><a href="screenshots/Overlay_Engineer.png">Engineer</a><span> — the advice on its own, for a corner of the screen</span></li>
+      <li><a href="screenshots/Overlay_Status.png">Status</a><span> — versions, the link to the application, what is connected</span></li>
+      <li><a href="screenshots/Overlay_Settings_Panel.png">Settings</a><span> — every block, in the game</span></li>
+      <li><a href="screenshots/Overlay_Waiting.png">Waiting</a><span> — what it says before the application is up</span></li>
+    </ul>
+
+    <p class="note">
+      Screenshots rather than inline pictures: the panel is a few hundred pixels across
+      on a windscreen, which is the whole point of it — and at that size it neither fills
+      a column here nor survives being stretched to fit one.
+    </p>
+</section>
 
   <section id="terminal">
     <h2>ON THE SECOND SCREEN</h2>
