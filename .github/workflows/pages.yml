@@ -49,8 +49,10 @@ jobs:
           # The page references these as `screenshots/…`, the same paths the
           # README uses, so nothing has to be rewritten in either.
           cp -r screenshots _site/screenshots
-          # A CNAME in the repo root is honoured if one is ever added, which is
-          # what a custom domain needs. Absent, this is a no-op.
+          # No CNAME here on purpose. proengineer.app is served from its own
+          # host now, and a CNAME file would hand the domain back to Pages —
+          # which would start redirecting this address to it again, and the
+          # point of the split is that each address keeps its own.
           if [ -f CNAME ]; then cp CNAME _site/CNAME; fi
           # The sitemap's date comes from the commit being deployed. Written by
           # hand it would be a date that stops being true on the next edit, and
