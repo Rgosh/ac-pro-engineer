@@ -52,11 +52,18 @@ pub enum Confidence {
 
 impl Confidence {
     /// The marker a driver reads before the sentence.
+    /// The marker a driver reads before the sentence.
+    ///
+    /// Geometric shapes rather than the coloured circles the plan sketches:
+    /// 🟢🟡🔴 are recent enough that the terminal font renders all three as a
+    /// dash, which turned every confidence marker in the screenshots into the
+    /// same character. Filled, half and hollow carry the meaning without
+    /// colour, which also keeps it legible where colour does not survive.
     pub fn marker(self) -> &'static str {
         match self {
-            Confidence::High => "🟢",
-            Confidence::Medium => "🟡",
-            Confidence::Low => "🔴",
+            Confidence::High => "●",
+            Confidence::Medium => "◐",
+            Confidence::Low => "○",
         }
     }
 
@@ -107,12 +114,25 @@ impl Confidence {
     }
 }
 
+/// How many underlying samples make an observation a settled one rather than a
+/// reading.
+const WELL_AVERAGED: u32 = 30;
+
 /// What was actually seen, and how much it agreed with itself.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Evidence {
     /// Every observation of the thing being judged — one per corner, per lap,
     /// per wheel, whatever the rule is counting.
     values: Vec<f32>,
+    /// How many samples each of those observations was itself averaged from.
+    ///
+    /// One means each is a single reading. The camber verdict is two wheels,
+    /// each averaged over sixty frames of cornering load, and that is a
+    /// different thing from two frames — counting them the same would either
+    /// call a settled two-wheel finding a coincidence, or call two noisy
+    /// samples a finding. See [`Evidence::averaged_over`].
+    #[serde(default)]
+    samples_each: u32,
 }
 
 impl Evidence {
@@ -134,11 +154,33 @@ impl Evidence {
     pub fn from_values(values: impl IntoIterator<Item = f32>) -> Self {
         Self {
             values: values.into_iter().collect(),
+            samples_each: 1,
         }
+    }
+
+    /// Say that each observation is itself the mean of `samples` readings.
+    ///
+    /// An observation settled over a second of telemetry is worth more than one
+    /// frame, and several of the engineer's rules work that way — the camber
+    /// verdict averages sixty cornering frames per wheel before it says
+    /// anything. A well-averaged observation counts double, so two settled
+    /// wheels can reach `High` where two single frames cannot reach `Medium`.
+    pub fn averaged_over(mut self, samples: u32) -> Self {
+        self.samples_each = samples;
+        self
     }
 
     pub fn count(&self) -> usize {
         self.values.len()
+    }
+
+    /// The count that decides confidence, after weighting.
+    fn effective_count(&self) -> usize {
+        if self.samples_each >= WELL_AVERAGED {
+            self.values.len() * 2
+        } else {
+            self.values.len()
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -178,7 +220,14 @@ impl Evidence {
 
     /// The verdict: enough observations, agreeing closely enough.
     pub fn confidence(&self) -> Confidence {
-        if self.values.len() < MIN_FOR_MEDIUM {
+        // One observation is never confident however it was arrived at. A
+        // single wheel averaged over a whole stint is still one wheel, and
+        // weighting must not turn it into a corroborated finding.
+        if self.values.len() < 2 {
+            return Confidence::Low;
+        }
+        let count = self.effective_count();
+        if count < MIN_FOR_MEDIUM {
             return Confidence::Low;
         }
 
@@ -192,7 +241,7 @@ impl Evidence {
         }
 
         let relative = self.spread() / mean;
-        if self.values.len() >= MIN_FOR_HIGH && relative <= HIGH_SPREAD {
+        if count >= MIN_FOR_HIGH && relative <= HIGH_SPREAD {
             Confidence::High
         } else if relative <= MEDIUM_SPREAD {
             Confidence::Medium
@@ -285,6 +334,26 @@ mod tests {
         assert_eq!(evidence.mean(), 0.0);
         assert_eq!(evidence.range(), None);
         assert_eq!(evidence.spread(), 0.0);
+    }
+
+    /// Two wheels averaged over a second of cornering are a finding; two
+    /// single frames are not. The camber verdict is the first kind, and
+    /// counting it as the second was the reason it needed a frame gate bolted
+    /// on beside it rather than expressed in the confidence itself.
+    #[test]
+    fn well_averaged_observations_count_for_more() {
+        let raw = Evidence::from_values([9.0, 10.0]);
+        assert_eq!(raw.confidence(), Confidence::Low);
+
+        let settled = Evidence::from_values([9.0, 10.0]).averaged_over(60);
+        assert_eq!(settled.confidence(), Confidence::High);
+    }
+
+    /// ...but one wheel is one wheel, however long it was watched.
+    #[test]
+    fn averaging_does_not_turn_one_observation_into_agreement() {
+        let evidence = Evidence::from_values([40.0]).averaged_over(600);
+        assert_eq!(evidence.confidence(), Confidence::Low);
     }
 
     #[test]

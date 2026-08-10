@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+**The point:** the Analysis tab drew what happened. It says **where** now, and
+how sure it is.
+
+### ✨ Added
+
+- **A CORNERS sub-tab: where the lap actually went.** Corners are found in the
+  trace — a stretch where lateral load stays up long enough to be a corner
+  rather than a kink — so it needs no track data and works on mods. Each is
+  charged the track from its own entry to the next corner's entry, which is
+  where a bad exit is paid for, and the per-corner deltas plus the run to T1 add
+  up to the lap's own delta. The worst corner is pulled apart: braking point in
+  metres, entry, minimum and exit speed, throttle timing after the apex.
+- **`F` hides everything that cost less than a tenth.** That filter is the
+  point — twenty corners with a number beside each is another table to read.
+- **How sure the engineer is**, beside every line of advice rather than after
+  it: a count of corroborating observations and their spread, not a number
+  picked while writing the rule. One observation is never confident however
+  extreme, and four that cancel out are Low rather than a balanced car.
+- **The car or the driving, over a stint.** A car that understeers does it on
+  the lap you got right and the lap you got wrong; a mistake follows the
+  driving. **It refuses to answer below four laps**, which is the feature and
+  not a limitation — the wrong answer here sends somebody to change a setup that
+  was never the problem.
+- **What a setup change did**, measured against the laps either side of it —
+  and, in the same breath, everything else that moved at the same time. It never
+  claims a cause: the tyres are always older and the track is never the same
+  temperature, and a driver told "the ARB gained you 0.2 s" has been misled by
+  their own tooling.
+- **Advice can carry a chain** — cause, effect, and *what to look at next time
+  to know whether it worked*. The camber rule fills it in; the rest still carry
+  the old score and are a rule at a time.
+
+### 🐞 Fixed
+
+- **The screenshot mock filled `distance` with metres where AC publishes a
+  normalised 0..1.** Every consumer of a trace read that as three thousand
+  laps — the delta graph resampled to a ceiling of 1.0 and drew a single
+  sample.
+- **The POST-STINT column had never been screenshotted**, so it went out
+  unreviewed release after release.
+- **Confidence markers drew as a dash.** 🟢🟡🔴 are recent enough that the
+  terminal font renders all three identically; filled, half and hollow circles
+  carry it without needing colour.
+
 ## [v0.3.6] - 2026-08-10
 
 **The point:** the panel could tell you what was happening; it had nothing to

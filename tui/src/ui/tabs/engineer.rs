@@ -678,13 +678,47 @@ fn render_sector_advice(
         };
 
         for rec in &advice {
+            let confidence = rec.confidence_level();
             lines.push(Line::from(vec![
                 mk_tag(&rec.severity),
+                // How sure, before the sentence rather than after it. An
+                // engineer that says the same thing about one odd frame and
+                // about four consistent corners is not an engineer, and the
+                // marker is what lets a driver tell those apart at a glance.
                 Span::styled(
-                    format!(" {}", rec.message),
-                    Style::default().fg(Color::White),
+                    format!(" {} ", confidence.marker()),
+                    Style::default().fg(confidence_colour(confidence)),
                 ),
+                Span::styled(rec.message.clone(), Style::default().fg(Color::White)),
             ]));
+            // The chain, where the rule can state one: why it happened, and
+            // what to look at next time to know whether the change worked.
+            if let Some(chain) = rec.chain.as_ref() {
+                if !chain.cause.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!(
+                            "   {} {}",
+                            if is_ru { "причина:" } else { "cause:" },
+                            chain.cause
+                        ),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+                if !chain.confirm.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!(
+                            "   {} {}",
+                            if is_ru {
+                                "проверить:"
+                            } else {
+                                "confirm:"
+                            },
+                            chain.confirm
+                        ),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+            }
             if !rec.action.is_empty() {
                 lines.push(Line::from(Span::styled(
                     format!("   >> {}", rec.action),
@@ -715,7 +749,189 @@ fn render_sector_advice(
             ]));
         }
 
+        push_stint_verdicts(&mut lines, app, is_ru);
+        push_setup_change(&mut lines, app, is_ru);
+
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), layout[1]);
+    }
+}
+
+/// Green for a finding backed by several agreeing observations, red for one
+/// the analysis is not willing to stand behind yet.
+fn confidence_colour(confidence: ac_core::confidence::Confidence) -> Color {
+    use ac_core::confidence::Confidence;
+    match confidence {
+        Confidence::High => Color::Green,
+        Confidence::Medium => Color::Yellow,
+        Confidence::Low => Color::Red,
+    }
+}
+
+/// What the stint says about the car versus the driving.
+///
+/// Under the lap's advice because it answers a different question: the advice
+/// above is about the lap that just ended, this is about the run as a whole,
+/// and it deliberately refuses to answer until it has enough of one.
+fn push_stint_verdicts(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
+    use ac_core::driver_vs_car::{Assessment, Blame};
+
+    // The laps of *this* stint, not everything the analyser is holding. Two
+    // things end up in `analyzer.laps` that are not laps of the current run: a
+    // ghost loaded from a file, which was driven on another day in another car,
+    // and the laps from before the last setup change, which are the thing the
+    // driver is trying to tell apart from the ones after it. Counting either as
+    // corroboration is how a verdict about the car gets made from somebody
+    // else's lap.
+    let session_laps: Vec<ac_core::analyzer::LapData>;
+    let laps: &[ac_core::analyzer::LapData] = match app.setup_history.stints().last() {
+        Some(stint) if !stint.laps.is_empty() => &stint.laps,
+        _ => {
+            session_laps = app
+                .analyzer
+                .laps
+                .iter()
+                .filter(|lap| !lap.from_file)
+                .cloned()
+                .collect();
+            &session_laps
+        }
+    };
+
+    let assessment = ac_core::driver_vs_car::assess(laps);
+    let heading = |lines: &mut Vec<Line<'_>>| {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            if is_ru {
+                "ЗА СТИНТ — МАШИНА ИЛИ ПИЛОТАЖ"
+            } else {
+                "OVER THE STINT — THE CAR OR THE DRIVING"
+            },
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )));
+    };
+
+    match assessment {
+        // The refusal is drawn, not hidden. A blank space here reads as the
+        // analysis being broken; "four more laps" reads as an engineer who
+        // will not guess.
+        Assessment::NotYet(not_yet) => {
+            heading(lines);
+            lines.push(Line::from(Span::styled(
+                if is_ru {
+                    format!(
+                        "  Кругов {} из {} — одного круга мало, чтобы отличить машину от пилотажа.",
+                        not_yet.laps, not_yet.needed
+                    )
+                } else {
+                    format!(
+                        "  {} of {} laps — one lap cannot tell the car from the driving.",
+                        not_yet.laps, not_yet.needed
+                    )
+                },
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        Assessment::Verdicts(verdicts) if verdicts.is_empty() => {}
+        Assessment::Verdicts(verdicts) => {
+            heading(lines);
+            for verdict in verdicts.iter().take(3) {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  {} ", verdict.confidence.marker()),
+                        Style::default().fg(confidence_colour(verdict.confidence)),
+                    ),
+                    Span::styled(
+                        format!("{:<14}", verdict.symptom),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::styled(
+                        verdict.blame.label(is_ru),
+                        Style::default()
+                            .fg(match verdict.blame {
+                                Blame::Car => Color::Yellow,
+                                Blame::Driver => Color::Cyan,
+                                Blame::Undecided => Color::DarkGray,
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    format!("     {}", verdict.reason),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
+    }
+}
+
+/// The last setup change, what happened after it, and what else moved.
+fn push_setup_change(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
+    let Some(attribution) = app.setup_history.last_change() else {
+        return;
+    };
+    if !attribution.is_worth_reporting() {
+        return;
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        if is_ru {
+            "ПОСЛЕ ИЗМЕНЕНИЯ СЕТАПА"
+        } else {
+            "SINCE THE SETUP CHANGED"
+        },
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    for change in attribution.changes.iter().take(4) {
+        lines.push(Line::from(Span::styled(
+            format!(
+                "  {} {:.1} → {:.1}",
+                change.name, change.reference, change.current
+            ),
+            Style::default().fg(Color::White),
+        )));
+    }
+
+    for effect in attribution.effects.iter().take(4) {
+        let arrow = if effect.change() < 0.0 { "↓" } else { "↑" };
+        lines.push(Line::from(Span::styled(
+            format!(
+                "    {:<18} {arrow} {:.2} {}",
+                effect.name,
+                effect.change().abs(),
+                effect.unit
+            ),
+            Style::default().fg(if effect.is_improvement() {
+                Color::Green
+            } else {
+                Color::Yellow
+            }),
+        )));
+    }
+
+    // Beside the effects, never in a footnote. A driver told "the ARB gained
+    // you 0.2 s" has been misled by their own tooling; a driver told what else
+    // moved can decide for themselves.
+    if !attribution.confounders.is_empty() {
+        lines.push(Line::from(Span::styled(
+            if is_ru {
+                "    но одновременно с этим:"
+            } else {
+                "    but at the same time:"
+            },
+            Style::default().fg(Color::DarkGray),
+        )));
+        for note in attribution.confounders.iter().take(3) {
+            lines.push(Line::from(Span::styled(
+                format!("      {note}"),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
     }
 }
 

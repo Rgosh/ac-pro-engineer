@@ -294,10 +294,36 @@ with a ghost lap overlaid. `S` saves the selected lap, `L` loads one from disk,
 
 ![Analysis telemetry traces: delta, speed, throttle, brake and steering against time](screenshots/Analysis_Traces.png)
 
-`←/→` moves between five sub-tabs. **TELEMETRY** is the traces above — delta
+`←/→` moves between six sub-tabs. **TELEMETRY** is the traces above — delta
 against your best, speed, both pedals and steering against time. **DYNAMICS**,
 **ENGINE** and **TRACTION** break the same lap down further, and **OVERVIEW**
 carries the sector split, the driving scores and the per-corner temperatures.
+
+**CORNERS** is where the lap actually went.
+
+![Analysis corners: the lap decomposed corner by corner against the reference, with the worst one pulled apart](screenshots/Analysis_Corners.png)
+
+Corners are found in the trace — a stretch where lateral load stays up long
+enough to be a corner rather than a kink — so it needs no track data and works
+on mods. Each one is charged the track from its own entry to the next corner's
+entry, which is where a bad exit is actually paid for, and the per-corner
+deltas plus the run to T1 add up to the lap's own delta.
+
+`F` hides everything that cost less than a tenth:
+
+![The same screen with the filter on: only the corners that cost more than a tenth](screenshots/Analysis_Corners_Losses.png)
+
+That filter is the point. Twenty corners with a number beside each is another
+table to read; the three that cost real time is a job. Under it, the worst
+corner is pulled apart — braking point in metres, entry, minimum and exit
+speed, and how much later the throttle came back.
+
+Two things it will not do. A corner the reference lap does not have is drawn as
+**no comparison** rather than as a delta of zero, because two laps of the same
+track can detect a different number of corners and matching them by position in
+the list compares T5 against something else entirely. And braking in metres
+needs the track's length, which laps saved before v0.3.7 do not carry — it says
+"not measured" rather than inventing a number.
 
 ### 6 — Strategy
 
@@ -564,6 +590,7 @@ sub-tabs, so one window answers "what is going on" instead of three.
 | **L** | Analysis | Load a lap from disk |
 | **C** | Analysis | Toggle the ghost comparison |
 | **E** | Analysis | Export the selected lap as MoTeC CSV |
+| **F** | Analysis | Corners: show only the losses over a tenth |
 | **B** | Setup | Open / close the Setup Cloud browser |
 | **D** | Setup | Download the selected setup, or open the browser |
 | **PgUp / PgDn** | Setup | Scroll the details pane |

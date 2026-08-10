@@ -62,6 +62,7 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 action,
                 parameters: Vec::new(),
                 confidence: 0.9,
+                chain: None,
             });
         };
 

@@ -693,6 +693,7 @@ mod tests {
             action: String::new(),
             parameters: Vec::new(),
             confidence: 1.0,
+            chain: None,
         }
     }
 

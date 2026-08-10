@@ -1,6 +1,18 @@
 # v0.3.7 — turning Analysis into an engineer
 
-A plan. Nothing here is built.
+The plan, and where it stands. **Items 1–7 are built**; the notes under each say
+what was actually done and where it fell short of the sketch. Item 8 is not, and
+the reason is in its own section.
+
+| | | |
+|---|---|---|
+| 1 | Corner-by-corner analysis | built — `core/src/corners.rs` |
+| 2 | Cause → effect | built — `Chain` on `Recommendation`, one producer so far |
+| 3 | Setup ↔ telemetry | built — `core/src/setup_history.rs` |
+| 4 | Automatic lap decomposition | built — Analysis → CORNERS, `F` filters |
+| 5 | Driver vs car | built — `core/src/driver_vs_car.rs` |
+| 6 | Reference laps | local half built; remote deferred, see below |
+| 7 | Engineer confidence | built — `core/src/confidence.rs` |
 
 The Analysis tab draws what happened. This is about making it say **why**, and
 about being honest when it does not know. The ideas below are the author's;
@@ -206,19 +218,46 @@ that was fine, because it judged on a single frame.
 
 ---
 
-## Order
+## Order, and what it turned into
 
-1. **Confidence**, on the advice that exists. Small, and everything else assumes
-   it.
-2. **Corner detection** from the trace, keyed by distance.
-3. **Lap decomposition** and the "only show me losses over 0.10 s" filter —
-   free once corners exist.
-4. **Corner-by-corner deltas** against the driver's own best.
-5. **Cause → effect**: restructure `Recommendation` around evidence and a check
-   for next lap.
-6. **Setup history**, so a change can be attributed to an effect.
-7. **Driver vs car**, over a stint rather than a lap.
-8. **Remote reference laps** in the cloud.
+1. **Confidence** — done first, as this said to. `Evidence` counts corroborating
+   observations and their spread; `Confidence` is Low/Medium/High off that. One
+   observation is never confident however extreme it is, and observations that
+   cancel out are Low rather than a perfectly balanced car.
 
-One through four are a release on their own and would already change what the
-Analysis tab is for. Five onwards is where it stops being a telemetry viewer.
+   One thing the sketch did not anticipate: several rules average a great many
+   frames into one observation, and counting two settled wheels the same as two
+   single frames is wrong in both directions. `Evidence::averaged_over` is that,
+   and it let the camber rule's frame gate stop being a precondition bolted on
+   beside the advice and become part of how sure the advice says it is.
+
+2. **Corner detection** — done, keyed by distance throughout, with the
+   direction having to agree so a chicane's left never matches its right.
+
+3. **Lap decomposition** and the filter — done, on a CORNERS sub-tab. Sections
+   tile the lap so the parts sum to the whole.
+
+4. **Corner-by-corner deltas** — done: braking point in metres, entry, minimum
+   and exit speed, and throttle timing after the apex.
+
+5. **Cause → effect** — `Chain { cause, effect, confirm, evidence }` on
+   `Recommendation`, with `confirm` the field that makes it checkable.
+
+   **Only one rule fills it in so far** — camber, the one this document names.
+   The other twenty-odd still carry the old hand-picked score and fall back to
+   it. That is the remaining work on this item, and it is a rule at a time
+   rather than a redesign.
+
+6. **Setup history** — done, and the caution in §3 turned out to be the whole
+   design rather than a footnote. It never claims a cause: it reports what
+   changed, what happened after, and every confounder beside it.
+
+7. **Driver vs car** — done, over a stint, and it **refuses below four laps**.
+
+8. **Remote reference laps** — not built, deliberately. §6 says to start with
+   the driver's own best and add remote references once the shape has proved
+   itself locally; the local half is what CORNERS does. The remote half needs
+   the Setup Cloud to carry laps rather than `.ini` files, and a lap is orders
+   of magnitude larger than a setup — that is an infrastructure change, not an
+   analysis one, and it should follow a release of people actually using the
+   local comparison.

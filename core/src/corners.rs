@@ -686,6 +686,50 @@ mod tests {
         );
     }
 
+    /// Every degenerate trace this can be handed, in one place. All of these
+    /// reach code that indexes and slices, and a panic here takes down a
+    /// terminal that is drawing sixty times a second — a lap the recorder
+    /// caught two samples of is not a reason to lose the session.
+    #[test]
+    fn nothing_here_panics_on_a_trace_that_is_not_a_lap() {
+        let empty: Vec<TelemetryPoint> = Vec::new();
+        assert!(detect(&empty).is_empty());
+        assert_eq!(time_at(&empty, 0.5), None);
+
+        let full = trace_with_corners(&[(0.20, 0.25, 1.2)]);
+        let one = full.get(..1).map(<[_]>::to_vec).unwrap_or_default();
+        assert!(detect(&one).is_empty(), "one sample is not a corner");
+        assert!(time_at(&one, 0.5).is_some(), "clamped to the only sample");
+
+        // A lap against nothing, and nothing against a lap.
+        let corners = detect(&full);
+        assert_eq!(
+            decompose(&full, &empty, &corners, &[]).sections.len(),
+            0,
+            "there is no reference to decompose against"
+        );
+        assert_eq!(decompose(&empty, &full, &[], &corners).total_ms, 0);
+
+        // A corner that runs to the very last sample, so `measure` slices to
+        // the end of the trace.
+        let to_the_line = trace_with_corners(&[(0.90, 1.10, 1.2)]);
+        let found = detect(&to_the_line);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].exit <= 1.0);
+    }
+
+    /// AC has published a NaN into the physics page before now. A comparison
+    /// against NaN is always false, so it must fall out as "not cornering"
+    /// rather than opening a corner that never closes.
+    #[test]
+    fn a_nan_in_the_trace_is_not_a_corner() {
+        let mut trace = trace_with_corners(&[]);
+        for point in trace.iter_mut().skip(100).take(50) {
+            point.lat_g = f32::NAN;
+        }
+        assert!(detect(&trace).is_empty(), "{:?}", detect(&trace));
+    }
+
     #[test]
     fn a_corner_the_reference_does_not_have_is_no_comparison() {
         let mine = detect(&trace_with_corners(&[(0.50, 0.55, 1.2)]));

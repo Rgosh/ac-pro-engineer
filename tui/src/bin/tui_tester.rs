@@ -264,6 +264,13 @@ fn create_populated_app_state() -> AppState {
         // picture of the decomposition not working. Most of it goes in one
         // band of the lap, the way a real mistake does, and the rest is spread
         // so the straights are not suspiciously perfect.
+        // Understeer on every lap regardless of how the lap went, lockups
+        // that come and go: the two answers `driver_vs_car` exists to tell
+        // apart, so the POST-STINT shot below shows both rather than an empty
+        // heading.
+        lap.understeer_count = 9 + (number % 2);
+        lap.lockup_count = [0, 11, 1, 9][(number as usize) % 4];
+
         let concentrated = (delta_ms as f32 * 0.6) as i32;
         let spread = delta_ms - concentrated;
         for point in lap.telemetry_trace.iter_mut() {
@@ -280,6 +287,8 @@ fn create_populated_app_state() -> AppState {
     }
     let mut best = mock_lap.clone();
     best.lap_number = 5;
+    best.understeer_count = 9;
+    best.lockup_count = 2;
     app.analyzer.laps.push(best);
 
     // The Engineer tab's DRIVING STYLE box reads the live driving style and
@@ -305,6 +314,7 @@ fn create_populated_app_state() -> AppState {
         action: "Adjust FR cold pressure +0.2 PSI".to_string(),
         parameters: Vec::new(),
         confidence: 0.95,
+        chain: None,
     });
     app.recommendations.push(Recommendation {
         component: "Aero".to_string(),
@@ -314,6 +324,7 @@ fn create_populated_app_state() -> AppState {
         action: "Reduce rear wing angle by 1 degree".to_string(),
         parameters: Vec::new(),
         confidence: 0.88,
+        chain: None,
     });
 
     app
@@ -395,6 +406,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.ui_state.analysis.current_tab = AnalysisSubTab::Graphs;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Analysis_Traces")?;
+
+    // 3c. Engineer_PostStint — the lap debrief, what the stint says about the
+    // car versus the driving, and the refusal to answer before it has one.
+    // Never captured at all before, so the whole POST-STINT column went out
+    // unreviewed release after release.
+    app.active_tab = AppTab::Engineer;
+    app.ui_state.engineer.active_sub_tab = 1;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(
+        &terminal,
+        width,
+        height,
+        screenshot_dir,
+        "Engineer_PostStint",
+    )?;
+    app.ui_state.engineer.active_sub_tab = 0;
 
     // 4a. Analysis_Corners — where the lap actually went, and the same screen
     // again with the filter on, which is the half of the feature that decides

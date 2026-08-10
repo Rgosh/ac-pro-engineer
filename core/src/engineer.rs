@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Default)]
 pub struct Recommendation {
     pub component: String,
     pub category: String,
@@ -16,10 +16,59 @@ pub struct Recommendation {
     pub message: String,
     pub action: String,
     pub parameters: Vec<Parameter>,
+    /// The old hand-picked certainty, 0..1, still used for ordering.
+    ///
+    /// Superseded by [`Chain::evidence`] wherever a rule can count what it
+    /// saw — see [`Recommendation::confidence_level`], which prefers the
+    /// evidence and falls back to this.
     pub confidence: f32,
+    /// Why this is happening, and how to know whether the fix worked.
+    ///
+    /// `None` on the rules that are a single measurement against a threshold,
+    /// which is most of them and is honest: there is no mechanism to state for
+    /// "the fuel will not last".
+    pub chain: Option<Chain>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+/// Evidence, mechanism, and a check for next time.
+///
+/// A flat finding says "front-right 96 °C". This says what produced it, what it
+/// did, and — the field that matters most — **what to look at on the next run
+/// to know whether the change worked**. That last one is what makes the advice
+/// an engineer's rather than a paragraph: it commits the advice to being
+/// checkable, and an unfalsifiable suggestion is not advice.
+///
+/// It also means the analysis stops being a list of independent checks. "FR
+/// outer shoulder is hot" and "the car understeers in T4–T6" are two unrelated
+/// findings until something states the link, and the value is entirely in the
+/// link.
+#[derive(Debug, Serialize, Clone, Default)]
+pub struct Chain {
+    /// The mechanism: "high lateral load through T4–T6".
+    pub cause: String,
+    /// The measurement it produced: "FR outer shoulder +11 °C".
+    pub effect: String,
+    /// What to look at next time: "FR I/M/O spread on the next lap".
+    pub confirm: String,
+    /// What was actually observed, and how much it agreed with itself.
+    pub evidence: crate::confidence::Evidence,
+}
+
+impl Recommendation {
+    /// How sure this advice is.
+    ///
+    /// Evidence wins where a rule counted what it saw; the hand-picked score is
+    /// the fallback for the rules that did not, and is mapped onto the same
+    /// scale rather than pretending to be evidence.
+    pub fn confidence_level(&self) -> crate::confidence::Confidence {
+        match self.chain.as_ref() {
+            Some(chain) if !chain.evidence.is_empty() => chain.evidence.confidence(),
+            _ => crate::confidence::Confidence::from_score(self.confidence),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone, Default)]
 pub struct Parameter {
     pub name: String,
     pub current: f32,
@@ -33,8 +82,9 @@ pub struct Parameter {
 /// is six places to get the order wrong.
 pub const CORNER_NAMES: [&str; 4] = ["FL", "FR", "RL", "RR"];
 
-#[derive(Debug, Serialize, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Serialize, Clone, PartialEq, PartialOrd, Default)]
 pub enum Severity {
+    #[default]
     Info,
     Warning,
     Critical,
@@ -576,6 +626,7 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.95,
+                chain: None,
             });
         }
     }
@@ -608,6 +659,7 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.85,
+                    chain: None,
                 });
             }
         }
@@ -837,6 +889,7 @@ impl Engineer {
                     unit: "%".to_string(),
                 }],
                 confidence: 1.0,
+                chain: None,
             });
         }
     }
@@ -980,6 +1033,7 @@ impl Engineer {
                     })
                     .collect(),
                 confidence: 0.9,
+                chain: None,
             });
         };
 
@@ -1064,6 +1118,7 @@ impl Engineer {
                     })
                     .collect(),
                 confidence: 0.9,
+                chain: None,
             });
         };
 
@@ -1196,6 +1251,41 @@ impl Engineer {
                     })
                     .collect(),
                 confidence: if more_camber { 0.7 } else { 0.8 },
+                // The one rule that can say why, what it did, and how to know
+                // whether the change worked — and the one the plan names,
+                // because a camber verdict from a single cornering frame is
+                // how this project learned to distrust its own certainty.
+                //
+                // The evidence is one observation per wheel in the group, each
+                // already the mean of at least `CAMBER_MIN_FRAMES` frames of
+                // load. That is what `averaged_over` is for: two settled
+                // wheels are a finding, two frames are not, and the frame gate
+                // above stops being a bolted-on precondition and becomes part
+                // of how sure the advice says it is.
+                chain: Some(Chain {
+                    cause: match (more_camber, ru) {
+                        (true, true) => "недостаточно нагрузки на внешнюю часть в поворотах",
+                        (true, false) => "the outer shoulder is not being loaded through corners",
+                        (false, true) => "внутренняя часть перегружена в поворотах",
+                        (false, false) => "the inner shoulder is carrying the corner",
+                    }
+                    .to_string(),
+                    effect: format!("{where_} I-O {}", fmt.format_temp_delta(spread)),
+                    confirm: match ru {
+                        true => format!(
+                            "разброс I/M/O на {where_} в следующем стинте: цель {}",
+                            fmt.format_temp_delta(ideal_spread)
+                        ),
+                        false => format!(
+                            "the I/M/O spread on {where_} next run out: {} is the window",
+                            fmt.format_temp_delta(ideal_spread)
+                        ),
+                    },
+                    evidence: crate::confidence::Evidence::from_values(
+                        corners.iter().map(|i| self.stats.camber_spread[*i]),
+                    )
+                    .averaged_over(self.stats.camber_frames),
+                }),
             });
         };
 
@@ -1267,6 +1357,7 @@ impl Engineer {
                 .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
+                chain: None,
             });
         }
 
@@ -1295,6 +1386,7 @@ impl Engineer {
                 .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
+                chain: None,
             });
         }
     }
@@ -1351,6 +1443,7 @@ impl Engineer {
             .to_string(),
             parameters: vec![],
             confidence: 1.0,
+            chain: None,
         });
     }
 
@@ -1394,6 +1487,7 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.85,
+                    chain: None,
                 });
             } else if self.stats.lockup_frames_rear > self.stats.lockup_frames_front * 2 {
                 recs.push(Recommendation {
@@ -1420,6 +1514,7 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.95,
+                    chain: None,
                 });
             }
         }
@@ -1454,6 +1549,7 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.7,
+                chain: None,
             });
         }
 
@@ -1478,6 +1574,7 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.85,
+                chain: None,
             });
         }
 
@@ -1502,6 +1599,7 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.85,
+                chain: None,
             });
         }
 
@@ -1532,6 +1630,7 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.95,
+                chain: None,
             });
             self.stats.scrubbing_frames = 0;
             self.stats.current_excess_steer = 0.0;
@@ -1564,6 +1663,7 @@ impl Engineer {
                 action: "BOX BOX BOX".to_string(),
                 parameters: vec![],
                 confidence: 1.0,
+                chain: None,
             });
         }
 
@@ -1615,6 +1715,7 @@ impl Engineer {
                             unit: "L".to_string(),
                         }],
                         confidence: 0.8,
+                        chain: None,
                     });
                 }
             }

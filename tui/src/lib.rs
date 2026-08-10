@@ -278,6 +278,12 @@ pub struct AppState {
     /// rebuild is not a thing to do quietly.
     pub bridge_offer: Arc<Mutex<Option<ac_core::overlay::bridge_update::RemoteBridge>>>,
     pub overlay_install_status: String,
+    /// Which setup each lap was driven on, so a change can be attributed.
+    ///
+    /// Never claims a cause — see `ac_core::setup_history`. It reports what
+    /// changed, what happened afterwards, and what else moved at the same
+    /// time, which on a real stint is always the tyres and the fuel.
+    pub setup_history: ac_core::setup_history::SetupHistory,
     /// The last few finished laps and what the engineer made of each, ready
     /// for the frame.
     ///
@@ -442,6 +448,7 @@ impl AppState {
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_debrief: Vec::new(),
+            setup_history: ac_core::setup_history::SetupHistory::new(),
             broadcast,
             overlay_result_popup: false,
             show_overlay_diagnosis: false,
@@ -1029,6 +1036,23 @@ impl AppState {
                     // second, and the sentences are identical every frame in
                     // between.
                     self.rebuild_overlay_debrief();
+
+                    // Which setup this lap was driven on, so a change made
+                    // between two runs can be measured against the laps either
+                    // side of it. Both halves of that existed already and had
+                    // no way to meet: the setup manager knows what is loaded
+                    // and the analyser knows how the car behaved.
+                    //
+                    // Observed here rather than when the setup is loaded: AC
+                    // applies a setup change in the garage, and a change the
+                    // driver made and then drove on is the only kind worth
+                    // recording.
+                    if let Some(setup) = self.setup_manager.get_active_setup() {
+                        self.setup_history.observe_setup(&setup);
+                    }
+                    if let Some(lap) = self.analyzer.laps.last().cloned() {
+                        self.setup_history.record_lap(&lap);
+                    }
 
                     // Car specs sharpen the *estimated* reference time, but
                     // they are an enrichment, not a precondition. This whole

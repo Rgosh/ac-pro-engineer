@@ -767,6 +767,7 @@ mod tests {
                         action: String::new(),
                         parameters: Vec::new(),
                         confidence: 1.0,
+                        chain: None,
                     }],
                 },
                 crate::overlay::frame::DebriefLap {
@@ -781,6 +782,7 @@ mod tests {
                         action: String::new(),
                         parameters: Vec::new(),
                         confidence: 1.0,
+                        chain: None,
                     }],
                 },
             ],

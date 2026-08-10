@@ -16,6 +16,7 @@ pub mod corners;
 pub mod crash_logger;
 pub mod debrief;
 pub mod discord;
+pub mod driver_vs_car;
 pub mod engineer;
 pub mod memory;
 pub mod net;
@@ -24,6 +25,7 @@ pub mod process;
 pub mod records;
 pub mod ring_buffer;
 pub mod session_info;
+pub mod setup_history;
 pub mod setup_manager;
 pub mod updater;
 

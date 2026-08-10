@@ -268,6 +268,7 @@ fn test_19_severity_ordering() {
             action: "".into(),
             parameters: vec![],
             confidence: 1.0,
+            chain: None,
         },
         Recommendation {
             component: "B".into(),
@@ -277,6 +278,7 @@ fn test_19_severity_ordering() {
             action: "".into(),
             parameters: vec![],
             confidence: 0.5,
+            chain: None,
         },
         Recommendation {
             component: "C".into(),
@@ -286,6 +288,7 @@ fn test_19_severity_ordering() {
             action: "".into(),
             parameters: vec![],
             confidence: 0.9,
+            chain: None,
         },
         Recommendation {
             component: "D".into(),
@@ -295,6 +298,7 @@ fn test_19_severity_ordering() {
             action: "".into(),
             parameters: vec![],
             confidence: 0.99,
+            chain: None,
         },
     ];
     recs.sort_by(|a, b| {
