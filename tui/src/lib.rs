@@ -278,12 +278,12 @@ pub struct AppState {
     /// rebuild is not a thing to do quietly.
     pub bridge_offer: Arc<Mutex<Option<ac_core::overlay::bridge_update::RemoteBridge>>>,
     pub overlay_install_status: String,
-    /// Which setup each lap was driven on, so a change can be attributed.
+    /// Listening for another machine's frames, when `receive_from` is set.
     ///
-    /// Never claims a cause — see `ac_core::setup_history`. It reports what
-    /// changed, what happened afterwards, and what else moved at the same
-    /// time, which on a real stint is always the tyres and the fuel.
-    pub setup_history: ac_core::setup_history::SetupHistory,
+    /// `None` is the ordinary case: this is off unless a viewer asks for it.
+    pub receiver: Option<ac_core::broadcast::receiver::FrameReceiver>,
+    /// Who is being watched, for the status line. `None` until one arrives.
+    pub remote_sender: Option<String>,
     /// The last few finished laps and what the engineer made of each, ready
     /// for the frame.
     ///
@@ -377,6 +377,35 @@ impl AppState {
             broadcaster
         };
 
+        // The other end of it. Off unless asked for, and a port that cannot be
+        // bound is a warning rather than a failure to start: something else is
+        // already on it, and the rest of the application still works.
+        let receiver = {
+            let listen = config.overlay.receive_from.trim();
+            if listen.is_empty() {
+                None
+            } else {
+                match listen.parse() {
+                    Ok(address) => {
+                        match ac_core::broadcast::receiver::FrameReceiver::bind(address) {
+                            Ok(receiver) => {
+                                info!(%listen, "Listening for another machine's frames");
+                                Some(receiver)
+                            }
+                            Err(error) => {
+                                warn!(error = ?error, %listen, "Could not listen there");
+                                None
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = ?error, %listen, "receive_from is not an ip:port address");
+                        None
+                    }
+                }
+            }
+        };
+
         let mut state = Self {
             mem: None,
             mock_physics: None,
@@ -448,7 +477,8 @@ impl AppState {
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_debrief: Vec::new(),
-            setup_history: ac_core::setup_history::SetupHistory::new(),
+            receiver,
+            remote_sender: None,
             broadcast,
             overlay_result_popup: false,
             show_overlay_diagnosis: false,
@@ -1037,23 +1067,6 @@ impl AppState {
                     // between.
                     self.rebuild_overlay_debrief();
 
-                    // Which setup this lap was driven on, so a change made
-                    // between two runs can be measured against the laps either
-                    // side of it. Both halves of that existed already and had
-                    // no way to meet: the setup manager knows what is loaded
-                    // and the analyser knows how the car behaved.
-                    //
-                    // Observed here rather than when the setup is loaded: AC
-                    // applies a setup change in the garage, and a change the
-                    // driver made and then drove on is the only kind worth
-                    // recording.
-                    if let Some(setup) = self.setup_manager.get_active_setup() {
-                        self.setup_history.observe_setup(&setup);
-                    }
-                    if let Some(lap) = self.analyzer.laps.last().cloned() {
-                        self.setup_history.record_lap(&lap);
-                    }
-
                     // Car specs sharpen the *estimated* reference time, but
                     // they are an enrichment, not a precondition. This whole
                     // block used to be nested inside `if let Some(car_specs)`,
@@ -1120,6 +1133,14 @@ impl AppState {
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
         self.ui_state.analysis.tick_status();
+
+        // Somebody else driving takes the panel over entirely. Before the game
+        // is read, not after: the point of watching a friend is that the
+        // numbers on screen are theirs, and letting the local tick run
+        // underneath would have the two fighting for the same mapping.
+        if self.pump_received_frame() {
+            return;
+        }
         let delta = self.engineer.stats.current_delta;
         self.discord
             .update(self.is_connected, &self.session_info, delta);
@@ -1266,6 +1287,45 @@ impl AppState {
         frame.set_flag(flags::SHOW_FUEL, self.config.overlay.show_fuel);
 
         frame
+    }
+
+    /// Draw whatever a remote sender published, if this build is listening.
+    ///
+    /// Returns whether a frame was taken over, so the caller can stop: while
+    /// somebody else's telemetry is on screen the local game is not what the
+    /// panel is about.
+    ///
+    /// The receiver is the other half of `broadcast::udp` and does no analysis:
+    /// what arrives is the finished frame, sentences and all, so the viewer
+    /// sees exactly what the driver's own engineer is saying.
+    fn pump_received_frame(&mut self) -> bool {
+        use ac_core::broadcast::receiver::Received;
+
+        let Some(receiver) = self.receiver.as_mut() else {
+            return false;
+        };
+
+        match receiver.poll() {
+            Received::Frame(frame) => {
+                self.remote_sender = receiver.sender().map(|(from, name)| {
+                    if name.is_empty() {
+                        from.to_string()
+                    } else {
+                        format!("{name} ({from})")
+                    }
+                });
+                if let Some(writer) = self.overlay_writer.as_mut() {
+                    writer.publish(&frame);
+                }
+                true
+            }
+            // A datagram that was not ours, or nothing at all. Neither is a
+            // reason to stop drawing what is already on screen — a receiver
+            // polled sixty times a second sees `Idle` on almost every tick,
+            // and blanking the panel between two ten-a-second frames would
+            // flicker the whole session.
+            Received::Rejected(_) | Received::Idle => self.remote_sender.is_some(),
+        }
     }
 
     /// Publish a frame with no car in it.

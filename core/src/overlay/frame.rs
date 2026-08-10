@@ -280,6 +280,17 @@ pub mod flags {
     /// A flag rather than a field: the application has two languages, and the
     /// panel's own words should follow the ones it already receives translated.
     pub const RUSSIAN: u32 = 1 << 8;
+    /// These are somebody else's numbers, arriving over the network.
+    ///
+    /// The receiving panel is drawing a lap counter, a fuel load and an
+    /// engineer's advice about a car the viewer is not sitting in. Without
+    /// this it looks exactly like their own telemetry gone wrong, and the bug
+    /// report that follows is about the application not matching the game.
+    ///
+    /// A flag rather than a field, so it costs no frame version — see the note
+    /// in CLAUDE.md. The sender's *name* does need bytes and is not here yet;
+    /// it goes in whenever the struct next has to move for another reason.
+    pub const REMOTE: u32 = 1 << 9;
 }
 
 impl Default for OverlayFrame {

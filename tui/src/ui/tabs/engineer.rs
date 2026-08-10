@@ -750,7 +750,6 @@ fn render_sector_advice(
         }
 
         push_stint_verdicts(&mut lines, app, is_ru);
-        push_setup_change(&mut lines, app, is_ru);
 
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), layout[1]);
     }
@@ -775,29 +774,18 @@ fn confidence_colour(confidence: ac_core::confidence::Confidence) -> Color {
 fn push_stint_verdicts(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
     use ac_core::driver_vs_car::{Assessment, Blame};
 
-    // The laps of *this* stint, not everything the analyser is holding. Two
-    // things end up in `analyzer.laps` that are not laps of the current run: a
-    // ghost loaded from a file, which was driven on another day in another car,
-    // and the laps from before the last setup change, which are the thing the
-    // driver is trying to tell apart from the ones after it. Counting either as
-    // corroboration is how a verdict about the car gets made from somebody
-    // else's lap.
-    let session_laps: Vec<ac_core::analyzer::LapData>;
-    let laps: &[ac_core::analyzer::LapData] = match app.setup_history.stints().last() {
-        Some(stint) if !stint.laps.is_empty() => &stint.laps,
-        _ => {
-            session_laps = app
-                .analyzer
-                .laps
-                .iter()
-                .filter(|lap| !lap.from_file)
-                .cloned()
-                .collect();
-            &session_laps
-        }
-    };
+    // This session's laps, not everything the analyser is holding. A ghost
+    // loaded from a file was driven on another day in another car, and counting
+    // it is how a verdict about *this* car gets made from somebody else's lap.
+    let laps: Vec<ac_core::analyzer::LapData> = app
+        .analyzer
+        .laps
+        .iter()
+        .filter(|lap| !lap.from_file)
+        .cloned()
+        .collect();
 
-    let assessment = ac_core::driver_vs_car::assess(laps);
+    let assessment = ac_core::driver_vs_car::assess(&laps);
     let heading = |lines: &mut Vec<Line<'_>>| {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -862,75 +850,6 @@ fn push_stint_verdicts(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
                     Style::default().fg(Color::DarkGray),
                 )));
             }
-        }
-    }
-}
-
-/// The last setup change, what happened after it, and what else moved.
-fn push_setup_change(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
-    let Some(attribution) = app.setup_history.last_change() else {
-        return;
-    };
-    if !attribution.is_worth_reporting() {
-        return;
-    }
-
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        if is_ru {
-            "ПОСЛЕ ИЗМЕНЕНИЯ СЕТАПА"
-        } else {
-            "SINCE THE SETUP CHANGED"
-        },
-        Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )));
-
-    for change in attribution.changes.iter().take(4) {
-        lines.push(Line::from(Span::styled(
-            format!(
-                "  {} {:.1} → {:.1}",
-                change.name, change.reference, change.current
-            ),
-            Style::default().fg(Color::White),
-        )));
-    }
-
-    for effect in attribution.effects.iter().take(4) {
-        let arrow = if effect.change() < 0.0 { "↓" } else { "↑" };
-        lines.push(Line::from(Span::styled(
-            format!(
-                "    {:<18} {arrow} {:.2} {}",
-                effect.name,
-                effect.change().abs(),
-                effect.unit
-            ),
-            Style::default().fg(if effect.is_improvement() {
-                Color::Green
-            } else {
-                Color::Yellow
-            }),
-        )));
-    }
-
-    // Beside the effects, never in a footnote. A driver told "the ARB gained
-    // you 0.2 s" has been misled by their own tooling; a driver told what else
-    // moved can decide for themselves.
-    if !attribution.confounders.is_empty() {
-        lines.push(Line::from(Span::styled(
-            if is_ru {
-                "    но одновременно с этим:"
-            } else {
-                "    but at the same time:"
-            },
-            Style::default().fg(Color::DarkGray),
-        )));
-        for note in attribution.confounders.iter().take(3) {
-            lines.push(Line::from(Span::styled(
-                format!("      {note}"),
-                Style::default().fg(Color::DarkGray),
-            )));
         }
     }
 }

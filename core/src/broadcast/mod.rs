@@ -30,6 +30,7 @@
 //! [`OverlayFrame`] has speed, gear, four corners, lap times and advice text in
 //! it, and no `AcPhysics` anywhere.
 
+pub mod receiver;
 pub mod shm;
 pub mod udp;
 

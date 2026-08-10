@@ -25,7 +25,6 @@ pub mod process;
 pub mod records;
 pub mod ring_buffer;
 pub mod session_info;
-pub mod setup_history;
 pub mod setup_manager;
 pub mod updater;
 

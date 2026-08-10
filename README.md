@@ -710,6 +710,7 @@ a config from an older version keeps working.
 | `overlay.broadcast_to` | `""` | Also send the computed frame here as JSON over UDP, `host:port`. Empty is off. |
 | `overlay.broadcast_hz` | `10` | How many times a second to send there. |
 | `overlay.broadcast_name` | `""` | The name that travels with it, so a receiver watching several drivers can tell them apart. |
+| `overlay.receive_from` | `""` | Listen here for another machine's frames, `ip:port`. Empty is off. |
 | `overlay.startup_card` | `true` | Show the install card when the application starts. |
 | `keys.*` | see [Keyboard](#keyboard) | One key per action, as text. |
 | `data_path` | config directory | Where laps, exports, screenshots and records go. |
@@ -779,10 +780,36 @@ UDP because a lost frame costs nothing — another arrives in a tenth of a secon
 — and because a subscriber that stops reading must not be able to stall the loop
 feeding the driver's own overlay.
 
-That is the whole feature. **Nothing ships that reads this** — there is no
-spectator client, no LAN mode and no relay, and pointing it at another machine
-only means the datagrams arrive there. `docs/ARCHITECTURE.md` is where it is
-meant to go; today it is an address to point at and a schema to write against.
+### Watching someone else drive, on the same network
+
+The other end of the feed now exists. The driver sets `broadcast_to`; the
+viewer sets `receive_from` and gets the driver's telemetry and the driver's
+engineer in their own panel.
+
+```json
+"overlay": { "broadcast_to": "192.168.1.42:9001" }
+```
+
+```json
+"overlay": { "receive_from": "0.0.0.0:9001" }
+```
+
+What crosses is the **finished frame**, so the viewer sees exactly what the
+driver's engineer is saying — which is the point when the reason you are
+watching is to help the person driving. The cost is that the sentences were
+written on the other machine, so the viewer's own language and units do not
+apply to them. Which blocks to draw stays the viewer's choice: one person's
+panel settings never reach another's screen.
+
+While a remote frame is arriving it **takes the panel over** and the flag that
+says so is set, so a lap counter about a car you are not sitting in cannot be
+mistaken for your own telemetry gone wrong.
+
+**Limits, plainly.** This is one network — a flat, a LAN party, a machine in the
+next room. Two houses behind two routers is NAT, and that needs a forwarded port
+or a relay in the middle, which is infrastructure rather than code and is not
+built. There is no discovery, no relay and no championship mode: the viewer
+types an address. `docs/ARCHITECTURE.md` is where the rest is meant to go.
 
 ## Troubleshooting
 

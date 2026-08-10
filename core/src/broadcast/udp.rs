@@ -22,9 +22,13 @@
 
 use super::Sink;
 use crate::overlay::frame::{DEBRIEF_LAPS, DEBRIEF_LINES, MESSAGE_SLOTS, OverlayFrame};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
+
+/// What every datagram starts with, so a receiver on a shared port can tell
+/// ours from somebody else's without parsing further.
+pub const MAGIC: &str = "acpe";
 
 /// Schema version, carried in every message.
 ///
@@ -41,43 +45,43 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// that the debrief is the part that grows.
 const SAFE_DATAGRAM_BYTES: usize = 8192;
 
-#[derive(Serialize)]
-struct Corner {
-    pressure_psi: f32,
-    temp_c: f32,
-    temp_inner_c: f32,
-    temp_outer_c: f32,
-    wear_percent: f32,
-    brake_temp_c: f32,
-    laps_remaining: f32,
+#[derive(Serialize, Deserialize)]
+pub struct Corner {
+    pub pressure_psi: f32,
+    pub temp_c: f32,
+    pub temp_inner_c: f32,
+    pub temp_outer_c: f32,
+    pub wear_percent: f32,
+    pub brake_temp_c: f32,
+    pub laps_remaining: f32,
 }
 
-#[derive(Serialize)]
-struct Advice {
-    severity: u32,
-    text: String,
+#[derive(Serialize, Deserialize)]
+pub struct Advice {
+    pub severity: u32,
+    pub text: String,
 }
 
-#[derive(Serialize)]
-struct DebriefLapOut {
-    lap_number: u32,
-    lap_time_ms: u32,
-    sectors_ms: Vec<u32>,
-    lines: Vec<Advice>,
+#[derive(Serialize, Deserialize)]
+pub struct DebriefLapOut {
+    pub lap_number: u32,
+    pub lap_time_ms: u32,
+    pub sectors_ms: Vec<u32>,
+    pub lines: Vec<Advice>,
 }
 
 /// One published message. Everything a front end needs to draw a full panel.
-#[derive(Serialize)]
-struct Message<'a> {
+#[derive(Serialize, Deserialize)]
+pub struct Message {
     /// Always `"acpe"`, so a receiver on a shared port can tell our datagrams
     /// from somebody else's without parsing further.
-    magic: &'static str,
-    schema: u32,
+    pub magic: String,
+    pub schema: u32,
     /// The application's release, so a receiver can say "that driver is on an
     /// older build" rather than mis-drawing a field it does not have.
-    app_version: String,
+    pub app_version: String,
     /// Which simulator produced this.
-    game: &'a str,
+    pub game: String,
     /// Who is driving. Empty when the sender did not set one.
     ///
     /// The reason this is here rather than assumed: a receiver watching a
@@ -86,32 +90,32 @@ struct Message<'a> {
     /// *whose* numbers are on their screen. A panel drawing someone else's lap
     /// count with no name on it produces a bug report about telemetry that does
     /// not match the game.
-    driver: &'a str,
+    pub driver: String,
     /// Monotonic, from the frame. A receiver can drop what arrives out of order.
-    sequence: u32,
+    pub sequence: u32,
 
-    speed_kmh: f32,
-    rpm: i32,
-    max_rpm: i32,
-    gear: i32,
-    fuel_litres: f32,
-    fuel_laps_remaining: f32,
-    fuel_per_lap: f32,
-    delta_seconds: f32,
-    position: i32,
-    lap_count: i32,
-    last_lap_ms: i32,
-    best_lap_ms: i32,
-    current_lap_ms: i32,
-    stint_laps: u32,
-    air_temp_c: f32,
-    road_temp_c: f32,
-    surface_grip: f32,
-    flags: u32,
+    pub speed_kmh: f32,
+    pub rpm: i32,
+    pub max_rpm: i32,
+    pub gear: i32,
+    pub fuel_litres: f32,
+    pub fuel_laps_remaining: f32,
+    pub fuel_per_lap: f32,
+    pub delta_seconds: f32,
+    pub position: i32,
+    pub lap_count: i32,
+    pub last_lap_ms: i32,
+    pub best_lap_ms: i32,
+    pub current_lap_ms: i32,
+    pub stint_laps: u32,
+    pub air_temp_c: f32,
+    pub road_temp_c: f32,
+    pub surface_grip: f32,
+    pub flags: u32,
 
-    corners: Vec<Corner>,
-    advice: Vec<Advice>,
-    debrief: Vec<DebriefLapOut>,
+    pub corners: Vec<Corner>,
+    pub advice: Vec<Advice>,
+    pub debrief: Vec<DebriefLapOut>,
 }
 
 /// Read a NUL-padded fixed byte array as a string.
@@ -123,7 +127,7 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-fn message<'a>(frame: &OverlayFrame, game: &'a str, driver: &'a str) -> Message<'a> {
+pub(crate) fn message(frame: &OverlayFrame, game: &str, driver: &str) -> Message {
     let corners = (0..4)
         .map(|i| Corner {
             pressure_psi: frame.tyre_pressure_psi[i],
@@ -168,11 +172,11 @@ fn message<'a>(frame: &OverlayFrame, game: &'a str, driver: &'a str) -> Message<
         .collect();
 
     Message {
-        magic: "acpe",
+        magic: MAGIC.to_string(),
         schema: SCHEMA_VERSION,
         app_version: text(&frame.app_version),
-        game,
-        driver,
+        game: game.to_string(),
+        driver: driver.to_string(),
         sequence: frame.sequence,
         speed_kmh: frame.speed_kmh,
         rpm: frame.rpm,

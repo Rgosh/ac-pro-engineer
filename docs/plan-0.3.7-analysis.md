@@ -8,7 +8,7 @@ the reason is in its own section.
 |---|---|---|
 | 1 | Corner-by-corner analysis | built — `core/src/corners.rs` |
 | 2 | Cause → effect | built — `Chain` on `Recommendation`, one producer so far |
-| 3 | Setup ↔ telemetry | built — `core/src/setup_history.rs` |
+| 3 | Setup ↔ telemetry | **cut** — blocked on identifying the setup, see below |
 | 4 | Automatic lap decomposition | built — Analysis → CORNERS, `F` filters |
 | 5 | Driver vs car | built — `core/src/driver_vs_car.rs` |
 | 6 | Reference laps | local half built; remote deferred, see below |
@@ -248,9 +248,23 @@ that was fine, because it judged on a single frame.
    it. That is the remaining work on this item, and it is a rule at a time
    rather than a redesign.
 
-6. **Setup history** — done, and the caution in §3 turned out to be the whole
-   design rather than a footnote. It never claims a cause: it reports what
-   changed, what happened after, and every confounder beside it.
+6. **Setup history** — written, tested, and **cut before release**. The
+   comparison was fine; its input was not.
+
+   It rests on knowing which setup is loaded, and nothing publishes that. AC's
+   shared memory carries fuel, brake bias, tyre pressures and camber, so the
+   setup is *guessed* by matching those against saved `.ini` files. Two setups
+   differing only in a roll bar score identically — which is exactly the change
+   the feature existed to measure — and a setup edited in the garage and never
+   saved has no file to match at all. Worse than the misses: fuel burns off
+   during a stint, so a "quali" file with a lower fuel figure starts matching
+   halfway through a run and invents a setup change that never happened.
+
+   A feature that misses the real thing and occasionally reports a false one is
+   worse than no feature, and this project has shipped enough confidently wrong
+   verdicts. It comes back when the setup can be identified rather than guessed
+   — which probably means reading the setup file AC loaded rather than matching
+   telemetry against a folder of candidates.
 
 7. **Driver vs car** — done, over a stint, and it **refuses below four laps**.
 

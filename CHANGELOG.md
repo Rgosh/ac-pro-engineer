@@ -36,6 +36,28 @@ how sure it is.
   to know whether it worked*. The camber rule fills it in; the rest still carry
   the old score and are a rule at a time.
 
+### 🔌 For anyone building on it
+
+- **The other end of the UDP feed.** Set `overlay.receive_from` and this shows
+  another machine's telemetry and *their* engineer's advice in your own panel.
+  One network only — two houses behind two routers is NAT, which needs a relay
+  that is not built. No discovery and no championship mode: you type an address.
+- **A frame knows when it is not yours.** A new flag, which costs no frame
+  version, so a lap counter about a car you are not sitting in cannot be
+  mistaken for your own telemetry gone wrong.
+
+### 🗑 Removed
+
+- **Attributing a change to a setup**, which was written and then cut before
+  release. It rests on identifying the loaded setup, and Assetto Corsa publishes
+  fuel, brake bias, pressures and camber and nothing else — so two setups
+  differing only in a roll bar are indistinguishable, which is exactly the
+  change the feature existed to measure. Worse, fuel burning off mid-stint could
+  make a *different* saved setup start matching and invent a change that never
+  happened. A feature that misses the real thing and occasionally reports a
+  false one is worse than no feature. It comes back when the setup can be
+  identified rather than guessed.
+
 ### 🐞 Fixed
 
 - **The screenshot mock filled `distance` with metres where AC publishes a

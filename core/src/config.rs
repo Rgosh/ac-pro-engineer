@@ -219,6 +219,18 @@ pub struct OverlayConfig {
     /// player name is not known then.
     #[serde(default)]
     pub broadcast_name: String,
+    /// Listen here for frames another machine is broadcasting, as `ip:port`.
+    /// Empty is off.
+    ///
+    /// The other end of `broadcast_to`: a friend is driving, sets that, and
+    /// this shows their telemetry and their engineer's advice in your own
+    /// panel. What arrives is the finished frame, so the sentences are in the
+    /// sender's language and units — see `broadcast::receiver`.
+    ///
+    /// `0.0.0.0:9001` accepts from anywhere on the network; `127.0.0.1:9001`
+    /// only from this machine, which is what a second front end wants.
+    #[serde(default)]
+    pub receive_from: String,
 }
 
 fn default_broadcast_hz() -> f32 {
@@ -240,6 +252,7 @@ impl Default for OverlayConfig {
             broadcast_to: String::new(),
             broadcast_hz: default_broadcast_hz(),
             broadcast_name: String::new(),
+            receive_from: String::new(),
         }
     }
 }
