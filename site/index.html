@@ -157,7 +157,8 @@
   @keyframes blink{50%{opacity:0}}
   @media (prefers-reduced-motion:reduce){.cursor{animation:none}}
 
-  .cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px}
+  .cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 10px}
+  .fineprint{color:var(--dim);font-size:13px;margin:0;max-width:62ch}
   .btn{
     border:1px solid var(--highlight);color:var(--highlight);
     padding:10px 18px;border-radius:5px;font-size:14px;
@@ -245,6 +246,7 @@
     color:var(--dim);margin:14px 0 18px;font-size:14px;
   }
   .note b{color:var(--warn)}
+  td.na{color:var(--dim)}
 
   footer{
     border-top:1px solid var(--border);margin-top:50px;padding:26px 0 40px;
@@ -299,6 +301,7 @@
       <a href="#top" class="on">OVERVIEW</a>
       <a href="#terminal">SCREENS</a>
       <a href="#corners">CORNERS</a>
+      <a href="#says">OUTPUT</a>
       <a href="#share">SHARE</a>
       <a href="#features">FEATURES</a>
       <a href="#compare">COMPARE</a>
@@ -318,31 +321,29 @@
 
       <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
 
-      <div class="demo" aria-label="Example of the engineer's output">
-        <div class="demo-bar"><span>engineer — live</span></div>
-        <div class="demo-body"><span class="c">$</span> ac_pro_engineer
-<span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span>
-  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts
-<span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span>
-  <span class="c">&gt;&gt;</span> Less negative camber at the rear
-  <span class="c">confirm:</span> the I/M/O spread next run out
-<span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving
-  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span>
-<span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex<span class="cursor"></span></div>
-      </div>
+      <p class="sub">
+        Most telemetry tools hand you graphs and leave the interpreting to you. This one
+        does the interpreting: it reads Assetto Corsa's shared memory sixty times a
+        second, works out what your tyres, brakes, fuel and driving are actually doing,
+        and says it in sentences — <b>"fronts over 28.4 psi, take 0.3 out"</b> rather than
+        a line on a chart.
+      </p>
 
       <p class="sub">
-        Free and open source. It reads Assetto Corsa's shared memory directly, analyses
-        tyre temperatures and pressures, brake heat, fuel and how you are driving, and
-        says something useful about it — in a fast terminal on your second screen
-        <b>and</b> in the game itself through Custom Shaders Patch.
+        It runs in a fast terminal on your second screen <b>and</b> inside the game as a
+        Custom Shaders Patch panel. Free, open source, no account, and nothing about you
+        leaves your machine.
       </p>
 
       <div class="cta">
-        <a class="btn" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Download</a>
-        <a class="btn ghost" href="#install">Install guide</a>
-        <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer">GitHub</a>
+        <a class="btn" href="https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/">Download on OverTake</a>
+        <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Latest release on GitHub</a>
+        <a class="btn ghost" href="#install">How to install</a>
       </div>
+      <p class="fineprint">
+        OverTake is the easy one — an ordinary download page. GitHub carries the same
+        builds plus the source, and is where Linux users get the Proton bridge.
+      </p>
     </div>
   </div>
 
@@ -409,6 +410,45 @@
       <b>No account, no cloud, no subscription.</b> Nothing leaves your machine unless you
       set an address yourself.
     </p>
+  </section>
+
+
+  <section id="says">
+    <h2>WHAT IT ACTUALLY SAYS</h2>
+    <p class="lede">
+      Not a mock-up — these are the forms the engineer produces. The marker in front of
+      each line is how sure it is, and the third one is it declining to guess.
+    </p>
+      <div class="demo" aria-label="Example of the engineer's output">
+        <div class="demo-bar"><span>engineer — live</span></div>
+        <div class="demo-body"><span class="c">$</span> ac_pro_engineer
+<span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span>
+  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts
+<span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span>
+  <span class="c">&gt;&gt;</span> Less negative camber at the rear
+  <span class="c">confirm:</span> the I/M/O spread next run out
+<span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving
+  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span>
+<span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex</div>
+      </div>
+
+      <p class="sub">
+        Free and open source. It reads Assetto Corsa's shared memory directly, analyses
+        tyre temperatures and pressures, brake heat, fuel and how you are driving, and
+        says something useful about it — in a fast terminal on your second screen
+        <b>and</b> in the game itself through Custom Shaders Patch.
+      </p>
+
+      <div class="cta">
+        <a class="btn" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Download</a>
+        <a class="btn ghost" href="#install">Install guide</a>
+        <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer">GitHub</a>
+      </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card"><h3><span class="k">●</span> High</h3><p>Several observations agreeing closely — four corners saying the same thing, not one odd frame.</p></div>
+      <div class="card"><h3><span class="k" style="color:var(--warn)">◐</span> Medium</h3><p>Enough to raise. Not enough to bet a setup change on.</p></div>
+      <div class="card"><h3><span class="k" style="color:var(--bad)">○</span> Low</h3><p>It is watching and has not decided. Being told that is worth more than a confident guess.</p></div>
+    </div>
   </section>
 
   <section id="terminal">
@@ -673,47 +713,117 @@
   </section>
 
   <section id="compare">
-    <h2>HOW IT COMPARES</h2>
+    <h2>AGAINST WHAT ELSE IS OUT THERE</h2>
     <p class="lede">
-      Sim racing telemetry tools fall into three rough groups. This is where this one
-      sits — by category rather than by brand, because what any given product does
-      changes with its version and we are not going to print guesses about somebody
-      else's software.
+      Named tools, checked against their own sites and current write-ups in
+      <b>August 2026</b>. Where a cell says <i>not stated</i>, that is what it means —
+      we would rather leave a gap than print something about another project that
+      turns out to be wrong. Check anything here before you rely on it.
     </p>
     <div class="scroll-x">
       <table>
         <thead>
           <tr>
-            <th>Capability</th>
+            <th></th>
             <th style="color:var(--highlight)">Pro Engineer</th>
-            <th>Post-session analysers</th>
-            <th>Dash &amp; overlay apps</th>
-            <th>Paid suites</th>
+            <th>Track Titan</th>
+            <th>Delta</th>
+            <th>RaceLab</th>
+            <th>SimHub</th>
+            <th>Crew Chief</th>
+            <th>MoTeC i2</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td>Says what to <b>change</b>, not only what happened</td><td style="color:var(--good)">yes, in sentences</td><td>graphs, you interpret</td><td>rarely</td><td>varies</td></tr>
-          <tr><td>Live, while you drive</td><td style="color:var(--good)">yes</td><td style="color:var(--dim)">no, by definition</td><td style="color:var(--good)">yes</td><td>varies</td></tr>
-          <tr><td>In-game overlay <i>and</i> a desktop screen</td><td style="color:var(--good)">both</td><td>desktop only</td><td>in-game only</td><td>varies</td></tr>
-          <tr><td>Post-lap debrief in the car</td><td style="color:var(--good)">yes</td><td style="color:var(--dim)">no</td><td>rarely</td><td>varies</td></tr>
-          <tr><td>Corner-by-corner where the time went</td><td style="color:var(--good)">yes, corners found in the trace</td><td>usually, with track data</td><td style="color:var(--dim)">no</td><td>varies</td></tr>
-          <tr><td>Says how sure it is</td><td style="color:var(--good)">yes, from evidence</td><td colspan="3" style="color:var(--dim)">not something we have seen elsewhere</td></tr>
-          <tr><td>Refuses to answer on too little data</td><td style="color:var(--good)">yes, explicitly</td><td colspan="3" style="color:var(--dim)">rare — most tools always answer</td></tr>
-          <tr><td>Cold pressure calculator</td><td style="color:var(--good)">built in</td><td style="color:var(--dim)">no</td><td>sometimes</td><td>varies</td></tr>
-          <tr><td>Force feedback clipping</td><td style="color:var(--good)">yes</td><td style="color:var(--dim)">no</td><td>sometimes</td><td>varies</td></tr>
-          <tr><td>Linux and Steam Deck</td><td style="color:var(--good)">yes, native</td><td>varies</td><td>varies</td><td>rarely</td></tr>
-          <tr><td>Free and open source</td><td style="color:var(--good)">MIT</td><td>varies</td><td>varies</td><td style="color:var(--dim)">no</td></tr>
-          <tr><td>Account or cloud required</td><td style="color:var(--good)">never</td><td>varies</td><td>varies</td><td>often</td></tr>
-          <tr><td>Cost on the desktop side</td><td style="color:var(--good)">~0.1&nbsp;% of a core, no GPU</td><td>n/a</td><td>GPU, on the render thread</td><td>varies</td></tr>
-          <tr><td>Open data format out</td><td style="color:var(--good)">JSON over UDP + MoTeC CSV</td><td>usually CSV</td><td>rarely</td><td>varies</td></tr>
-          <tr><td>Reads the tyre's <i>edges</i>, not just the average</td><td style="color:var(--good)">inner / middle / outer</td><td>usually</td><td>rarely</td><td>varies</td></tr>
+          <tr>
+            <td>Cost</td>
+            <td style="color:var(--good)">free, MIT</td>
+            <td>free tier; $7.99–$19.99/mo</td>
+            <td>subscription</td>
+            <td>free tier; ~€3.90/mo</td>
+            <td style="color:var(--good)">free; paid licence</td>
+            <td style="color:var(--good)">free</td>
+            <td>paid</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td style="color:var(--good)">open</td>
+            <td>closed</td><td>closed</td><td>closed</td><td>closed</td>
+            <td class="na">not stated</td><td>closed</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td style="color:var(--good)">no</td>
+            <td>yes</td>
+            <td class="na">not stated</td><td class="na">not stated</td>
+            <td style="color:var(--good)">no</td><td style="color:var(--good)">no</td><td style="color:var(--good)">no</td>
+          </tr>
+          <tr>
+            <td>Your laps uploaded</td>
+            <td style="color:var(--good)">never</td>
+            <td>yes, recorded to the cloud</td>
+            <td class="na">not stated</td><td class="na">not stated</td>
+            <td style="color:var(--good)">no</td><td style="color:var(--good)">no</td><td style="color:var(--good)">no</td>
+          </tr>
+          <tr>
+            <td>Assetto Corsa</td>
+            <td style="color:var(--good)">yes</td>
+            <td style="color:var(--good)">yes</td>
+            <td style="color:var(--good)">yes</td>
+            <td class="na">not stated</td>
+            <td style="color:var(--good)">yes</td>
+            <td class="na">no — iRacing, ACC, rF2, AMS2</td>
+            <td class="na">not stated</td>
+          </tr>
+          <tr>
+            <td>Tells you what to change</td>
+            <td style="color:var(--good)">yes, in sentences</td>
+            <td style="color:var(--good)">yes, AI coaching</td>
+            <td style="color:var(--good)">yes, AI per lap</td>
+            <td class="na">overlays</td>
+            <td class="na">dashboards</td>
+            <td style="color:var(--good)">yes, spoken</td>
+            <td class="na">graphs, you interpret</td>
+          </tr>
+          <tr>
+            <td>In-game overlay</td>
+            <td style="color:var(--good)">yes, CSP panel</td>
+            <td class="na">not stated</td>
+            <td class="na">not stated</td>
+            <td style="color:var(--good)">yes</td>
+            <td style="color:var(--good)">yes</td>
+            <td class="na">audio only</td>
+            <td class="na">no</td>
+          </tr>
+          <tr>
+            <td>Linux / Steam Deck</td>
+            <td style="color:var(--good)">yes, native</td>
+            <td class="na">not stated</td><td class="na">not stated</td>
+            <td class="na">not stated</td><td class="na">not stated</td>
+            <td class="na">not stated</td><td class="na">not stated</td>
+          </tr>
+          <tr>
+            <td>Says how sure it is</td>
+            <td style="color:var(--good)">yes, from evidence</td>
+            <td colspan="6" class="na">no equivalent found on any of them</td>
+          </tr>
+          <tr>
+            <td>Refuses when data is thin</td>
+            <td style="color:var(--good)">yes, explicitly</td>
+            <td colspan="6" class="na">no equivalent found on any of them</td>
+          </tr>
         </tbody>
       </table>
     </div>
+
     <p class="note">
-      <b>Honest about the columns.</b> "varies" means exactly that — it depends on the
-      product and its version, and we would rather leave a cell vague than print
-      something about another project that is out of date or wrong.
+      <b>Where this one wins, and where it does not.</b> It is the only one here that is
+      free, open, accountless and native on Linux, and the only one that rates its own
+      confidence or declines to answer. It is also the only one that supports exactly one
+      simulator — the others cover four to seven — and it has no AI coach, no pro
+      reference laps and no community of a quarter of a million drivers behind it. If
+      what you want is somebody else's fast lap to chase, one of the subscriptions is a
+      better buy than this is.
     </p>
 
     <details class="fold stacked">
