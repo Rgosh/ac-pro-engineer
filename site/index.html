@@ -42,6 +42,8 @@
   "isAccessibleForFree":true,
   "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
   "url":"https://proengineer.app/",
+  "image":"https://proengineer.app/icon-512.png",
+  "screenshot":"https://proengineer.app/og.png",
   "downloadUrl":"https://github.com/Rgosh/ac-pro-engineer/releases",
   "description":"A free, open-source sim racing telemetry application and virtual race engineer. Reads the simulator's shared memory, analyses tyre temperatures and pressures, brake heat, fuel and driving style, and gives plain-language engineering advice in a terminal dashboard and an in-game overlay.",
   "featureList":[
@@ -145,6 +147,25 @@
   ]
 }
 </script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"WebSite",
+  "name":"Pro Engineer",
+  "url":"https://proengineer.app/",
+  "publisher":{
+    "@type":"Organization",
+    "name":"Pro Engineer",
+    "url":"https://proengineer.app/",
+    "logo":{
+      "@type":"ImageObject",
+      "url":"https://proengineer.app/icon-512.png",
+      "width":512,
+      "height":512
+    }
+  }
+}
+</script>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -209,6 +230,11 @@
     flex:1;text-align:center;color:var(--dim);font-size:12.5px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
+  /* The same mark as the favicon, inline so it costs no request and stays
+     sharp at any size. Decorative here — the page says its name in words. */
+  .mark{width:15px;height:15px;vertical-align:-3px;margin-right:7px;flex:none}
+  .mark.big{width:34px;height:34px;vertical-align:0;margin:0}
+  .sign{display:flex;gap:12px;align-items:flex-start}
   .term-body{padding:26px 22px}
 
   /* ── the app's own tab strip ───────────────────────────────────── */
@@ -715,7 +741,7 @@
   <div class="term-head">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="term-title">pro_engineer — assetto corsa telemetry &amp; race engineering</span>
+      <span class="term-title"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="113" fill="#0a0a0f"/><path d="M118 118 L262 256 L118 394" fill="none" stroke="#00b4ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="307" y="338" width="87" height="44" rx="14" fill="#ffa500"/></svg>pro_engineer — assetto corsa telemetry &amp; race engineering</span>
     </div>
   </div>
 
@@ -1384,9 +1410,12 @@ cargo run --release</pre>
 
   <footer>
     <div class="row">
-      <div>
-        <span class="prompt">$</span> ac_pro_engineer --version<br>
-        <span style="color:var(--dim)">Free software, MIT licensed. Built in Rust.</span>
+      <div class="sign">
+        <svg class="mark big" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="113" fill="#0a0a0f"/><path d="M118 118 L262 256 L118 394" fill="none" stroke="#00b4ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="307" y="338" width="87" height="44" rx="14" fill="#ffa500"/></svg>
+        <div>
+          <span class="prompt">$</span> ac_pro_engineer --version<br>
+          <span style="color:var(--dim)">Free software, MIT licensed. Built in Rust.</span>
+        </div>
       </div>
       <div>
         <a href="https://github.com/Rgosh/ac-pro-engineer">Source</a> ·
