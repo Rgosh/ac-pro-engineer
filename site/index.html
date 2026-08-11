@@ -95,12 +95,16 @@
   /* ── window chrome ─────────────────────────────────────────────── */
   .term{
     border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);
-    overflow:hidden;margin:0 0 40px;
+    margin:0 0 40px;
   }
+  /* Rounded on the children rather than clipped by the parent: `overflow:hidden`
+     here would stop the tab strip inside from ever sticking. */
   .term-bar{
     display:flex;align-items:center;gap:8px;padding:9px 14px;
     background:#15151f;border-bottom:1px solid var(--border);
+    border-radius:7px 7px 0 0;
   }
+  .term-body{border-radius:0 0 7px 7px}
   .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .dot.r{background:var(--bad)}.dot.y{background:var(--warn)}.dot.g{background:var(--good)}
   .term-title{
@@ -114,6 +118,23 @@
     display:flex;gap:2px;padding:0 14px;background:#0d0d15;
     border-bottom:1px solid var(--border);
     overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    /* Follows you down the page, the way a tab bar in the application does. */
+    position:sticky;top:0;z-index:20;
+  }
+  /* How far down the page you are, drawn as the application would draw it: a
+     bar that fills. Driven by the scroll position itself rather than by a
+     script, so it costs one compositor property and no main-thread work. */
+  nav.tabs::after{
+    content:"";position:absolute;left:0;bottom:-1px;height:2px;width:100%;
+    background:linear-gradient(90deg,var(--highlight),var(--accent));
+    transform:scaleX(0);transform-origin:0 50%;
+  }
+  @supports (animation-timeline: scroll()) {
+    nav.tabs::after{
+      animation:fill linear both;
+      animation-timeline:scroll(root block);
+    }
+    @keyframes fill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
   }
   nav.tabs::-webkit-scrollbar{display:none}
   nav.tabs a{
@@ -156,6 +177,43 @@
   }
   @keyframes blink{50%{opacity:0}}
 
+  /* ── the phosphor look ─────────────────────────────────────────────
+     A cheap, static glow on the two accent colours. Text-shadow does not
+     animate here, so it costs one paint and nothing per frame. */
+  .h1,.stat b,.demo .hi,.logo{text-shadow:0 0 18px rgba(0,180,255,.28)}
+  h2{text-shadow:0 0 16px rgba(255,165,0,.22)}
+  .btn{box-shadow:0 0 0 0 rgba(0,180,255,0)}
+  .btn:hover{box-shadow:0 0 22px rgba(0,180,255,.25)}
+
+  /* A refresh line crossing the screen, once every twelve seconds. Slow and
+     faint enough to read as a screen rather than as a costume, and it is one
+     transformed element over a fixed layer — no repaint of anything under it. */
+  .sweep{
+    position:fixed;inset:0;pointer-events:none;z-index:8;overflow:hidden;
+  }
+  .sweep::before{
+    content:"";position:absolute;left:0;right:0;height:38vh;top:-40vh;
+    background:linear-gradient(180deg,transparent,rgba(0,180,255,.045),transparent);
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .sweep::before{animation:sweep 12s linear infinite}
+  }
+  @keyframes sweep{
+    from{transform:translateY(0)}
+    to{transform:translateY(180vh)}
+  }
+
+  /* The prompt types itself, once, when the section is reached. `steps()` on a
+     width is the oldest trick there is and still the cheapest. */
+  .typed{
+    display:inline-block;overflow:hidden;white-space:nowrap;
+    vertical-align:bottom;width:15ch;
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .typed{animation:type .9s steps(15,end) both}
+  }
+  @keyframes type{from{width:0}to{width:15ch}}
+
   /* ── movement ──────────────────────────────────────────────────────
      Only opacity and transform, so every frame is on the compositor and
      nothing here can cause a relayout. Everything is off for anyone who
@@ -195,6 +253,12 @@
 
   @media (prefers-reduced-motion:reduce){
     .cursor{animation:none}
+    /* Named rather than left to the blanket rule below: an infinite animation
+       with a 0.01 ms duration is still an animation, and a sweep crossing the
+       screen a hundred times a second is worse than the one it replaced. */
+    .sweep{display:none}
+    .typed{width:auto;animation:none}
+    nav.tabs::after{animation:none;transform:scaleX(1)}
     *{transition-duration:.01ms !important;animation-duration:.01ms !important}
     html{scroll-behavior:auto}
   }
@@ -350,6 +414,9 @@
     .card{padding:14px 15px}
     /* Comfortably past the 44 px a thumb wants. */
     nav.tabs a{padding:13px 12px}
+    /* A full-height sweep on a phone is a lot of compositing for an effect
+       nobody is looking for on a small screen. */
+    .sweep{display:none}
     .fineprint{font-size:12.5px}
     figcaption{font-size:12.5px}
     .note{padding-left:12px;font-size:13.5px}
@@ -366,6 +433,7 @@
 </style>
 </head>
 <body>
+<div class="sweep" aria-hidden="true"></div>
 
 <div class="wrap">
   <div class="term">
@@ -498,7 +566,7 @@
     </p>
       <div class="demo" aria-label="Example of the engineer's output">
         <div class="demo-bar"><span>engineer — live</span></div>
-        <div class="demo-body"><span class="c">$</span> ac_pro_engineer
+        <div class="demo-body"><span class="c">$</span> <span class="typed">ac_pro_engineer</span>
 <span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span>
   <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts
 <span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span>
