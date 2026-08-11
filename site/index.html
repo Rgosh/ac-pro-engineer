@@ -1399,19 +1399,29 @@ cargo run --release</pre>
 </div>
 
 <script>
-// The one script on this page, and it earns its place: which tab is current is
-// a fact about where the reader has scrolled to, and CSS has no way to know
-// that. `:target` was standing in for it and could only ever be right until
-// you scrolled — a target stays set until the next click, so a tab kept its
-// highlight long after you had left the section.
-//
-// An IntersectionObserver rather than a scroll handler: the browser reports
-// the crossings itself, so nothing runs on the scroll thread and nothing here
-// reads a layout property.
+// The one script here, and it earns its place: which tab is current is a fact
+// about where the reader has scrolled to, and CSS cannot know that. `:target`
+// was standing in for it and stayed set until the next click, so a tab kept
+// its highlight long after you had left the section.
 (function () {
   var links = Array.prototype.slice.call(
     document.querySelectorAll('nav.tabs a[href^="#"]'));
-  if (!links.length || !('IntersectionObserver' in window)) return;
+  if (!links.length) return;
+
+  function light(id) {
+    links.forEach(function (a) { a.classList.toggle('on', a.hash === '#' + id); });
+  }
+
+  // A click lights its own tab at once. The observer below is the right tool
+  // for free scrolling but it reports on the browser's schedule, so leaving the
+  // click to it means the strip lags behind — or, mid smooth-scroll, briefly
+  // names a section being travelled through rather than the one asked for.
+  links.forEach(function (a) {
+    a.addEventListener('click', function () { light(a.hash.slice(1)); });
+  });
+  if (location.hash) light(location.hash.slice(1));
+
+  if (!('IntersectionObserver' in window)) return;
 
   var targets = [];
   links.forEach(function (a) {
@@ -1424,6 +1434,9 @@ cargo run --release</pre>
               .getPropertyValue('--bar'), 10) || 46;
   var visible = [];
 
+  // A band just under the sticky strip. Whichever observed section is highest
+  // inside it is the one being read; when none is — the middle of a long
+  // section — the last answer stands.
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       var i = visible.indexOf(e.target);
@@ -1431,12 +1444,10 @@ cargo run --release</pre>
       else if (i >= 0) visible.splice(i, 1);
     });
     if (!visible.length) return;
-    // Document order, so the topmost section inside the band wins.
     visible.sort(function (a, b) {
       return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
     });
-    var id = visible[0].id;
-    links.forEach(function (a) { a.classList.toggle('on', a.hash === '#' + id); });
+    light(visible[0].id);
   }, { rootMargin: -(bar + 8) + 'px 0px -70% 0px' });
 
   targets.forEach(function (el) { io.observe(el); });
