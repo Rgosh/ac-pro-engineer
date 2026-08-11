@@ -167,6 +167,8 @@
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  /* Room for the strip, or every nav link lands with its heading underneath it. */
+  section,#top{scroll-margin-top:60px}
   body{
     margin:0;background:var(--bg);color:var(--text);
     font-family:var(--mono);font-size:15px;line-height:1.65;
@@ -182,18 +184,22 @@
   .wrap{max-width:1100px;margin:0 auto;padding:0 var(--pad)}
 
   /* ── window chrome ─────────────────────────────────────────────── */
-  .term{
-    border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);
-    margin:0 0 40px;
+  /* The window is drawn in two pieces with the tab strip between them, so the
+     three read as one frame while the strip is a child of .wrap — whose height
+     is the whole page, which is how far it has to stick. Inside .term it was
+     bounded by the hero and let go the moment that scrolled past. */
+  .term-head{
+    border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;
+    background:var(--bg-raised);
   }
-  /* Rounded on the children rather than clipped by the parent: `overflow:hidden`
-     here would stop the tab strip inside from ever sticking. */
   .term-bar{
     display:flex;align-items:center;gap:8px;padding:9px 14px;
-    background:#15151f;border-bottom:1px solid var(--border);
-    border-radius:7px 7px 0 0;
+    background:#15151f;border-radius:7px 7px 0 0;
   }
-  .term-body{border-radius:0 0 7px 7px}
+  .term-body{
+    border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;
+    background:var(--bg-raised);margin:0 0 40px;
+  }
   .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .dot.r{background:var(--bad)}.dot.y{background:var(--warn)}.dot.g{background:var(--good)}
   .term-title{
@@ -209,6 +215,9 @@
     overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
     /* Follows you down the page, the way a tab bar in the application does. */
     position:sticky;top:0;z-index:20;
+    border-left:1px solid var(--border);border-right:1px solid var(--border);
+    /* Solid, because once it detaches it has the page scrolling under it. */
+    box-shadow:0 10px 24px -18px #000;
   }
   /* How far down the page you are, drawn as the application would draw it: a
      bar that fills. Driven by the scroll position itself rather than by a
@@ -317,6 +326,65 @@
   .stat{transition:background-color .18s ease}
   .stat:hover{background:#15151f}
 
+  /* The output prints itself, a line at a time, as the block is scrolled into
+     view. Each line has its own slice of the same scroll range, so it is nine
+     staggered animations and still no script. */
+  .demo-body .ln{display:block;min-height:1.75em}
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      .demo-body .ln{
+        opacity:0;
+        animation:printline linear both;
+        animation-timeline:view();
+      }
+      .demo-body .ln:nth-child(1){animation-range:entry 6% entry 16%}
+      .demo-body .ln:nth-child(2){animation-range:entry 12% entry 22%}
+      .demo-body .ln:nth-child(3){animation-range:entry 17% entry 27%}
+      .demo-body .ln:nth-child(4){animation-range:entry 22% entry 32%}
+      .demo-body .ln:nth-child(5){animation-range:entry 27% entry 37%}
+      .demo-body .ln:nth-child(6){animation-range:entry 32% entry 42%}
+      .demo-body .ln:nth-child(7){animation-range:entry 37% entry 47%}
+      .demo-body .ln:nth-child(8){animation-range:entry 42% entry 52%}
+      .demo-body .ln:nth-child(9){animation-range:entry 47% entry 57%}
+      @keyframes printline{
+        from{opacity:0;transform:translateX(-6px)}
+        to{opacity:1;transform:none}
+      }
+    }
+  }
+
+  /* A fold opens rather than snaps. Time-based, so it fires on the click that
+     caused it and works in every browser. */
+  details.fold[open] > .fold-body{animation:foldin .2s ease both}
+  @keyframes foldin{
+    from{opacity:0;transform:translateY(-4px)}
+    to{opacity:1;transform:none}
+  }
+
+  /* The rule beside a heading draws itself in. */
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      h2::after{
+        transform-origin:0 50%;
+        animation:draw linear both;
+        animation-timeline:view();
+        animation-range:entry 0% entry 40%;
+      }
+      @keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+    }
+  }
+
+  /* Micro-interactions: a link's underline arrives from the left, and anything
+     clickable gives way a little under the press. */
+  .lede a,footer a,.note a{
+    text-decoration:none;background-image:linear-gradient(var(--highlight),var(--highlight));
+    background-size:0 1px;background-position:0 100%;background-repeat:no-repeat;
+    transition:background-size .2s ease;
+  }
+  .lede a:hover,footer a:hover,.note a:hover{background-size:100% 1px}
+  .btn:active,.card:active{transform:translateY(1px)}
+  nav.tabs a:active{opacity:.7}
+
   /* Sections arrive as they are scrolled to. Scroll-driven animation rather
      than a script: no JavaScript on this page at all, and where the browser
      does not support it every element simply stays as it already is. */
@@ -347,6 +415,8 @@
        screen a hundred times a second is worse than the one it replaced. */
     .sweep{display:none}
     .typed{width:auto;animation:none}
+    .demo-body .ln{opacity:1;animation:none}
+    h2::after{animation:none;transform:none}
     nav.tabs::after{animation:none;transform:scaleX(1)}
     *{transition-duration:.01ms !important;animation-duration:.01ms !important}
     html{scroll-behavior:auto}
@@ -525,26 +595,27 @@
 <div class="sweep" aria-hidden="true"></div>
 
 <div class="wrap">
-  <div class="term">
+  <div class="term-head">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
       <span class="term-title">pro_engineer — assetto corsa telemetry &amp; race engineering</span>
     </div>
+  </div>
 
-    <nav class="tabs">
-      <a href="#top" class="on">OVERVIEW</a>
-      <a href="#terminal">SCREENS</a>
-      <a href="#corners">CORNERS</a>
-      <a href="#says">OUTPUT</a>
-      <a href="#share">SHARE</a>
-      <a href="#features">FEATURES</a>
-      <a href="#compare">COMPARE</a>
-      <a href="#install">INSTALL</a>
-      <a href="#faq">FAQ</a>
-      <a href="https://github.com/Rgosh/ac-pro-engineer">SOURCE ↗</a>
-    </nav>
+  <nav class="tabs">
+    <a href="#top" class="on">OVERVIEW</a>
+    <a href="#terminal">SCREENS</a>
+    <a href="#corners">CORNERS</a>
+    <a href="#says">OUTPUT</a>
+    <a href="#share">SHARE</a>
+    <a href="#features">FEATURES</a>
+    <a href="#compare">COMPARE</a>
+    <a href="#install">INSTALL</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/Rgosh/ac-pro-engineer">SOURCE ↗</a>
+  </nav>
 
-    <div class="term-body" id="top">
+  <div class="term-body" id="top">
 <pre class="logo" aria-hidden="true">██████╗ ██████╗  ██████╗      ███████╗███╗   ██╗ ██████╗ ██╗███╗   ██╗███████╗███████╗██████╗
 ██╔══██╗██╔══██╗██╔═══██╗     ██╔════╝████╗  ██║██╔════╝ ██║████╗  ██║██╔════╝██╔════╝██╔══██╗
 ██████╔╝██████╔╝██║   ██║     █████╗  ██╔██╗ ██║██║  ███╗██║██╔██╗ ██║█████╗  █████╗  ██████╔╝
@@ -578,7 +649,6 @@
         OverTake is the easy one — an ordinary download page. GitHub carries the same
         builds plus the source, and is where Linux users get the Proton bridge.
       </p>
-    </div>
   </div>
 
   <section id="what" style="padding-top:0">
@@ -655,16 +725,15 @@
     </p>
       <div class="demo" aria-label="Example of the engineer's output">
         <div class="demo-bar"><span>engineer — live</span></div>
-        <div class="demo-body"><span class="c">$</span> <span class="typed">ac_pro_engineer</span>
-<span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span>
-  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts
-<span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span>
-  <span class="c">&gt;&gt;</span> Less negative camber at the rear
-  <span class="c">confirm:</span> the I/M/O spread next run out
-<span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving
-  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span>
-<span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex
-<span class="cursor"></span></div>
+        <div class="demo-body"><span class="ln"><span class="c">$</span> <span class="typed">ac_pro_engineer</span></span>
+<span class="ln"><span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span></span>
+<span class="ln">  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts</span>
+<span class="ln"><span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span></span>
+<span class="ln">  <span class="c">&gt;&gt;</span> Less negative camber at the rear</span>
+<span class="ln">  <span class="c">confirm:</span> the I/M/O spread next run out</span>
+<span class="ln"><span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving</span>
+<span class="ln">  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span></span>
+<span class="ln"><span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex<span class="cursor"></span></span></div>
       </div>
 
       <p class="sub">
