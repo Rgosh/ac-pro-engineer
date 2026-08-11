@@ -71,7 +71,7 @@ jobs:
           # Screenshots plus the icons and cards the head points at — a missing
           # favicon is a search result with a blank square next to it.
           refs=$(grep -oE '(src|href|content)="(/)?(screenshots/[^"]*|favicon\.ico|icon\.svg|icon-[0-9]+\.png|apple-touch-icon\.png|og\.png|site\.webmanifest)"' _site/index.html \
-                 | cut -d'"' -f2 | sed 's|^/||' | sort -u)
+                 | cut -d'"' -f2 | sed 's|^/||; s|?.*||' | sort -u)
           for src in $refs; do
             if [ ! -f "_site/$src" ]; then
               echo "::error::index.html references $src, which does not exist"

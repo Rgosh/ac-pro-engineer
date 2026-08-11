@@ -166,10 +166,16 @@
   }
 }
 </script>
-<link rel="icon" href="/favicon.ico" sizes="48x48">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/site.webmanifest">
+<!-- Versioned on purpose. While this domain was on Pages there was no
+     /favicon.ico to serve, so a browser that asked for one cached the 404 —
+     and a favicon cache is not cleared by a hard reload. A changed URL is the
+     only thing that reliably gets past it.
+     `sizes="any"` rather than 48x48: the file carries 16, 32 and 48, and
+     naming one of them invites the browser to scale that one to the others. -->
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
+<link rel="icon" href="/icon.svg?v=2" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+<link rel="manifest" href="/site.webmanifest?v=2">
 <style>
   :root{
     /* Straight out of the application's default theme — core/src/config.rs. */
