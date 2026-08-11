@@ -425,6 +425,42 @@
   .btn:active,.card:active{transform:translateY(1px)}
   nav.tabs a:active{opacity:.7}
 
+  /* Landing on a section from the tab strip should show you where you landed.
+     `:target` is the only thing that knows a jump happened, and it needs no
+     script: the section marks itself for a moment, and the tab that sent you
+     there stays lit for as long as you are in it. */
+  section{position:relative}
+  section::before{
+    content:"";position:absolute;left:calc(var(--pad) * -1 + 4px);
+    top:38px;bottom:8px;width:2px;background:var(--highlight);
+    opacity:0;border-radius:2px;
+  }
+  section:target::before{animation:mark 2.4s ease both}
+  @keyframes mark{
+    0%{opacity:0;transform:scaleY(0)}
+    12%{opacity:1;transform:scaleY(1)}
+    70%{opacity:1;transform:scaleY(1)}
+    100%{opacity:0;transform:scaleY(1)}
+  }
+  section:target > h2{animation:markh 2.4s ease both}
+  @keyframes markh{
+    0%,70%{color:var(--highlight)}
+    100%{color:var(--accent)}
+  }
+
+  /* The tab you arrived through, lit while you are there. */
+  body:has(#top:target) nav.tabs a[href="#top"],
+  body:has(#terminal:target) nav.tabs a[href="#terminal"],
+  body:has(#corners:target) nav.tabs a[href="#corners"],
+  body:has(#says:target) nav.tabs a[href="#says"],
+  body:has(#share:target) nav.tabs a[href="#share"],
+  body:has(#features:target) nav.tabs a[href="#features"],
+  body:has(#compare:target) nav.tabs a[href="#compare"],
+  body:has(#install:target) nav.tabs a[href="#install"],
+  body:has(#faq:target) nav.tabs a[href="#faq"]{
+    color:var(--highlight);border-bottom-color:var(--highlight);
+  }
+
   /* Sections arrive as they are scrolled to. Scroll-driven animation rather
      than a script: no JavaScript on this page at all, and where the browser
      does not support it every element simply stays as it already is. */
@@ -445,6 +481,38 @@
         from{opacity:0;transform:translateY(12px)}
         to{opacity:1;transform:none}
       }
+
+      /* A grid that arrives all at once is one event; the same cards a beat
+         apart read as a list being filled in. Each takes a slightly later
+         slice of the same scroll range. */
+      .grid .card:nth-child(1){animation-range:entry 2% entry 30%}
+      .grid .card:nth-child(2){animation-range:entry 6% entry 34%}
+      .grid .card:nth-child(3){animation-range:entry 10% entry 38%}
+      .grid .card:nth-child(4){animation-range:entry 14% entry 42%}
+      .grid .card:nth-child(5){animation-range:entry 18% entry 46%}
+      .grid .card:nth-child(6){animation-range:entry 22% entry 50%}
+      .grid .card:nth-child(7){animation-range:entry 26% entry 54%}
+      .grid .card:nth-child(8){animation-range:entry 30% entry 58%}
+
+      /* The stat tiles count themselves in the same way. */
+      .stats .stat{
+        animation:rise linear both;animation-timeline:view();
+      }
+      .stats .stat:nth-child(1){animation-range:entry 4% entry 26%}
+      .stats .stat:nth-child(2){animation-range:entry 8% entry 30%}
+      .stats .stat:nth-child(3){animation-range:entry 12% entry 34%}
+      .stats .stat:nth-child(4){animation-range:entry 16% entry 38%}
+      .stats .stat:nth-child(5){animation-range:entry 20% entry 42%}
+      .stats .stat:nth-child(6){animation-range:entry 24% entry 46%}
+
+      /* A screenshot settles rather than slides — it is a picture of a screen,
+         and a screen switching on is the right gesture for it. */
+      figure img{animation:settle linear both;animation-timeline:view();
+                 animation-range:entry 0% entry 36%}
+      @keyframes settle{
+        from{opacity:0;transform:scale(.985)}
+        to{opacity:1;transform:none}
+      }
     }
   }
 
@@ -456,6 +524,8 @@
     .sweep{display:none}
     .typed{width:auto;animation:none}
     .demo-body .ln{opacity:1;animation:none}
+    section:target::before,section:target > h2,.stats .stat,figure img{animation:none}
+    section:target > h2{color:var(--accent)}
     .tw{display:inline;width:auto;overflow:visible;animation:none}
     .logo{width:94ch;animation:none}
     .h1,.tagline{animation:none}
@@ -619,6 +689,9 @@
     /* A full-height sweep on a phone is a lot of compositing for an effect
        nobody is looking for on a small screen. */
     .sweep{display:none}
+    /* The rail lives in the wrapper's padding, and there is not enough of it
+       here to put anything in. */
+    section::before{display:none}
     .fineprint{font-size:12.5px}
     figcaption{font-size:12.5px}
     .note{padding-left:12px;font-size:13.5px}
