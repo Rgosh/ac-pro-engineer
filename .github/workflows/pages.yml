@@ -87,6 +87,28 @@ jobs:
             exit 1
           fi
 
+      - name: Fail if the tab strip disagrees with the page
+        # A strip whose order is not the page's order sends people somewhere
+        # they did not expect and makes the highlight appear to jump backwards.
+        run: |
+          python3 - <<'CHECK'
+          import re, sys
+          s = open('_site/index.html', encoding='utf-8').read()
+          nav = s[s.index('<nav class="tabs">'):s.index('</nav>')]
+          tabs = re.findall(r'<a href="#([^"]+)"', nav)
+          doc = [m.group(2) for m in
+                 re.finditer(r'<(section|div class="term-body") id="([^"]+)"', s)]
+          pos = {d: i for i, d in enumerate(doc)}
+          missing = [t for t in tabs if t not in pos]
+          order = [pos[t] for t in tabs if t in pos]
+          bad = []
+          if missing: bad.append(f'tabs point at nothing: {missing}')
+          if order != sorted(order):
+              bad.append(f'tab order {tabs} is not the order of the page {doc}')
+          for b in bad: print(f'::error::{b}')
+          sys.exit(1 if bad else 0)
+          CHECK
+
       - name: Fail if the page advertises more features than it lists
         # The heading, the stat strip, the fold counts and the card badges all
         # claim a number. A landing page that overstates by six is worse than
