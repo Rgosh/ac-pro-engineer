@@ -1400,9 +1400,7 @@ cargo run --release</pre>
 
 <script>
 // The one script here, and it earns its place: which tab is current is a fact
-// about where the reader has scrolled to, and CSS cannot know that. `:target`
-// was standing in for it and stayed set until the next click, so a tab kept
-// its highlight long after you had left the section.
+// about where the reader has scrolled to, and CSS cannot know that.
 (function () {
   var links = Array.prototype.slice.call(
     document.querySelectorAll('nav.tabs a[href^="#"]'));
@@ -1412,12 +1410,29 @@ cargo run --release</pre>
     links.forEach(function (a) { a.classList.toggle('on', a.hash === '#' + id); });
   }
 
-  // A click lights its own tab at once. The observer below is the right tool
-  // for free scrolling but it reports on the browser's schedule, so leaving the
-  // click to it means the strip lags behind — or, mid smooth-scroll, briefly
-  // names a section being travelled through rather than the one asked for.
+  // While a click-driven jump is in flight the observer must not have a say.
+  // It reports every section the page travels through, and the last of those
+  // to fire won the highlight — so the strip ended up naming somewhere short
+  // of the destination, and clicking again "fixed" it only because by then
+  // there was nothing left to scroll through.
+  var jumping = false, release;
+  function holdFor(ms) {
+    jumping = true;
+    clearTimeout(release);
+    release = setTimeout(function () { jumping = false; }, ms);
+  }
+  // `scrollend` ends the hold exactly when the scroll does, where it exists.
+  window.addEventListener('scrollend', function () {
+    if (!jumping) return;
+    jumping = false;
+    clearTimeout(release);
+  });
+
   links.forEach(function (a) {
-    a.addEventListener('click', function () { light(a.hash.slice(1)); });
+    a.addEventListener('click', function () {
+      light(a.hash.slice(1));
+      holdFor(1500);
+    });
   });
   if (location.hash) light(location.hash.slice(1));
 
@@ -1443,7 +1458,9 @@ cargo run --release</pre>
       if (e.isIntersecting) { if (i < 0) visible.push(e.target); }
       else if (i >= 0) visible.splice(i, 1);
     });
-    if (!visible.length) return;
+    // The list is kept up to date either way, so the moment the hold ends the
+    // observer already knows where things stand.
+    if (jumping || !visible.length) return;
     visible.sort(function (a, b) {
       return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
     });
