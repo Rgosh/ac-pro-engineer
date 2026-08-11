@@ -246,22 +246,28 @@
   .logo{
     color:var(--highlight);font-size:clamp(8px,1.5vw,15px);line-height:1.12;
     margin:0 0 18px;white-space:pre;
+    /* Ninety-four characters wide. It draws itself in that many steps, so the
+       letters arrive column by column the way a terminal would print them —
+       all six rows at once, because ASCII art read a line at a time is six
+       stripes rather than a word. */
+    width:94ch;max-width:100%;overflow:hidden;
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .logo{animation:drawlogo 1.5s steps(94,end) both}
+  }
+  @keyframes drawlogo{from{width:0}to{width:94ch}}
+
+  /* The line under it waits for the logo to finish rather than racing it. */
+  @media (prefers-reduced-motion:no-preference){
+    .h1,.tagline{animation:fadeup .5s ease both}
+    .h1{animation-delay:1.35s}
+    .tagline{animation-delay:1.5s}
+    @keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   }
   /* A real, visible H1. It used to be hidden on desktop behind the block
      logo, which left the page's most important heading as `display:none`
      text — weak for a reader and weak for a crawler. */
   .h1{font-size:clamp(21px,3vw,27px);margin:0 0 10px;font-weight:700;color:var(--text);line-height:1.25}
-  /* Capitals on screen, ordinary casing in the markup — a search result and a
-     screen reader both want "Pro Engineer", not shouting. Monospace, so the
-     advance width is unchanged and the typing still lands on the last letter. */
-  .tw-load{
-    text-transform:uppercase;letter-spacing:var(--tw-track);
-    /* The advance of one character, tracking included. Width is counted in
-       these rather than in bare `ch`, or the letter-spacing would push the
-       last letter past the clip and cut it off. */
-    --tw-track:.04em;
-    --tw-adv:calc(1ch + var(--tw-track));
-  }
   .h1 span{color:var(--dim);font-weight:400;font-size:clamp(13px,1.6vw,15px);display:block;margin-top:4px}
 
   /* What the program actually says, on the page. The most persuasive thing
@@ -318,26 +324,7 @@
      the zero width only exist inside the guards below, because a heading that
      starts at `width:0` and never animates — no support, no motion allowed —
      is a heading nobody can read. */
-  .tw,.tw-load{display:inline;--tw-adv:1ch}
-
-  /* The name types itself on arrival. Time-based, so it happens once, at load,
-     without waiting for a scroll that may never come on a short screen. */
-  @media (prefers-reduced-motion:no-preference){
-    .tw-load{
-      display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;
-      /* content-box, or the caret's border would be taken out of the declared
-         width and clip the last character off the name. */
-      box-sizing:content-box;
-      width:calc(var(--n) * var(--tw-adv));
-      border-right:.5em solid var(--highlight);
-      /* Longhands only. A shorthand above these would reset them. */
-      animation-name:typein,caret;
-      animation-duration:1s,.9s;
-      animation-timing-function:steps(var(--n),end),steps(1,end);
-      animation-iteration-count:1,4;
-      animation-fill-mode:both,both;
-    }
-  }
+  .tw{display:inline;--tw-adv:1ch}
 
   /* Section headings type as they are scrolled to. `ch` is exact here because
      the whole page is monospace. */
@@ -353,12 +340,6 @@
     }
   }
   @keyframes typein{from{width:0}to{width:calc(var(--n) * var(--tw-adv))}}
-  /* Ends transparent, so the caret blinks four times and then gets out of the
-     way rather than leaving a bar parked beside the name for ever. */
-  @keyframes caret{
-    0%,49%{border-right-color:var(--highlight)}
-    50%,100%{border-right-color:transparent}
-  }
 
   /* The prompt types itself, once, when the section is reached. `steps()` on a
      width is the oldest trick there is and still the cheapest. */
@@ -475,7 +456,9 @@
     .sweep{display:none}
     .typed{width:auto;animation:none}
     .demo-body .ln{opacity:1;animation:none}
-    .tw,.tw-load{display:inline;width:auto;overflow:visible;animation:none;border-right:0}
+    .tw{display:inline;width:auto;overflow:visible;animation:none}
+    .logo{width:94ch;animation:none}
+    .h1,.tagline{animation:none}
     h2::after{animation:none;transform:none}
     nav.tabs::after{animation:none;transform:scaleX(1)}
     *{transition-duration:.01ms !important;animation-duration:.01ms !important}
@@ -682,7 +665,7 @@
 ██╔═══╝ ██╔══██╗██║   ██║     ██╔══╝  ██║╚██╗██║██║   ██║██║██║╚██╗██║██╔══╝  ██╔══╝  ██╔══██╗
 ██║     ██║  ██║╚██████╔╝     ███████╗██║ ╚████║╚██████╔╝██║██║ ╚████║███████╗███████╗██║  ██║
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝      ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝</pre>
-      <h1 class="h1"><span class="tw-load" style="--n:12">Pro Engineer</span><span> — Assetto Corsa telemetry and a virtual race engineer</span></h1>
+      <h1 class="h1"><span>Pro Engineer</span><span> — Assetto Corsa telemetry and a virtual race engineer</span></h1>
 
       <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
 
