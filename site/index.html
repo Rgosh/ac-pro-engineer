@@ -167,8 +167,11 @@
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-  /* Room for the strip, or every nav link lands with its heading underneath it. */
-  section,#top{scroll-margin-top:60px}
+  /* The strip's own height, named once so the landing offset cannot drift
+     away from it. Every anchor clears it by the same amount, which is what
+     makes one section land like the next. */
+  :root{--bar:46px}
+  section,#top{scroll-margin-top:calc(var(--bar) + 16px)}
   body{
     margin:0;background:var(--bg);color:var(--text);
     font-family:var(--mono);font-size:15px;line-height:1.65;
@@ -198,7 +201,7 @@
   }
   .term-body{
     border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;
-    background:var(--bg-raised);margin:0 0 40px;
+    background:var(--bg-raised);margin:0 0 4px;
   }
   .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .dot.r{background:var(--bad)}.dot.y{background:var(--warn)}.dot.g{background:var(--good)}
@@ -448,18 +451,10 @@
     100%{color:var(--accent)}
   }
 
-  /* The tab you arrived through, lit while you are there. */
-  body:has(#top:target) nav.tabs a[href="#top"],
-  body:has(#terminal:target) nav.tabs a[href="#terminal"],
-  body:has(#corners:target) nav.tabs a[href="#corners"],
-  body:has(#says:target) nav.tabs a[href="#says"],
-  body:has(#share:target) nav.tabs a[href="#share"],
-  body:has(#features:target) nav.tabs a[href="#features"],
-  body:has(#compare:target) nav.tabs a[href="#compare"],
-  body:has(#install:target) nav.tabs a[href="#install"],
-  body:has(#faq:target) nav.tabs a[href="#faq"]{
-    color:var(--highlight);border-bottom-color:var(--highlight);
-  }
+  /* Lit by the scrollspy below, not by `:target` — a target stays set until
+     the next click, so the old rule left a tab highlighted long after you had
+     scrolled somewhere else and was simply wrong about where you were. */
+  nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
 
   /* Sections arrive as they are scrolled to. Scroll-driven animation rather
      than a script: no JavaScript on this page at all, and where the browser
@@ -493,6 +488,7 @@
       .grid .card:nth-child(6){animation-range:entry 22% entry 50%}
       .grid .card:nth-child(7){animation-range:entry 26% entry 54%}
       .grid .card:nth-child(8){animation-range:entry 30% entry 58%}
+      .grid .card:nth-child(9){animation-range:entry 34% entry 62%}
 
       /* The stat tiles count themselves in the same way. */
       .stats .stat{
@@ -569,6 +565,11 @@
   h3{font-size:15px;margin:0 0 8px;color:var(--text)}
 
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:14px}
+  /* Nine of them, so three across at full width — a square block rather than a
+     row of three and an orphan. */
+  #what .grid{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:900px){#what .grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:620px){#what .grid{grid-template-columns:1fr}}
   .card{
     border:1px solid var(--border);border-radius:6px;padding:16px 18px;
     background:var(--bg-raised);
@@ -767,7 +768,7 @@
       </p>
   </div>
 
-  <section id="what" style="padding-top:0">
+  <section id="what">
     <h2><span class="tw" style="--n:12">WHAT YOU GET</span></h2>
 
     <div class="stats">
@@ -820,10 +821,16 @@
         switches off on its own, and it computes nothing — Lua runs on the render thread.</p>
       </div>
       <div class="card">
-        <h3><span class="k">▸</span> Everything else <span class="n">35</span></h3>
-        <p>Force feedback clipping with a verdict, a setup browser and comparer, sixteen
-        chapters of setup theory, Linux and Steam Deck, a UDP feed for your own front
-        end, watching a friend drive, and every key rebindable on two layouts.</p>
+        <h3><span class="k">▸</span> Setup theory, built in <span class="n">9</span></h3>
+        <p>Sixteen chapters read between sessions, offline: the friction circle, the
+        I/M/O matrix, power and coast lock, natural frequency and the motion ratio trap,
+        bump against rebound, rake, and the golden rules of rain.</p>
+      </div>
+      <div class="card">
+        <h3><span class="k">▸</span> Everything else <span class="n">26</span></h3>
+        <p>Force feedback clipping with a verdict, a setup browser and comparer, Linux
+        and Steam Deck, a UDP feed for your own front end, watching a friend drive,
+        every key rebindable on two layouts, and a demo mode that needs no game.</p>
       </div>
     </div>
     <p class="note" style="margin-top:18px">
@@ -1391,5 +1398,49 @@ cargo run --release</pre>
   </footer>
 </div>
 
+<script>
+// The one script on this page, and it earns its place: which tab is current is
+// a fact about where the reader has scrolled to, and CSS has no way to know
+// that. `:target` was standing in for it and could only ever be right until
+// you scrolled — a target stays set until the next click, so a tab kept its
+// highlight long after you had left the section.
+//
+// An IntersectionObserver rather than a scroll handler: the browser reports
+// the crossings itself, so nothing runs on the scroll thread and nothing here
+// reads a layout property.
+(function () {
+  var links = Array.prototype.slice.call(
+    document.querySelectorAll('nav.tabs a[href^="#"]'));
+  if (!links.length || !('IntersectionObserver' in window)) return;
+
+  var targets = [];
+  links.forEach(function (a) {
+    var el = document.getElementById(a.hash.slice(1));
+    if (el) targets.push(el);
+  });
+  if (!targets.length) return;
+
+  var bar = parseInt(getComputedStyle(document.documentElement)
+              .getPropertyValue('--bar'), 10) || 46;
+  var visible = [];
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      var i = visible.indexOf(e.target);
+      if (e.isIntersecting) { if (i < 0) visible.push(e.target); }
+      else if (i >= 0) visible.splice(i, 1);
+    });
+    if (!visible.length) return;
+    // Document order, so the topmost section inside the band wins.
+    visible.sort(function (a, b) {
+      return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+    });
+    var id = visible[0].id;
+    links.forEach(function (a) { a.classList.toggle('on', a.hash === '#' + id); });
+  }, { rootMargin: -(bar + 8) + 'px 0px -70% 0px' });
+
+  targets.forEach(function (el) { io.observe(el); });
+})();
+</script>
 </body>
 </html>
