@@ -16,9 +16,19 @@
      in the file has an absolute address in it. -->
 <link rel="canonical" href="https://proengineer.app/">
 <meta property="og:url" content="https://proengineer.app/">
-<meta property="og:image" content="https://proengineer.app/screenshots/Dashboard.png">
-<meta property="og:image:alt" content="The Pro Engineer terminal dashboard showing live sim racing telemetry">
+<!-- A purpose-built 1200x630 card. The dashboard screenshot was 2832x1696 and
+     the wrong shape, so every preview cropped it somewhere unhelpful. -->
+<meta property="og:image" content="https://proengineer.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Pro Engineer — Assetto Corsa telemetry and virtual race engineer, showing sample advice about tyre pressures and understeer">
+<meta property="og:site_name" content="Pro Engineer">
+<meta property="og:locale" content="en_GB">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://proengineer.app/og.png">
+<!-- Without max-image-preview:large a result gets a thumbnail instead of the
+     card, which is most of what decides whether anybody clicks it. -->
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <script type="application/ld+json">
 {
   "@context":"https://schema.org",
@@ -59,7 +69,86 @@
   ]
 }
 </script>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text y='72' x='50' font-size='64' text-anchor='middle' fill='%2300b4ff' font-family='monospace'>&gt;_</text></svg>">
+<!-- A data-URI favicon is fine for a browser tab and no use to a search
+     engine, which needs one it can fetch at a stable URL. These are real files:
+     .ico carries 16/32/48 for the tab, the SVG scales anywhere, and the PNGs are
+     what Android and iOS ask for. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is it free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Free and open source. No account, no subscription, and no telemetry collected about you."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it work on Linux or a Steam Deck?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The desktop side is native. The in-game overlay additionally needs a small bridge running inside the game's Proton prefix, because only a Windows process in there can give the shared memory the name the game is allowed to open. The application ships the bridge and can fetch a matching one for you."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Will it cost me frames?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The desktop side is a terminal application at about 0.1 % of one core with no GPU cost. The in-game panel draws and nothing else — every calculation happens outside the game, because Lua runs on the render thread where a millisecond is a sixth of the frame budget at 165 Hz."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which simulators are supported?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Assetto Corsa today. The core reads a game through a boundary designed for more than one — a simulator is a folder rather than conditionals through the middle of the engineer — but no second folder is written, and we would rather say that than imply otherwise."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need Custom Shaders Patch?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Only for the in-game overlay. Everything else — the dashboard, the analysis, the engineer, the strategy work — runs without it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use my own reference lap?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Laps are saved as JSON with full metadata and can be loaded back as a ghost on another day, and the corner analysis compares against whichever lap you choose."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a friend see my telemetry?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "On the same network, yes — they set an address to listen on and see your numbers and your engineer's advice in their own panel. It is off unless you turn it on, because it is telemetry about a person."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it modify my game?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It writes one folder — its own overlay app — into the game's Lua app directory, and nothing else. It reads the game's shared memory, which is the interface the game publishes for exactly this."
+      }
+    }
+  ]
+}
+</script>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <style>
   :root{
     /* Straight out of the application's default theme — core/src/config.rs. */
