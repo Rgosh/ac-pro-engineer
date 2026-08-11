@@ -251,6 +251,17 @@
      logo, which left the page's most important heading as `display:none`
      text — weak for a reader and weak for a crawler. */
   .h1{font-size:clamp(21px,3vw,27px);margin:0 0 10px;font-weight:700;color:var(--text);line-height:1.25}
+  /* Capitals on screen, ordinary casing in the markup — a search result and a
+     screen reader both want "Pro Engineer", not shouting. Monospace, so the
+     advance width is unchanged and the typing still lands on the last letter. */
+  .tw-load{
+    text-transform:uppercase;letter-spacing:var(--tw-track);
+    /* The advance of one character, tracking included. Width is counted in
+       these rather than in bare `ch`, or the letter-spacing would push the
+       last letter past the clip and cut it off. */
+    --tw-track:.04em;
+    --tw-adv:calc(1ch + var(--tw-track));
+  }
   .h1 span{color:var(--dim);font-weight:400;font-size:clamp(13px,1.6vw,15px);display:block;margin-top:4px}
 
   /* What the program actually says, on the page. The most persuasive thing
@@ -307,7 +318,7 @@
      the zero width only exist inside the guards below, because a heading that
      starts at `width:0` and never animates — no support, no motion allowed —
      is a heading nobody can read. */
-  .tw,.tw-load{display:inline}
+  .tw,.tw-load{display:inline;--tw-adv:1ch}
 
   /* The name types itself on arrival. Time-based, so it happens once, at load,
      without waiting for a scroll that may never come on a short screen. */
@@ -317,7 +328,7 @@
       /* content-box, or the caret's border would be taken out of the declared
          width and clip the last character off the name. */
       box-sizing:content-box;
-      width:calc(var(--n) * 1ch);
+      width:calc(var(--n) * var(--tw-adv));
       border-right:.5em solid var(--highlight);
       /* Longhands only. A shorthand above these would reset them. */
       animation-name:typein,caret;
@@ -334,14 +345,14 @@
     @media (prefers-reduced-motion:no-preference){
       .tw{
         display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;
-        width:calc(var(--n) * 1ch);
+        width:calc(var(--n) * var(--tw-adv));
         animation:typein linear both;
         animation-timeline:view();
         animation-range:entry 8% entry 34%;
       }
     }
   }
-  @keyframes typein{from{width:0}to{width:calc(var(--n) * 1ch)}}
+  @keyframes typein{from{width:0}to{width:calc(var(--n) * var(--tw-adv))}}
   /* Ends transparent, so the caret blinks four times and then gets out of the
      way rather than leaving a bar parked beside the name for ever. */
   @keyframes caret{
