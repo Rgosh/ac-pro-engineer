@@ -1,42 +1,22 @@
-
 /target/
 /debug/
 /releases/
 *.pdb
 *.exe
-# The bridge keeps the copy it replaced, beside the new one. `*.exe` does not
-# match it, so a single press of [B] left an 861 KB binary showing up as
-# untracked in every `git status` afterwards.
 *.exe.previous
-
-
-
 /ac-setups/
 /server_setups/
 /saved_laps/
 config.json
 .version.json
-
-
 /log/
 /logs/
 *.log
-
-
 .vscode/
-./vscode/
 .idea/
 **/*.rs.bk
-
-
 /github_export/
-
-
 /gui/
 /gui_paid/
 /ac_pro_gui/
-
-# The deploy script names a host alias and its paths. Nothing secret, but the
-# layout of a server is not something a public repository needs to publish.
-# It lives untracked in site/ — see site/README.md.
 site/deploy.sh
