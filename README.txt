@@ -59,6 +59,19 @@ exclusions. The whole thing is open source and can be built from the
 repository below.
 
 
+[ LICENCE ]
+
+Free software under the GNU AGPL v3 — use it, fork it, build on it. Change
+it for yourself and nothing is asked of you at all. Pass your version on
+and the one condition is that it stays open, with the project credited.
+
+Keeping your own source closed, or selling a product with this code inside
+it, needs written permission first: rgoshbbb@gmail.com.
+
+LICENSE, NOTICE and LICENSING.md in the bundle have the detail.
+shm-bridge.exe is a separate piece and stays under its own MIT licence.
+
+
 [ LINKS & SUPPORT ]
 
 Source and issues:

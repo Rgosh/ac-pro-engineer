@@ -7,6 +7,7 @@ description = "Core telemetry and setup logic for AC Pro Engineer"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license.workspace = true
 
 [lints]
 workspace = true

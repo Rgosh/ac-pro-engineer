@@ -1,0 +1,57 @@
+AC Pro Engineer
+Copyright (c) 2026 Rgosh <rgoshbbb@gmail.com>
+Copyright (c) 2026 Maksym Vasylchuk <mvasilchuk@gmail.com>
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License, version 3, as
+published by the Free Software Foundation. It is distributed WITHOUT ANY
+WARRANTY; see LICENSE for the full text and LICENSING.md for what it means
+in practice.
+
+
+ADDITIONAL TERMS UNDER SECTION 7 OF THE GNU AGPL v3
+
+These are the two additional terms section 7 permits. Both are the kinds
+the licence explicitly allows, so the result is still the AGPL and stays
+compatible with other AGPL-covered software.
+
+  a) Under section 7(b), you must preserve the copyright notices above and
+     this notice in every copy and every modified version you convey, and
+     any user-facing "about", credits or documentation screen must name
+     AC Pro Engineer and link to <https://github.com/Rgosh/ac-pro-engineer>.
+
+  b) Under section 7(e), no rights are granted in the names "AC Pro
+     Engineer" or "RaceEngineer", or in the project's logo and icons.
+     A modified version must be distributed under a different name. This
+     restricts the name, never the code: you may fork and ship freely,
+     under a name of your own.
+
+Removing either term from material you received is permitted by section 7
+only where that section allows it, and it does not remove the requirements
+of the licence itself.
+
+
+THIRD-PARTY COMPONENTS
+
+  shm-bridge/
+      A fork of shm-bridge by Damir Jelić <poljar@termina.org.uk>,
+      <https://github.com/poljar/shm-bridge>, under the MIT licence, with
+      later work by Maksym Vasylchuk and Rgosh. It remains MIT-licensed;
+      its licence sits in that folder and must travel with it.
+
+  Rust dependencies
+      Each carries its own licence, listed in Cargo.toml and reproduced in
+      full by `cargo license` or `cargo about`.
+
+  Assetto Corsa, Custom Shaders Patch and Content Manager
+      Not included, not modified and not affiliated with this project.
+      AC Pro Engineer reads the shared memory Assetto Corsa publishes and
+      installs a Lua app that Custom Shaders Patch loads; both are used
+      through their public interfaces.
+
+
+HISTORICAL LICENSING
+
+Releases up to and including v0.3.6 were published under the MIT licence.
+That grant stands for those versions and cannot be withdrawn; its terms are
+kept in LICENSE-MIT-HISTORICAL.

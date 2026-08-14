@@ -88,6 +88,14 @@ if exist "README.txt" (
     echo WARNING: README.txt not found in the root directory!
 )
 
+REM The licence, and the two files it points at. README.txt tells the reader
+REM they are "in this folder", and the Windows bundle used to ship without
+REM them — a licence nobody received is a licence nobody can follow.
+for %%d in (README.md CHANGELOG.md LICENSE LICENSE-MIT-HISTORICAL NOTICE LICENSING.md) do (
+    if exist "%%d" copy /Y "%%d" "%BUNDLE_DIR%\" >nul
+)
+echo   - Docs and licence files copied to the bundle.
+
 echo.
 echo Zipping All-in-One release...
 pushd "%RELEASE_DIR%"

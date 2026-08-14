@@ -27,8 +27,8 @@ unix-archive = ".tar.gz"
 # The prefix setup, which is what stands between a fresh Linux machine and CSP
 # loading at all.
 #
-# Deliberately just this one file. Two things that look like they belong here
-# do not:
+# The prefix setup and the two licence files dist does not know about. Two
+# things that look like they belong here do not:
 #
 # * **The Lua panel.** Its folder must be named `ac_pro_engineer` for CSP to
 #   find its entry point, and that is also the name of the Linux binary — one
@@ -38,9 +38,14 @@ unix-archive = ".tar.gz"
 #   is the one shaped for this build's frame.
 # * **CHANGELOG.md, README.md, LICENSE.** dist adds these itself via
 #   auto-includes; naming them again is the same collision by another route.
+#   `LICENSE-MIT-HISTORICAL` is caught by the same rule and is likewise absent
+#   here. `NOTICE` and `LICENSING.md` are not — auto-includes cover only
+#   README, (UN)LICENSE and CHANGELOG/RELEASES — so they are named below. They
+#   have to travel: NOTICE carries the section 7 terms the licence refers to,
+#   and without it the archive ships a licence that points at a missing file.
 #
 # There are no fonts here and there cannot be. The desktop side is a terminal
 # program and uses the terminal's font; the panel draws through CSP's
 # DirectWrite. The font step is `corefonts` inside the Proton prefix, which is
 # what proton-setup.sh runs.
-include = ["packaging/proton-setup.sh"]
+include = ["packaging/proton-setup.sh", "NOTICE", "LICENSING.md"]

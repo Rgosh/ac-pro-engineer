@@ -1,3 +1,11 @@
+-- Copyright (c) 2026 Rgosh and contributors.
+--
+-- Free software under the GNU Affero General Public License, version 3, with
+-- the additional terms in NOTICE, and NO WARRANTY. This copy sits in the game
+-- folder where it is easy to take; taking it is fine, and what the licence
+-- asks in return is in LICENSING.md next to the application. Closed-source use
+-- needs written permission — rgoshbbb@gmail.com.
+--
 -- AC Pro Engineer — the in-game panel.
 --
 -- This script computes nothing. Every value it draws was calculated by the

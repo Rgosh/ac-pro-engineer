@@ -38,7 +38,7 @@
   "applicationCategory":"GameApplication",
   "applicationSubCategory":"Sim racing telemetry and race engineering",
   "operatingSystem":"Windows, Linux, SteamOS",
-  "license":"https://opensource.org/licenses/MIT",
+  "license":"https://www.gnu.org/licenses/agpl-3.0.html",
   "isAccessibleForFree":true,
   "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
   "url":"https://proengineer.app/",
@@ -1204,7 +1204,7 @@
         <tbody>
           <tr>
             <td>Cost</td>
-            <td style="color:var(--good)">free, MIT</td>
+            <td style="color:var(--good)">free, AGPL</td>
             <td>free tier; $7.99–$19.99/mo</td>
             <td>subscription</td>
             <td>free tier; ~€3.90/mo</td>
@@ -1353,8 +1353,23 @@ cargo run --release</pre>
     <h2><span class="tw" style="--n:9">QUESTIONS</span></h2>
 
     <details class="fold" open>
-      <summary>Is it free? <span class="blurb">Yes, MIT</span></summary>
+      <summary>Is it free? <span class="blurb">Yes, AGPL v3</span></summary>
       <div class="fold-body"><p class="lede">Free and open source. No account, no subscription, and no telemetry collected about you.</p></div>
+    </details>
+
+    <details class="fold">
+      <summary>Can I use the code in my own project?</summary>
+      <div class="fold-body"><p class="lede">
+        Yes. Change it for yourself and nothing at all is asked of you — the licence
+        conditions passing a copy on, not what runs on your own rig. Publish something
+        built on it and the one condition is that your source is open too, under the
+        same <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSE">AGPL v3</a>,
+        with this project credited. Keeping your own source closed, or selling a product
+        with this code inside it, needs written permission first —
+        <a href="mailto:rgoshbbb@gmail.com">rgoshbbb@gmail.com</a>. The
+        <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSING.md">licensing page</a>
+        says it in full.
+      </p></div>
     </details>
 
     <details class="fold">
@@ -1428,7 +1443,7 @@ cargo run --release</pre>
         <svg class="mark big" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="113" fill="#0a0a0f"/><path d="M118 118 L262 256 L118 394" fill="none" stroke="#00b4ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="307" y="338" width="87" height="44" rx="14" fill="#ffa500"/></svg>
         <div>
           <span class="prompt">$</span> ac_pro_engineer --version<br>
-          <span style="color:var(--dim)">Free software, MIT licensed. Built in Rust.</span>
+          <span style="color:var(--dim)">Free software, <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSING.md">AGPL v3</a>. Built in Rust.</span>
         </div>
       </div>
       <div>

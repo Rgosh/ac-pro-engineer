@@ -7,6 +7,30 @@ All notable changes to this project will be documented in this file.
 **The point:** the Analysis tab drew what happened. It says **where** now, and
 how sure it is.
 
+### ⚖️ Licence: MIT → AGPL v3
+
+The project is licensed under the **GNU AGPL v3** from this release onward.
+Nothing changes for anyone using the application: it is free, it stays free,
+there is no account and no paid tier. What changes is what may be done with the
+source.
+
+- **Using it, and changing it for yourself, is unrestricted.** The licence
+  conditions passing a copy on, not what runs on your own machine.
+- **Publishing something built on it** now requires that your source is open
+  too, under the same licence, with this project credited. Under MIT it did not.
+- **Keeping your own source closed, or selling a product with this code inside
+  it**, needs written permission first — rgoshbbb@gmail.com. There is no price
+  list; terms are per case.
+- **v0.3.6 and every release before it stay MIT, permanently.** That grant
+  cannot be withdrawn, and `LICENSE-MIT-HISTORICAL` keeps its terms. The AGPL
+  applies to everything committed after `9ba92a3`.
+- **`shm-bridge` is untouched.** It is a fork of poljar's work and keeps its own
+  MIT licence.
+
+`LICENSING.md` is the plain-language version — what needs asking, what does not,
+and what happens to a closed product found shipping this code without asking.
+`CONTRIBUTING.md` covers the sign-off patches now need, and why.
+
 ### ✨ Added
 
 - **A CORNERS sub-tab: where the lap actually went.** Corners are found in the

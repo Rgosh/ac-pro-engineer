@@ -2,6 +2,9 @@
 name = "shm-bridge"
 authors = ["Damir Jelić <poljar@termina.org.uk>", "Maksym Vasylchuk <mvasilchuk@gmail.com>"]
 description = "Shared memory bridge for Wine/Proton and Linux apps."
+# Not the workspace's AGPL. This crate is a fork of poljar/shm-bridge, whose
+# MIT terms are not this project's to change; see shm-bridge/LICENSE.
+license = "MIT"
 version.workspace = true
 edition.workspace = true
 repository = "https://github.com/Rgosh/ac-pro-engineer.git"
