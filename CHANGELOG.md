@@ -56,9 +56,32 @@ and what happens to a closed product found shipping this code without asking.
   claims a cause: the tyres are always older and the track is never the same
   temperature, and a driver told "the ARB gained you 0.2 s" has been misled by
   their own tooling.
-- **Advice can carry a chain** — cause, effect, and *what to look at next time
-  to know whether it worked*. The camber rule fills it in; the rest still carry
-  the old score and are a rule at a time.
+- **Advice carries a chain** — cause, effect, and *what to look at next time to
+  know whether it worked*. Every rule with a mechanism now states one:
+  pressures, tyre temperatures, wear, brakes, brake bias, camber, bottoming,
+  rake, force feedback, coasting, understeer, oversteer and over-rotation.
+  `confirm` is the field the idea rests on — advice nobody can check is not
+  advice — so it names something a driver can actually go and look at, in the
+  units they chose.
+
+  **The two fuel rules deliberately have none**, and that is a finding rather
+  than an omission: "the fuel will not last" is arithmetic on what is in the
+  tank, not a mechanism, and its check is the same number a lap later, already
+  on the screen. A chain there would be three fields of ceremony making the
+  advice look better researched than it is.
+
+  A third state is also deliberate. A rule that can explain itself but counts
+  one whole-lap number rather than several agreeing observations carries a chain
+  with **empty evidence** and keeps its hand-picked confidence — one counter is
+  one observation however large it gets, and feeding it to the evidence model
+  would dress a single number up as corroboration.
+
+  Two rules were sharpened on the way. **Bottoming now knows which corners**
+  grounded rather than only that one did — the loop stopped at the first, which
+  was enough to raise the alert and not enough to say anything about it — and
+  the wear rule says *laps left on the worst corner* where it used to leave a
+  percentage, because a percentage is not what a driver deciding whether to stop
+  needs to hear.
 
 ### 🔌 For anyone building on it
 

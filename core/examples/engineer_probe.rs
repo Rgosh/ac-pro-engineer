@@ -115,11 +115,23 @@ fn main() {
             println!("advice ({}):", recommendations.len());
             for rec in &recommendations {
                 println!(
-                    "  [{}] {:<12} {}",
+                    "  {} [{}] {:<12} {}",
+                    rec.confidence_level().marker(),
                     severity_label(&rec.severity),
                     rec.component,
                     rec.message
                 );
+                // The reason this probe exists is to read the advice against
+                // the numbers above it, and since v0.3.7 most of the advice has
+                // more to say than one line. `confirm` especially: it is the
+                // field that makes a rule checkable, and a rule whose check
+                // reads oddly is a rule to go back to — which cannot be noticed
+                // if the probe never prints it.
+                if let Some(chain) = rec.chain.as_ref() {
+                    println!("       why:     {}", chain.cause);
+                    println!("       seen:    {}", chain.effect);
+                    println!("       check:   {}", chain.confirm);
+                }
             }
         }
         println!();

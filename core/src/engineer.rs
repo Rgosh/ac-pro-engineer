@@ -24,9 +24,16 @@ pub struct Recommendation {
     pub confidence: f32,
     /// Why this is happening, and how to know whether the fix worked.
     ///
-    /// `None` on the rules that are a single measurement against a threshold,
-    /// which is most of them and is honest: there is no mechanism to state for
-    /// "the fuel will not last".
+    /// `Some` on every rule with a mechanism to state, which since v0.3.7 is
+    /// all of them but the two fuel rules — see `analyze_strategy`, where the
+    /// `None` is the finding rather than an omission.
+    ///
+    /// A chain whose [`Chain::evidence`] is *empty* is a third, deliberate
+    /// state: the rule can explain itself but counts one whole-lap number
+    /// rather than several corroborating observations, so
+    /// [`Recommendation::confidence_level`] falls back to the hand-picked
+    /// `confidence` beside it. One counter is one observation however large it
+    /// gets.
     pub chain: Option<Chain>,
 }
 
@@ -594,13 +601,15 @@ impl Engineer {
 
     fn analyze_suspension(&mut self, _phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
-        let mut bottoming_detected = false;
-        for i in 0..4 {
-            if self.stats.bottoming_frames[i] > 30 {
-                bottoming_detected = true;
-                break;
-            }
-        }
+        // Which corners, not merely whether. The loop used to break on the
+        // first one over the threshold, which was enough to raise the alert and
+        // not enough to say anything about it — and a car bottoming on one rear
+        // corner is a different problem from one bottoming on both fronts.
+        const BOTTOMING_FRAMES: u32 = 30;
+        let grounded: Vec<usize> = (0..4)
+            .filter(|i| self.stats.bottoming_frames[*i] > BOTTOMING_FRAMES)
+            .collect();
+        let bottoming_detected = !grounded.is_empty();
         if self.check_hysteresis("bottoming", bottoming_detected) && bottoming_detected {
             recs.push(Recommendation {
                 component: if ru {
@@ -626,7 +635,60 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.95,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "подвеске не хватает хода на поребриках и сжатиях"
+                    } else {
+                        "the suspension is running out of travel over kerbs and compressions"
+                    }
+                    .to_string(),
+                    effect: match ru {
+                        true => format!(
+                            "{}: {}",
+                            Self::corner_phrase(&grounded, ru),
+                            Self::frames_phrase(
+                                grounded
+                                    .iter()
+                                    .map(|i| self.stats.bottoming_frames[*i])
+                                    .max()
+                                    .unwrap_or(0),
+                                self.stats.total_frames,
+                                ru
+                            )
+                        ),
+                        false => format!(
+                            "{}: {}",
+                            Self::corner_phrase(&grounded, ru),
+                            Self::frames_phrase(
+                                grounded
+                                    .iter()
+                                    .map(|i| self.stats.bottoming_frames[*i])
+                                    .max()
+                                    .unwrap_or(0),
+                                self.stats.total_frames,
+                                ru
+                            )
+                        ),
+                    },
+                    confirm: match ru {
+                        true => format!(
+                            "пробои на {} в том же круге после подъёма",
+                            Self::corner_phrase_mid(&grounded, ru)
+                        ),
+                        false => format!(
+                            "the bottoming count on {} over the same lap, once it is raised",
+                            Self::corner_phrase_mid(&grounded, ru)
+                        ),
+                    },
+                    // One observation per corner that grounded, measured past
+                    // the threshold rather than from zero — a corner one frame
+                    // over is not the same finding as one forty frames over.
+                    evidence: crate::confidence::Evidence::from_values(
+                        grounded
+                            .iter()
+                            .map(|i| (self.stats.bottoming_frames[*i] - BOTTOMING_FRAMES) as f32),
+                    ),
+                }),
             });
         }
     }
@@ -659,7 +721,32 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.85,
-                    chain: None,
+                    chain: Some(Chain {
+                        cause: if ru {
+                            "прижимная сила сажает зад, и вместе с ним уходит развал по длине"
+                        } else {
+                            "downforce is squatting the rear, and the rake goes with it"
+                        }
+                        .to_string(),
+                        effect: match ru {
+                            true => format!(
+                                "-{rake_loss:.1} мм между медленным и быстрым участком"
+                            ),
+                            false => {
+                                format!("-{rake_loss:.1} mm between low and high speed")
+                            }
+                        },
+                        confirm: if ru {
+                            "разница развала по длине на той же скорости в следующем стинте"
+                        } else {
+                            "the rake difference at the same speed next run out"
+                        }
+                        .to_string(),
+                        // One measurement, taken at one speed. It is a finding,
+                        // not four corroborating observations, and saying so is
+                        // the point of leaving this empty.
+                        evidence: crate::confidence::Evidence::new(),
+                    }),
                 });
             }
         }
@@ -889,7 +976,29 @@ impl Engineer {
                     unit: "%".to_string(),
                 }],
                 confidence: 1.0,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "усилие упирается в потолок, и всё, что выше него, до руля не доходит"
+                    } else {
+                        "the signal is hitting its ceiling, and everything above it never reaches the wheel"
+                    }
+                    .to_string(),
+                    effect: Self::frames_phrase(
+                        self.stats.ffb_clip_frames,
+                        self.stats.total_frames,
+                        ru,
+                    ),
+                    // The one rule whose check is not "next lap": clipping
+                    // answers to a slider, and the answer arrives in the corner
+                    // after it is moved.
+                    confirm: if ru {
+                        "доля клиппинга после снижения Gain — цель около нуля в поворотах"
+                    } else {
+                        "the clipping share after lowering the gain — near zero through corners"
+                    }
+                    .to_string(),
+                    evidence: crate::confidence::Evidence::new(),
+                }),
             });
         }
     }
@@ -900,6 +1009,28 @@ impl Engineer {
     /// the overlay's slots spent on one fact, and the driver reads "FL COLD /
     /// FR COLD / RL COLD / RR COLD" as noise rather than as "the tyres are not
     /// up to temperature yet". Which is what it means.
+    /// A frame count with something to measure it against.
+    ///
+    /// The driving rules all count frames over a lap, and a bare "412 frames"
+    /// means nothing to anybody: it is 7 seconds on one circuit and 12 on
+    /// another. The share of the lap is the part a driver can act on, so it is
+    /// said when the denominator exists and quietly left out when it does not —
+    /// a percentage of nothing is the sort of confident zero this project keeps
+    /// having to remove.
+    fn frames_phrase(frames: u32, total: u32, ru: bool) -> String {
+        if total == 0 {
+            return match ru {
+                true => format!("{frames} кадров"),
+                false => format!("{frames} frames"),
+            };
+        }
+        let share = frames as f32 / total as f32 * 100.0;
+        match ru {
+            true => format!("{frames} кадров круга ({share:.0} %)"),
+            false => format!("{frames} frames of the lap ({share:.0} %)"),
+        }
+    }
+
     fn corner_phrase(corners: &[usize], ru: bool) -> String {
         match corners {
             [] => String::new(),
@@ -914,6 +1045,30 @@ impl Engineer {
                 .map(|index| CORNER_NAMES[*index])
                 .collect::<Vec<_>>()
                 .join("/"),
+        }
+    }
+
+    /// The same phrase, for the middle of a sentence rather than the start of
+    /// one.
+    ///
+    /// `corner_phrase` is capitalised because every message begins with it.
+    /// The chain's `confirm` does not — "the hot pressure on All four after two
+    /// laps" is the sort of thing that reads as machine-generated, which is
+    /// exactly what this advice is trying not to sound like.
+    ///
+    /// Lowercased only when the phrase is a word. `FL`, `RR` and `FL/RR` are
+    /// names and stay as they are — a blanket `to_lowercase` would print "fl",
+    /// which is worse than the capital it fixed.
+    fn corner_phrase_mid(corners: &[usize], ru: bool) -> String {
+        let phrase = Self::corner_phrase(corners, ru);
+        if phrase.chars().any(|c| c.is_lowercase()) {
+            let mut chars = phrase.chars();
+            match chars.next() {
+                Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+                None => phrase,
+            }
+        } else {
+            phrase
         }
     }
 
@@ -1033,7 +1188,48 @@ impl Engineer {
                     })
                     .collect(),
                 confidence: 0.9,
-                chain: None,
+                // Hot pressure is not something the driver sets. It is the cold
+                // setting plus whatever the tyre has been made to absorb, so the
+                // cause is on one side of that and the fix is on the other —
+                // which is exactly what makes this worth stating rather than
+                // printing a number against a target.
+                chain: Some(Chain {
+                    cause: match (inflate, ru) {
+                        (true, true) => "шина не набирает температуру и не доходит до окна",
+                        (true, false) => "the tyre is not building enough heat to reach the window",
+                        (false, true) => "шина набирает больше давления, чем заложено в холодном",
+                        (false, false) => "the tyre is building more pressure than the cold setting allows for",
+                    }
+                    .to_string(),
+                    effect: format!(
+                        "{} {} ({} {})",
+                        Self::corner_phrase(corners, ru),
+                        formatter.format_pressure(average),
+                        if ru { "цель" } else { "target" },
+                        formatter.format_pressure(optimal_pressure)
+                    ),
+                    confirm: match ru {
+                        true => format!(
+                            "давление на {} после двух кругов на темпе: цель {}",
+                            Self::corner_phrase_mid(corners, ru),
+                            formatter.format_pressure(optimal_pressure)
+                        ),
+                        false => format!(
+                            "the hot pressure on {} after two laps at pace: {} is the target",
+                            Self::corner_phrase_mid(corners, ru),
+                            formatter.format_pressure(optimal_pressure)
+                        ),
+                    },
+                    // One observation per corner in the group, each a live
+                    // reading rather than an average — so two corners agreeing
+                    // is Medium and all four are High, which is the right shape
+                    // for a measurement this direct.
+                    evidence: crate::confidence::Evidence::from_values(
+                        corners
+                            .iter()
+                            .map(|i| phys.wheels_pressure[*i] - optimal_pressure),
+                    ),
+                }),
             });
         };
 
@@ -1081,6 +1277,12 @@ impl Engineer {
             }
         }
 
+        // Read off before the closure: it needs them for the chain, and the
+        // closure must not hold a borrow of `self` while `recs` is being
+        // written through.
+        let stint_laps = self.stats.stint_laps;
+        let laps_left = self.stats.tyre_laps_remaining;
+
         let mut push = |corners: &[usize], severity: Severity| {
             if corners.is_empty() {
                 return;
@@ -1090,6 +1292,7 @@ impl Engineer {
                 .map(|i| phys.tyre_wear[*i])
                 .fold(f32::MAX, f32::min);
             let where_ = Self::corner_phrase(corners, ru);
+            let where_low = Self::corner_phrase_mid(corners, ru);
             let what = match (&severity, ru) {
                 (Severity::Critical, true) => "ИЗНОС (Крит)",
                 (Severity::Critical, false) => "WORN OUT",
@@ -1118,7 +1321,53 @@ impl Engineer {
                     })
                     .collect(),
                 confidence: 0.9,
-                chain: None,
+                // Wear is the one finding whose cause is simply time: this set
+                // has done these laps. What makes it worth chaining is the
+                // check — a percentage means nothing to a driver deciding
+                // whether to stop, and laps left does.
+                chain: Some(Chain {
+                    // A stint of zero laps is a real state rather than a missing
+                    // number — a set can be past the warning before the first
+                    // lap is complete — and "0 laps on this set" as the reason
+                    // reads as a broken sentence rather than as the truth it is.
+                    cause: match (stint_laps > 0, ru) {
+                        (true, true) => format!("{stint_laps} кругов на этом комплекте"),
+                        (true, false) => format!("{stint_laps} laps on this set"),
+                        (false, true) => "на этом комплекте ещё нет полного круга".to_string(),
+                        (false, false) => "no complete lap on this set yet".to_string(),
+                    },
+                    effect: format!("{where_} {lowest:.1}%"),
+                    confirm: {
+                        // From the worst corner in the group, not the average:
+                        // a set is finished when one corner is.
+                        let soonest = corners
+                            .iter()
+                            .map(|i| laps_left[*i])
+                            .fold(f32::MAX, f32::min);
+                        match (soonest.is_finite() && soonest > 0.0, ru) {
+                            (true, true) => format!(
+                                "остаток на {where_low} в конце круга: по текущему темпу ~{soonest:.0} кругов"
+                            ),
+                            (true, false) => format!(
+                                "the life on {where_low} at the end of the next lap: ~{soonest:.0} laps left at this rate"
+                            ),
+                            (false, true) => {
+                                format!("остаток на {where_low} в конце круга")
+                            }
+                            (false, false) => {
+                                format!("the life on {where_low} at the end of the next lap")
+                            }
+                        }
+                    },
+                    // How far past the warning each corner is, rather than the
+                    // life itself: four corners at 88–91 % are all a long way
+                    // from zero and would agree trivially on the raw number.
+                    evidence: crate::confidence::Evidence::from_values(
+                        corners
+                            .iter()
+                            .map(|i| warning_threshold - phys.tyre_wear[*i]),
+                    ),
+                }),
             });
         };
 
@@ -1357,7 +1606,36 @@ impl Engineer {
                 .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "в шину не вкладывается достаточно энергии, чтобы она вышла в окно"
+                    } else {
+                        "not enough energy is going into the tyre to bring it into its window"
+                    }
+                    .to_string(),
+                    effect: format!(
+                        "{} {} ({} {})",
+                        Self::corner_phrase(&cold, ru),
+                        formatter.format_temp(average),
+                        if ru { "окно от" } else { "window from" },
+                        formatter.format_temp(min_temp)
+                    ),
+                    confirm: match ru {
+                        true => format!(
+                            "температура на {} после круга на темпе: окно от {}",
+                            Self::corner_phrase_mid(&cold, ru),
+                            formatter.format_temp(min_temp)
+                        ),
+                        false => format!(
+                            "the temperature on {} after a lap at pace: the window starts at {}",
+                            Self::corner_phrase_mid(&cold, ru),
+                            formatter.format_temp(min_temp)
+                        ),
+                    },
+                    evidence: crate::confidence::Evidence::from_values(
+                        cold.iter().map(|i| min_temp - phys.get_avg_tyre_temp(*i)),
+                    ),
+                }),
             });
         }
 
@@ -1386,7 +1664,42 @@ impl Engineer {
                 .to_string(),
                 parameters: vec![],
                 confidence: 0.95,
-                chain: None,
+                // Deliberately vague about the mechanism, because there are
+                // three and this rule cannot tell them apart from a temperature
+                // alone: too little pressure, too much slip, or a car simply
+                // being asked for more than the compound has. Naming one would
+                // be a guess dressed as a diagnosis; the check is the same
+                // whichever it is.
+                chain: Some(Chain {
+                    cause: if ru {
+                        "шина отдаёт больше энергии, чем успевает сбросить"
+                    } else {
+                        "the tyre is being given more energy than it can shed"
+                    }
+                    .to_string(),
+                    effect: format!(
+                        "{} {} ({} {})",
+                        Self::corner_phrase(&hot, ru),
+                        formatter.format_temp(average),
+                        if ru { "окно до" } else { "window to" },
+                        formatter.format_temp(max_temp)
+                    ),
+                    confirm: match ru {
+                        true => format!(
+                            "температура на {} через круг после изменения: окно до {}",
+                            Self::corner_phrase_mid(&hot, ru),
+                            formatter.format_temp(max_temp)
+                        ),
+                        false => format!(
+                            "the temperature on {} a lap after the change: the window ends at {}",
+                            Self::corner_phrase_mid(&hot, ru),
+                            formatter.format_temp(max_temp)
+                        ),
+                    },
+                    evidence: crate::confidence::Evidence::from_values(
+                        hot.iter().map(|i| phys.get_avg_tyre_temp(*i) - max_temp),
+                    ),
+                }),
             });
         }
     }
@@ -1443,7 +1756,36 @@ impl Engineer {
             .to_string(),
             parameters: vec![],
             confidence: 1.0,
-            chain: None,
+            chain: Some(Chain {
+                cause: if ru {
+                    "в тормоза уходит больше энергии, чем они успевают сбросить"
+                } else {
+                    "more energy is going into the brakes than they can shed"
+                }
+                .to_string(),
+                effect: format!(
+                    "{} {} ({} {})",
+                    Self::corner_phrase(&cooking, ru),
+                    formatter.format_temp(hottest),
+                    if ru { "предел" } else { "ceiling" },
+                    formatter.format_temp(max_temp)
+                ),
+                confirm: match ru {
+                    true => format!(
+                        "пик температуры на {} в следующем круге: предел {}",
+                        Self::corner_phrase_mid(&cooking, ru),
+                        formatter.format_temp(max_temp)
+                    ),
+                    false => format!(
+                        "the peak on {} through the next lap: {} is the ceiling",
+                        Self::corner_phrase_mid(&cooking, ru),
+                        formatter.format_temp(max_temp)
+                    ),
+                },
+                evidence: crate::confidence::Evidence::from_values(
+                    cooking.iter().map(|i| phys.brake_temp[*i] - max_temp),
+                ),
+            }),
         });
     }
 
@@ -1487,7 +1829,39 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.85,
-                    chain: None,
+                    // Evidence left empty on purpose, and it is not laziness.
+                    // What this rule has is two whole-lap counters, and two
+                    // counts of *different* things are not two observations of
+                    // one — feeding them to `Evidence` would measure how much
+                    // the front disagrees with the rear, which is the finding
+                    // rather than the corroboration. An empty evidence makes
+                    // `confidence_level` fall back to the score above, which is
+                    // the honest answer here.
+                    chain: Some(Chain {
+                        cause: if ru {
+                            "слишком много торможения приходится на переднюю ось"
+                        } else {
+                            "too much of the braking is landing on the front axle"
+                        }
+                        .to_string(),
+                        effect: match ru {
+                            true => format!(
+                                "{} кадров блокировки спереди против {} сзади",
+                                self.stats.lockup_frames_front, self.stats.lockup_frames_rear
+                            ),
+                            false => format!(
+                                "{} frames of front lock against {} at the rear",
+                                self.stats.lockup_frames_front, self.stats.lockup_frames_rear
+                            ),
+                        },
+                        confirm: if ru {
+                            "блокировки спереди в следующем стинте после сдвига баланса назад"
+                        } else {
+                            "front lockups next run out, after moving the bias back"
+                        }
+                        .to_string(),
+                        evidence: crate::confidence::Evidence::new(),
+                    }),
                 });
             } else if self.stats.lockup_frames_rear > self.stats.lockup_frames_front * 2 {
                 recs.push(Recommendation {
@@ -1514,7 +1888,31 @@ impl Engineer {
                     },
                     parameters: vec![],
                     confidence: 0.95,
-                    chain: None,
+                    chain: Some(Chain {
+                        cause: if ru {
+                            "слишком много торможения приходится на заднюю ось"
+                        } else {
+                            "too much of the braking is landing on the rear axle"
+                        }
+                        .to_string(),
+                        effect: match ru {
+                            true => format!(
+                                "{} кадров блокировки сзади против {} спереди",
+                                self.stats.lockup_frames_rear, self.stats.lockup_frames_front
+                            ),
+                            false => format!(
+                                "{} frames of rear lock against {} at the front",
+                                self.stats.lockup_frames_rear, self.stats.lockup_frames_front
+                            ),
+                        },
+                        confirm: if ru {
+                            "блокировки сзади в следующем стинте после сдвига баланса вперёд"
+                        } else {
+                            "rear lockups next run out, after moving the bias forward"
+                        }
+                        .to_string(),
+                        evidence: crate::confidence::Evidence::new(),
+                    }),
                 });
             }
         }
@@ -1549,7 +1947,34 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.7,
-                chain: None,
+                // The whole-lap counters below all carry a chain with empty
+                // evidence, and that is the design rather than a gap: one
+                // counter is one observation however large it gets, and
+                // `Evidence` exists to count observations that *corroborate*
+                // each other. An empty one makes `confidence_level` fall back
+                // to the score beside it, which is what these rules have always
+                // been judged on. What they gain is the other three fields —
+                // the mechanism, the measurement, and something to check.
+                chain: Some(Chain {
+                    cause: if ru {
+                        "машина катится без нагрузки там, где должна тормозить или разгоняться"
+                    } else {
+                        "the car is rolling unloaded where it should be braking or driving"
+                    }
+                    .to_string(),
+                    effect: Self::frames_phrase(
+                        self.stats.coasting_frames,
+                        self.stats.total_frames,
+                        ru,
+                    ),
+                    confirm: if ru {
+                        "доля наката в следующем круге"
+                    } else {
+                        "the share of the next lap spent on neither pedal"
+                    }
+                    .to_string(),
+                    evidence: crate::confidence::Evidence::new(),
+                }),
             });
         }
 
@@ -1574,7 +1999,29 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.85,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "передняя ось теряет сцепление раньше задней на скорости"
+                    } else {
+                        "the front axle runs out of grip before the rear at speed"
+                    }
+                    .to_string(),
+                    effect: Self::frames_phrase(
+                        self.stats.understeer_frames,
+                        self.stats.total_frames,
+                        ru,
+                    ),
+                    // Deliberately not "the car will understeer less": whether
+                    // this is the car or the driving is a different question,
+                    // and `driver_vs_car` is what answers it over a stint.
+                    confirm: if ru {
+                        "снос передней оси в следующем стинте после изменения"
+                    } else {
+                        "the understeer count next run out, after the change"
+                    }
+                    .to_string(),
+                    evidence: crate::confidence::Evidence::new(),
+                }),
             });
         }
 
@@ -1599,7 +2046,26 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.85,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "задняя ось теряет сцепление раньше передней на скорости"
+                    } else {
+                        "the rear axle runs out of grip before the front at speed"
+                    }
+                    .to_string(),
+                    effect: Self::frames_phrase(
+                        self.stats.oversteer_frames,
+                        self.stats.total_frames,
+                        ru,
+                    ),
+                    confirm: if ru {
+                        "нестабильность сзади в следующем стинте после изменения"
+                    } else {
+                        "the oversteer count next run out, after the change"
+                    }
+                    .to_string(),
+                    evidence: crate::confidence::Evidence::new(),
+                }),
             });
         }
 
@@ -1630,13 +2096,62 @@ impl Engineer {
                 },
                 parameters: vec![],
                 confidence: 0.95,
-                chain: None,
+                chain: Some(Chain {
+                    cause: if ru {
+                        "руля больше, чем поворот может взять — шины скребут, а не держат"
+                    } else {
+                        "more steering angle than the corner will take, so the tyres scrub"
+                    }
+                    .to_string(),
+                    effect: match ru {
+                        true => format!(
+                            "{}, худший перекрут {excess:.0}°",
+                            Self::frames_phrase(
+                                self.stats.scrubbing_frames,
+                                self.stats.total_frames,
+                                ru
+                            )
+                        ),
+                        false => format!(
+                            "{}, worst excess {excess:.0}°",
+                            Self::frames_phrase(
+                                self.stats.scrubbing_frames,
+                                self.stats.total_frames,
+                                ru
+                            )
+                        ),
+                    },
+                    confirm: if ru {
+                        "перекрут руля в следующем круге на тех же поворотах"
+                    } else {
+                        "the over-rotation count through the same corners next lap"
+                    }
+                    .to_string(),
+                    evidence: crate::confidence::Evidence::new(),
+                }),
             });
             self.stats.scrubbing_frames = 0;
             self.stats.current_excess_steer = 0.0;
         }
     }
 
+    /// Fuel, and the two rules that deliberately have no chain.
+    ///
+    /// Every other rule in this file now states a mechanism, a measurement and
+    /// something to check next time. These two do not, and the empty `chain`
+    /// below is the finding rather than an omission:
+    ///
+    /// * there is **no mechanism** to state. "The fuel will not last" is
+    ///   arithmetic on what is in the tank, not a chain of cause and effect —
+    ///   writing one would mean inventing a story for a subtraction.
+    /// * there is **nothing to check next time**, because the check is the same
+    ///   number a lap later, and it is already on the screen. `confirm` exists
+    ///   to make advice falsifiable; advice that restates its own input is
+    ///   falsified by looking at it.
+    ///
+    /// A `Chain` filled in here would be three fields of ceremony that made the
+    /// advice look better researched than it is, and that is the opposite of
+    /// what the field is for.
     fn analyze_strategy(&self, phys: &AcPhysics, gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
 
@@ -1786,6 +2301,123 @@ mod tests {
             "brake_temp_3",
         ] {
             engineer.alert_timers.insert(key.to_string(), (aged, now));
+        }
+    }
+
+    /// Every rule that has a mechanism states one, and the two that do not say
+    /// why in prose next to the `None`.
+    ///
+    /// Read off the source rather than off the output, and deliberately so: a
+    /// behavioural test can only check the rules it manages to trigger, and the
+    /// failure this guards against is a *new* rule added six months from now
+    /// with `chain: None` copied from its neighbour. There is no telemetry that
+    /// would provoke a rule nobody has written yet; there is a `grep`.
+    #[test]
+    fn no_rule_outside_the_fuel_pair_ships_without_an_explanation() {
+        let source = include_str!("engineer.rs");
+        let strategy = source
+            .find("fn analyze_strategy")
+            .expect("analyze_strategy is where the two exceptions live");
+        // The function runs to the end of the `impl` block, which is the last
+        // thing in it — everything after `mod tests` is this file's own tests
+        // and has no rules in it.
+        let tests = source.find("\nmod tests {").unwrap_or(source.len());
+
+        let unexplained = source[..strategy].matches("chain: None").count();
+        assert_eq!(
+            unexplained, 0,
+            "a rule before analyze_strategy has no chain. Either give it a \
+             cause, an effect and something to check next run, or move it \
+             beside the fuel rules and write down why it cannot have one."
+        );
+
+        let excused = source[strategy..tests].matches("chain: None").count();
+        assert_eq!(
+            excused, 2,
+            "the fuel rules are the only two without a chain; if that changed, \
+             the doc comment on analyze_strategy has to change with it"
+        );
+    }
+
+    /// The rules a driver sees most can all say why, what, and what to check.
+    ///
+    /// The companion to the test above: that one proves nothing was left out,
+    /// this one proves what was put in is not three empty strings.
+    #[test]
+    fn the_advice_a_driver_actually_sees_carries_a_usable_chain() {
+        let config = AppConfig::default();
+        let mut engineer = Engineer::new(&config);
+        age_the_alerts(&mut engineer);
+
+        // Over pressure, over temperature, cooking brakes and a worn set, all
+        // at once — four different analysers, four different shapes of chain.
+        let phys = AcPhysics {
+            wheels_pressure: [31.0, 31.2, 30.8, 31.1],
+            tyre_core_temp: [120.0; 4],
+            tyre_temp_i: [120.0; 4],
+            tyre_temp_m: [120.0; 4],
+            tyre_temp_o: [120.0; 4],
+            brake_temp: [900.0, 910.0, 880.0, 895.0],
+            tyre_wear: [80.0, 81.0, 79.0, 82.0],
+            speed_kmh: 180.0,
+            ..Default::default()
+        };
+        let gfx = AcGraphics {
+            surface_grip: 1.0,
+            ..Default::default()
+        };
+
+        let mut recs = Vec::new();
+        engineer.analyze_tyre_pressure(&phys, &gfx, &mut recs);
+        engineer.analyze_tyre_temperature(&phys, &mut recs);
+        engineer.analyze_brakes(&phys, &mut recs);
+        engineer.analyze_tyre_wear(&phys, &mut recs);
+
+        assert!(
+            recs.len() >= 4,
+            "this state should trip pressure, temperature, brakes and wear: {recs:?}"
+        );
+        for rec in &recs {
+            // Phrased as an assertion rather than an unwrap because the
+            // workspace denies `clippy::panic`, and a test is not exempt from a
+            // lint that exists so a release build cannot abort on a driver
+            // mid-race.
+            assert!(
+                rec.chain.is_some(),
+                "{} produces no chain at all",
+                rec.message
+            );
+            let Some(chain) = rec.chain.as_ref() else {
+                continue;
+            };
+            // Captured by default, and printed anyway on purpose: the
+            // simulator's telemetry sits inside every window, so
+            // `engineer_probe` never trips these rules and there is nowhere
+            // else to *read* the sentences they produce. `cargo test --
+            // --nocapture` is that place. A `confirm` that is grammatical and
+            // useless is not something an assertion can catch.
+            println!(
+                "{}\n    why:   {}\n    seen:  {}\n    check: {}",
+                rec.message, chain.cause, chain.effect, chain.confirm
+            );
+            assert!(
+                !chain.cause.trim().is_empty(),
+                "{} states no mechanism",
+                rec.message
+            );
+            assert!(
+                !chain.effect.trim().is_empty(),
+                "{} states no measurement",
+                rec.message
+            );
+            // The field the whole idea rests on. Advice nobody can check is not
+            // advice, and an empty string here is the failure that would be
+            // easiest to ship without noticing.
+            assert!(
+                !chain.confirm.trim().is_empty(),
+                "{} gives nothing to check next run",
+                rec.message
+            );
         }
     }
 
