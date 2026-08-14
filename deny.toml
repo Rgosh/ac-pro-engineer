@@ -1,0 +1,82 @@
+# What may be in the dependency graph, licence-wise.
+#
+# This exists because of the AGPL change. The project is offered two ways — free
+# under the AGPL, and commercially for anyone building something closed on it —
+# and the second only works if every crate underneath permits being shipped
+# inside a proprietary product. One copyleft dependency makes that offer
+# impossible to honour, and the bad moment to discover it is after terms have
+# been agreed with somebody.
+#
+# A one-off audit was run on 2026-08-14 and came back clean: 328 crates, all
+# permissive but one. This file is the same audit, standing, because a
+# dependency added in six months is exactly how the next one gets in and nobody
+# re-runs a check they remember passing.
+#
+#     cargo deny check licenses
+
+[licenses]
+# Every licence the graph actually uses today. Deliberately a list rather than a
+# category filter: a new licence appearing is a thing to look at and decide
+# about, not something to wave through because it happens to be permissive.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "0BSD",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+# Copyleft is not listed above and so is denied by omission — GPL, LGPL, AGPL,
+# SSPL and the rest fail the check by not being allowed.
+#
+# Including this project's own, which is the first thing this check said when it
+# was switched on: `ac_core` and `ac_tui` are AGPL-3.0-only and were rejected
+# along with everything else. Putting AGPL in the list above would have fixed
+# the message and broken the check — an AGPL *dependency* would then pass, which
+# is the single thing this file exists to catch. They are named below instead.
+
+# `tests_suite` is `publish = false` and carries no licence field at all. It
+# holds tests and is never distributed, so there is nothing for a licence to
+# govern.
+private = { ignore = true }
+
+# This project's own crates. The rule is about what may be *taken in*, not about
+# what this repository is.
+[[licenses.exceptions]]
+name = "ac_core"
+allow = ["AGPL-3.0-only"]
+
+[[licenses.exceptions]]
+name = "ac_tui"
+allow = ["AGPL-3.0-only"]
+
+# The one third-party exception, and it is narrow on purpose.
+[[licenses.exceptions]]
+# Mozilla's CA root store, pulled in by reqwest/rustls. MPL-2.0 is copyleft per
+# *file*, so it may ship inside a closed product provided its own files stay
+# available — which for an unmodified crate means pointing at upstream.
+#
+# The obligation stops being a footnote the moment it is vendored and edited in
+# tree. Do not patch this crate locally; take a released version or none.
+name = "webpki-roots"
+allow = ["MPL-2.0"]
+
+[bans]
+# Not what this file is for. Duplicate versions and heavy dependencies are worth
+# knowing about, but they are a build-size question and this check exists to
+# answer a licensing one — mixing them means a licence failure gets lost among
+# warnings nobody acts on.
+multiple-versions = "allow"
+
+[advisories]
+# Likewise: `cargo deny check advisories` is worth running and is a different
+# question with a different failure mode, a different urgency and a different
+# fix. It is not wired into CI yet.
+yanked = "allow"

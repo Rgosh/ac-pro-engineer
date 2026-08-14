@@ -29,6 +29,27 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
+  # What the dependency graph is licensed under, checked every time rather than
+  # once.
+  #
+  # The project is offered under the AGPL and, separately, commercially — and
+  # the second only works if every crate underneath permits being shipped inside
+  # a closed product. One copyleft dependency makes that offer impossible to
+  # honour, and the bad moment to find that out is after terms have been agreed
+  # with somebody. A dependency added in six months is how the next one gets in,
+  # and nobody re-runs an audit they remember passing.
+  #
+  # `deny.toml` holds the allowed set, the one narrow MPL-2.0 exception, and the
+  # reason for each.
+  licences:
+    name: dependency licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+
   # AGENTS.md requires check, clippy and test to pass cleanly. Clippy performs a
   # check as part of its run, so clippy + test covers all three commands.
   #
