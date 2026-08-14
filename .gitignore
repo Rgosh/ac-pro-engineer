@@ -19,4 +19,25 @@ config.json
 /gui/
 /gui_paid/
 /ac_pro_gui/
+# The site, past the front door.
+#
+# `site/index.html` stays tracked: it is the landing, and GitHub Pages publishes
+# it as a mirror of the front door — its links point at the domain, so that copy
+# opens onto the real thing. Everything below is served only from
+# proengineer.app and is kept off GitHub deliberately: the generator, the
+# fragments it builds from, the shared stylesheet, and the pages themselves.
+#
+# These files therefore exist in exactly two places — this working copy and the
+# web server. Git is not backing them up. Keep a copy somewhere outside the
+# repository, the same way site/deploy.sh has always had to be kept.
 site/deploy.sh
+site/build.py
+site/inline-css.py
+site/pages/
+site/assets/
+site/ac/
+site/features/
+site/compare/
+site/technical/
+site/download/
+site/faq/

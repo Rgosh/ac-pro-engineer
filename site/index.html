@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pro Engineer — Assetto Corsa Telemetry &amp; Virtual Race Engineer</title>
-<meta name="description" content="Free, open-source Assetto Corsa telemetry and a virtual race engineer that tells you what to change. 115 features: tyre pressures and temperatures, corner-by-corner lap analysis, fuel strategy and force feedback clipping — in a terminal dashboard and an in-game CSP overlay. Windows, Linux and Steam Deck.">
+<meta name="description" content="Free, open-source sim racing telemetry that tells you what to change. Reads Assetto Corsa's shared memory sixty times a second and answers in sentences — tyre pressures, camber, brakes, fuel, corner-by-corner lap analysis — in a terminal and in the game. Windows, Linux, Steam Deck.">
 <meta property="og:title" content="Pro Engineer — Assetto Corsa Telemetry &amp; Race Engineer">
 <meta property="og:description" content="A race engineer for Assetto Corsa that reads your telemetry and tells you what to change. Free, open source, Windows and Linux.">
 <meta property="og:type" content="website">
@@ -12,8 +12,9 @@
 <meta name="keywords" content="sim racing telemetry, Assetto Corsa telemetry, race engineer app, virtual race engineer, tyre pressure calculator, cold pressure calculator, fuel strategy calculator, stint planner, FFB clipping meter, MoTeC CSV export, ghost lap comparison, corner analysis, lap decomposition, Custom Shaders Patch app, CSP Lua overlay, Assetto Corsa Linux, Assetto Corsa Proton, Steam Deck sim racing, shared memory telemetry, free open source telemetry">
 <!-- Self-referential, and it has to be: pointing this at the GitHub repository
      told search engines the page was a duplicate of it, on the one page written
-     to be indexed. These three move together with the domain, and nothing else
-     in the file has an absolute address in it. -->
+     to be indexed. It also makes the github.io copy of this file declare the
+     domain as the original, which is exactly what should happen — that copy is
+     a mirror of the front door and nothing else. -->
 <link rel="canonical" href="https://proengineer.app/">
 <meta property="og:url" content="https://proengineer.app/">
 <!-- A purpose-built 1200x630 card. The dashboard screenshot was 2832x1696 and
@@ -29,6 +30,36 @@
 <!-- Without max-image-preview:large a result gets a thumbnail instead of the
      card, which is most of what decides whether anybody clicks it. -->
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+
+<!-- Favicons, in the order that matters to a search engine rather than to a
+     browser tab.
+
+     Google only uses an icon that is square and a multiple of 48 px, and it
+     reads the declarations on the site's home page — not the web manifest.
+     This page used to declare 32 and 16 only, with 192 and 512 mentioned in
+     site.webmanifest, so there was nothing here it would take: the tab had an
+     icon and the search result had a globe. 48, 96, 144 and 192 are all
+     multiples of 48; 512 is not, and is left to the manifest and the JSON-LD
+     logo, which have no such rule.
+
+     No `?v=` on these. The version query existed to get browsers past a cached
+     404 from when this domain was on Pages with no /favicon.ico; these four
+     filenames are new, so there is no cache to defeat, and a URL that changes
+     is a URL a search engine has to re-learn. -->
+<link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/icon-96.png">
+<link rel="icon" type="image/png" sizes="144x144" href="/icon-144.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png">
+<!-- For anything that asks for /favicon.ico on its own. BMP inside rather than
+     PNG-in-ICO — the older encoding, and the one nothing has ever been fussy
+     about. -->
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+
 <script type="application/ld+json">
 {
   "@context":"https://schema.org",
@@ -45,6 +76,7 @@
   "image":"https://proengineer.app/icon-512.png",
   "screenshot":"https://proengineer.app/og.png",
   "downloadUrl":"https://github.com/Rgosh/ac-pro-engineer/releases",
+  "softwareHelp":"https://proengineer.app/download/",
   "description":"A free, open-source sim racing telemetry application and virtual race engineer. Reads the simulator's shared memory, analyses tyre temperatures and pressures, brake heat, fuel and driving style, and gives plain-language engineering advice in a terminal dashboard and an in-game overlay.",
   "featureList":[
     "Live tyre pressure and inner, middle and outer temperature per corner",
@@ -71,90 +103,6 @@
   ]
 }
 </script>
-<!-- A data-URI favicon is fine for a browser tab and no use to a search
-     engine, which needs one it can fetch at a stable URL. These are real files:
-     .ico carries 16/32/48 for the tab, the SVG scales anywhere, and the PNGs are
-     what Android and iOS ask for. -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is it free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Free and open source. No account, no subscription, and no telemetry collected about you."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use the code in my own project?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Change it for yourself and nothing at all is asked of you — the licence conditions passing a copy on, not what runs on your own rig. Publish something built on it and the one condition is that your source is open too, under the same AGPL v3, with this project credited. Keeping your own source closed, or selling a product with this code inside it, needs written permission first: rgoshbbb@gmail.com."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does it work on Linux or a Steam Deck?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. The desktop side is native. The in-game overlay additionally needs a small bridge running inside the game's Proton prefix, because only a Windows process in there can give the shared memory the name the game is allowed to open. The application ships the bridge and can fetch a matching one for you."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Will it cost me frames?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The desktop side is a terminal application at about 0.1 % of one core with no GPU cost. The in-game panel draws and nothing else — every calculation happens outside the game, because Lua runs on the render thread where a millisecond is a sixth of the frame budget at 165 Hz."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which simulators are supported?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Assetto Corsa today. The core reads a game through a boundary designed for more than one — a simulator is a folder rather than conditionals through the middle of the engineer — but no second folder is written, and we would rather say that than imply otherwise."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Do I need Custom Shaders Patch?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Only for the in-game overlay. Everything else — the dashboard, the analysis, the engineer, the strategy work — runs without it."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use my own reference lap?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Laps are saved as JSON with full metadata and can be loaded back as a ghost on another day, and the corner analysis compares against whichever lap you choose."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can a friend see my telemetry?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "On the same network, yes — they set an address to listen on and see your numbers and your engineer's advice in their own panel. It is off unless you turn it on, because it is telemetry about a person."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does it modify my game?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "It writes one folder — its own overlay app — into the game's Lua app directory, and nothing else. It reads the game's shared memory, which is the interface the game publishes for exactly this."
-      }
-    }
-  ]
-}
-</script>
 <script type="application/ld+json">
 {
   "@context":"https://schema.org",
@@ -174,126 +122,490 @@
   }
 }
 </script>
-<!-- Versioned on purpose. While this domain was on Pages there was no
-     /favicon.ico to serve, so a browser that asked for one cached the 404 —
-     and a favicon cache is not cleared by a hard reload. A changed URL is the
-     only thing that reliably gets past it.
-     `sizes="any"` rather than 48x48: the file carries 16, 32 and 48, and
-     naming one of them invites the browser to scale that one to the others. -->
-<!-- PNGs first and declared by exact size. Every browser renders a PNG favicon
-     without argument, which removes the two things that can go wrong further
-     down: an .ico whose sub-images it does not like, and an SVG it may or may
-     not prefer. The .ico stays for anything that asks for /favicon.ico on its
-     own, and is BMP inside rather than PNG-in-ICO — the older encoding, and the
-     one nothing has ever been fussy about. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=3">
-<link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png?v=3">
-<link rel="icon" href="/favicon.ico?v=3" sizes="any">
-<link rel="icon" type="image/svg+xml" href="/icon.svg?v=3">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
-<link rel="manifest" href="/site.webmanifest?v=3">
+<!-- Inline, and it has to be. Every other page links /assets/pe.css, which is
+     served only from proengineer.app; this file is also published to GitHub
+     Pages, where it has to stand up with nothing beside it. The two copies are
+     kept identical by generating this block from that file — site/README.md
+     has the one-liner. -->
 <style>
-  :root{
-    /* Straight out of the application's default theme — core/src/config.rs. */
-    --bg:#0a0a0f;
-    --bg-raised:#101018;
-    --text:#dcdce6;
-    --dim:#6d7180;
-    --highlight:#00b4ff;
-    --accent:#ffa500;
-    --border:#3c4655;
-    --good:#3fd07f;
-    --warn:#ffc447;
-    --bad:#ff5f56;
-    --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono","JetBrains Mono","Fira Code",Menlo,Consolas,"DejaVu Sans Mono",monospace;
-    --pad:20px;
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-  /* The strip's own height, named once so the landing offset cannot drift
-     away from it. Every anchor clears it by the same amount, which is what
-     makes one section land like the next. */
-  :root{--bar:46px}
-  section,#top{scroll-margin-top:calc(var(--bar) + 16px)}
-  body{
-    margin:0;background:var(--bg);color:var(--text);
-    font-family:var(--mono);font-size:15px;line-height:1.65;
-    -webkit-font-smoothing:antialiased;
-    overflow-wrap:break-word;
-  }
-  body::before{
-    content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
-    background:repeating-linear-gradient(180deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px);
-  }
-  a{color:var(--highlight);text-decoration:none}
-  a:hover{text-decoration:underline}
-  .wrap{max-width:1100px;margin:0 auto;padding:0 var(--pad)}
+/*PE_CSS*/
+/* Pro Engineer — the shared stylesheet for every page but the landing.
+ *
+ * The landing keeps its own copy inline. That is not an oversight: `index.html`
+ * is the one file in `site/` that is also published to GitHub Pages, and it has
+ * to render there with nothing beside it. Everything under this file is served
+ * only from proengineer.app, where a second request costs nothing and one
+ * stylesheet for six pages is worth having.
+ *
+ * The palette is the application's own default theme, from core/src/config.rs,
+ * so the site and the program cannot drift apart in look without somebody
+ * noticing.
+ */
 
-  /* ── window chrome ─────────────────────────────────────────────── */
-  /* The window is drawn in two pieces with the tab strip between them, so the
-     three read as one frame while the strip is a child of .wrap — whose height
-     is the whole page, which is how far it has to stick. Inside .term it was
-     bounded by the hero and let go the moment that scrolled past. */
-  .term-head{
-    border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;
-    background:var(--bg-raised);
-  }
-  .term-bar{
-    display:flex;align-items:center;gap:8px;padding:9px 14px;
-    background:#15151f;border-radius:7px 7px 0 0;
-  }
-  .term-body{
-    border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;
-    background:var(--bg-raised);margin:0 0 4px;
-  }
-  .dot{width:11px;height:11px;border-radius:50%;flex:none}
-  .dot.r{background:var(--bad)}.dot.y{background:var(--warn)}.dot.g{background:var(--good)}
-  .term-title{
-    flex:1;text-align:center;color:var(--dim);font-size:12.5px;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  /* The same mark as the favicon, inline so it costs no request and stays
-     sharp at any size. Decorative here — the page says its name in words. */
-  .mark{width:15px;height:15px;vertical-align:-3px;margin-right:7px;flex:none}
-  .mark.big{width:34px;height:34px;vertical-align:0;margin:0}
-  .sign{display:flex;gap:12px;align-items:flex-start}
-  .term-body{padding:26px 22px}
+:root{
+  --bg:#0a0a0f;
+  --bg-raised:#101018;
+  --text:#dcdce6;
+  --dim:#6d7180;
+  --highlight:#00b4ff;
+  --accent:#ffa500;
+  --border:#3c4655;
+  --good:#3fd07f;
+  --warn:#ffc447;
+  --bad:#ff5f56;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono","JetBrains Mono","Fira Code",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  --pad:20px;
+  /* The strip's own height, named once so the landing offset cannot drift away
+     from it. Every anchor clears it by the same amount. */
+  --bar:46px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+section,#top{scroll-margin-top:calc(var(--bar) + 16px)}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--mono);font-size:15px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;overflow-wrap:break-word;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
+  background:repeating-linear-gradient(180deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px);
+}
+a{color:var(--highlight);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:0 var(--pad)}
 
-  /* ── the app's own tab strip ───────────────────────────────────── */
-  nav.tabs{
-    display:flex;gap:2px;padding:0 14px;background:#0d0d15;
-    border-bottom:1px solid var(--border);
-    overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
-    /* Follows you down the page, the way a tab bar in the application does. */
-    position:sticky;top:0;z-index:20;
-    border-left:1px solid var(--border);border-right:1px solid var(--border);
-    /* Solid, because once it detaches it has the page scrolling under it. */
-    box-shadow:0 10px 24px -18px #000;
+/* ── window chrome ───────────────────────────────────────────────────
+   Drawn in two pieces with the tab strip between them, so the three read as
+   one frame while the strip is a child of .wrap — whose height is the whole
+   page, which is how far it has to stick. */
+.term-head{
+  border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;
+  background:var(--bg-raised);
+}
+.term-bar{
+  display:flex;align-items:center;gap:8px;padding:9px 14px;
+  background:#15151f;border-radius:7px 7px 0 0;
+}
+.term-body{
+  border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;
+  background:var(--bg-raised);margin:0 0 4px;padding:26px 22px;
+}
+.dot{width:11px;height:11px;border-radius:50%;flex:none}
+.dot.r{background:var(--bad)}.dot.y{background:var(--warn)}.dot.g{background:var(--good)}
+.term-title{
+  flex:1;text-align:center;color:var(--dim);font-size:12.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* The same mark as the favicon, inline so it costs no request and stays sharp
+   at any size. Decorative — every page says its name in words. */
+.mark{width:15px;height:15px;vertical-align:-3px;margin-right:7px;flex:none}
+.mark.big{width:34px;height:34px;vertical-align:0;margin:0}
+.sign{display:flex;gap:12px;align-items:flex-start}
+
+/* ── the site's tab strip ────────────────────────────────────────────
+   The application's own tab bar, carrying the site's pages instead of the
+   program's screens. Which one is lit is decided in the markup, per page. */
+nav.tabs{
+  display:flex;gap:2px;padding:0 14px;background:#0d0d15;
+  border-bottom:1px solid var(--border);
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  position:sticky;top:0;z-index:20;
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+  box-shadow:0 10px 24px -18px #000;
+}
+nav.tabs::after{
+  content:"";position:absolute;left:0;bottom:-1px;height:2px;width:100%;
+  background:linear-gradient(90deg,var(--highlight),var(--accent));
+  transform:scaleX(0);transform-origin:0 50%;
+}
+@supports (animation-timeline: scroll()){
+  nav.tabs::after{animation:fill linear both;animation-timeline:scroll(root block)}
+  @keyframes fill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+}
+nav.tabs::-webkit-scrollbar{display:none}
+nav.tabs a{
+  padding:11px 13px;color:var(--dim);font-size:13px;letter-spacing:.06em;
+  border-bottom:2px solid transparent;white-space:nowrap;
+}
+nav.tabs a:hover{color:var(--text);text-decoration:none;border-bottom-color:var(--border)}
+nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
+
+/* ── page head ───────────────────────────────────────────────────────
+   A sub-page opens with a breadcrumb and a real H1 rather than with the block
+   logo. The logo is the landing's; repeating it on six pages makes six pages
+   that all look like the front door. */
+.crumbs{color:var(--dim);font-size:12.5px;letter-spacing:.06em;margin:0 0 12px}
+.crumbs a{color:var(--dim)}
+.crumbs a:hover{color:var(--highlight)}
+.crumbs .sep{opacity:.5;padding:0 6px}
+.h1{font-size:clamp(21px,3vw,27px);margin:0 0 10px;font-weight:700;color:var(--text);line-height:1.25}
+.h1 span{color:var(--dim);font-weight:400;font-size:clamp(13px,1.6vw,15px);display:block;margin-top:4px}
+.tagline{font-size:clamp(16px,2.4vw,21px);margin:0 0 6px}
+.tagline b{color:var(--accent);font-weight:600}
+.sub{color:var(--dim);margin:0 0 24px;max-width:66ch}
+.sub b{color:var(--text);font-weight:600}
+.prompt{color:var(--good)}
+
+/* ── the phosphor look ─────────────────────────────────────────────
+   A cheap, static glow on the two accent colours. Text-shadow does not animate
+   here, so it costs one paint and nothing per frame. */
+.h1,.stat b,.demo .hi{text-shadow:0 0 18px rgba(0,180,255,.28)}
+h2{text-shadow:0 0 16px rgba(255,165,0,.22)}
+.btn{box-shadow:0 0 0 0 rgba(0,180,255,0)}
+.btn:hover{box-shadow:0 0 22px rgba(0,180,255,.25)}
+
+/* A refresh line crossing the screen once every twelve seconds: one transformed
+   element over a fixed layer, so nothing under it repaints. */
+.sweep{position:fixed;inset:0;pointer-events:none;z-index:8;overflow:hidden}
+.sweep::before{
+  content:"";position:absolute;left:0;right:0;height:38vh;top:-40vh;
+  background:linear-gradient(180deg,transparent,rgba(0,180,255,.045),transparent);
+}
+@media (prefers-reduced-motion:no-preference){
+  .sweep::before{animation:sweep 12s linear infinite}
+}
+@keyframes sweep{from{transform:translateY(0)}to{transform:translateY(180vh)}}
+
+/* ── the program's own output, on the page ─────────────────────────── */
+.demo{border:1px solid var(--border);border-radius:6px;overflow:hidden;margin:0 0 22px;background:#07070c}
+.demo-bar{
+  background:#15151f;border-bottom:1px solid var(--border);padding:6px 12px;
+  color:var(--dim);font-size:11.5px;letter-spacing:.08em;
+}
+.demo-body{padding:14px 16px;white-space:pre-wrap;font-size:13.5px;line-height:1.75;color:var(--text)}
+.demo .c{color:var(--dim)}
+.demo .w{color:var(--text)}
+.demo .acc{color:var(--accent)}
+.demo .hi{color:var(--good)}
+.demo .md{color:var(--warn)}
+.demo .lo{color:var(--bad)}
+.cursor{
+  display:inline-block;width:.6em;height:1.05em;background:var(--highlight);
+  vertical-align:-2px;animation:blink 1.1s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+
+/* Each line prints itself as the block is scrolled into view: nine staggered
+   animations off the same scroll range, and no script. */
+.demo-body .ln{display:block;min-height:1.75em}
+@supports (animation-timeline: view()){
+  @media (prefers-reduced-motion:no-preference){
+    .demo-body .ln{opacity:0;animation:printline linear both;animation-timeline:view()}
+    .demo-body .ln:nth-child(1){animation-range:entry 6% entry 16%}
+    .demo-body .ln:nth-child(2){animation-range:entry 12% entry 22%}
+    .demo-body .ln:nth-child(3){animation-range:entry 17% entry 27%}
+    .demo-body .ln:nth-child(4){animation-range:entry 22% entry 32%}
+    .demo-body .ln:nth-child(5){animation-range:entry 27% entry 37%}
+    .demo-body .ln:nth-child(6){animation-range:entry 32% entry 42%}
+    .demo-body .ln:nth-child(7){animation-range:entry 37% entry 47%}
+    .demo-body .ln:nth-child(8){animation-range:entry 42% entry 52%}
+    .demo-body .ln:nth-child(9){animation-range:entry 47% entry 57%}
+    @keyframes printline{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
   }
-  /* How far down the page you are, drawn as the application would draw it: a
-     bar that fills. Driven by the scroll position itself rather than by a
-     script, so it costs one compositor property and no main-thread work. */
-  nav.tabs::after{
-    content:"";position:absolute;left:0;bottom:-1px;height:2px;width:100%;
-    background:linear-gradient(90deg,var(--highlight),var(--accent));
-    transform:scaleX(0);transform-origin:0 50%;
-  }
-  @supports (animation-timeline: scroll()) {
-    nav.tabs::after{
-      animation:fill linear both;
-      animation-timeline:scroll(root block);
+}
+
+/* ── typing ──────────────────────────────────────────────────────────
+   The default state is plain, fully visible text. The clipping and the zero
+   width exist only inside the guards, because a heading that starts at
+   `width:0` and never animates is a heading nobody can read. */
+.tw{display:inline;--tw-adv:1ch}
+@supports (animation-timeline: view()){
+  @media (prefers-reduced-motion:no-preference){
+    .tw{
+      display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;
+      width:calc(var(--n) * var(--tw-adv));
+      animation:typein linear both;animation-timeline:view();
+      animation-range:entry 8% entry 34%;
     }
-    @keyframes fill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
   }
-  nav.tabs::-webkit-scrollbar{display:none}
-  nav.tabs a{
-    padding:11px 13px;color:var(--dim);font-size:13px;letter-spacing:.06em;
-    border-bottom:2px solid transparent;white-space:nowrap;
-  }
-  nav.tabs a:hover{color:var(--text);text-decoration:none;border-bottom-color:var(--border)}
-  nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
+}
+@keyframes typein{from{width:0}to{width:calc(var(--n) * var(--tw-adv))}}
 
-  /* ── hero ──────────────────────────────────────────────────────── */
+/* ── movement ────────────────────────────────────────────────────────
+   Only opacity and transform, so every frame is on the compositor and nothing
+   here can cause a relayout. */
+.btn,.card,nav.tabs a,details.fold > summary,figure img{
+  transition:transform .18s ease, border-color .18s ease,
+             background-color .18s ease, color .18s ease, opacity .18s ease;
+}
+.card:hover{transform:translateY(-2px);border-color:var(--highlight)}
+.btn:hover{transform:translateY(-1px)}
+figure img:hover{border-color:var(--highlight)}
+.stat{transition:background-color .18s ease}
+.stat:hover{background:#15151f}
+.btn:active,.card:active{transform:translateY(1px)}
+nav.tabs a:active{opacity:.7}
+
+details.fold[open] > .fold-body{animation:foldin .2s ease both}
+@keyframes foldin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+@supports (animation-timeline: view()){
+  @media (prefers-reduced-motion:no-preference){
+    h2::after{
+      transform-origin:0 50%;animation:draw linear both;
+      animation-timeline:view();animation-range:entry 0% entry 40%;
+    }
+    @keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+    section > h2,section > .lede,.card,.stats,.demo,figure,details.fold{
+      animation:rise linear both;animation-timeline:view();
+      animation-range:entry 0% entry 32%;
+    }
+    @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+    /* A grid that arrives all at once is one event; the same cards a beat apart
+       read as a list being filled in. */
+    .grid .card:nth-child(1){animation-range:entry 2% entry 30%}
+    .grid .card:nth-child(2){animation-range:entry 6% entry 34%}
+    .grid .card:nth-child(3){animation-range:entry 10% entry 38%}
+    .grid .card:nth-child(4){animation-range:entry 14% entry 42%}
+    .grid .card:nth-child(5){animation-range:entry 18% entry 46%}
+    .grid .card:nth-child(6){animation-range:entry 22% entry 50%}
+    .grid .card:nth-child(7){animation-range:entry 26% entry 54%}
+    .grid .card:nth-child(8){animation-range:entry 30% entry 58%}
+    .grid .card:nth-child(9){animation-range:entry 34% entry 62%}
+
+    .stats .stat{animation:rise linear both;animation-timeline:view()}
+    .stats .stat:nth-child(1){animation-range:entry 4% entry 26%}
+    .stats .stat:nth-child(2){animation-range:entry 8% entry 30%}
+    .stats .stat:nth-child(3){animation-range:entry 12% entry 34%}
+    .stats .stat:nth-child(4){animation-range:entry 16% entry 38%}
+    .stats .stat:nth-child(5){animation-range:entry 20% entry 42%}
+    .stats .stat:nth-child(6){animation-range:entry 24% entry 46%}
+
+    /* A screenshot settles rather than slides — it is a picture of a screen,
+       and a screen switching on is the right gesture for it. */
+    figure img{animation:settle linear both;animation-timeline:view();
+               animation-range:entry 0% entry 36%}
+    @keyframes settle{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+  }
+}
+
+/* A link's underline arrives from the left. */
+.lede a,footer a,.note a,.card a{
+  text-decoration:none;background-image:linear-gradient(var(--highlight),var(--highlight));
+  background-size:0 1px;background-position:0 100%;background-repeat:no-repeat;
+  transition:background-size .2s ease;
+}
+.lede a:hover,footer a:hover,.note a:hover,.card a:hover{background-size:100% 1px}
+
+/* Landing on a section from a link should show you where you landed. */
+section{position:relative}
+section::before{
+  content:"";position:absolute;left:calc(var(--pad) * -1 + 4px);
+  top:38px;bottom:8px;width:2px;background:var(--highlight);
+  opacity:0;border-radius:2px;
+}
+section:target::before{animation:mark 2.4s ease both}
+@keyframes mark{
+  0%{opacity:0;transform:scaleY(0)}
+  12%{opacity:1;transform:scaleY(1)}
+  70%{opacity:1;transform:scaleY(1)}
+  100%{opacity:0;transform:scaleY(1)}
+}
+section:target > h2{animation:markh 2.4s ease both}
+@keyframes markh{0%,70%{color:var(--highlight)}100%{color:var(--accent)}}
+
+@media (prefers-reduced-motion:reduce){
+  .cursor{animation:none}
+  /* Named rather than left to the blanket rule below: an infinite animation
+     with a 0.01 ms duration is still an animation, and a sweep crossing the
+     screen a hundred times a second is worse than the one it replaced. */
+  .sweep{display:none}
+  .demo-body .ln{opacity:1;animation:none}
+  section:target::before,section:target > h2,.stats .stat,figure img{animation:none}
+  section:target > h2{color:var(--accent)}
+  .tw{display:inline;width:auto;overflow:visible;animation:none}
+  h2::after{animation:none;transform:none}
+  nav.tabs::after{animation:none;transform:scaleX(1)}
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important}
+  html{scroll-behavior:auto}
+}
+
+/* ── buttons, stats, sections ────────────────────────────────────── */
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 10px}
+.fineprint{color:var(--dim);font-size:13px;margin:0;max-width:64ch}
+.btn{
+  border:1px solid var(--highlight);color:var(--highlight);
+  padding:10px 18px;border-radius:5px;font-size:14px;
+}
+.btn:hover{background:var(--highlight);color:#06060b;text-decoration:none}
+.btn.ghost{border-color:var(--border);color:var(--text)}
+.btn.ghost:hover{background:var(--border);color:var(--text)}
+
+.stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+  gap:1px;background:var(--border);border:1px solid var(--border);
+  border-radius:6px;overflow:hidden;margin:0 0 26px;
+}
+.stat{background:var(--bg-raised);padding:14px 12px;text-align:center}
+.stat b{display:block;color:var(--highlight);font-size:23px;line-height:1.2}
+.stat span{color:var(--dim);font-size:11.5px;letter-spacing:.06em}
+
+section{padding:46px 0 8px}
+h2{
+  font-size:15px;letter-spacing:.14em;color:var(--accent);
+  margin:0 0 6px;font-weight:600;display:flex;align-items:center;gap:12px;
+}
+h2::after{content:"";flex:1;height:1px;background:var(--border)}
+.lede{color:var(--dim);margin:0 0 24px;max-width:74ch}
+.lede b{color:var(--text);font-weight:600}
+h3{font-size:15px;margin:22px 0 8px;color:var(--text)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:14px}
+.grid.three{grid-template-columns:repeat(3,1fr)}
+@media (max-width:900px){.grid.three{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.grid.three{grid-template-columns:1fr}}
+.card{
+  border:1px solid var(--border);border-radius:6px;padding:16px 18px;
+  background:var(--bg-raised);
+}
+.card h3{display:flex;align-items:baseline;gap:8px;margin:0 0 7px}
+.card h3 .k{color:var(--highlight);flex:none}
+.card h3 .n{margin-left:auto;color:var(--accent);font-size:12px;font-weight:400;flex:none}
+.card p{margin:0;color:var(--dim);font-size:14px}
+
+/* A card that is entirely a link — used for the page cards and the simulator
+   picker. The whole tile is the target, which is what a thumb expects. */
+a.card{display:block;color:inherit}
+a.card:hover{text-decoration:none}
+a.card h3{color:var(--highlight)}
+a.card .go{color:var(--dim);font-size:12.5px;letter-spacing:.06em;margin-top:10px;display:block}
+a.card:hover .go{color:var(--highlight)}
+
+/* The simulator picker. One tile per game, and adding the next one is adding a
+   tile — which is the whole point of the folder-per-game boundary underneath. */
+.sims{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:0 0 8px}
+.sim-badge{
+  display:inline-block;font-size:11.5px;letter-spacing:.08em;padding:2px 8px;
+  border:1px solid var(--border);border-radius:20px;color:var(--dim);margin-left:auto;flex:none;
+}
+.sim-badge.live{color:var(--good);border-color:var(--good)}
+.sim-badge.soon{color:var(--dim)}
+a.card.pending{opacity:.72}
+a.card.pending:hover{opacity:1}
+
+figure{margin:0 0 24px}
+figure img{
+  width:100%;height:auto;display:block;
+  border:1px solid var(--border);border-radius:6px;background:#000;
+}
+figcaption{color:var(--dim);font-size:13px;margin-top:9px}
+
+pre{
+  background:#07070c;border:1px solid var(--border);border-radius:6px;
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px;font-size:13.5px;
+}
+pre .c{color:var(--dim)}
+code{color:var(--accent)}
+
+table{width:100%;border-collapse:collapse;font-size:14px;margin:0 0 4px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:12.5px;letter-spacing:.08em}
+td:first-child{color:var(--text);white-space:normal}
+td:last-child{color:var(--dim)}
+td code{color:var(--highlight)}
+
+details.fold{
+  border:1px solid var(--border);border-radius:6px;background:var(--bg-raised);
+  margin:0 0 10px;overflow:hidden;
+}
+details.fold > summary{
+  cursor:pointer;list-style:none;padding:14px 18px;
+  display:flex;align-items:center;gap:10px;font-size:14.5px;
+}
+details.fold > summary::-webkit-details-marker{display:none}
+details.fold > summary::before{content:"+";color:var(--highlight);font-weight:700;width:1ch;flex:none}
+details.fold[open] > summary::before{content:"−"}
+details.fold > summary:hover{background:#161622}
+details.fold > summary .count{margin-left:auto;color:var(--dim);font-size:12px;flex:none}
+details.fold > summary .blurb{color:var(--dim);font-size:13px}
+.fold-body{padding:0 18px 8px}
+details.fold[open] > summary{border-bottom:1px solid var(--border)}
+
+.note{
+  border-left:2px solid var(--warn);padding:2px 0 2px 16px;
+  color:var(--dim);margin:14px 0 18px;font-size:14px;
+}
+.note b{color:var(--warn)}
+td.na{color:var(--dim)}
+
+footer{
+  border-top:1px solid var(--border);margin-top:50px;padding:26px 0 40px;
+  color:var(--dim);font-size:13.5px;
+}
+footer .row{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between}
+footer .cols{display:flex;flex-wrap:wrap;gap:34px}
+footer .cols div{min-width:120px}
+footer .cols b{display:block;color:var(--dim);font-size:11.5px;letter-spacing:.08em;margin-bottom:6px}
+footer .cols a{display:block;color:var(--text);font-size:13.5px}
+footer .cols a:hover{color:var(--highlight)}
+
+/* Wide things scroll inside themselves; the page never does. */
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.scroll-x table{min-width:900px;margin-bottom:0}
+.scroll-x pre{min-width:0}
+.scroll-wrap{position:relative}
+.scroll-wrap::after{
+  content:"";position:absolute;top:0;right:0;bottom:0;width:34px;
+  background:linear-gradient(90deg,transparent,var(--bg));pointer-events:none;
+}
+.swipe{display:none;color:var(--dim);font-size:12.5px;margin:6px 0 0}
+
+/* ── phone ─────────────────────────────────────────────────────────── */
+@media (max-width:760px){
+  :root{--pad:14px}
+  .term-body{padding:20px 15px}
+  .demo-body{font-size:12.5px;padding:12px 12px;line-height:1.7}
+  section{padding:36px 0 4px}
+  h2{font-size:13.5px;letter-spacing:.1em}
+  .cta{gap:8px}
+  .btn{flex:1 1 auto;text-align:center;padding:11px 12px}
+  .stat b{font-size:20px}
+  .stats{grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
+
+  /* Two-column tables become stacked pairs: a label and what it means. A
+     14-word description in a 40 %-wide cell on a 360 px screen is four words a
+     line and eight lines tall. */
+  .stacked table,.stacked tbody,.stacked tr,.stacked td{display:block;width:100%}
+  .stacked tr{border-bottom:1px solid var(--border);padding:11px 0}
+  .stacked td{border:0;padding:0}
+  .stacked td:first-child{color:var(--text);font-weight:600;margin-bottom:2px}
+  .stacked td:last-child{color:var(--dim);font-size:13.5px}
+  .fold-body{padding:0 14px 6px}
+  details.fold > summary{padding:13px 14px;flex-wrap:wrap}
+  details.fold > summary .count{margin-left:0;width:100%;padding-left:2ch}
+  footer .row{gap:14px}
+  footer .cols{gap:20px}
+
+  /* The wide table cannot stack — nine columns is a comparison, not a list —
+     so it scrolls, and the hint that it does appears only where it is needed. */
+  .swipe{display:block}
+  .h1 span{font-size:13px}
+  .tagline{font-size:17px}
+  .grid{gap:12px}
+  .card{padding:14px 15px}
+  nav.tabs a{padding:13px 12px}   /* comfortably past the 44 px a thumb wants */
+  .sweep{display:none}
+  /* The rail lives in the wrapper's padding, and there is not enough of it
+     here to put anything in. */
+  section::before{display:none}
+  .fineprint{font-size:12.5px}
+  figcaption{font-size:12.5px}
+  .note{padding-left:12px;font-size:13.5px}
+  table{font-size:13.5px}
+}
+
+@media (max-width:400px){
+  .demo-body{font-size:11.5px;padding:10px 10px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .h1{font-size:20px}
+  .btn{width:100%}
+}
+/*PE_CSS_END*/
+  /* ── the landing's own ────────────────────────────────────────────
+     The block logo, and the pieces only the front door uses. */
   .logo{
     color:var(--highlight);font-size:clamp(8px,1.5vw,15px);line-height:1.12;
     margin:0 0 18px;white-space:pre;
@@ -303,456 +615,31 @@
        stripes rather than a word. */
     width:94ch;max-width:100%;overflow:hidden;
   }
+  .logo{text-shadow:0 0 18px rgba(0,180,255,.28)}
   @media (prefers-reduced-motion:no-preference){
     .logo{animation:drawlogo 1.5s steps(94,end) both}
-  }
-  @keyframes drawlogo{from{width:0}to{width:94ch}}
-
-  /* The line under it waits for the logo to finish rather than racing it. */
-  @media (prefers-reduced-motion:no-preference){
+    /* The line under it waits for the logo to finish rather than racing it. */
     .h1,.tagline{animation:fadeup .5s ease both}
     .h1{animation-delay:1.35s}
     .tagline{animation-delay:1.5s}
     @keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   }
-  /* A real, visible H1. It used to be hidden on desktop behind the block
-     logo, which left the page's most important heading as `display:none`
-     text — weak for a reader and weak for a crawler. */
-  .h1{font-size:clamp(21px,3vw,27px);margin:0 0 10px;font-weight:700;color:var(--text);line-height:1.25}
-  .h1 span{color:var(--dim);font-weight:400;font-size:clamp(13px,1.6vw,15px);display:block;margin-top:4px}
-
-  /* What the program actually says, on the page. The most persuasive thing
-     here is its own output. */
-  .demo{border:1px solid var(--border);border-radius:6px;overflow:hidden;margin:0 0 22px;background:#07070c}
-  .demo-bar{background:#15151f;border-bottom:1px solid var(--border);padding:6px 12px;
-    color:var(--dim);font-size:11.5px;letter-spacing:.08em}
-  .demo-body{padding:14px 16px;white-space:pre-wrap;font-size:13.5px;line-height:1.75;color:var(--text)}
-  .demo .c{color:var(--dim)}
-  .demo .w{color:var(--text)}
-  .demo .acc{color:var(--accent)}
-  .demo .hi{color:var(--good)}
-  .demo .md{color:var(--warn)}
-  .demo .lo{color:var(--bad)}
-  .tagline{font-size:clamp(16px,2.4vw,21px);margin:0 0 6px}
-  .tagline b{color:var(--accent);font-weight:600}
-  .sub{color:var(--dim);margin:0 0 24px;max-width:64ch}
-  .prompt{color:var(--good)}
-  .cursor{
-    display:inline-block;width:.6em;height:1.05em;background:var(--highlight);
-    vertical-align:-2px;animation:blink 1.1s steps(1) infinite;
-  }
-  @keyframes blink{50%{opacity:0}}
-
-  /* ── the phosphor look ─────────────────────────────────────────────
-     A cheap, static glow on the two accent colours. Text-shadow does not
-     animate here, so it costs one paint and nothing per frame. */
-  .h1,.stat b,.demo .hi,.logo{text-shadow:0 0 18px rgba(0,180,255,.28)}
-  h2{text-shadow:0 0 16px rgba(255,165,0,.22)}
-  .btn{box-shadow:0 0 0 0 rgba(0,180,255,0)}
-  .btn:hover{box-shadow:0 0 22px rgba(0,180,255,.25)}
-
-  /* A refresh line crossing the screen, once every twelve seconds. Slow and
-     faint enough to read as a screen rather than as a costume, and it is one
-     transformed element over a fixed layer — no repaint of anything under it. */
-  .sweep{
-    position:fixed;inset:0;pointer-events:none;z-index:8;overflow:hidden;
-  }
-  .sweep::before{
-    content:"";position:absolute;left:0;right:0;height:38vh;top:-40vh;
-    background:linear-gradient(180deg,transparent,rgba(0,180,255,.045),transparent);
-  }
-  @media (prefers-reduced-motion:no-preference){
-    .sweep::before{animation:sweep 12s linear infinite}
-  }
-  @keyframes sweep{
-    from{transform:translateY(0)}
-    to{transform:translateY(180vh)}
-  }
-
-  /* Typing, in two flavours.
-     
-     The default state of both is plain, fully visible text. The clipping and
-     the zero width only exist inside the guards below, because a heading that
-     starts at `width:0` and never animates — no support, no motion allowed —
-     is a heading nobody can read. */
-  .tw{display:inline;--tw-adv:1ch}
-
-  /* Section headings type as they are scrolled to. `ch` is exact here because
-     the whole page is monospace. */
-  @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion:no-preference){
-      .tw{
-        display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;
-        width:calc(var(--n) * var(--tw-adv));
-        animation:typein linear both;
-        animation-timeline:view();
-        animation-range:entry 8% entry 34%;
-      }
-    }
-  }
-  @keyframes typein{from{width:0}to{width:calc(var(--n) * var(--tw-adv))}}
-
-  /* The prompt types itself, once, when the section is reached. `steps()` on a
-     width is the oldest trick there is and still the cheapest. */
-  .typed{
-    display:inline-block;overflow:hidden;white-space:nowrap;
-    vertical-align:bottom;width:15ch;
-  }
+  @keyframes drawlogo{from{width:0}to{width:94ch}}
+  /* The prompt types itself, once. `steps()` on a width is the oldest trick
+     there is and still the cheapest. */
+  .typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:15ch}
   @media (prefers-reduced-motion:no-preference){
     .typed{animation:type .9s steps(15,end) both}
   }
   @keyframes type{from{width:0}to{width:15ch}}
-
-  /* ── movement ──────────────────────────────────────────────────────
-     Only opacity and transform, so every frame is on the compositor and
-     nothing here can cause a relayout. Everything is off for anyone who
-     asked their system for less of it. */
-  .btn,.card,nav.tabs a,details.fold > summary,figure img{
-    transition:transform .18s ease, border-color .18s ease,
-               background-color .18s ease, color .18s ease, opacity .18s ease;
-  }
-  .card:hover{transform:translateY(-2px);border-color:var(--highlight)}
-  .btn:hover{transform:translateY(-1px)}
-  figure img:hover{border-color:var(--highlight)}
-  .stat{transition:background-color .18s ease}
-  .stat:hover{background:#15151f}
-
-  /* The output prints itself, a line at a time, as the block is scrolled into
-     view. Each line has its own slice of the same scroll range, so it is nine
-     staggered animations and still no script. */
-  .demo-body .ln{display:block;min-height:1.75em}
-  @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-      .demo-body .ln{
-        opacity:0;
-        animation:printline linear both;
-        animation-timeline:view();
-      }
-      .demo-body .ln:nth-child(1){animation-range:entry 6% entry 16%}
-      .demo-body .ln:nth-child(2){animation-range:entry 12% entry 22%}
-      .demo-body .ln:nth-child(3){animation-range:entry 17% entry 27%}
-      .demo-body .ln:nth-child(4){animation-range:entry 22% entry 32%}
-      .demo-body .ln:nth-child(5){animation-range:entry 27% entry 37%}
-      .demo-body .ln:nth-child(6){animation-range:entry 32% entry 42%}
-      .demo-body .ln:nth-child(7){animation-range:entry 37% entry 47%}
-      .demo-body .ln:nth-child(8){animation-range:entry 42% entry 52%}
-      .demo-body .ln:nth-child(9){animation-range:entry 47% entry 57%}
-      @keyframes printline{
-        from{opacity:0;transform:translateX(-6px)}
-        to{opacity:1;transform:none}
-      }
-    }
-  }
-
-  /* A fold opens rather than snaps. Time-based, so it fires on the click that
-     caused it and works in every browser. */
-  details.fold[open] > .fold-body{animation:foldin .2s ease both}
-  @keyframes foldin{
-    from{opacity:0;transform:translateY(-4px)}
-    to{opacity:1;transform:none}
-  }
-
-  /* The rule beside a heading draws itself in. */
-  @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-      h2::after{
-        transform-origin:0 50%;
-        animation:draw linear both;
-        animation-timeline:view();
-        animation-range:entry 0% entry 40%;
-      }
-      @keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-    }
-  }
-
-  /* Micro-interactions: a link's underline arrives from the left, and anything
-     clickable gives way a little under the press. */
-  .lede a,footer a,.note a{
-    text-decoration:none;background-image:linear-gradient(var(--highlight),var(--highlight));
-    background-size:0 1px;background-position:0 100%;background-repeat:no-repeat;
-    transition:background-size .2s ease;
-  }
-  .lede a:hover,footer a:hover,.note a:hover{background-size:100% 1px}
-  .btn:active,.card:active{transform:translateY(1px)}
-  nav.tabs a:active{opacity:.7}
-
-  /* Landing on a section from the tab strip should show you where you landed.
-     `:target` is the only thing that knows a jump happened, and it needs no
-     script: the section marks itself for a moment, and the tab that sent you
-     there stays lit for as long as you are in it. */
-  section{position:relative}
-  section::before{
-    content:"";position:absolute;left:calc(var(--pad) * -1 + 4px);
-    top:38px;bottom:8px;width:2px;background:var(--highlight);
-    opacity:0;border-radius:2px;
-  }
-  section:target::before{animation:mark 2.4s ease both}
-  @keyframes mark{
-    0%{opacity:0;transform:scaleY(0)}
-    12%{opacity:1;transform:scaleY(1)}
-    70%{opacity:1;transform:scaleY(1)}
-    100%{opacity:0;transform:scaleY(1)}
-  }
-  section:target > h2{animation:markh 2.4s ease both}
-  @keyframes markh{
-    0%,70%{color:var(--highlight)}
-    100%{color:var(--accent)}
-  }
-
-  /* Lit by the scrollspy below, not by `:target` — a target stays set until
-     the next click, so the old rule left a tab highlighted long after you had
-     scrolled somewhere else and was simply wrong about where you were. */
-  nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
-
-  /* Sections arrive as they are scrolled to. Scroll-driven animation rather
-     than a script: no JavaScript on this page at all, and where the browser
-     does not support it every element simply stays as it already is. */
-  @supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-      section > h2,
-      section > .lede,
-      .card,
-      .stats,
-      .demo,
-      figure,
-      details.fold{
-        animation:rise linear both;
-        animation-timeline:view();
-        animation-range:entry 0% entry 32%;
-      }
-      @keyframes rise{
-        from{opacity:0;transform:translateY(12px)}
-        to{opacity:1;transform:none}
-      }
-
-      /* A grid that arrives all at once is one event; the same cards a beat
-         apart read as a list being filled in. Each takes a slightly later
-         slice of the same scroll range. */
-      .grid .card:nth-child(1){animation-range:entry 2% entry 30%}
-      .grid .card:nth-child(2){animation-range:entry 6% entry 34%}
-      .grid .card:nth-child(3){animation-range:entry 10% entry 38%}
-      .grid .card:nth-child(4){animation-range:entry 14% entry 42%}
-      .grid .card:nth-child(5){animation-range:entry 18% entry 46%}
-      .grid .card:nth-child(6){animation-range:entry 22% entry 50%}
-      .grid .card:nth-child(7){animation-range:entry 26% entry 54%}
-      .grid .card:nth-child(8){animation-range:entry 30% entry 58%}
-      .grid .card:nth-child(9){animation-range:entry 34% entry 62%}
-
-      /* The stat tiles count themselves in the same way. */
-      .stats .stat{
-        animation:rise linear both;animation-timeline:view();
-      }
-      .stats .stat:nth-child(1){animation-range:entry 4% entry 26%}
-      .stats .stat:nth-child(2){animation-range:entry 8% entry 30%}
-      .stats .stat:nth-child(3){animation-range:entry 12% entry 34%}
-      .stats .stat:nth-child(4){animation-range:entry 16% entry 38%}
-      .stats .stat:nth-child(5){animation-range:entry 20% entry 42%}
-      .stats .stat:nth-child(6){animation-range:entry 24% entry 46%}
-
-      /* A screenshot settles rather than slides — it is a picture of a screen,
-         and a screen switching on is the right gesture for it. */
-      figure img{animation:settle linear both;animation-timeline:view();
-                 animation-range:entry 0% entry 36%}
-      @keyframes settle{
-        from{opacity:0;transform:scale(.985)}
-        to{opacity:1;transform:none}
-      }
-    }
-  }
-
   @media (prefers-reduced-motion:reduce){
-    .cursor{animation:none}
-    /* Named rather than left to the blanket rule below: an infinite animation
-       with a 0.01 ms duration is still an animation, and a sweep crossing the
-       screen a hundred times a second is worse than the one it replaced. */
-    .sweep{display:none}
-    .typed{width:auto;animation:none}
-    .demo-body .ln{opacity:1;animation:none}
-    section:target::before,section:target > h2,.stats .stat,figure img{animation:none}
-    section:target > h2{color:var(--accent)}
-    .tw{display:inline;width:auto;overflow:visible;animation:none}
     .logo{width:94ch;animation:none}
     .h1,.tagline{animation:none}
-    h2::after{animation:none;transform:none}
-    nav.tabs::after{animation:none;transform:scaleX(1)}
-    *{transition-duration:.01ms !important;animation-duration:.01ms !important}
-    html{scroll-behavior:auto}
+    .typed{width:auto;animation:none}
   }
-
-  .cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 10px}
-  .fineprint{color:var(--dim);font-size:13px;margin:0;max-width:62ch}
-  .btn{
-    border:1px solid var(--highlight);color:var(--highlight);
-    padding:10px 18px;border-radius:5px;font-size:14px;
-  }
-  .btn:hover{background:var(--highlight);color:#06060b;text-decoration:none}
-  .btn.ghost{border-color:var(--border);color:var(--text)}
-  .btn.ghost:hover{background:var(--border);color:var(--text)}
-
-  /* ── the breadth, at a glance ──────────────────────────────────── */
-  .stats{
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
-    gap:1px;background:var(--border);border:1px solid var(--border);
-    border-radius:6px;overflow:hidden;margin:0 0 26px;
-  }
-  .stat{background:var(--bg-raised);padding:14px 12px;text-align:center}
-  .stat b{display:block;color:var(--highlight);font-size:23px;line-height:1.2}
-  .stat span{color:var(--dim);font-size:11.5px;letter-spacing:.06em}
-
-  /* ── sections ──────────────────────────────────────────────────── */
-  section{padding:46px 0 8px}
-  h2{
-    font-size:15px;letter-spacing:.14em;color:var(--accent);
-    margin:0 0 6px;font-weight:600;
-    display:flex;align-items:center;gap:12px;
-  }
-  h2::after{
-    content:"";flex:1;height:1px;background:var(--border);
-  }
-  .lede{color:var(--dim);margin:0 0 24px;max-width:72ch}
-  h3{font-size:15px;margin:0 0 8px;color:var(--text)}
-
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:14px}
-  /* Nine of them, so three across at full width — a square block rather than a
-     row of three and an orphan. */
-  #what .grid{grid-template-columns:repeat(3,1fr)}
-  @media (max-width:900px){#what .grid{grid-template-columns:repeat(2,1fr)}}
-  @media (max-width:620px){#what .grid{grid-template-columns:1fr}}
-  .card{
-    border:1px solid var(--border);border-radius:6px;padding:16px 18px;
-    background:var(--bg-raised);
-  }
-  .card h3{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
-  .card h3 .k{color:var(--highlight);flex:none}
-  .card h3 .n{margin-left:auto;color:var(--accent);font-size:12px;font-weight:400;flex:none}
-  .card p{margin:0;color:var(--dim);font-size:14px}
-
-  figure{margin:0 0 24px}
-  figure img{
-    width:100%;height:auto;display:block;
-    border:1px solid var(--border);border-radius:6px;background:#000;
-  }
-  figcaption{color:var(--dim);font-size:13px;margin-top:9px}
-
-  pre{
-    background:#07070c;border:1px solid var(--border);border-radius:6px;
-    padding:14px 16px;overflow-x:auto;margin:0 0 16px;font-size:13.5px;
-  }
-  pre .c{color:var(--dim)}
-  code{color:var(--accent)}
-
-  table{width:100%;border-collapse:collapse;font-size:14px;margin:0 0 4px}
-  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
-  th{color:var(--dim);font-weight:600;font-size:12.5px;letter-spacing:.08em}
-  td:first-child{color:var(--text);white-space:normal}
-  td:last-child{color:var(--dim)}
-  td code{color:var(--highlight)}
-
-  /* ── folded sections ───────────────────────────────────────────── */
-  details.fold{
-    border:1px solid var(--border);border-radius:6px;background:var(--bg-raised);
-    margin:0 0 10px;overflow:hidden;
-  }
-  details.fold > summary{
-    cursor:pointer;list-style:none;padding:14px 18px;
-    display:flex;align-items:center;gap:10px;font-size:14.5px;
-  }
-  details.fold > summary::-webkit-details-marker{display:none}
-  details.fold > summary::before{
-    content:"+";color:var(--highlight);font-weight:700;width:1ch;flex:none;
-  }
-  details.fold[open] > summary::before{content:"−"}
-  details.fold > summary:hover{background:#161622}
-  details.fold > summary .count{margin-left:auto;color:var(--dim);font-size:12px;flex:none}
-  details.fold > summary .blurb{color:var(--dim);font-size:13px}
-  .fold-body{padding:0 18px 8px}
-  details.fold[open] > summary{border-bottom:1px solid var(--border)}
-
-  .note{
-    border-left:2px solid var(--warn);padding:2px 0 2px 16px;
-    color:var(--dim);margin:14px 0 18px;font-size:14px;
-  }
-  .note b{color:var(--warn)}
-  td.na{color:var(--dim)}
-
-  footer{
-    border-top:1px solid var(--border);margin-top:50px;padding:26px 0 40px;
-    color:var(--dim);font-size:13.5px;
-  }
-  footer .row{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between}
-
-  /* Wide things scroll inside themselves; the page never does. */
-  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  /* Nine columns. At 640 px they were 70 px each and unreadable — the point of
-     a scrolling container is that the table keeps its own width. */
-  .scroll-x table{min-width:900px;margin-bottom:0}
-  .scroll-x pre{min-width:0}
-  /* A fade on the right edge, so it is obvious the table continues. On a phone
-     a cut-off column reads as a broken layout rather than as "swipe". */
-  .scroll-wrap{position:relative}
-  .scroll-wrap::after{
-    content:"";position:absolute;top:0;right:0;bottom:0;width:34px;
-    background:linear-gradient(90deg,transparent,var(--bg));pointer-events:none;
-  }
-  .swipe{display:none;color:var(--dim);font-size:12.5px;margin:6px 0 0}
-
-  /* ── phone ─────────────────────────────────────────────────────── */
   @media (max-width:760px){
-    :root{--pad:14px}
-    body{font-size:15px}
-    .term-body{padding:20px 15px}
     /* The block logo needs 94 characters of width. It does not have them. */
     .logo{display:none}
-    .demo-body{font-size:12.5px;padding:12px 12px}
-    section{padding:36px 0 4px}
-    h2{font-size:13.5px;letter-spacing:.1em}
-    .cta{gap:8px}
-    .btn{flex:1 1 auto;text-align:center;padding:11px 12px}
-    .stat b{font-size:20px}
-    .stats{grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
-
-    /* Two-column tables become stacked pairs: a label and what it means.
-       A 14-word description in a 40 %-wide cell on a 360 px screen is four
-       words a line and eight lines tall. */
-    .stacked table,.stacked tbody,.stacked tr,.stacked td{display:block;width:100%}
-    .stacked tr{border-bottom:1px solid var(--border);padding:11px 0}
-    .stacked td{border:0;padding:0}
-    .stacked td:first-child{color:var(--text);font-weight:600;margin-bottom:2px}
-    .stacked td:last-child{color:var(--dim);font-size:13.5px}
-    .fold-body{padding:0 14px 6px}
-    details.fold > summary{padding:13px 14px;flex-wrap:wrap}
-    details.fold > summary .count{margin-left:0;width:100%;padding-left:2ch}
-    footer .row{gap:14px}
-
-    /* The wide table cannot stack — nine columns is a comparison, not a list —
-       so it scrolls, and the hint that it does only appears where it is
-       needed. */
-    .swipe{display:block}
-    .h1 span{font-size:13px}
-    .tagline{font-size:17px}
-    .demo-body{line-height:1.7}
-    .grid{gap:12px}
-    .card{padding:14px 15px}
-    /* Comfortably past the 44 px a thumb wants. */
-    nav.tabs a{padding:13px 12px}
-    /* A full-height sweep on a phone is a lot of compositing for an effect
-       nobody is looking for on a small screen. */
-    .sweep{display:none}
-    /* The rail lives in the wrapper's padding, and there is not enough of it
-       here to put anything in. */
-    section::before{display:none}
-    .fineprint{font-size:12.5px}
-    figcaption{font-size:12.5px}
-    .note{padding-left:12px;font-size:13.5px}
-    table{font-size:13.5px}
-  }
-
-  /* Small phones, where the demo block is the first thing to run out of room. */
-  @media (max-width:400px){
-    .demo-body{font-size:11.5px;padding:10px 10px}
-    .stats{grid-template-columns:repeat(2,1fr)}
-    .h1{font-size:20px}
-    .btn{width:100%}
   }
 </style>
 </head>
@@ -763,21 +650,25 @@
   <div class="term-head">
     <div class="term-bar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="term-title"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="113" fill="#0a0a0f"/><path d="M118 118 L262 256 L118 394" fill="none" stroke="#00b4ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="307" y="338" width="87" height="44" rx="14" fill="#ffa500"/></svg>pro_engineer — assetto corsa telemetry &amp; race engineering</span>
+      <span class="term-title"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="113" fill="#0a0a0f"/><path d="M118 118 L262 256 L118 394" fill="none" stroke="#00b4ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="307" y="338" width="87" height="44" rx="14" fill="#ffa500"/></svg>pro_engineer — sim racing telemetry &amp; race engineering</span>
     </div>
   </div>
 
+  <!-- Absolute, every one of them. This file is served from two addresses and
+       only one of them has the rest of the site on it, so a relative link would
+       be a dead end on the github.io mirror. Pointing them at the domain makes
+       that copy a front door that opens onto the real thing. -->
   <nav class="tabs">
-    <a href="#top" class="on">OVERVIEW</a>
-    <a href="#says">OUTPUT</a>
-    <a href="#terminal">SCREENS</a>
-    <a href="#corners">CORNERS</a>
-    <a href="#share">SHARE</a>
-    <a href="#features">FEATURES</a>
-    <a href="#compare">COMPARE</a>
-    <a href="#install">INSTALL</a>
-    <a href="#faq">FAQ</a>
+<!--NAV-->
+    <a href="https://proengineer.app/" class="on">OVERVIEW</a>
+    <a href="https://proengineer.app/ac/">ASSETTO CORSA</a>
+    <a href="https://proengineer.app/features/">FEATURES</a>
+    <a href="https://proengineer.app/compare/">COMPARE</a>
+    <a href="https://proengineer.app/technical/">HOW IT WORKS</a>
+    <a href="https://proengineer.app/download/">DOWNLOAD</a>
+    <a href="https://proengineer.app/faq/">FAQ</a>
     <a href="https://github.com/Rgosh/ac-pro-engineer">SOURCE ↗</a>
+<!--/NAV-->
   </nav>
 
   <div class="term-body" id="top">
@@ -787,37 +678,42 @@
 ██╔═══╝ ██╔══██╗██║   ██║     ██╔══╝  ██║╚██╗██║██║   ██║██║██║╚██╗██║██╔══╝  ██╔══╝  ██╔══██╗
 ██║     ██║  ██║╚██████╔╝     ███████╗██║ ╚████║╚██████╔╝██║██║ ╚████║███████╗███████╗██║  ██║
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝      ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝</pre>
-      <h1 class="h1"><span>Pro Engineer</span><span> — Assetto Corsa telemetry and a virtual race engineer</span></h1>
+    <h1 class="h1"><span>Pro Engineer</span><span> — sim racing telemetry and a virtual race engineer</span></h1>
 
-      <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
+    <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
 
-      <p class="sub">
-        Most telemetry tools hand you graphs and leave the interpreting to you. This one
-        does the interpreting: it reads Assetto Corsa's shared memory sixty times a
-        second, works out what your tyres, brakes, fuel and driving are actually doing,
-        and says it in sentences — <b>"fronts over 28.4 psi, take 0.3 out"</b> rather than
-        a line on a chart.
-      </p>
+    <p class="sub">
+      Most telemetry tools hand you graphs and leave the interpreting to you. This one
+      does the interpreting — <b>"fronts over 28.4 psi, take 0.3 out"</b> rather than a
+      line on a chart — in a fast terminal on your second screen <b>and</b> inside the
+      game. Free, open source, no account, and nothing about you leaves your machine.
+    </p>
 
-      <p class="sub">
-        It runs in a fast terminal on your second screen <b>and</b> inside the game as a
-        Custom Shaders Patch panel. Free, open source, no account, and nothing about you
-        leaves your machine.
-      </p>
-
-      <div class="cta">
-        <a class="btn" href="https://www.overtake.gg/downloads/ac-pro-engineer-zero-lag-telemetry-setup-cloud-rust-powered.81695/">Download on OverTake</a>
-        <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Latest release on GitHub</a>
-        <a class="btn ghost" href="#install">How to install</a>
-      </div>
-      <p class="fineprint">
-        OverTake is the easy one — an ordinary download page. GitHub carries the same
-        builds plus the source, and is where Linux users get the Proton bridge.
-      </p>
+    <div class="cta">
+      <a class="btn" href="https://proengineer.app/download/">Download</a>
+      <a class="btn ghost" href="https://proengineer.app/ac/">For Assetto Corsa</a>
+      <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer">Source on GitHub</a>
+    </div>
   </div>
 
-  <section id="what">
-    <h2><span class="tw" style="--n:12">WHAT YOU GET</span></h2>
+  <section id="says">
+    <h2><span class="tw" style="--n:21">WHAT IT ACTUALLY SAYS</span></h2>
+    <p class="lede">
+      Not a mock-up — these are the forms the engineer produces. The marker in front of
+      each line is how sure it is, and the third one is it declining to guess.
+    </p>
+    <div class="demo" aria-label="Example of the engineer's output">
+      <div class="demo-bar"><span>engineer — live</span></div>
+      <div class="demo-body"><span class="ln"><span class="c">$</span> <span class="typed">ac_pro_engineer</span></span>
+<span class="ln"><span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span></span>
+<span class="ln">  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts</span>
+<span class="ln"><span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span></span>
+<span class="ln">  <span class="c">&gt;&gt;</span> Less negative camber at the rear</span>
+<span class="ln">  <span class="c">confirm:</span> the I/M/O spread next run out</span>
+<span class="ln"><span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving</span>
+<span class="ln">  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span></span>
+<span class="ln"><span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex<span class="cursor"></span></span></div>
+    </div>
 
     <div class="stats">
       <div class="stat"><b>115</b><span>FEATURES</span></div>
@@ -828,621 +724,81 @@
       <div class="stat"><b>0.1%</b><span>OF A CPU CORE</span></div>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h3><span class="k">▸</span> Tyres, properly <span class="n">11</span></h3>
-        <p>Pressure and inner/middle/outer temperature per corner, distance from your
-        target, a cold-pressure calculator, wear, remaining life in laps, and camber
-        advice that keeps the sign of the spread.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> A real engineer <span class="n">9</span></h3>
-        <p>Sentences, not thresholds. Four cold tyres is one line. Ranked by severity —
-        and every line says how sure it is, so one odd frame does not get the same voice
-        as four consistent corners.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> After the lap <span class="n">7</span></h3>
-        <p>A debrief in the car and on the desktop: sectors against the session best,
-        what is left of the tyres and fuel, and the last three laps to page through.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> Where the time went <span class="n">22</span></h3>
-        <p>Corners found in the trace and the lap decomposed against a reference —
-        braking point in metres, entry/minimum/exit speed, throttle timing. Plus ghost
-        deltas, a friction circle, a track map, damper histograms and MoTeC CSV out.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> The car or you <span class="n">12</span></h3>
-        <p>Over a stint it separates a car that understeers from a driver who turns in
-        early, and refuses to answer before it has four laps. Smoothness, trail braking,
-        coasting, grip usage, lockups and over-rotation, all counted rather than felt.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> Fuel &amp; strategy <span class="n">8</span></h3>
-        <p>Consumption measured from your own laps, laps remaining, what you need to
-        finish, how short you are, and the pace drop-off across the stint.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> In the game <span class="n">11</span></h3>
-        <p>Five windows as a Custom Shaders Patch app. It installs itself, every block
-        switches off on its own, and it computes nothing — Lua runs on the render thread.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> Setup theory, built in <span class="n">9</span></h3>
-        <p>Sixteen chapters read between sessions, offline: the friction circle, the
-        I/M/O matrix, power and coast lock, natural frequency and the motion ratio trap,
-        bump against rebound, rake, and the golden rules of rain.</p>
-      </div>
-      <div class="card">
-        <h3><span class="k">▸</span> Everything else <span class="n">26</span></h3>
-        <p>Force feedback clipping with a verdict, a setup browser and comparer, Linux
-        and Steam Deck, a UDP feed for your own front end, watching a friend drive,
-        every key rebindable on two layouts, and a demo mode that needs no game.</p>
-      </div>
-    </div>
-    <p class="note" style="margin-top:18px">
-      <b>No account, no cloud, no subscription.</b> Nothing leaves your machine unless you
-      set an address yourself.
-    </p>
-  </section>
-
-
-  <section id="says">
-    <h2><span class="tw" style="--n:21">WHAT IT ACTUALLY SAYS</span></h2>
-    <p class="lede">
-      Not a mock-up — these are the forms the engineer produces. The marker in front of
-      each line is how sure it is, and the third one is it declining to guess.
-    </p>
-      <div class="demo" aria-label="Example of the engineer's output">
-        <div class="demo-bar"><span>engineer — live</span></div>
-        <div class="demo-body"><span class="ln"><span class="c">$</span> <span class="typed">ac_pro_engineer</span></span>
-<span class="ln"><span class="hi">●</span> <span class="w">Fronts over 28.4 psi</span> <span class="c">(target 27.5)</span></span>
-<span class="ln">  <span class="c">&gt;&gt;</span> Take 0.3 psi out of both fronts</span>
-<span class="ln"><span class="md">◐</span> <span class="w">Rear inner edges 13 °C hotter than the outers</span></span>
-<span class="ln">  <span class="c">&gt;&gt;</span> Less negative camber at the rear</span>
-<span class="ln">  <span class="c">confirm:</span> the I/M/O spread next run out</span>
-<span class="ln"><span class="lo">○</span> understeer — <span class="acc">the car</span>, not the driving</span>
-<span class="ln">  <span class="c">9 a lap on every one of 5 laps, while the times moved about</span></span>
-<span class="ln"><span class="hi">●</span> <span class="w">T3 cost 0.34 s</span> — 14 m late on the brakes, −4 km/h at the apex<span class="cursor"></span></span></div>
-      </div>
-
-      <p class="sub">
-        Free and open source. It reads Assetto Corsa's shared memory directly, analyses
-        tyre temperatures and pressures, brake heat, fuel and how you are driving, and
-        says something useful about it — in a fast terminal on your second screen
-        <b>and</b> in the game itself through Custom Shaders Patch.
-      </p>
-
-      <div class="cta">
-        <a class="btn" href="https://github.com/Rgosh/ac-pro-engineer/releases/latest">Download</a>
-        <a class="btn ghost" href="#install">Install guide</a>
-        <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer">GitHub</a>
-      </div>
-    <div class="grid" style="margin-top:20px">
+    <div class="grid three">
       <div class="card"><h3><span class="k">●</span> High</h3><p>Several observations agreeing closely — four corners saying the same thing, not one odd frame.</p></div>
       <div class="card"><h3><span class="k" style="color:var(--warn)">◐</span> Medium</h3><p>Enough to raise. Not enough to bet a setup change on.</p></div>
       <div class="card"><h3><span class="k" style="color:var(--bad)">○</span> Low</h3><p>It is watching and has not decided. Being told that is worth more than a confident guess.</p></div>
     </div>
   </section>
 
-  <section id="terminal">
-    <h2><span class="tw" style="--n:20">ON THE SECOND SCREEN</span></h2>
+  <section id="sims">
+    <h2><span class="tw" style="--n:19">PICK YOUR SIMULATOR</span></h2>
     <p class="lede">
-      Nine tabs, every keyboard shortcut rebindable, and every on-screen hint printed
-      from the binding — so it cannot tell you the wrong key.
+      A simulator is a folder under <code>core/src/games/</code> rather than conditionals
+      through the middle of the engineer, so a second one is an addition and not a
+      rewrite. One is written. It is said that way on purpose: <b>not yet</b> rather than
+      <i>coming soon</i>.
     </p>
-    <figure>
-      <img src="screenshots/Dashboard.png" alt="The terminal dashboard showing live sim racing telemetry: tyre pressures and temperatures, brake heat, fuel and lap timing" loading="lazy" width="2832" height="1696">
-      <figcaption>Dashboard — the live picture.</figcaption>
-    </figure>
-    <figure>
-      <img src="screenshots/Engineer_PostStint.png" alt="The post-stint debrief with race engineer advice, confidence markers, and a verdict separating the car from the driving" loading="lazy" width="2832" height="1696">
-      <figcaption>
-        Post-stint. Each line says how sure it is, and over a stint it separates
-        <b>the car</b> from <b>the driving</b>.
-      </figcaption>
-    </figure>
-  </section>
-
-  <section id="corners">
-    <h2><span class="tw" style="--n:19">WHERE THE TIME WENT</span></h2>
-    <p class="lede">
-      Corners are found in the trace — a stretch where lateral load stays up long enough
-      to be a corner rather than a kink — so it needs no track data and works on mods.
-    </p>
-    <figure>
-      <img src="screenshots/Analysis_Corners.png" alt="Corner-by-corner lap analysis breaking a lap down against a reference lap, showing where the time was lost" loading="lazy" width="2832" height="1696">
-      <figcaption>
-        Each corner is charged the track from its own entry to the next corner's entry —
-        which is where a bad exit is actually paid for — so the per-corner deltas add up
-        to the lap's own delta. One key hides everything that cost under a tenth.
-      </figcaption>
-    </figure>
-    <p class="note">
-      <b>It will not invent a comparison.</b> A corner the reference lap does not have is
-      drawn as <i>no comparison</i> rather than as a delta of zero, and braking in metres
-      needs the track's length rather than a guess at it.
-    </p>
-  </section>
-
-  <section id="share">
-    <h2><span class="tw" style="--n:27">WATCHING SOMEONE ELSE DRIVE</span></h2>
-    <p class="lede">
-      A driver is on track and cannot look away. A friend on the same network runs the
-      same program, sets it to receive, and sees their telemetry and their engineer's
-      advice.
-    </p>
-    <div class="scroll-x">
-<pre><span class="c"># the driver</span>
-"overlay": { "broadcast_to": "192.168.1.42:9001" }
-
-<span class="c"># the friend watching</span>
-"overlay": { "receive_from": "0.0.0.0:9001" }</pre>
-    </div>
-    <p class="note">
-      <b>One network, and that is all.</b> Two houses behind two routers is NAT, which
-      needs a forwarded port or a relay in the middle — not built. No discovery, no
-      championship mode: you type an address. Off unless you set one, because this is
-      telemetry about a person.
-    </p>
-    <p class="lede">
-      The same feed is plain JSON over UDP, ten times a second, so writing your own front
-      end is about fifteen lines of Python.
-    </p>
-  </section>
-
-  <section id="features">
-    <h2><span class="tw" style="--n:18">EVERYTHING IT DOES</span></h2>
-    <p class="lede">
-      The whole list, folded by area. It is longer than most people expect from
-      something that costs nothing — open whichever part matters to you.
-    </p>
-
-    <details class="fold stacked">
-      <summary>Tyres and brakes <span class="count">11</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Tyre pressure per corner</td><td>Live, in psi, bar or kPa.</td></tr>
-        <tr><td>Inner / middle / outer temperature</td><td>All three per corner, not just the middle. The spread says whether a tyre is leaning the right way, which is what camber advice is made of.</td></tr>
-        <tr><td>Distance from your target hot pressure</td><td>Per corner, with front and rear targets set separately.</td></tr>
-        <tr><td>Cold pressure calculator</td><td>What to set in the garage to arrive at your hot target, from the ambient and track temperature.</td></tr>
-        <tr><td>Brake temperature</td><td>Per corner, with a configurable ceiling and an overheating verdict on the lap summary.</td></tr>
-        <tr><td>Tyre wear</td><td>Per corner, as a percentage of the tread.</td></tr>
-        <tr><td>Remaining tyre life in laps</td><td>From the worst corner rather than the average — a set is finished when one corner is.</td></tr>
-        <tr><td>Camber advice per axle</td><td>From the inner-minus-outer spread, keeping the sign. An outer edge running hot wants <i>more</i> negative camber; reading only the magnitude gives exactly the opposite advice.</td></tr>
-        <tr><td>Measured only under load</td><td>A tyre says nothing about camber on a straight — both edges run level there. The sample is taken while the car is actually cornering, and the verdict waits for a second of it.</td></tr>
-        <tr><td>Bottoming detection</td><td>Counted per corner from the suspension travel, with a ride-height verdict after the lap.</td></tr>
-        <tr><td>Stint length</td><td>How long you have been on this set, which is not the lap count.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>The race engineer, while you drive <span class="count">9</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Plain-language advice</td><td>"Fronts over 28.4 psi (target 27.5)" with what to do about it.</td></tr>
-        <tr><td>Grouped findings</td><td>Four cold tyres is one line. Fronts, rears, left side, right side, all four.</td></tr>
-        <tr><td>Severity ranking</td><td>Info, warning, critical, worst first — so the line you read at 200 km/h is the one that matters.</td></tr>
-        <tr><td>Up to eight lines</td><td>With a slider for how many reach the overlay, and the number actually sent printed under it.</td></tr>
-        <tr><td>Confidence on every line</td><td>A count of corroborating observations and their spread, not a number picked while writing the rule. One observation is never confident however extreme.</td></tr>
-        <tr><td>New advice looks different</td><td>From advice that has been on screen for four laps.</td></tr>
-        <tr><td>Cause and check</td><td>Why it is happening, and what to look at next run to know whether the change worked.</td></tr>
-        <tr><td>Shift point</td><td>Rev bar with a configurable offset from the limiter, so the light comes when you want it.</td></tr>
-        <tr><td>Fuel warning</td><td>Raised when what is left falls under the laps you configured.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>The lap debrief <span class="count">7</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>What the engineer made of the lap</td><td>Pressures and temperatures against your own windows, camber per axle, brakes, and how it was driven — up to eight lines.</td></tr>
-        <tr><td>Three laps of history</td><td>Page back through them with the game paused, in the terminal and in the car.</td></tr>
-        <tr><td>Sector times against the session best</td><td>Four tenths spread across a lap is a shrug; four tenths in one sector is a corner to go and look at.</td></tr>
-        <tr><td>Compare with the previous lap or your best</td><td>Both, because they answer different questions.</td></tr>
-        <tr><td>What is left</td><td>Laps of tyre life and laps of fuel, coloured by whichever runs out first.</td></tr>
-        <tr><td>A clean lap says so</td><td>Rather than leaving an empty column that reads as "the analysis did not run".</td></tr>
-        <tr><td>A lap that measured nothing says nothing</td><td>Zero pressures are not flat tyres. Every average that was never taken is treated as absent rather than as zero.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Corner-by-corner lap analysis <span class="count">10</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Corners found in the trace</td><td>A stretch where lateral load stays up long enough to be a corner rather than a kink. No track data, so it works on mods and on tracks nobody has written a table for.</td></tr>
-        <tr><td>Where the time went, corner by corner</td><td>Each corner is charged the track from its own entry to the next corner's entry — where a bad exit is actually paid for — so the sections add up to the lap's own delta.</td></tr>
-        <tr><td>Only the losses that matter</td><td>One key hides every corner that cost less than a tenth.</td></tr>
-        <tr><td>Braking point in metres</td><td>How much later or earlier than the reference, measured on the straight before the corner.</td></tr>
-        <tr><td>Entry, minimum and exit speed</td><td>All three against the reference, per corner.</td></tr>
-        <tr><td>Throttle timing</td><td>How long after the apex you got back on the power, against the reference.</td></tr>
-        <tr><td>Matched by distance, never by index</td><td>Two laps can detect a different number of corners. Comparing T5 to T5 by position in the list compares two different corners and invents a delta.</td></tr>
-        <tr><td>Chicanes stay two corners</td><td>A left never matches a right, however close together they are.</td></tr>
-        <tr><td>No comparison is not zero</td><td>A corner the reference lap does not have is drawn as no answer, because inventing one is worse than admitting it.</td></tr>
-        <tr><td>Direction, apex and peak load</td><td>Per corner, with the apex taken at the slowest point rather than the tightest — the timing is what this is for.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Laps, ghosts and traces <span class="count">12</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Ghost delta by distance</td><td>Against your own recorded best lap, not whatever reference the game picked.</td></tr>
-        <tr><td>Speed and RPM against time</td><td>The whole lap, plotted.</td></tr>
-        <tr><td>Both pedals and steering</td><td>Throttle, brake and steering angle traces, so a lock-up or a correction is visible rather than remembered.</td></tr>
-        <tr><td>Track map from your own trace</td><td>Drawn from the positions you actually drove, so it needs no track file.</td></tr>
-        <tr><td>Friction circle</td><td>The GG diagram: how much of the tyre's grip you are using, and in which direction you are wasting it.</td></tr>
-        <tr><td>Slip ratio</td><td>Against throttle, so wheelspin is separable from a car that simply has no grip.</td></tr>
-        <tr><td>Damper histograms</td><td>Suspension travel distribution per corner.</td></tr>
-        <tr><td>Sector splits</td><td>On tracks with two, three or four sectors, detected rather than assumed.</td></tr>
-        <tr><td>Theoretical optimal lap</td><td>From your best sectors, which need not have come from the same lap.</td></tr>
-        <tr><td>Save and load laps</td><td>As JSON with full metadata; load one back as a ghost on another day.</td></tr>
-        <tr><td>MoTeC-compatible CSV export</td><td>Named after the car, track and lap.</td></tr>
-        <tr><td>Reference times per car and track</td><td>Kept between sessions, and worked out from the car's own specifications when there is nothing to compare with yet.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>How you are driving <span class="count">12</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>The car or the driving</td><td>Understeer in the same quantity on every lap while the lap times move about is not following the driving. One that comes and goes is.</td></tr>
-        <tr><td>It refuses to answer early</td><td>Below four laps it says so rather than guessing. A car that understeers and a driver who turns in too early produce the same trace.</td></tr>
-        <tr><td>Smoothness</td><td>How steadily you use the controls, rather than how fast.</td></tr>
-        <tr><td>Aggression</td><td>How hard the car is being asked to work.</td></tr>
-        <tr><td>Trail braking</td><td>How much brake is still on while the car is turning.</td></tr>
-        <tr><td>Coasting</td><td>The share of the lap on neither pedal — usually the cheapest time on the table.</td></tr>
-        <tr><td>Pedal overlap</td><td>Throttle and brake at once, counted.</td></tr>
-        <tr><td>Full throttle percentage</td><td>How much of the lap is spent flat.</td></tr>
-        <tr><td>Grip usage</td><td>How close to the friction circle's edge you actually run.</td></tr>
-        <tr><td>Lockups and wheelspin</td><td>Counted per axle, not guessed from the lap time.</td></tr>
-        <tr><td>Understeer and oversteer moments</td><td>Counted over the lap, so one moment is not a verdict.</td></tr>
-        <tr><td>Over-rotation</td><td>Steering past what the corner needs, with the worst excess angle — the tyres are scrubbing and the lap time shows it.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Fuel, stints and strategy <span class="count">8</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Consumption from your own laps</td><td>Measured lap by lap, not taken from the car's data files — which read zero on lap one anyway.</td></tr>
-        <tr><td>Laps remaining</td><td>On what is in the tank, with a configurable safety margin.</td></tr>
-        <tr><td>Fuel needed to finish</td><td>And how short you are, for a race of a given length.</td></tr>
-        <tr><td>Fuel per lap, recent history</td><td>The last few laps, so a heavy stint is visible rather than averaged away.</td></tr>
-        <tr><td>Race pace history</td><td>Lap times across the stint, so you see the drop-off rather than feel it.</td></tr>
-        <tr><td>Tyre life projection</td><td>Laps left on this set, beside the fuel, so the shorter one decides the stop.</td></tr>
-        <tr><td>Track conditions</td><td>Air and road temperature and grip, with how they have moved during the session.</td></tr>
-        <tr><td>Predicted lap time</td><td>From the delta as the lap runs, rather than after it ends.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Force feedback <span class="count">4</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Clipping meter</td><td>Whether the wheel is saturating and losing every detail above the clip point — the most common reason a car "feels numb".</td></tr>
-        <tr><td>Four verdicts, not a number</td><td>Optimal, light clipping, critical clipping, or a signal too weak to feel.</td></tr>
-        <tr><td>It says which way to go</td><td>"Safe to increase gain" or back it off, rather than leaving you to interpret a percentage.</td></tr>
-        <tr><td>Measured over the lap</td><td>Counted in frames, so one kerb strike is not a diagnosis.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Setups <span class="count">5</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Setup browser</td><td>Community setups by car and track, installed into the game without restarting it.</td></tr>
-        <tr><td>It knows which one you are on</td><td>Matched against the loaded car's fuel, brake bias and pressures.</td></tr>
-        <tr><td>Setup comparison</td><td>Field-by-field difference between two setups — wings, ARBs, camber, toe, springs, dampers, ride height, gearing.</td></tr>
-        <tr><td>Cold pressure targets per setup</td><td>Read from the setup file rather than assumed.</td></tr>
-        <tr><td>Nothing is overwritten quietly</td><td>Installing a setup is an explicit action, and the file it came from is named.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>The in-game overlay <span class="count">11</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Five windows</td><td>The main panel, the engineer, telemetry, status and the lap debrief — opened and closed independently.</td></tr>
-        <tr><td>It installs itself</td><td>Every time the application starts, and rewrites itself whenever it differs from the running build. No step to forget.</td></tr>
-        <tr><td>Every block switches off</td><td>Independently, from inside the game, and the choice survives closing the window.</td></tr>
-        <tr><td>Readable at 4K</td><td>Text drawn at any size rather than at the five fixed tiers the platform offers.</td></tr>
-        <tr><td>It works outside a session</td><td>In the garage, in the pits, before the green — and it tells "waiting for the car" apart from "waiting for the application".</td></tr>
-        <tr><td>Its own look</td><td>Backing plate from transparent to solid, text size, line spacing, rules between lines, upper case, an editable colour palette.</td></tr>
-        <tr><td>A changed-settings tab</td><td>Everything that differs from the defaults, what it was, and a reset beside each line.</td></tr>
-        <tr><td>A typed console</td><td>For what has no widget.</td></tr>
-        <tr><td>Two languages in the car</td><td>The panel's own words follow the application's language, not the game's.</td></tr>
-        <tr><td>It computes nothing</td><td>Lua runs on the render thread, where a millisecond is a sixth of the frame budget at 165 Hz. Everything is worked out on the desktop side and copied in.</td></tr>
-        <tr><td>A diagnosis when it is blank</td><td>One screen that says which of the application, the bridge and the panel does not fit — the question this project gets asked most.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>The built-in guide <span class="count">9</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>The friction circle</td><td>What the GG diagram is actually telling you, and why the rectangle is slow.</td></tr>
-        <tr><td>Tyre thermodynamics</td><td>Molecular friction, the inner/middle/outer matrix, and what each pattern means.</td></tr>
-        <tr><td>Differential tuning</td><td>Power lock, coast lock, and what each does to entry and exit.</td></tr>
-        <tr><td>Suspension frequencies</td><td>Natural frequency in Hz, the motion ratio trap, packers and bump stops.</td></tr>
-        <tr><td>Dampers</td><td>Bump against rebound, and which one you are actually feeling.</td></tr>
-        <tr><td>Aerodynamics</td><td>The aero seesaw, rake angle, and the weight penalty of downforce.</td></tr>
-        <tr><td>Braking</td><td>Trail braking, lift and coast, and reading the delta.</td></tr>
-        <tr><td>Wet setups</td><td>The golden rules of rain, and why steering goes light.</td></tr>
-        <tr><td>Sixteen chapters in all</td><td>Written to be read between sessions, in the application, offline.</td></tr>
-      </tbody></table></div>
-    </details>
-
-    <details class="fold stacked">
-      <summary>Platform, integration and comfort <span class="count">17</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Windows, Linux and Steam Deck</td><td>Under Proton, with a bridge for the overlay and a diagnostics screen that says which piece does not fit.</td></tr>
-        <tr><td>About 0.1&nbsp;% of one CPU core</td><td>A terminal application, so no GPU cost at all on the desktop side.</td></tr>
-        <tr><td>Reads the game safely</td><td>The shared-memory pages are re-read until two reads agree, so a frame caught mid-write is discarded rather than drawn.</td></tr>
-        <tr><td>Nine screens</td><td>Dashboard, engineer, telemetry, analysis, setups, strategy, force feedback, settings and the guide.</td></tr>
-        <tr><td>Wide or tall</td><td>Every screen has a second layout for a portrait monitor or a narrow window.</td></tr>
-        <tr><td>UDP JSON feed</td><td>The computed frame, ten times a second, for writing your own front end in about fifteen lines.</td></tr>
-        <tr><td>Watch another driver</td><td>On the same network: their telemetry and their engineer in your own panel.</td></tr>
-        <tr><td>Discord Rich Presence</td><td>Car, track and delta, if you want it.</td></tr>
-        <tr><td>Every key rebindable</td><td>Five categories of setting, with conflict detection, and every on-screen hint printed from the binding — so it cannot tell you the wrong key.</td></tr>
-        <tr><td>Works on two keyboard layouts</td><td>A rebound letter keeps working in Cyrillic, because a driver in a race does not stop to switch layout.</td></tr>
-        <tr><td>Two languages and three unit systems</td><td>English and Russian; psi, bar or kPa; Celsius or Fahrenheit.</td></tr>
-        <tr><td>Themes</td><td>An editable palette, in the terminal and in the car.</td></tr>
-        <tr><td>Screenshots of the terminal</td><td>One key writes a PNG of what is on screen, for a bug report or a setup thread.</td></tr>
-        <tr><td>A demo mode</td><td>Realistic telemetry with no game running, so the screens can be seen before anything is installed.</td></tr>
-        <tr><td>Updates itself</td><td>Checks the release page, lists what is available, and can install without you finding it.</td></tr>
-        <tr><td>It writes down why it crashed</td><td>A crash log, and a panic handler that puts the terminal back the way it found it.</td></tr>
-        <tr><td>No account, no cloud</td><td>Nothing leaves your machine unless you set an address yourself.</td></tr>
-      </tbody></table></div>
-    </details>
-  </section>
-
-  <section id="compare">
-    <h2><span class="tw" style="--n:30">AGAINST WHAT ELSE IS OUT THERE</span></h2>
-    <p class="lede">
-      Named tools, checked against their own sites and current write-ups in
-      <b>August 2026</b>. Where a cell says <i>not stated</i>, that is what it means —
-      we would rather leave a gap than print something about another project that
-      turns out to be wrong. Check anything here before you rely on it.
-    </p>
-    <div class="scroll-wrap"><div class="scroll-x">
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th style="color:var(--highlight)">Pro Engineer</th>
-            <th>Track Titan</th>
-            <th>Delta</th>
-            <th>RaceLab</th>
-            <th>SimHub</th>
-            <th>Crew Chief</th>
-            <th>MoTeC i2</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Cost</td>
-            <td style="color:var(--good)">free, AGPL</td>
-            <td>free tier; $7.99–$19.99/mo</td>
-            <td>subscription</td>
-            <td>free tier; ~€3.90/mo</td>
-            <td style="color:var(--good)">free; paid licence</td>
-            <td style="color:var(--good)">free</td>
-            <td>paid</td>
-          </tr>
-          <tr>
-            <td>Source code</td>
-            <td style="color:var(--good)">open</td>
-            <td>closed</td><td>closed</td><td>closed</td><td>closed</td>
-            <td class="na">not stated</td><td>closed</td>
-          </tr>
-          <tr>
-            <td>Account required</td>
-            <td style="color:var(--good)">no</td>
-            <td>yes</td>
-            <td class="na">not stated</td><td class="na">not stated</td>
-            <td style="color:var(--good)">no</td><td style="color:var(--good)">no</td><td style="color:var(--good)">no</td>
-          </tr>
-          <tr>
-            <td>Your laps uploaded</td>
-            <td style="color:var(--good)">never</td>
-            <td>yes, recorded to the cloud</td>
-            <td class="na">not stated</td><td class="na">not stated</td>
-            <td style="color:var(--good)">no</td><td style="color:var(--good)">no</td><td style="color:var(--good)">no</td>
-          </tr>
-          <tr>
-            <td>Assetto Corsa</td>
-            <td style="color:var(--good)">yes</td>
-            <td style="color:var(--good)">yes</td>
-            <td style="color:var(--good)">yes</td>
-            <td class="na">not stated</td>
-            <td style="color:var(--good)">yes</td>
-            <td class="na">no — iRacing, ACC, rF2, AMS2</td>
-            <td class="na">not stated</td>
-          </tr>
-          <tr>
-            <td>Tells you what to change</td>
-            <td style="color:var(--good)">yes, in sentences</td>
-            <td style="color:var(--good)">yes, AI coaching</td>
-            <td style="color:var(--good)">yes, AI per lap</td>
-            <td class="na">overlays</td>
-            <td class="na">dashboards</td>
-            <td style="color:var(--good)">yes, spoken</td>
-            <td class="na">graphs, you interpret</td>
-          </tr>
-          <tr>
-            <td>In-game overlay</td>
-            <td style="color:var(--good)">yes, CSP panel</td>
-            <td class="na">not stated</td>
-            <td class="na">not stated</td>
-            <td style="color:var(--good)">yes</td>
-            <td style="color:var(--good)">yes</td>
-            <td class="na">audio only</td>
-            <td class="na">no</td>
-          </tr>
-          <tr>
-            <td>Linux / Steam Deck</td>
-            <td style="color:var(--good)">yes, native</td>
-            <td class="na">not stated</td><td class="na">not stated</td>
-            <td class="na">not stated</td><td class="na">not stated</td>
-            <td class="na">not stated</td><td class="na">not stated</td>
-          </tr>
-          <tr>
-            <td>Says how sure it is</td>
-            <td style="color:var(--good)">yes, from evidence</td>
-            <td colspan="6" class="na">no equivalent found on any of them</td>
-          </tr>
-          <tr>
-            <td>Refuses when data is thin</td>
-            <td style="color:var(--good)">yes, explicitly</td>
-            <td colspan="6" class="na">no equivalent found on any of them</td>
-          </tr>
-        </tbody>
-      </table>
-    </div></div>
-    <p class="swipe">Swipe the table sideways to see the rest →</p>
-
-    <p class="note">
-      <b>Where this one wins, and where it does not.</b> It is the only one here that is
-      free, open, accountless and native on Linux, and the only one that rates its own
-      confidence or declines to answer. It is also the only one that supports exactly one
-      simulator — the others cover four to seven — and it has no AI coach, no pro
-      reference laps and no community of a quarter of a million drivers behind it. If
-      what you want is somebody else's fast lap to chase, one of the subscriptions is a
-      better buy than this is.
-    </p>
-
-    <details class="fold stacked">
-      <summary>What it deliberately does not do <span class="count">4</span></summary>
-      <div class="fold-body"><table><tbody>
-        <tr><td>Cross the internet</td><td>Sharing works on one network. Two houses behind two routers needs a relay, which is not built.</td></tr>
-        <tr><td>Read a setup you did not save</td><td>The simulator does not publish the loaded setup, so a change cannot be attributed reliably. Better to say nothing than to guess.</td></tr>
-        <tr><td>Support another simulator yet</td><td>The architecture is a folder per game and the boundary is real. Nobody has written the second folder.</td></tr>
-        <tr><td>Overlay outside Custom Shaders Patch</td><td>There was a second, desktop-drawn overlay. It did not survive exclusive fullscreen, never appeared in VR, and was invisible to the game's own screenshots. It was removed rather than half-fixed.</td></tr>
-      </tbody></table></div>
-    </details>
-  </section>
-
-  <section id="install">
-    <h2><span class="tw" style="--n:7">INSTALL</span></h2>
-
-    <h3 style="margin-top:8px">Windows</h3>
-    <p class="lede">
-      Download, unzip, run. It finds Assetto Corsa, writes the in-game panel, and creates
-      the shared memory the panel reads. Nothing to start in a particular order.
-    </p>
-    <div class="scroll-x">
-<pre><span class="c"># unzip anywhere, then</span>
-ac_pro_engineer.exe</pre>
-    </div>
-
-    <h3>Linux &amp; Steam Deck</h3>
-    <p class="lede">
-      The desktop side works on its own. The <i>overlay</i> needs a small bridge running
-      inside the game's Proton prefix, because only a Windows process in there can give
-      the shared memory the name the game is allowed to open.
-    </p>
-    <div class="scroll-x">
-<pre>./ac_pro_engineer
-
-<span class="c"># for the in-game overlay, leave this running too</span>
-protontricks-launch --appid 244210 shm-bridge.exe</pre>
-    </div>
-
-    <h3>From source</h3>
-    <div class="scroll-x">
-<pre>git clone https://github.com/Rgosh/ac-pro-engineer.git
-cd ac-pro-engineer
-cargo run --release</pre>
-    </div>
-
-    <h3>Supported simulators</h3>
-    <div class="stacked">
-      <table>
-        <tbody>
-          <tr><td>Assetto Corsa</td><td><span style="color:var(--good)">Full support</span> — terminal and in-game overlay via Custom Shaders Patch.</td></tr>
-          <tr><td>Anything else</td><td>A folder under <code>core/src/games/</code>. The architecture is built for it and the boundary is real, but nobody has written the second folder — so: not yet, rather than "coming soon".</td></tr>
-        </tbody>
-      </table>
+    <div class="sims">
+<!--SIMS-->
+      <a class="card" href="https://proengineer.app/ac/">
+        <h3><span class="k">▸</span> Assetto Corsa <span class="sim-badge live">FULL SUPPORT</span></h3>
+        <p>Terminal dashboard, the race engineer, corner-by-corner analysis and a five-window panel inside the game through Custom Shaders Patch. Windows, Linux and Steam Deck.</p>
+        <span class="go">Everything for AC →</span>
+      </a>
+      <a class="card pending" href="https://proengineer.app/technical/#games">
+        <h3><span class="k">▸</span> Your simulator <span class="sim-badge soon">NOT YET</span></h3>
+        <p>The boundary each game implements is small and honest about what it cannot measure — &ldquo;not measured&rdquo; and &ldquo;measured as zero&rdquo; are different answers. What it would take to add one is written down.</p>
+        <span class="go">What a game has to provide →</span>
+      </a>
+<!--/SIMS-->
     </div>
   </section>
 
-  <section id="faq">
-    <h2><span class="tw" style="--n:9">QUESTIONS</span></h2>
-
-    <details class="fold" open>
-      <summary>Is it free? <span class="blurb">Yes, AGPL v3</span></summary>
-      <div class="fold-body"><p class="lede">Free and open source. No account, no subscription, and no telemetry collected about you.</p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Can I use the code in my own project?</summary>
-      <div class="fold-body"><p class="lede">
-        Yes. Change it for yourself and nothing at all is asked of you — the licence
-        conditions passing a copy on, not what runs on your own rig. Publish something
-        built on it and the one condition is that your source is open too, under the
-        same <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSE">AGPL v3</a>,
-        with this project credited. Keeping your own source closed, or selling a product
-        with this code inside it, needs written permission first —
-        <a href="mailto:rgoshbbb@gmail.com">rgoshbbb@gmail.com</a>. The
-        <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSING.md">licensing page</a>
-        says it in full.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Does it work on Linux or a Steam Deck?</summary>
-      <div class="fold-body"><p class="lede">
-        Yes. The desktop side is native. The in-game overlay additionally needs a small
-        bridge running inside the game's Proton prefix, because only a Windows process in
-        there can give the shared memory the name the game is allowed to open. The
-        application ships the bridge and can fetch a matching one for you.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Will it cost me frames?</summary>
-      <div class="fold-body"><p class="lede">
-        The desktop side is a terminal application at about 0.1&nbsp;% of one core with no
-        GPU cost. The in-game panel draws and nothing else — every calculation happens
-        outside the game, because Lua runs on the render thread where a millisecond is a
-        sixth of the frame budget at 165&nbsp;Hz.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Which simulators are supported?</summary>
-      <div class="fold-body"><p class="lede">
-        Assetto Corsa today. The core reads a game through a boundary designed for more
-        than one — a simulator is a folder rather than conditionals through the middle of
-        the engineer — but no second folder is written, and we would rather say that than
-        imply otherwise.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Do I need Custom Shaders Patch?</summary>
-      <div class="fold-body"><p class="lede">
-        Only for the in-game overlay. Everything else — the dashboard, the analysis, the
-        engineer, the strategy work — runs without it.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Can I use my own reference lap?</summary>
-      <div class="fold-body"><p class="lede">
-        Yes. Laps are saved as JSON with full metadata and can be loaded back as a ghost
-        on another day, and the corner analysis compares against whichever lap you choose.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Can a friend see my telemetry?</summary>
-      <div class="fold-body"><p class="lede">
-        On the same network, yes — they set an address to listen on and see your numbers
-        and your engineer's advice in their own panel. It is off unless you turn it on,
-        because it is telemetry about a person.
-      </p></div>
-    </details>
-
-    <details class="fold">
-      <summary>Does it modify my game?</summary>
-      <div class="fold-body"><p class="lede">
-        It writes one folder — its own overlay app — into the game's Lua app directory,
-        and nothing else. It reads the game's shared memory, which is the interface the
-        game publishes for exactly this.
-      </p></div>
-    </details>
+  <section id="more">
+    <h2><span class="tw" style="--n:12">READ FURTHER</span></h2>
+    <p class="lede">
+      The detail lives on its own pages rather than in one long scroll, so you can go
+      straight to the part you came for.
+    </p>
+    <div class="grid">
+      <a class="card" href="https://proengineer.app/features/">
+        <h3><span class="k">▸</span> Everything it does <span class="n">115</span></h3>
+        <p>The whole list, folded by area: tyres, the engineer, the debrief, corner
+        analysis, ghosts and traces, driving style, fuel, force feedback, setups, the
+        in-game panel, the built-in setup guide.</p>
+        <span class="go">All 115 features →</span>
+      </a>
+      <a class="card" href="https://proengineer.app/technical/">
+        <h3><span class="k">▸</span> How it works</h3>
+        <p>Shared memory read until two reads agree, one computed frame published to
+        every front end, the Proton bridge, and why the in-game panel computes nothing
+        at all.</p>
+        <span class="go">Under the bonnet →</span>
+      </a>
+      <a class="card" href="https://proengineer.app/compare/">
+        <h3><span class="k">▸</span> Against the alternatives</h3>
+        <p>Track Titan, Delta, RaceLab, SimHub, Crew Chief and MoTeC i2 — including the
+        columns where this one loses.</p>
+        <span class="go">The comparison →</span>
+      </a>
+      <a class="card" href="https://proengineer.app/download/">
+        <h3><span class="k">▸</span> Download and install</h3>
+        <p>Windows in one step, Linux and Steam Deck in two, and building it yourself in
+        three. Plus what to do when the in-game panel stays blank.</p>
+        <span class="go">Get it running →</span>
+      </a>
+      <a class="card" href="https://proengineer.app/faq/">
+        <h3><span class="k">▸</span> Questions</h3>
+        <p>Is it free, will it cost frames, does it touch the game, can a friend watch,
+        and what the licence lets you do with the code.</p>
+        <span class="go">Nine answers →</span>
+      </a>
+    </div>
+    <p class="note" style="margin-top:18px">
+      <b>No account, no cloud, no subscription.</b> Nothing leaves your machine unless you
+      set an address yourself.
+    </p>
   </section>
 
   <footer>
@@ -1454,87 +810,28 @@ cargo run --release</pre>
           <span style="color:var(--dim)">Free software, <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/LICENSING.md">AGPL v3</a>. Built in Rust.</span>
         </div>
       </div>
-      <div>
-        <a href="https://github.com/Rgosh/ac-pro-engineer">Source</a> ·
-        <a href="https://github.com/Rgosh/ac-pro-engineer/releases">Releases</a> ·
-        <a href="https://github.com/Rgosh/ac-pro-engineer/issues">Issues</a> ·
-        <a href="https://github.com/Rgosh/ac-pro-engineer/blob/main/README.md">Docs</a>
+      <div class="cols">
+        <div>
+          <b>THE PROGRAM</b>
+          <a href="https://proengineer.app/ac/">Assetto Corsa</a>
+          <a href="https://proengineer.app/features/">Features</a>
+          <a href="https://proengineer.app/download/">Download</a>
+        </div>
+        <div>
+          <b>THE DETAIL</b>
+          <a href="https://proengineer.app/technical/">How it works</a>
+          <a href="https://proengineer.app/compare/">Comparison</a>
+          <a href="https://proengineer.app/faq/">Questions</a>
+        </div>
+        <div>
+          <b>THE SOURCE</b>
+          <a href="https://github.com/Rgosh/ac-pro-engineer">GitHub</a>
+          <a href="https://github.com/Rgosh/ac-pro-engineer/releases">Releases</a>
+          <a href="https://github.com/Rgosh/ac-pro-engineer/issues">Issues</a>
+        </div>
       </div>
     </div>
   </footer>
 </div>
-
-<script>
-// The one script here, and it earns its place: which tab is current is a fact
-// about where the reader has scrolled to, and CSS cannot know that.
-(function () {
-  var links = Array.prototype.slice.call(
-    document.querySelectorAll('nav.tabs a[href^="#"]'));
-  if (!links.length) return;
-
-  function light(id) {
-    links.forEach(function (a) { a.classList.toggle('on', a.hash === '#' + id); });
-  }
-
-  // While a click-driven jump is in flight the observer must not have a say.
-  // It reports every section the page travels through, and the last of those
-  // to fire won the highlight — so the strip ended up naming somewhere short
-  // of the destination, and clicking again "fixed" it only because by then
-  // there was nothing left to scroll through.
-  var jumping = false, release;
-  function holdFor(ms) {
-    jumping = true;
-    clearTimeout(release);
-    release = setTimeout(function () { jumping = false; }, ms);
-  }
-  // `scrollend` ends the hold exactly when the scroll does, where it exists.
-  window.addEventListener('scrollend', function () {
-    if (!jumping) return;
-    jumping = false;
-    clearTimeout(release);
-  });
-
-  links.forEach(function (a) {
-    a.addEventListener('click', function () {
-      light(a.hash.slice(1));
-      holdFor(1500);
-    });
-  });
-  if (location.hash) light(location.hash.slice(1));
-
-  if (!('IntersectionObserver' in window)) return;
-
-  var targets = [];
-  links.forEach(function (a) {
-    var el = document.getElementById(a.hash.slice(1));
-    if (el) targets.push(el);
-  });
-  if (!targets.length) return;
-
-  var bar = parseInt(getComputedStyle(document.documentElement)
-              .getPropertyValue('--bar'), 10) || 46;
-  var visible = [];
-
-  // A band just under the sticky strip. Whichever observed section is highest
-  // inside it is the one being read; when none is — the middle of a long
-  // section — the last answer stands.
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) {
-      var i = visible.indexOf(e.target);
-      if (e.isIntersecting) { if (i < 0) visible.push(e.target); }
-      else if (i >= 0) visible.splice(i, 1);
-    });
-    // The list is kept up to date either way, so the moment the hold ends the
-    // observer already knows where things stand.
-    if (jumping || !visible.length) return;
-    visible.sort(function (a, b) {
-      return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
-    });
-    light(visible[0].id);
-  }, { rootMargin: -(bar + 8) + 'px 0px -70% 0px' });
-
-  targets.forEach(function (el) { io.observe(el); });
-})();
-</script>
 </body>
 </html>
