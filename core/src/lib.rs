@@ -1,3 +1,11 @@
+// AC Pro Engineer — telemetry and race engineering for Assetto Corsa.
+// Copyright (c) 2026 Rgosh and contributors.
+//
+// This program is free software under the GNU Affero General Public License,
+// version 3, with the additional terms in NOTICE. It comes with NO WARRANTY.
+// LICENSE has the text; LICENSING.md says what it means, including how to ask
+// for a closed-source exception. Versions up to v0.3.6 were MIT and stay MIT.
+
 pub mod games;
 
 // Where these two used to live. Kept as re-exports so the move into `games/`

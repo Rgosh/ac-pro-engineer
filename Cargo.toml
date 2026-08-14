@@ -6,6 +6,11 @@ members = ["core", "tui", "shm-bridge", "tests_suite"]
 version = "0.3.6"
 edition = "2024"
 authors = ["Rgosh"]
+# AGPL from the commit after 9ba92a3 (v0.3.6 and earlier were MIT, and stay
+# MIT — that grant cannot be withdrawn; see LICENSE-MIT-HISTORICAL).
+# `shm-bridge` is deliberately not on this: it is a fork of poljar/shm-bridge
+# and keeps its own MIT licence.
+license = "AGPL-3.0-only"
 
 [workspace.dependencies]
 anyhow = "1.0"

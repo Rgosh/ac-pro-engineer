@@ -81,7 +81,7 @@ fi
 
 # Everything needed when the automatic path does not work, in the bundle rather
 # than in a document nobody opens until the game is already broken.
-for doc in README.md CHANGELOG.md LICENSE; do
+for doc in README.md CHANGELOG.md LICENSE LICENSE-MIT-HISTORICAL NOTICE LICENSING.md; do
     if [ -f "${doc}" ]; then
         cp "${doc}" "${BUNDLE_DIR}/"
     fi

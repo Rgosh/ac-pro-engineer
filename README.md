@@ -1097,10 +1097,26 @@ tools do, and it is also a pattern some antivirus heuristics dislike.
 
 ## Licence and credits
 
-Released under the [MIT licence](LICENSE).
+Released under the [GNU AGPL v3](LICENSE). Free to use, free to fork, free to
+build on — provided what you build stays open. [LICENSING.md](LICENSING.md) is
+the plain-language version:
+
+- **Racing with it, reading it, forking it** — nothing to do, it is free.
+- **Changing it for yourself and never passing it on** — nothing to do either.
+  The licence conditions distribution, not what runs on your own rig.
+- **Building on it and publishing the source** under the AGPL — nothing to ask.
+  Keep the notices, credit the project.
+- **Keeping your own source closed** — needs written permission, in advance:
+  <rgoshbbb@gmail.com>.
+- **Selling a product with this inside it** — a commercial licence, same
+  address. Terms per case; there is no price list.
+
+Versions up to and including **v0.3.6 were MIT** and stay MIT; that grant
+cannot be withdrawn. The AGPL applies from v0.3.7 onward.
 
 `shm-bridge` began as [Damir Jelić's](https://github.com/poljar) work on bridging
-Wine shared memory and is used and extended here under the same terms.
+Wine shared memory and is used and extended here **under its own MIT licence**,
+which this project's change does not touch.
 
 Built with [ratatui](https://ratatui.rs), [tokio](https://tokio.rs) and
 [Custom Shaders Patch](https://acstuff.ru/patch/). Not affiliated with Kunos
