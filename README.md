@@ -1,7 +1,7 @@
 # 🏎️ AC Pro Engineer — Assetto Corsa Telemetry, Race Engineer & In-Game Overlay
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/releases)
-[![License](https://img.shields.io/github/license/Rgosh/ac-pro-engineer)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/stargazers)
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)](#windows)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)](#linux--steam-deck--proton)
@@ -1078,6 +1078,11 @@ that says what was wrong, why it mattered and how it was verified. If you change
 the overlay frame, regenerate the layout and rebuild the bridge — there are tests
 that will fail if you do not, and they exist because forgetting has cost
 evenings.
+
+Commits need a `Signed-off-by` line — `git commit -s`. [CONTRIBUTING.md](CONTRIBUTING.md)
+has the certificate it stands for, and the one thing asked beyond it: that a
+contribution may also be licensed commercially, which is what keeps the offer
+below possible.
 
 ---
 
