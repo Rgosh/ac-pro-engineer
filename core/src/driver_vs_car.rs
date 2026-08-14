@@ -18,6 +18,7 @@
 
 use crate::analyzer::LapData;
 use crate::confidence::{Confidence, Evidence};
+use crate::i18n::Translate;
 
 /// Laps needed before this will say anything at all.
 ///
@@ -44,14 +45,12 @@ pub enum Blame {
 
 impl Blame {
     pub fn label(self, russian: bool) -> &'static str {
-        match (self, russian) {
-            (Blame::Car, false) => "the car",
-            (Blame::Driver, false) => "the driving",
-            (Blame::Undecided, false) => "could be either",
-            (Blame::Car, true) => "машина",
-            (Blame::Driver, true) => "пилотаж",
-            (Blame::Undecided, true) => "непонятно",
+        match self {
+            Blame::Car => "the car",
+            Blame::Driver => "the driving",
+            Blame::Undecided => "could be either",
         }
+        .tr(russian)
     }
 }
 

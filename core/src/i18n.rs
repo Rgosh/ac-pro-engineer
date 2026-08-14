@@ -709,6 +709,165 @@ pub const CATALOGUE: &[(&str, &str)] = &[
         "How many engineer lines reach the overlay (0-8). The panel may draw fewer — it has a slider of its own.",
         "Сколько строк инженера уходит в оверлей (0-8). Панель может показать меньше — у неё свой ползунок.",
     ),
+    // Sentences with a value in them, from the engineer. The whole template
+    // is one entry: split into fragments and joined with format!, the units
+    // between the words stay English while the words around them do not.
+    (
+        "Rear dropping too much at high speed (-{0}mm)",
+        "Зад сильно проседает на скорости (-{0}мм)",
+    ),
+    ("Aero: {0}", "Аэродинамика: {0}"),
+    ("Front Camber: {0}", "Развал перед: {0}"),
+    ("Tyre Press: {0} PSI", "Давление шин: {0} PSI"),
+    ("FFB Clipping: {0}% of time", "Клиппинг силы: {0}% времени"),
+    ("Tyres ({0})", "Шины ({0})"),
+    (" (NOW: {0}%)", " (СЕЙЧАС: {0}%)"),
+    ("FRONT Locking detected{0}", "Блокировка ПЕРЕДНИХ колес{0}"),
+    ("REAR Locking (Danger!){0}", "Блокировка ЗАДНИХ колес{0}"),
+    (
+        "Steering over-rotated by {0}°! Tyres sliding.",
+        "Перекрут руля на {0}°! Шины скользят.",
+    ),
+    ("Reduce steering angle by {0}°", "Уменьши угол руля на {0}°"),
+    ("FUEL LOW: {0} laps", "ТОПЛИВО: {0} кр."),
+    ("Short {0} L", "Не хватит {0} л."),
+    (
+        "the bottoming count on {0} over the same lap, once it is raised",
+        "пробои на {0} в том же круге после подъёма",
+    ),
+    (
+        "-{0} mm between low and high speed",
+        "-{0} мм между медленным и быстрым участком",
+    ),
+    ("{0} frames", "{0} кадров"),
+    ("{0} frames of the lap ({1} %)", "{0} кадров круга ({1} %)"),
+    (
+        "the hot pressure on {0} after two laps at pace: {1} is the target",
+        "давление на {0} после двух кругов на темпе: цель {1}",
+    ),
+    (
+        "the I/M/O spread on {0} next run out: {1} is the window",
+        "разброс I/M/O на {0} в следующем стинте: цель {1}",
+    ),
+    (
+        "the temperature on {0} after a lap at pace: the window starts at {1}",
+        "температура на {0} после круга на темпе: окно от {1}",
+    ),
+    (
+        "the temperature on {0} a lap after the change: the window ends at {1}",
+        "температура на {0} через круг после изменения: окно до {1}",
+    ),
+    (
+        "the peak on {0} through the next lap: {1} is the ceiling",
+        "пик температуры на {0} в следующем круге: предел {1}",
+    ),
+    (
+        "{0} frames of front lock against {1} at the rear",
+        "{0} кадров блокировки спереди против {1} сзади",
+    ),
+    (
+        "{0} frames of rear lock against {1} at the front",
+        "{0} кадров блокировки сзади против {1} спереди",
+    ),
+    (
+        "the tyre is not building enough heat to reach the window",
+        "шина не набирает температуру и не доходит до окна",
+    ),
+    (
+        "the tyre is building more pressure than the cold setting allows for",
+        "шина набирает больше давления, чем заложено в холодном",
+    ),
+    ("WORN OUT", "ИЗНОС (Крит)"),
+    ("high wear", "сильный износ"),
+    ("{0} laps on this set", "{0} кругов на этом комплекте"),
+    (
+        "no complete lap on this set yet",
+        "на этом комплекте ещё нет полного круга",
+    ),
+    (
+        "the life on {0} at the end of the next lap: ~{1} laps left at this rate",
+        "остаток на {0} в конце круга: по текущему темпу ~{1} кругов",
+    ),
+    (
+        "the life on {0} at the end of the next lap",
+        "остаток на {0} в конце круга",
+    ),
+    ("contact patch inefficient", "пятно контакта не эффективно"),
+    ("inner edge overheating", "перегрев внутренней части"),
+    (
+        "More neg. camber{0}. If maxed -> soften ARB",
+        "Больше отриц. развала{0}. Если предел -> смягчите ARB",
+    ),
+    (
+        "Less neg. camber{0}. If maxed -> stiffen ARB",
+        "Меньше отриц. развала{0}. Если предел -> зажмите ARB",
+    ),
+    (
+        "the outer shoulder is not being loaded through corners",
+        "недостаточно нагрузки на внешнюю часть в поворотах",
+    ),
+    (
+        "the inner shoulder is carrying the corner",
+        "внутренняя часть перегружена в поворотах",
+    ),
+    ("{0}, worst excess {1}°", "{0}, худший перекрут {1}°"),
+    // The confidence labels, the debrief, the corner analysis and the parts of
+    // the terminal that were left behind by the first pass.
+    ("High", "Высокая"),
+    ("Medium", "Средняя"),
+    ("Low", "Низкая"),
+    ("no observations", "нет наблюдений"),
+    ("from one {0}", "по одному {0}"),
+    ("across {0} {1}s", "по {0} {1}"),
+    ("the car", "машина"),
+    ("the driving", "пилотаж"),
+    ("could be either", "непонятно"),
+    ("{0} laps", "{0} кр."),
+    (
+        "BROWSER: Arrows to navigate | ENTER to select | PgUp/PgDn to scroll",
+        "БРАУЗЕР: Стрелки — навигация | ENTER — выбор | PgUp/PgDn — скролл",
+    ),
+    (
+        "Arrows to pick a setup | PgUp/PgDn to scroll the details",
+        "Стрелки — выбор сетапа | PgUp/PgDn — скролл деталей",
+    ),
+    (
+        "Recommended: '{0}'. Differences:",
+        "Рекомендуется '{0}'. Отличия:",
+    ),
+    ("G-G Plot (Grip Usage: {0}%)", "G-G (Исп. сцепления: {0}%)"),
+    (
+        " Lap {0}  {1}   vs {2}   {3} corners, {4} worth looking at ",
+        " Круг {0}  {1}   против {2}   {3} поворотов, {4} стоящих внимания ",
+    ),
+    ("   [losses over {0}s only]", "   [только потери > {0}s]"),
+    ("Cnr", "Пов"),
+    ("Min", "Мин"),
+    ("Speed: in/min/out", "Скор: вход/мин/выход"),
+    ("{0} {1} — {2} s lost", "{0} {1} — потеряно {2} с"),
+    ("{0} m {1}", "на {0} м {1}"),
+    ("later", "позже"),
+    ("earlier", "раньше"),
+    ("{0} s {1}", "на {0} с {1}"),
+    (
+        "Corners: losses over {0}s only",
+        "Повороты: только потери больше {0}с",
+    ),
+    ("Corners: showing every corner", "Повороты: показаны все"),
+    (
+        "  {0} of {1} laps — one lap cannot tell the car from the driving.",
+        "  Кругов {0} из {1} — одного круга мало, чтобы отличить машину от пилотажа.",
+    ),
+    (
+        "Startup card  [{0}] installs, [{1}] removes, [{2}] diagnostics",
+        "Карточка при запуске  [{0}] ставит, [{1}] удаляет, [{2}] проверка",
+    ),
+    ("OVERVIEW", "ОБЗОР"),
+    ("CORNERS", "ПОВОРОТЫ"),
+    ("TELEMETRY", "ТЕЛЕМЕТРИЯ"),
+    ("DYNAMICS", "ДИНАМИКА"),
+    ("ENGINE", "ДВИГАТЕЛЬ"),
+    ("TRACTION", "СЦЕПЛЕНИЕ"),
 ];
 
 /// Look a string up, or hand back what it was given.
@@ -733,6 +892,35 @@ pub fn translate(text: &str, russian: bool) -> &str {
         .find(|(key, _)| *key == text)
         .map(|(_, translated)| *translated)
         .unwrap_or(english)
+}
+
+/// A translated sentence with values dropped into it.
+///
+/// [`translate`] handles a word. This handles the other half of what the code
+/// used to write twice — a sentence with a number in the middle of it:
+///
+/// ```ignore
+/// tr_fmt("Rear dropping too much at high speed (-{0} mm)", ru,
+///        &[&format!("{rake_loss:.1}")])
+/// ```
+///
+/// The placeholders are `{0}`, `{1}` and so on, and the **catalogue holds the
+/// whole sentence** rather than the pieces of it. That matters more than it
+/// looks: splitting a sentence into fragments and joining them with `format!`
+/// gets the words translated and leaves everything between them in English, so
+/// a Russian driver reads "-12.4 mm" where the old code said "-12.4 мм". Word
+/// order goes the same way — a language that puts the number last cannot be
+/// served by a fixed English skeleton.
+///
+/// Values arrive already formatted, because `{:.1}` and `{:>8}` belong to the
+/// code and not to a translator. A key with no entry falls back to English,
+/// exactly as a single word does.
+pub fn tr_fmt(template: &str, russian: bool, args: &[&str]) -> String {
+    let mut out = translate(template, russian).to_string();
+    for (index, value) in args.iter().enumerate() {
+        out = out.replace(&format!("{{{index}}}"), value);
+    }
+    out
 }
 
 /// `"Tyres".tr(ru)`, which is short enough to use everywhere it is needed.
@@ -779,6 +967,31 @@ mod tests {
     #[test]
     fn a_missing_translation_falls_back_rather_than_failing() {
         assert_eq!("Kerb strike".tr(true), "Kerb strike");
+    }
+
+    /// A sentence keeps what is *between* its values, which is the whole reason
+    /// the catalogue holds templates rather than fragments.
+    #[test]
+    fn a_template_translates_before_its_values_arrive() {
+        // The unit is inside the sentence, so it is translated with it — glue
+        // the pieces together in code instead and the Russian reads "mm".
+        assert_eq!(
+            tr_fmt("{0} laps on this set", false, &["7"]),
+            "7 laps on this set"
+        );
+        // Unknown template: English, values still filled in.
+        assert_eq!(
+            tr_fmt("{0} of {1} slots used", true, &["3", "8"]),
+            "3 of 8 slots used"
+        );
+    }
+
+    /// The same value can appear twice, and an argument nobody references is
+    /// not an error — a template may legitimately drop one in one language.
+    #[test]
+    fn a_placeholder_may_repeat_and_a_spare_argument_is_harmless() {
+        assert_eq!(tr_fmt("{0}-{0}", false, &["x"]), "x-x");
+        assert_eq!(tr_fmt("{0} only", false, &["a", "b"]), "a only");
     }
 
     /// Two entries for one key means the second is dead and the first may not

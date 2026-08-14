@@ -2,7 +2,7 @@ use crate::AppState;
 use crate::ui::localization::tr;
 use ac_core::analyzer::LapData;
 use ac_core::config::Language;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 
 /// Live feed, post-stint debrief, and pressures.
@@ -741,17 +741,11 @@ fn push_stint_verdicts(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
         Assessment::NotYet(not_yet) => {
             heading(lines);
             lines.push(Line::from(Span::styled(
-                if is_ru {
-                    format!(
-                        "  Кругов {} из {} — одного круга мало, чтобы отличить машину от пилотажа.",
-                        not_yet.laps, not_yet.needed
-                    )
-                } else {
-                    format!(
-                        "  {} of {} laps — one lap cannot tell the car from the driving.",
-                        not_yet.laps, not_yet.needed
-                    )
-                },
+                tr_fmt(
+                    "  {0} of {1} laps — one lap cannot tell the car from the driving.",
+                    is_ru,
+                    &[&not_yet.laps.to_string(), &not_yet.needed.to_string()],
+                ),
                 Style::default().fg(Color::DarkGray),
             )));
         }

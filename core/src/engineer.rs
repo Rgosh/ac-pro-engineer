@@ -1,6 +1,6 @@
 use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
-use crate::i18n::Translate;
+use crate::i18n::{Translate, tr_fmt};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
 use serde::{Deserialize, Serialize};
@@ -652,16 +652,11 @@ impl Engineer {
                             )
                         ),
                     },
-                    confirm: match ru {
-                        true => format!(
-                            "пробои на {} в том же круге после подъёма",
-                            Self::corner_phrase_mid(&grounded, ru)
-                        ),
-                        false => format!(
-                            "the bottoming count on {} over the same lap, once it is raised",
-                            Self::corner_phrase_mid(&grounded, ru)
-                        ),
-                    },
+                    confirm: tr_fmt(
+                        "the bottoming count on {0} over the same lap, once it is raised",
+                        ru,
+                        &[&Self::corner_phrase_mid(&grounded, ru)],
+                    ),
                     // One observation per corner that grounded, measured past
                     // the threshold rather than from zero — a corner one frame
                     // over is not the same finding as one forty frames over.
@@ -687,11 +682,11 @@ impl Engineer {
                     component: "Aerodynamics".tr(ru).to_string(),
                     category: "Rake Loss".to_string(),
                     severity: Severity::Warning,
-                    message: if ru {
-                        format!("Зад сильно проседает на скорости (-{:.1}мм)", rake_loss)
-                    } else {
-                        format!("Rear dropping too much at high speed (-{:.1}mm)", rake_loss)
-                    },
+                    message: tr_fmt(
+                        "Rear dropping too much at high speed (-{0}mm)",
+                        ru,
+                        &[&format!("{rake_loss:.1}")],
+                    ),
                     action: "Stiffen Rear Springs or add Packers".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.85,
@@ -699,14 +694,11 @@ impl Engineer {
                         cause: "downforce is squatting the rear, and the rake goes with it"
                             .tr(ru)
                             .to_string(),
-                        effect: match ru {
-                            true => {
-                                format!("-{rake_loss:.1} мм между медленным и быстрым участком")
-                            }
-                            false => {
-                                format!("-{rake_loss:.1} mm between low and high speed")
-                            }
-                        },
+                        effect: tr_fmt(
+                            "-{0} mm between low and high speed",
+                            ru,
+                            &[&format!("{rake_loss:.1}")],
+                        ),
                         confirm: "the rake difference at the same speed next run out"
                             .tr(ru)
                             .to_string(),
@@ -776,21 +768,17 @@ impl Engineer {
         let aero_diff =
             (target.wing_1 + target.wing_2) as i32 - (reference.wing_1 + reference.wing_2) as i32;
         if aero_diff != 0 {
-            advice.push(if ru {
-                format!("Аэродинамика: {:+}", aero_diff)
-            } else {
-                format!("Aero: {:+}", aero_diff)
-            });
+            advice.push(tr_fmt("Aero: {0}", ru, &[&format!("{aero_diff:+}")]));
         }
 
         let camber_f_diff =
             (target.camber_lf + target.camber_rf) - (reference.camber_lf + reference.camber_rf);
         if camber_f_diff.abs() > 2 {
-            advice.push(if ru {
-                format!("Развал перед: {:+}", camber_f_diff)
-            } else {
-                format!("Front Camber: {:+}", camber_f_diff)
-            });
+            advice.push(tr_fmt(
+                "Front Camber: {0}",
+                ru,
+                &[&format!("{camber_f_diff:+}")],
+            ));
         }
 
         let avg_p_target: f32 =
@@ -803,11 +791,11 @@ impl Engineer {
             + reference.pressure_rr) as f32
             / 4.0;
         if (avg_p_target - avg_p_ref).abs() > 1.0 {
-            advice.push(if ru {
-                format!("Давление шин: {:+.1} PSI", avg_p_target - avg_p_ref)
-            } else {
-                format!("Tyre Press: {:+.1} PSI", avg_p_target - avg_p_ref)
-            });
+            advice.push(tr_fmt(
+                "Tyre Press: {0} PSI",
+                ru,
+                &[&format!("{:+.1}", avg_p_target - avg_p_ref)],
+            ));
         }
 
         if advice.is_empty() {
@@ -831,11 +819,11 @@ impl Engineer {
                 component: "Force Feedback".tr(ru).to_string(),
                 category: "Clipping".to_string(),
                 severity: Severity::Warning,
-                message: if ru {
-                    format!("Клиппинг силы: {:.1}% времени", clip_ratio * 100.0)
-                } else {
-                    format!("FFB Clipping: {:.1}% of time", clip_ratio * 100.0)
-                },
+                message: tr_fmt(
+                    "FFB Clipping: {0}% of time",
+                    ru,
+                    &[&format!("{:.1}", clip_ratio * 100.0)],
+                ),
                 action: "Lower FFB Gain".tr(ru).to_string(),
                 parameters: vec![Parameter {
                     name: "Clip Ratio".to_string(),
@@ -879,16 +867,14 @@ impl Engineer {
     /// having to remove.
     fn frames_phrase(frames: u32, total: u32, ru: bool) -> String {
         if total == 0 {
-            return match ru {
-                true => format!("{frames} кадров"),
-                false => format!("{frames} frames"),
-            };
+            return tr_fmt("{0} frames", ru, &[&frames.to_string()]);
         }
         let share = frames as f32 / total as f32 * 100.0;
-        match ru {
-            true => format!("{frames} кадров круга ({share:.0} %)"),
-            false => format!("{frames} frames of the lap ({share:.0} %)"),
-        }
+        tr_fmt(
+            "{0} frames of the lap ({1} %)",
+            ru,
+            &[&frames.to_string(), &format!("{share:.0}")],
+        )
     }
 
     fn corner_phrase(corners: &[usize], ru: bool) -> String {
@@ -997,24 +983,19 @@ impl Engineer {
         // another in the advice about them.
         let formatter = self.config.formatter();
 
-        let mut push =
-            |corners: &[usize], inflate: bool| {
-                if corners.is_empty() {
-                    return;
-                }
-                let average = corners
-                    .iter()
-                    .map(|i| phys.wheels_pressure[*i])
-                    .sum::<f32>()
-                    / corners.len() as f32;
-                let difference = (average - optimal_pressure).abs();
+        let mut push = |corners: &[usize], inflate: bool| {
+            if corners.is_empty() {
+                return;
+            }
+            let average = corners
+                .iter()
+                .map(|i| phys.wheels_pressure[*i])
+                .sum::<f32>()
+                / corners.len() as f32;
+            let difference = (average - optimal_pressure).abs();
 
-                recs.push(Recommendation {
-                component: if ru {
-                    format!("Шины ({})", class_name)
-                } else {
-                    format!("Tyres ({})", class_name)
-                },
+            recs.push(Recommendation {
+                component: tr_fmt("Tyres ({0})", ru, &[class_name]),
                 category: "Pressure".tr(ru).to_string(),
                 // A pressure a full unit off the target changes how the car
                 // turns; half of one is a setup working as intended.
@@ -1033,7 +1014,9 @@ impl Engineer {
                 ),
                 action: if inflate {
                     "Inflate".tr(ru)
-                } else { "Deflate".tr(ru) }
+                } else {
+                    "Deflate".tr(ru)
+                }
                 .to_string(),
                 parameters: corners
                     .iter()
@@ -1051,14 +1034,12 @@ impl Engineer {
                 // which is exactly what makes this worth stating rather than
                 // printing a number against a target.
                 chain: Some(Chain {
-                    cause: match (inflate, ru) {
-                        (true, true) => "шина не набирает температуру и не доходит до окна",
-                        (true, false) => "the tyre is not building enough heat to reach the window",
-                        (false, true) => "шина набирает больше давления, чем заложено в холодном",
-                        (false, false) => {
-                            "the tyre is building more pressure than the cold setting allows for"
-                        }
+                    cause: if inflate {
+                        "the tyre is not building enough heat to reach the window"
+                    } else {
+                        "the tyre is building more pressure than the cold setting allows for"
                     }
+                    .tr(ru)
                     .to_string(),
                     effect: format!(
                         "{} {} ({} {})",
@@ -1067,18 +1048,14 @@ impl Engineer {
                         "target".tr(ru),
                         formatter.format_pressure(optimal_pressure)
                     ),
-                    confirm: match ru {
-                        true => format!(
-                            "давление на {} после двух кругов на темпе: цель {}",
-                            Self::corner_phrase_mid(corners, ru),
-                            formatter.format_pressure(optimal_pressure)
-                        ),
-                        false => format!(
-                            "the hot pressure on {} after two laps at pace: {} is the target",
-                            Self::corner_phrase_mid(corners, ru),
-                            formatter.format_pressure(optimal_pressure)
-                        ),
-                    },
+                    confirm: tr_fmt(
+                        "the hot pressure on {0} after two laps at pace: {1} is the target",
+                        ru,
+                        &[
+                            &Self::corner_phrase_mid(corners, ru),
+                            &formatter.format_pressure(optimal_pressure),
+                        ],
+                    ),
                     // One observation per corner in the group, each a live
                     // reading rather than an average — so two corners agreeing
                     // is Medium and all four are High, which is the right shape
@@ -1090,7 +1067,7 @@ impl Engineer {
                     ),
                 }),
             });
-            };
+        };
 
         push(&low, true);
         push(&high, false);
@@ -1152,12 +1129,12 @@ impl Engineer {
                 .fold(f32::MAX, f32::min);
             let where_ = Self::corner_phrase(corners, ru);
             let where_low = Self::corner_phrase_mid(corners, ru);
-            let what = match (&severity, ru) {
-                (Severity::Critical, true) => "ИЗНОС (Крит)",
-                (Severity::Critical, false) => "WORN OUT",
-                (_, true) => "сильный износ",
-                (_, false) => "high wear",
-            };
+            let what = if severity == Severity::Critical {
+                "WORN OUT"
+            } else {
+                "high wear"
+            }
+            .tr(ru);
 
             recs.push(Recommendation {
                 component: "Tyres".tr(ru).to_string(),
@@ -1185,11 +1162,10 @@ impl Engineer {
                     // number — a set can be past the warning before the first
                     // lap is complete — and "0 laps on this set" as the reason
                     // reads as a broken sentence rather than as the truth it is.
-                    cause: match (stint_laps > 0, ru) {
-                        (true, true) => format!("{stint_laps} кругов на этом комплекте"),
-                        (true, false) => format!("{stint_laps} laps on this set"),
-                        (false, true) => "на этом комплекте ещё нет полного круга".to_string(),
-                        (false, false) => "no complete lap on this set yet".to_string(),
+                    cause: if stint_laps > 0 {
+                        tr_fmt("{0} laps on this set", ru, &[&stint_laps.to_string()])
+                    } else {
+                        "no complete lap on this set yet".tr(ru).to_string()
                     },
                     effect: format!("{where_} {lowest:.1}%"),
                     confirm: {
@@ -1199,19 +1175,18 @@ impl Engineer {
                             .iter()
                             .map(|i| laps_left[*i])
                             .fold(f32::MAX, f32::min);
-                        match (soonest.is_finite() && soonest > 0.0, ru) {
-                            (true, true) => format!(
-                                "остаток на {where_low} в конце круга: по текущему темпу ~{soonest:.0} кругов"
-                            ),
-                            (true, false) => format!(
-                                "the life on {where_low} at the end of the next lap: ~{soonest:.0} laps left at this rate"
-                            ),
-                            (false, true) => {
-                                format!("остаток на {where_low} в конце круга")
-                            }
-                            (false, false) => {
-                                format!("the life on {where_low} at the end of the next lap")
-                            }
+                        if soonest.is_finite() && soonest > 0.0 {
+                            tr_fmt(
+                                "the life on {0} at the end of the next lap: ~{1} laps left at this rate",
+                                ru,
+                                &[&where_low, &format!("{soonest:.0}")],
+                            )
+                        } else {
+                            tr_fmt(
+                                "the life on {0} at the end of the next lap",
+                                ru,
+                                &[&where_low],
+                            )
                         }
                     },
                     // How far past the warning each corner is, rather than the
@@ -1323,27 +1298,26 @@ impl Engineer {
                 // by scale only -- `format_temp` would add 32.
                 message: format!(
                     "{where_} {} (I-O: {})",
-                    match (more_camber, ru) {
-                        (true, true) => "пятно контакта не эффективно",
-                        (true, false) => "contact patch inefficient",
-                        (false, true) => "перегрев внутренней части",
-                        (false, false) => "inner edge overheating",
-                    },
+                    if more_camber {
+                        "contact patch inefficient"
+                    } else {
+                        "inner edge overheating"
+                    }
+                    .tr(ru),
                     fmt.format_temp_delta(spread)
                 ),
-                action: match (more_camber, ru) {
-                    (true, true) => {
-                        format!("Больше отриц. развала{now_clause}. Если предел -> смягчите ARB")
-                    }
-                    (true, false) => {
-                        format!("More neg. camber{now_clause}. If maxed -> soften ARB")
-                    }
-                    (false, true) => {
-                        format!("Меньше отриц. развала{now_clause}. Если предел -> зажмите ARB")
-                    }
-                    (false, false) => {
-                        format!("Less neg. camber{now_clause}. If maxed -> stiffen ARB")
-                    }
+                action: if more_camber {
+                    tr_fmt(
+                        "More neg. camber{0}. If maxed -> soften ARB",
+                        ru,
+                        &[&now_clause],
+                    )
+                } else {
+                    tr_fmt(
+                        "Less neg. camber{0}. If maxed -> stiffen ARB",
+                        ru,
+                        &[&now_clause],
+                    )
                 },
                 parameters: corners
                     .iter()
@@ -1367,24 +1341,19 @@ impl Engineer {
                 // above stops being a bolted-on precondition and becomes part
                 // of how sure the advice says it is.
                 chain: Some(Chain {
-                    cause: match (more_camber, ru) {
-                        (true, true) => "недостаточно нагрузки на внешнюю часть в поворотах",
-                        (true, false) => "the outer shoulder is not being loaded through corners",
-                        (false, true) => "внутренняя часть перегружена в поворотах",
-                        (false, false) => "the inner shoulder is carrying the corner",
+                    cause: if more_camber {
+                        "the outer shoulder is not being loaded through corners"
+                    } else {
+                        "the inner shoulder is carrying the corner"
                     }
+                    .tr(ru)
                     .to_string(),
                     effect: format!("{where_} I-O {}", fmt.format_temp_delta(spread)),
-                    confirm: match ru {
-                        true => format!(
-                            "разброс I/M/O на {where_} в следующем стинте: цель {}",
-                            fmt.format_temp_delta(ideal_spread)
-                        ),
-                        false => format!(
-                            "the I/M/O spread on {where_} next run out: {} is the window",
-                            fmt.format_temp_delta(ideal_spread)
-                        ),
-                    },
+                    confirm: tr_fmt(
+                        "the I/M/O spread on {0} next run out: {1} is the window",
+                        ru,
+                        &[&where_, &fmt.format_temp_delta(ideal_spread)],
+                    ),
                     evidence: crate::confidence::Evidence::from_values(
                         corners.iter().map(|i| self.stats.camber_spread[*i]),
                     )
@@ -1462,18 +1431,14 @@ impl Engineer {
                         "window from".tr(ru),
                         formatter.format_temp(min_temp)
                     ),
-                    confirm: match ru {
-                        true => format!(
-                            "температура на {} после круга на темпе: окно от {}",
-                            Self::corner_phrase_mid(&cold, ru),
-                            formatter.format_temp(min_temp)
-                        ),
-                        false => format!(
-                            "the temperature on {} after a lap at pace: the window starts at {}",
-                            Self::corner_phrase_mid(&cold, ru),
-                            formatter.format_temp(min_temp)
-                        ),
-                    },
+                    confirm: tr_fmt(
+                        "the temperature on {0} after a lap at pace: the window starts at {1}",
+                        ru,
+                        &[
+                            &Self::corner_phrase_mid(&cold, ru),
+                            &formatter.format_temp(min_temp),
+                        ],
+                    ),
                     evidence: crate::confidence::Evidence::from_values(
                         cold.iter().map(|i| min_temp - phys.get_avg_tyre_temp(*i)),
                     ),
@@ -1514,18 +1479,14 @@ impl Engineer {
                         "window to".tr(ru),
                         formatter.format_temp(max_temp)
                     ),
-                    confirm: match ru {
-                        true => format!(
-                            "температура на {} через круг после изменения: окно до {}",
-                            Self::corner_phrase_mid(&hot, ru),
-                            formatter.format_temp(max_temp)
-                        ),
-                        false => format!(
-                            "the temperature on {} a lap after the change: the window ends at {}",
-                            Self::corner_phrase_mid(&hot, ru),
-                            formatter.format_temp(max_temp)
-                        ),
-                    },
+                    confirm: tr_fmt(
+                        "the temperature on {0} a lap after the change: the window ends at {1}",
+                        ru,
+                        &[
+                            &Self::corner_phrase_mid(&hot, ru),
+                            &formatter.format_temp(max_temp),
+                        ],
+                    ),
                     evidence: crate::confidence::Evidence::from_values(
                         hot.iter().map(|i| phys.get_avg_tyre_temp(*i) - max_temp),
                     ),
@@ -1588,18 +1549,14 @@ impl Engineer {
                     "ceiling".tr(ru),
                     formatter.format_temp(max_temp)
                 ),
-                confirm: match ru {
-                    true => format!(
-                        "пик температуры на {} в следующем круге: предел {}",
-                        Self::corner_phrase_mid(&cooking, ru),
-                        formatter.format_temp(max_temp)
-                    ),
-                    false => format!(
-                        "the peak on {} through the next lap: {} is the ceiling",
-                        Self::corner_phrase_mid(&cooking, ru),
-                        formatter.format_temp(max_temp)
-                    ),
-                },
+                confirm: tr_fmt(
+                    "the peak on {0} through the next lap: {1} is the ceiling",
+                    ru,
+                    &[
+                        &Self::corner_phrase_mid(&cooking, ru),
+                        &formatter.format_temp(max_temp),
+                    ],
+                ),
                 evidence: crate::confidence::Evidence::from_values(
                     cooking.iter().map(|i| phys.brake_temp[*i] - max_temp),
                 ),
@@ -1613,11 +1570,7 @@ impl Engineer {
 
         if total_lockups > 20 {
             let current_bias_str = if let Some(s) = setup {
-                if ru {
-                    format!(" (СЕЙЧАС: {}%)", s.brake_bias)
-                } else {
-                    format!(" (NOW: {}%)", s.brake_bias)
-                }
+                tr_fmt(" (NOW: {0}%)", ru, &[&s.brake_bias.to_string()])
             } else {
                 "".to_string()
             };
@@ -1627,11 +1580,7 @@ impl Engineer {
                     component: "Brakes".tr(ru).to_string(),
                     category: "Bias".tr(ru).to_string(),
                     severity: Severity::Warning,
-                    message: if ru {
-                        format!("Блокировка ПЕРЕДНИХ колес{}", current_bias_str)
-                    } else {
-                        format!("FRONT Locking detected{}", current_bias_str)
-                    },
+                    message: tr_fmt("FRONT Locking detected{0}", ru, &[&current_bias_str]),
                     action: "Move Bias REARWARDS".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.85,
@@ -1647,16 +1596,14 @@ impl Engineer {
                         cause: "too much of the braking is landing on the front axle"
                             .tr(ru)
                             .to_string(),
-                        effect: match ru {
-                            true => format!(
-                                "{} кадров блокировки спереди против {} сзади",
-                                self.stats.lockup_frames_front, self.stats.lockup_frames_rear
-                            ),
-                            false => format!(
-                                "{} frames of front lock against {} at the rear",
-                                self.stats.lockup_frames_front, self.stats.lockup_frames_rear
-                            ),
-                        },
+                        effect: tr_fmt(
+                            "{0} frames of front lock against {1} at the rear",
+                            ru,
+                            &[
+                                &self.stats.lockup_frames_front.to_string(),
+                                &self.stats.lockup_frames_rear.to_string(),
+                            ],
+                        ),
                         confirm: "front lockups next run out, after moving the bias back"
                             .tr(ru)
                             .to_string(),
@@ -1668,11 +1615,7 @@ impl Engineer {
                     component: "Brakes".tr(ru).to_string(),
                     category: "Bias".tr(ru).to_string(),
                     severity: Severity::Critical,
-                    message: if ru {
-                        format!("Блокировка ЗАДНИХ колес{}", current_bias_str)
-                    } else {
-                        format!("REAR Locking (Danger!){}", current_bias_str)
-                    },
+                    message: tr_fmt("REAR Locking (Danger!){0}", ru, &[&current_bias_str]),
                     action: "Move Bias FORWARDS".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.95,
@@ -1680,16 +1623,14 @@ impl Engineer {
                         cause: "too much of the braking is landing on the rear axle"
                             .tr(ru)
                             .to_string(),
-                        effect: match ru {
-                            true => format!(
-                                "{} кадров блокировки сзади против {} спереди",
-                                self.stats.lockup_frames_rear, self.stats.lockup_frames_front
-                            ),
-                            false => format!(
-                                "{} frames of rear lock against {} at the front",
-                                self.stats.lockup_frames_rear, self.stats.lockup_frames_front
-                            ),
-                        },
+                        effect: tr_fmt(
+                            "{0} frames of rear lock against {1} at the front",
+                            ru,
+                            &[
+                                &self.stats.lockup_frames_rear.to_string(),
+                                &self.stats.lockup_frames_front.to_string(),
+                            ],
+                        ),
                         confirm: "rear lockups next run out, after moving the bias forward"
                             .tr(ru)
                             .to_string(),
@@ -1800,40 +1741,34 @@ impl Engineer {
                 component: "Driving".tr(ru).to_string(),
                 category: "Overdriving".tr(ru).to_string(),
                 severity: Severity::Warning,
-                message: if ru {
-                    format!("Перекрут руля на {:.0}°! Шины скользят.", excess)
-                } else {
-                    format!("Steering over-rotated by {:.0}°! Tyres sliding.", excess)
-                },
-                action: if ru {
-                    format!("Уменьши угол руля на {:.0}°", excess)
-                } else {
-                    format!("Reduce steering angle by {:.0}°", excess)
-                },
+                message: tr_fmt(
+                    "Steering over-rotated by {0}°! Tyres sliding.",
+                    ru,
+                    &[&format!("{excess:.0}")],
+                ),
+                action: tr_fmt(
+                    "Reduce steering angle by {0}°",
+                    ru,
+                    &[&format!("{excess:.0}")],
+                ),
                 parameters: vec![],
                 confidence: 0.95,
                 chain: Some(Chain {
                     cause: "more steering angle than the corner will take, so the tyres scrub"
                         .tr(ru)
                         .to_string(),
-                    effect: match ru {
-                        true => format!(
-                            "{}, худший перекрут {excess:.0}°",
-                            Self::frames_phrase(
+                    effect: tr_fmt(
+                        "{0}, worst excess {1}°",
+                        ru,
+                        &[
+                            &Self::frames_phrase(
                                 self.stats.scrubbing_frames,
                                 self.stats.total_frames,
-                                ru
-                            )
-                        ),
-                        false => format!(
-                            "{}, worst excess {excess:.0}°",
-                            Self::frames_phrase(
-                                self.stats.scrubbing_frames,
-                                self.stats.total_frames,
-                                ru
-                            )
-                        ),
-                    },
+                                ru,
+                            ),
+                            &format!("{excess:.0}"),
+                        ],
+                    ),
                     confirm: "the over-rotation count through the same corners next lap"
                         .tr(ru)
                         .to_string(),
@@ -1872,11 +1807,11 @@ impl Engineer {
                 component: "Strategy".tr(ru).to_string(),
                 category: "Fuel".tr(ru).to_string(),
                 severity: Severity::Critical,
-                message: if ru {
-                    format!("ТОПЛИВО: {:.1} кр.", self.stats.fuel_laps_remaining)
-                } else {
-                    format!("FUEL LOW: {:.1} laps", self.stats.fuel_laps_remaining)
-                },
+                message: tr_fmt(
+                    "FUEL LOW: {0} laps",
+                    ru,
+                    &[&format!("{:.1}", self.stats.fuel_laps_remaining)],
+                ),
                 action: "BOX BOX BOX".to_string(),
                 parameters: vec![],
                 confidence: 1.0,
@@ -1907,11 +1842,7 @@ impl Engineer {
                         component: "Strategy".tr(ru).to_string(),
                         category: "Race Finish".tr(ru).to_string(),
                         severity: Severity::Warning,
-                        message: if ru {
-                            format!("Не хватит {:.1} л.", fuel_diff.abs())
-                        } else {
-                            format!("Short {:.1} L", fuel_diff.abs())
-                        },
+                        message: tr_fmt("Short {0} L", ru, &[&format!("{:.1}", fuel_diff.abs())]),
                         action: "Save Fuel / Box".tr(ru).to_string(),
                         parameters: vec![Parameter {
                             name: "Need".to_string(),

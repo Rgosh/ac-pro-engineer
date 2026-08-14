@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::ui::file_menu::FileMenu;
 use crate::ui::localization::tr;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
 use std::fs;
@@ -207,17 +207,14 @@ impl AnalysisState {
     /// Show every corner, or only the ones that cost real time.
     pub fn toggle_corners_filter(&mut self, is_ru: bool) {
         self.corners_filter = !self.corners_filter;
-        self.set_status(match (self.corners_filter, is_ru) {
-            (true, false) => format!(
-                "Corners: losses over {:.2}s only",
-                corners::LOSS_THRESHOLD_S
-            ),
-            (false, false) => "Corners: showing every corner".to_string(),
-            (true, true) => format!(
-                "Повороты: только потери больше {:.2}с",
-                corners::LOSS_THRESHOLD_S
-            ),
-            (false, true) => "Повороты: показаны все".to_string(),
+        self.set_status(if self.corners_filter {
+            tr_fmt(
+                "Corners: losses over {0}s only",
+                is_ru,
+                &[&format!("{:.2}", corners::LOSS_THRESHOLD_S)],
+            )
+        } else {
+            "Corners: showing every corner".tr(is_ru).to_string()
         });
     }
 
@@ -435,25 +432,17 @@ fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let is_ru = app.config.language == ac_core::config::Language::Russian;
 
-    let titles = if is_ru {
-        vec![
-            "ОБЗОР",
-            "ПОВОРОТЫ",
-            "ТЕЛЕМЕТРИЯ",
-            "ДИНАМИКА",
-            "ДВИГАТЕЛЬ",
-            "СЦЕПЛЕНИЕ",
-        ]
-    } else {
-        vec![
-            "OVERVIEW",
-            "CORNERS",
-            "TELEMETRY",
-            "DYNAMICS",
-            "ENGINE",
-            "TRACTION",
-        ]
-    };
+    let titles: Vec<&str> = [
+        "OVERVIEW",
+        "CORNERS",
+        "TELEMETRY",
+        "DYNAMICS",
+        "ENGINE",
+        "TRACTION",
+    ]
+    .iter()
+    .map(|title| title.tr(is_ru))
+    .collect();
 
     let selected_idx = match app.ui_state.analysis.current_tab {
         AnalysisSubTab::Overview => 0,

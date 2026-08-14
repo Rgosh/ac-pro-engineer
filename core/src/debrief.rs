@@ -184,12 +184,7 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             continue;
         }
         let spread = spreads.iter().sum::<f32>() / spreads.len() as f32;
-        let where_ = match (axle, ru) {
-            (0, true) => "Перед",
-            (0, false) => "Front",
-            (_, true) => "Зад",
-            (_, false) => "Rear",
-        };
+        let where_ = if axle == 0 { "Front" } else { "Rear" }.tr(ru);
         if spread > 12.0 {
             push(
                 "Suspension".tr(ru),

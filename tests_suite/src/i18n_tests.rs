@@ -19,33 +19,36 @@ use std::path::{Path, PathBuf};
 ///   be nonsense.
 const EXEMPT: &[&str] = &["core/src/i18n.rs", "tui/src/keys.rs"];
 
-/// How many Cyrillic lines are still in the code, per file.
+/// The Cyrillic that is left, per file, and why each line is not a translation.
 ///
-/// A ratchet rather than a zero. The migration moved every
-/// `if ru { … } else { … }` — four hundred and ten of them — and what is left
-/// is a different shape: `format!` templates with values interpolated into
-/// them, which need the template translated rather than a word. That work is
-/// real and is not done, and pinning the numbers is what stops the count
-/// drifting back up while it waits.
+/// Every translatable string is in the catalogue now — 501 of them. What
+/// remains is text that happens to be Russian for a reason other than being a
+/// message to a driver, and moving any of it into `i18n.rs` would make the
+/// program wrong rather than tidier.
 ///
-/// **Lower a number when you fix a file. Never raise one.** A new line of
-/// Russian in the code fails this test, which is the entire point.
+/// **Lower a number when a line genuinely goes. Never raise one**, and never
+/// add a file without a reason beside it: a new line of Russian in the code
+/// fails this test, which is the entire point of the list.
 const REMAINING: &[(&str, usize)] = &[
-    ("core/src/engineer.rs", 39),
-    ("tui/src/ui/tabs/analysis/mod.rs", 11),
-    ("tui/src/ui/tabs/analysis/corners.rs", 10),
-    ("core/src/confidence.rs", 8),
-    ("tui/src/ui/tabs/settings.rs", 6),
-    ("tui/src/ui/tabs/setup.rs", 3),
-    ("core/src/driver_vs_car.rs", 3),
-    ("tui/src/ui/tabs/strategy.rs", 2),
-    ("tui/src/main.rs", 2),
-    ("core/src/debrief.rs", 2),
-    ("tui/src/ui/tabs/engineer.rs", 1),
-    ("tui/src/ui/tabs/analysis/dynamics.rs", 1),
-    ("tui/src/ui/launcher.rs", 1),
+    // Test fixtures that exist *because* the text is Cyrillic: a filename to
+    // sanitise, a string whose characters are two bytes each, and the
+    // truncation that has to count characters rather than bytes.
+    ("tui/src/ui/tabs/analysis/mod.rs", 3),
     ("core/src/setup_manager.rs", 1),
     ("core/src/overlay/frame.rs", 1),
+    // A test of the translation itself: it passes a Russian unit in and asserts
+    // the Russian phrasing comes back.
+    ("core/src/confidence.rs", 2),
+    // Keys on a keyboard, like `keys.rs` — quitting works on `й` because that
+    // is where `q` is on a Russian layout, and a driver in a race does not stop
+    // to switch layout.
+    ("tui/src/main.rs", 2),
+    // The language selector, which names each language in that language. It has
+    // to read the same whichever one is currently active, so both arms are
+    // deliberately not translated — that is what makes it findable by somebody
+    // who set the wrong one by accident.
+    ("tui/src/ui/tabs/settings.rs", 3),
+    ("tui/src/ui/launcher.rs", 1),
 ];
 
 fn workspace_root() -> PathBuf {

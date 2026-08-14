@@ -18,6 +18,7 @@
 //! 🔴 Low      not enough data — one representative corner
 //! ```
 
+use crate::i18n::{Translate, tr_fmt};
 use serde::{Deserialize, Serialize};
 
 /// Fewer observations than this and there is nothing to be confident about,
@@ -68,14 +69,12 @@ impl Confidence {
     }
 
     pub fn label(self, russian: bool) -> &'static str {
-        match (self, russian) {
-            (Confidence::High, false) => "High",
-            (Confidence::Medium, false) => "Medium",
-            (Confidence::Low, false) => "Low",
-            (Confidence::High, true) => "Высокая",
-            (Confidence::Medium, true) => "Средняя",
-            (Confidence::Low, true) => "Низкая",
+        match self {
+            Confidence::High => "High",
+            Confidence::Medium => "Medium",
+            Confidence::Low => "Low",
         }
+        .tr(russian)
     }
 
     /// Whether this is worth acting on, as opposed to worth knowing.
@@ -263,13 +262,13 @@ impl Evidence {
     /// What the advice says about its own evidence: "across four corners",
     /// "from one sample".
     pub fn describe(&self, unit: &str, russian: bool) -> String {
-        match (self.count(), russian) {
-            (0, true) => "нет наблюдений".to_string(),
-            (0, false) => "no observations".to_string(),
-            (1, true) => format!("по одному {unit}"),
-            (1, false) => format!("from one {unit}"),
-            (n, true) => format!("по {n} {unit}"),
-            (n, false) => format!("across {n} {unit}s"),
+        match self.count() {
+            0 => "no observations".tr(russian).to_string(),
+            1 => tr_fmt("from one {0}", russian, &[unit]),
+            // The English pluralises by appending to the unit and the Russian
+            // does not decline it at all, which is why the whole phrase is one
+            // entry rather than a word and a suffix.
+            n => tr_fmt("across {0} {1}s", russian, &[&n.to_string(), unit]),
         }
     }
 }

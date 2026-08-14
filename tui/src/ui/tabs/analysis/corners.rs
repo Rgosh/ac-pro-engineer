@@ -16,7 +16,7 @@
 use crate::AppState;
 use ac_core::analyzer::LapData;
 use ac_core::corners::{CornerComparison, Decomposition};
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 
 /// A corner has to cost more than this to be worth naming, in seconds.
@@ -140,25 +140,17 @@ fn render_header(
     let corners = decomposition.sections.len();
     let losses = decomposition.losses_over(LOSS_THRESHOLD_S).len();
 
-    let title = if is_ru {
-        format!(
-            " Круг {}  {}   против {}   {} поворотов, {} стоящих внимания ",
-            lap.lap_number + 1,
-            lap_time(lap.lap_time_ms),
-            lap_time(reference.lap_time_ms),
-            corners,
-            losses
-        )
-    } else {
-        format!(
-            " Lap {}  {}   vs {}   {} corners, {} worth looking at ",
-            lap.lap_number + 1,
-            lap_time(lap.lap_time_ms),
-            lap_time(reference.lap_time_ms),
-            corners,
-            losses
-        )
-    };
+    let title = tr_fmt(
+        " Lap {0}  {1}   vs {2}   {3} corners, {4} worth looking at ",
+        is_ru,
+        &[
+            &(lap.lap_number + 1).to_string(),
+            &lap_time(lap.lap_time_ms),
+            &lap_time(reference.lap_time_ms),
+            &corners.to_string(),
+            &losses.to_string(),
+        ],
+    );
 
     let mut spans = vec![
         Span::styled(
@@ -185,11 +177,11 @@ fn render_header(
 
     if filtered {
         spans.push(Span::styled(
-            if is_ru {
-                format!("   [только потери > {LOSS_THRESHOLD_S:.2}s]")
-            } else {
-                format!("   [losses over {LOSS_THRESHOLD_S:.2}s only]")
-            },
+            tr_fmt(
+                "   [losses over {0}s only]",
+                is_ru,
+                &[&format!("{LOSS_THRESHOLD_S:.2}")],
+            ),
             Style::default().fg(Color::Cyan),
         ));
     }
@@ -269,11 +261,13 @@ fn render_table(
         })
         .collect();
 
-    let header = if is_ru {
-        ["Пов", "", "Мин", "Скор: вход/мин/выход", "Δ"]
-    } else {
-        ["Cnr", "", "Min", "Speed: in/min/out", "Δ"]
-    };
+    let header = [
+        "Cnr".tr(is_ru),
+        "",
+        "Min".tr(is_ru),
+        "Speed: in/min/out".tr(is_ru),
+        "Δ",
+    ];
 
     let table = Table::new(
         rows,
@@ -332,21 +326,15 @@ fn render_detail(
     let corner = &section.corner;
     let mut lines: Vec<Line<'_>> = Vec::new();
 
-    let heading = if is_ru {
-        format!(
-            "{} {} — потеряно {:.2} с",
-            corner.label(),
+    let heading = tr_fmt(
+        "{0} {1} — {2} s lost",
+        is_ru,
+        &[
+            &corner.label(),
             corner.direction.arrow(),
-            section.delta_ms as f32 / 1000.0
-        )
-    } else {
-        format!(
-            "{} {} — {:.2} s lost",
-            corner.label(),
-            corner.direction.arrow(),
-            section.delta_ms as f32 / 1000.0
-        )
-    };
+            &format!("{:.2}", section.delta_ms as f32 / 1000.0),
+        ],
+    );
     lines.push(Line::from(Span::styled(
         heading,
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
@@ -384,23 +372,14 @@ fn render_detail(
             ),
             Some(metres) => row(
                 "Braking".tr(is_ru),
-                if is_ru {
-                    format!(
-                        "на {:.0} м {}",
-                        metres.abs(),
-                        if metres > 0.0 {
-                            "позже"
-                        } else {
-                            "раньше"
-                        }
-                    )
-                } else {
-                    format!(
-                        "{:.0} m {}",
-                        metres.abs(),
-                        if metres > 0.0 { "later" } else { "earlier" }
-                    )
-                },
+                tr_fmt(
+                    "{0} m {1}",
+                    is_ru,
+                    &[
+                        &format!("{:.0}", metres.abs()),
+                        if metres > 0.0 { "later" } else { "earlier" }.tr(is_ru),
+                    ],
+                ),
                 metres.abs() < 5.0,
             ),
             None => row(
@@ -433,23 +412,14 @@ fn render_detail(
         match section.throttle_delta_s() {
             Some(delta) => row(
                 "Throttle".tr(is_ru),
-                if is_ru {
-                    format!(
-                        "на {:.2} с {}",
-                        delta.abs(),
-                        if delta > 0.0 {
-                            "позже"
-                        } else {
-                            "раньше"
-                        }
-                    )
-                } else {
-                    format!(
-                        "{:.2} s {}",
-                        delta.abs(),
-                        if delta > 0.0 { "later" } else { "earlier" }
-                    )
-                },
+                tr_fmt(
+                    "{0} s {1}",
+                    is_ru,
+                    &[
+                        &format!("{:.2}", delta.abs()),
+                        if delta > 0.0 { "later" } else { "earlier" }.tr(is_ru),
+                    ],
+                ),
                 delta <= 0.05,
             ),
             None if corner.throttle_delay_s().is_none() => row(

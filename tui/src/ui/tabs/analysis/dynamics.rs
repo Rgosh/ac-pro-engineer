@@ -1,5 +1,5 @@
 use crate::AppState;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
 
@@ -151,11 +151,11 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     };
     let grip_usage = (avg_g / 2.5 * 100.0).clamp(0.0, 100.0);
 
-    let gg_title = if is_ru {
-        format!("G-G (Исп. сцепления: {:.0}%)", grip_usage)
-    } else {
-        format!("G-G Plot (Grip Usage: {:.0}%)", grip_usage)
-    };
+    let gg_title = tr_fmt(
+        "G-G Plot (Grip Usage: {0}%)",
+        is_ru,
+        &[&format!("{grip_usage:.0}")],
+    );
 
     let gg_block = Block::default()
         .title(gg_title)

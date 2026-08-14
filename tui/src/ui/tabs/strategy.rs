@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -17,10 +17,10 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
         let message = if app.is_game_running {
             tr("no_data", lang)
-        } else if *lang == ac_core::config::Language::Russian {
-            "Assetto Corsa не запущена".to_string()
         } else {
-            "Assetto Corsa is not running".to_string()
+            "Assetto Corsa is not running"
+                .tr(*lang == ac_core::config::Language::Russian)
+                .to_string()
         };
         let text = Paragraph::new(message)
             .alignment(Alignment::Center)
@@ -305,10 +305,8 @@ fn render_tyres_strategy(
             "spent".tr(is_ru).to_string()
         } else if laps_rem >= 500.0 {
             "> 500".to_string()
-        } else if is_ru {
-            format!("{laps_rem:.0} кр.")
         } else {
-            format!("{laps_rem:.0} laps")
+            tr_fmt("{0} laps", is_ru, &[&format!("{laps_rem:.0}")])
         };
 
         // Scaled between the driver's own critical threshold and a fresh tyre,

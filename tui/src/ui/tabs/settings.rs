@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::ui::localization::tr;
 use ac_core::config::{AppConfig, Language, PressureUnit, TempUnit};
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use crossterm::event::KeyCode;
 use ratatui::{prelude::*, widgets::*};
 
@@ -990,7 +990,16 @@ fn render_item(
     let val_text = if selected && editing {
         format!("◄ {} ►", value)
     } else if is_toggle {
-        let is_on = value.contains("ON") || value.contains("SHOW") || value.contains("ВКЛ");
+        // Whether the box is ticked is decided by *reading back the text that
+        // was already drawn*, which is fragile in a way worth naming: the
+        // Russian arm used to be a literal "ВКЛ" here, so translating that word
+        // anywhere would have quietly emptied every checkbox on the screen.
+        // Asking the catalogue for the same words the value came from keeps the
+        // two ends together. The proper fix is for the caller to pass the bool
+        // it already has instead of a string to be re-parsed.
+        let is_on = ["ON", "SHOW"]
+            .iter()
+            .any(|word| value.contains(word) || value.contains(word.tr(true)));
         let box_char = if is_on { "[■]" } else { "[ ]" };
         format!("{} {}", box_char, value)
     } else if selected {
@@ -1133,17 +1142,11 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
                 let install = crate::keys::describe(&keys.overlay_install);
                 let remove = crate::keys::describe(&keys.overlay_uninstall);
                 let check = crate::keys::describe(&keys.overlay_diagnostics);
-                if is_ru {
-                    format!(
-                        "Карточка при запуске  [{install}] ставит, [{remove}] удаляет, \
-                         [{check}] проверка"
-                    )
-                } else {
-                    format!(
-                        "Startup card  [{install}] installs, [{remove}] removes, \
-                         [{check}] diagnostics"
-                    )
-                }
+                tr_fmt(
+                    "Startup card  [{0}] installs, [{1}] removes, [{2}] diagnostics",
+                    is_ru,
+                    &[&install, &remove, &check],
+                )
             },
             if overlay.startup_card { "ON" } else { "OFF" }.to_string(),
             true,

@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
 
@@ -96,16 +96,11 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // The arrows and PgUp/PgDn are not in it: they are the same on every list
     // in the application and are not rebindable.
     let hint_text = if is_browser {
-        if *lang == ac_core::config::Language::Russian {
-            "БРАУЗЕР: Стрелки — навигация | ENTER — выбор | PgUp/PgDn — скролл"
-        } else {
-            "BROWSER: Arrows to navigate | ENTER to select | PgUp/PgDn to scroll"
-        }
-    } else if *lang == ac_core::config::Language::Russian {
-        "Стрелки — выбор сетапа | PgUp/PgDn — скролл деталей"
+        "BROWSER: Arrows to navigate | ENTER to select | PgUp/PgDn to scroll"
     } else {
         "Arrows to pick a setup | PgUp/PgDn to scroll the details"
-    };
+    }
+    .tr(*lang == ac_core::config::Language::Russian);
 
     let hint_area = Rect {
         x: area.x + 2,
@@ -501,11 +496,11 @@ fn render_header_block(
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(if is_ru {
-                format!("Рекомендуется '{}'. Отличия:", best_setup.name)
-            } else {
-                format!("Recommended: '{}'. Differences:", best_setup.name)
-            }),
+            Span::raw(tr_fmt(
+                "Recommended: '{0}'. Differences:",
+                is_ru,
+                &[&best_setup.name],
+            )),
         ])];
 
         if !selected.notes.is_empty() {
