@@ -327,15 +327,28 @@ h2{text-shadow:0 0 16px rgba(255,165,0,.22)}
    here can cause a relayout. */
 .btn,.card,nav.tabs a,details.fold > summary,figure img{
   transition:transform .18s ease, border-color .18s ease,
-             background-color .18s ease, color .18s ease, opacity .18s ease;
+             background-color .18s ease, color .18s ease, opacity .18s ease,
+             box-shadow .18s ease;
 }
-.card:hover{transform:translateY(-2px);border-color:var(--highlight)}
+/* Only things that go somewhere move under the pointer. This used to be
+   `.card:hover`, which lifted and lit every tile on the page — including the
+   nine that are descriptions and lead nowhere. A tile that behaves like a
+   button and then does nothing teaches people not to trust the ones that do. */
+a.card:hover{transform:translateY(-2px);border-color:var(--highlight)}
 .btn:hover{transform:translateY(-1px)}
 figure img:hover{border-color:var(--highlight)}
 .stat{transition:background-color .18s ease}
 .stat:hover{background:#15151f}
-.btn:active,.card:active{transform:translateY(1px)}
+.btn:active,a.card:active{transform:translateY(1px)}
 nav.tabs a:active{opacity:.7}
+
+/* Keyboard users get the same answer the pointer gets. Without this the only
+   indication of focus is the browser's default outline, which several of these
+   backgrounds swallow entirely. */
+a:focus-visible,.btn:focus-visible,a.card:focus-visible,
+nav.tabs a:focus-visible,details.fold > summary:focus-visible{
+  outline:2px solid var(--highlight);outline-offset:3px;border-radius:4px;
+}
 
 details.fold[open] > .fold-body{animation:foldin .2s ease both}
 @keyframes foldin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
@@ -426,13 +439,17 @@ section:target > h2{animation:markh 2.4s ease both}
 /* ── buttons, stats, sections ────────────────────────────────────── */
 .cta{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 10px}
 .fineprint{color:var(--dim);font-size:13px;margin:0;max-width:64ch}
+/* Filled rather than outlined, faintly, so a button reads as a surface you can
+   press instead of as a box with words in it — the outlined version was being
+   mistaken for a label beside the two ghosts. */
 .btn{
   border:1px solid var(--highlight);color:var(--highlight);
-  padding:10px 18px;border-radius:5px;font-size:14px;
+  background:rgba(0,180,255,.09);
+  padding:10px 18px;border-radius:5px;font-size:14px;cursor:pointer;
 }
 .btn:hover{background:var(--highlight);color:#06060b;text-decoration:none}
-.btn.ghost{border-color:var(--border);color:var(--text)}
-.btn.ghost:hover{background:var(--border);color:var(--text)}
+.btn.ghost{border-color:var(--border);color:var(--text);background:var(--bg-raised)}
+.btn.ghost:hover{border-color:var(--highlight);color:var(--highlight);background:#161624}
 
 .stats{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
@@ -467,12 +484,35 @@ h3{font-size:15px;margin:22px 0 8px;color:var(--text)}
 .card p{margin:0;color:var(--dim);font-size:14px}
 
 /* A card that is entirely a link — used for the page cards and the simulator
-   picker. The whole tile is the target, which is what a thumb expects. */
-a.card{display:block;color:inherit}
-a.card:hover{text-decoration:none}
+   picker. The whole tile is the target, which is what a thumb expects.
+
+   It has to *say* so without being hovered: half the people reading this are on
+   a phone, where there is no hover at all, and a tile that looks exactly like
+   the tile beside it will not be tapped. Three permanent cues, none of which
+   the static tiles have — a rail down the left edge in the accent colour, a
+   heading in that colour, and a line at the bottom that ends in an arrow. */
+a.card{
+  display:block;color:inherit;cursor:pointer;
+  border-left:2px solid var(--highlight);
+  background:linear-gradient(180deg,#12121d,#0f0f17);
+}
+a.card:hover{text-decoration:none;box-shadow:0 8px 26px -18px var(--highlight)}
 a.card h3{color:var(--highlight)}
-a.card .go{color:var(--dim);font-size:12.5px;letter-spacing:.06em;margin-top:10px;display:block}
-a.card:hover .go{color:var(--highlight)}
+a.card p{color:var(--dim)}
+a.card .go{
+  color:var(--highlight);font-size:12.5px;letter-spacing:.06em;
+  margin-top:12px;display:block;
+}
+/* The arrow steps forward rather than the whole line moving: one transformed
+   pseudo-element, and the text it belongs to stays where it was. */
+a.card .go::after{
+  content:" →";display:inline-block;transition:transform .18s ease;
+}
+a.card:hover .go::after{transform:translateX(4px)}
+
+/* And the tiles that are only text say that too, by staying still and keeping
+   the plain border on all four sides. */
+.card:not(a):hover{border-color:var(--border)}
 
 /* The simulator picker. One tile per game, and adding the next one is adding a
    tile — which is the whole point of the folder-per-game boundary underneath. */
@@ -744,12 +784,12 @@ footer .cols a:hover{color:var(--highlight)}
       <a class="card" href="https://proengineer.app/ac/">
         <h3><span class="k">▸</span> Assetto Corsa <span class="sim-badge live">FULL SUPPORT</span></h3>
         <p>Terminal dashboard, the race engineer, corner-by-corner analysis and a five-window panel inside the game through Custom Shaders Patch. Windows, Linux and Steam Deck.</p>
-        <span class="go">Everything for AC →</span>
+        <span class="go">Everything for AC</span>
       </a>
       <a class="card pending" href="https://proengineer.app/technical/#games">
         <h3><span class="k">▸</span> Your simulator <span class="sim-badge soon">NOT YET</span></h3>
         <p>The boundary each game implements is small and honest about what it cannot measure — &ldquo;not measured&rdquo; and &ldquo;measured as zero&rdquo; are different answers. What it would take to add one is written down.</p>
-        <span class="go">What a game has to provide →</span>
+        <span class="go">What a game has to provide</span>
       </a>
 <!--/SIMS-->
     </div>
@@ -767,32 +807,32 @@ footer .cols a:hover{color:var(--highlight)}
         <p>The whole list, folded by area: tyres, the engineer, the debrief, corner
         analysis, ghosts and traces, driving style, fuel, force feedback, setups, the
         in-game panel, the built-in setup guide.</p>
-        <span class="go">All 115 features →</span>
+        <span class="go">All 115 features</span>
       </a>
       <a class="card" href="https://proengineer.app/technical/">
         <h3><span class="k">▸</span> How it works</h3>
         <p>Shared memory read until two reads agree, one computed frame published to
         every front end, the Proton bridge, and why the in-game panel computes nothing
         at all.</p>
-        <span class="go">Under the bonnet →</span>
+        <span class="go">Under the bonnet</span>
       </a>
       <a class="card" href="https://proengineer.app/compare/">
         <h3><span class="k">▸</span> Against the alternatives</h3>
         <p>Track Titan, Delta, RaceLab, SimHub, Crew Chief and MoTeC i2 — including the
         columns where this one loses.</p>
-        <span class="go">The comparison →</span>
+        <span class="go">The comparison</span>
       </a>
       <a class="card" href="https://proengineer.app/download/">
         <h3><span class="k">▸</span> Download and install</h3>
         <p>Windows in one step, Linux and Steam Deck in two, and building it yourself in
         three. Plus what to do when the in-game panel stays blank.</p>
-        <span class="go">Get it running →</span>
+        <span class="go">Get it running</span>
       </a>
       <a class="card" href="https://proengineer.app/faq/">
         <h3><span class="k">▸</span> Questions</h3>
         <p>Is it free, will it cost frames, does it touch the game, can a friend watch,
         and what the licence lets you do with the code.</p>
-        <span class="go">Nine answers →</span>
+        <span class="go">Nine answers</span>
       </a>
     </div>
     <p class="note" style="margin-top:18px">
