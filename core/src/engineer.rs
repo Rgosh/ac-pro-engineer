@@ -1,5 +1,6 @@
 use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
+use crate::i18n::Translate;
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
 use serde::{Deserialize, Serialize};
@@ -612,36 +613,17 @@ impl Engineer {
         let bottoming_detected = !grounded.is_empty();
         if self.check_hysteresis("bottoming", bottoming_detected) && bottoming_detected {
             recs.push(Recommendation {
-                component: if ru {
-                    "Подвеска".to_string()
-                } else {
-                    "Suspension".to_string()
-                },
-                category: if ru {
-                    "Пробой".to_string()
-                } else {
-                    "Bottoming".to_string()
-                },
+                component: "Suspension".tr(ru).to_string(),
+                category: "Bottoming".tr(ru).to_string(),
                 severity: Severity::Critical,
-                message: if ru {
-                    "Удары днищем о трассу!".to_string()
-                } else {
-                    "Chassis bottoming out!".to_string()
-                },
-                action: if ru {
-                    "Увеличьте клиренс или жесткость".to_string()
-                } else {
-                    "Increase ride height or stiffness".to_string()
-                },
+                message: "Chassis bottoming out!".tr(ru).to_string(),
+                action: "Increase ride height or stiffness".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.95,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "подвеске не хватает хода на поребриках и сжатиях"
-                    } else {
-                        "the suspension is running out of travel over kerbs and compressions"
-                    }
-                    .to_string(),
+                    cause: "the suspension is running out of travel over kerbs and compressions"
+                        .tr(ru)
+                        .to_string(),
                     effect: match ru {
                         true => format!(
                             "{}: {}",
@@ -702,11 +684,7 @@ impl Engineer {
             let rake_loss = self.stats.low_speed_rake - self.stats.high_speed_rake;
             if self.check_hysteresis("aero_rake", rake_loss > 10.0) && rake_loss > 10.0 {
                 recs.push(Recommendation {
-                    component: if ru {
-                        "Аэродинамика".to_string()
-                    } else {
-                        "Aerodynamics".to_string()
-                    },
+                    component: "Aerodynamics".tr(ru).to_string(),
                     category: "Rake Loss".to_string(),
                     severity: Severity::Warning,
                     message: if ru {
@@ -714,34 +692,24 @@ impl Engineer {
                     } else {
                         format!("Rear dropping too much at high speed (-{:.1}mm)", rake_loss)
                     },
-                    action: if ru {
-                        "Увеличьте жесткость задних пружин (Rear Springs) или Packer".to_string()
-                    } else {
-                        "Stiffen Rear Springs or add Packers".to_string()
-                    },
+                    action: "Stiffen Rear Springs or add Packers".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.85,
                     chain: Some(Chain {
-                        cause: if ru {
-                            "прижимная сила сажает зад, и вместе с ним уходит развал по длине"
-                        } else {
-                            "downforce is squatting the rear, and the rake goes with it"
-                        }
-                        .to_string(),
+                        cause: "downforce is squatting the rear, and the rake goes with it"
+                            .tr(ru)
+                            .to_string(),
                         effect: match ru {
-                            true => format!(
-                                "-{rake_loss:.1} мм между медленным и быстрым участком"
-                            ),
+                            true => {
+                                format!("-{rake_loss:.1} мм между медленным и быстрым участком")
+                            }
                             false => {
                                 format!("-{rake_loss:.1} mm between low and high speed")
                             }
                         },
-                        confirm: if ru {
-                            "разница развала по длине на той же скорости в следующем стинте"
-                        } else {
-                            "the rake difference at the same speed next run out"
-                        }
-                        .to_string(),
+                        confirm: "the rake difference at the same speed next run out"
+                            .tr(ru)
+                            .to_string(),
                         // One measurement, taken at one speed. It is a finding,
                         // not four corroborating observations, and saying so is
                         // the point of leaving this empty.
@@ -758,128 +726,40 @@ impl Engineer {
 
         match (&self.wizard_phase, &self.wizard_problem) {
             (WizardPhase::Entry, WizardProblem::Understeer) => {
-                advice.push(if is_ru {
-                    "Уменьшить отбой (Rebound) спереди".to_string()
-                } else {
-                    "Decrease Front Rebound".to_string()
-                });
-                advice.push(if is_ru {
-                    "Увеличить клиренс сзади".to_string()
-                } else {
-                    "Increase Rear Ride Height".to_string()
-                });
-                advice.push(if is_ru {
-                    "Сместить тормозной баланс назад".to_string()
-                } else {
-                    "Move Brake Bias Rearwards".to_string()
-                });
+                advice.push("Decrease Front Rebound".tr(is_ru).to_string());
+                advice.push("Increase Rear Ride Height".tr(is_ru).to_string());
+                advice.push("Move Brake Bias Rearwards".tr(is_ru).to_string());
             }
             (WizardPhase::Entry, WizardProblem::Oversteer) => {
-                advice.push(if is_ru {
-                    "Увеличить отбой (Rebound) спереди".to_string()
-                } else {
-                    "Increase Front Rebound".to_string()
-                });
-                advice.push(if is_ru {
-                    "Сместить тормозной баланс вперед".to_string()
-                } else {
-                    "Move Brake Bias Forwards".to_string()
-                });
-                advice.push(if is_ru {
-                    "Увеличить переднее антикрыло".to_string()
-                } else {
-                    "Increase Front Wing".to_string()
-                });
+                advice.push("Increase Front Rebound".tr(is_ru).to_string());
+                advice.push("Move Brake Bias Forwards".tr(is_ru).to_string());
+                advice.push("Increase Front Wing".tr(is_ru).to_string());
             }
             (WizardPhase::Apex, WizardProblem::Understeer) => {
-                advice.push(if is_ru {
-                    "Мягче передние пружины".to_string()
-                } else {
-                    "Softer Front Springs".to_string()
-                });
-                advice.push(if is_ru {
-                    "Мягче передний стабилизатор (ARB)".to_string()
-                } else {
-                    "Softer Front ARB".to_string()
-                });
-                advice.push(if is_ru {
-                    "Больше развал (Camber) спереди".to_string()
-                } else {
-                    "More Front Camber".to_string()
-                });
+                advice.push("Softer Front Springs".tr(is_ru).to_string());
+                advice.push("Softer Front ARB".tr(is_ru).to_string());
+                advice.push("More Front Camber".tr(is_ru).to_string());
             }
             (WizardPhase::Apex, WizardProblem::Oversteer) => {
-                advice.push(if is_ru {
-                    "Мягче задние пружины".to_string()
-                } else {
-                    "Softer Rear Springs".to_string()
-                });
-                advice.push(if is_ru {
-                    "Мягче задний стабилизатор (ARB)".to_string()
-                } else {
-                    "Softer Rear ARB".to_string()
-                });
-                advice.push(if is_ru {
-                    "Выше клиренс спереди".to_string()
-                } else {
-                    "Increase Front Ride Height".to_string()
-                });
+                advice.push("Softer Rear Springs".tr(is_ru).to_string());
+                advice.push("Softer Rear ARB".tr(is_ru).to_string());
+                advice.push("Increase Front Ride Height".tr(is_ru).to_string());
             }
             (WizardPhase::Exit, WizardProblem::Understeer) => {
-                advice.push(if is_ru {
-                    "Увеличить сжатие (Bump) спереди".to_string()
-                } else {
-                    "Increase Front Bump".to_string()
-                });
-                advice.push(if is_ru {
-                    "Жестче задние пружины".to_string()
-                } else {
-                    "Stiffer Rear Springs".to_string()
-                });
-                advice.push(if is_ru {
-                    "Увеличить блокировку дифференциала (Power)".to_string()
-                } else {
-                    "Increase Diff Power".to_string()
-                });
+                advice.push("Increase Front Bump".tr(is_ru).to_string());
+                advice.push("Stiffer Rear Springs".tr(is_ru).to_string());
+                advice.push("Increase Diff Power".tr(is_ru).to_string());
             }
             (WizardPhase::Exit, WizardProblem::Oversteer) => {
-                advice.push(if is_ru {
-                    "Мягче задние пружины".to_string()
-                } else {
-                    "Softer Rear Springs".to_string()
-                });
-                advice.push(if is_ru {
-                    "Уменьшить сжатие (Bump) сзади".to_string()
-                } else {
-                    "Decrease Rear Bump".to_string()
-                });
-                advice.push(if is_ru {
-                    "Уменьшить блокировку дифференциала (Power)".to_string()
-                } else {
-                    "Decrease Diff Power".to_string()
-                });
-                advice.push(if is_ru {
-                    "Больше Traction Control".to_string()
-                } else {
-                    "Increase TC".to_string()
-                });
+                advice.push("Softer Rear Springs".tr(is_ru).to_string());
+                advice.push("Decrease Rear Bump".tr(is_ru).to_string());
+                advice.push("Decrease Diff Power".tr(is_ru).to_string());
+                advice.push("Increase TC".tr(is_ru).to_string());
             }
             (_, WizardProblem::Instability) => {
-                advice.push(if is_ru {
-                    "Увеличить прижимную силу (Крылья)".to_string()
-                } else {
-                    "Increase Downforce (Wings)".to_string()
-                });
-                advice.push(if is_ru {
-                    "Больше схождения (Toe) сзади".to_string()
-                } else {
-                    "More Rear Toe-In".to_string()
-                });
-                advice.push(if is_ru {
-                    "Жестче подвеску в целом".to_string()
-                } else {
-                    "Stiffer Suspension Overall".to_string()
-                });
+                advice.push("Increase Downforce (Wings)".tr(is_ru).to_string());
+                advice.push("More Rear Toe-In".tr(is_ru).to_string());
+                advice.push("Stiffer Suspension Overall".tr(is_ru).to_string());
             }
         }
         advice
@@ -931,11 +811,7 @@ impl Engineer {
         }
 
         if advice.is_empty() {
-            advice.push(if ru {
-                "Нет существенных отличий".to_string()
-            } else {
-                "No major differences".to_string()
-            });
+            advice.push("No major differences".tr(ru).to_string());
         }
         advice
     }
@@ -952,11 +828,7 @@ impl Engineer {
 
         if self.check_hysteresis("ffb_clip", is_clipping) && is_clipping {
             recs.push(Recommendation {
-                component: if ru {
-                    "Руль (FFB)".to_string()
-                } else {
-                    "Force Feedback".to_string()
-                },
+                component: "Force Feedback".tr(ru).to_string(),
                 category: "Clipping".to_string(),
                 severity: Severity::Warning,
                 message: if ru {
@@ -964,11 +836,7 @@ impl Engineer {
                 } else {
                     format!("FFB Clipping: {:.1}% of time", clip_ratio * 100.0)
                 },
-                action: if ru {
-                    "Снизить Gain".to_string()
-                } else {
-                    "Lower FFB Gain".to_string()
-                },
+                action: "Lower FFB Gain".tr(ru).to_string(),
                 parameters: vec![Parameter {
                     name: "Clip Ratio".to_string(),
                     current: clip_ratio * 100.0,
@@ -977,11 +845,7 @@ impl Engineer {
                 }],
                 confidence: 1.0,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "усилие упирается в потолок, и всё, что выше него, до руля не доходит"
-                    } else {
-                        "the signal is hitting its ceiling, and everything above it never reaches the wheel"
-                    }
+                    cause: "the signal is hitting its ceiling, and everything above it never reaches the wheel".tr(ru)
                     .to_string(),
                     effect: Self::frames_phrase(
                         self.stats.ffb_clip_frames,
@@ -991,11 +855,7 @@ impl Engineer {
                     // The one rule whose check is not "next lap": clipping
                     // answers to a slider, and the answer arrives in the corner
                     // after it is moved.
-                    confirm: if ru {
-                        "доля клиппинга после снижения Gain — цель около нуля в поворотах"
-                    } else {
-                        "the clipping share after lowering the gain — near zero through corners"
-                    }
+                    confirm: "the clipping share after lowering the gain — near zero through corners".tr(ru)
                     .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
@@ -1035,11 +895,11 @@ impl Engineer {
         match corners {
             [] => String::new(),
             [only] => CORNER_NAMES[*only].to_string(),
-            [0, 1] => if ru { "Перед" } else { "Fronts" }.to_string(),
-            [2, 3] => if ru { "Зад" } else { "Rears" }.to_string(),
-            [0, 2] => if ru { "Левые" } else { "Left side" }.to_string(),
-            [1, 3] => if ru { "Правые" } else { "Right side" }.to_string(),
-            [0, 1, 2, 3] => if ru { "Все шины" } else { "All four" }.to_string(),
+            [0, 1] => "Fronts".tr(ru).to_string(),
+            [2, 3] => "Rears".tr(ru).to_string(),
+            [0, 2] => "Left side".tr(ru).to_string(),
+            [1, 3] => "Right side".tr(ru).to_string(),
+            [0, 1, 2, 3] => "All four".tr(ru).to_string(),
             many => many
                 .iter()
                 .map(|index| CORNER_NAMES[*index])
@@ -1137,24 +997,25 @@ impl Engineer {
         // another in the advice about them.
         let formatter = self.config.formatter();
 
-        let mut push = |corners: &[usize], inflate: bool| {
-            if corners.is_empty() {
-                return;
-            }
-            let average = corners
-                .iter()
-                .map(|i| phys.wheels_pressure[*i])
-                .sum::<f32>()
-                / corners.len() as f32;
-            let difference = (average - optimal_pressure).abs();
+        let mut push =
+            |corners: &[usize], inflate: bool| {
+                if corners.is_empty() {
+                    return;
+                }
+                let average = corners
+                    .iter()
+                    .map(|i| phys.wheels_pressure[*i])
+                    .sum::<f32>()
+                    / corners.len() as f32;
+                let difference = (average - optimal_pressure).abs();
 
-            recs.push(Recommendation {
+                recs.push(Recommendation {
                 component: if ru {
                     format!("Шины ({})", class_name)
                 } else {
                     format!("Tyres ({})", class_name)
                 },
-                category: if ru { "Давление" } else { "Pressure" }.to_string(),
+                category: "Pressure".tr(ru).to_string(),
                 // A pressure a full unit off the target changes how the car
                 // turns; half of one is a setup working as intended.
                 severity: if difference > 2.5 {
@@ -1165,18 +1026,14 @@ impl Engineer {
                 message: format!(
                     "{} {}: {} ({} {})",
                     Self::corner_phrase(corners, ru),
-                    if ru { "давление" } else { "pressure" },
+                    "pressure".tr(ru),
                     formatter.format_pressure(average),
-                    if ru { "цель" } else { "target" },
+                    "target".tr(ru),
                     formatter.format_pressure(optimal_pressure)
                 ),
                 action: if inflate {
-                    if ru { "Накачать" } else { "Inflate" }
-                } else if ru {
-                    "Спустить"
-                } else {
-                    "Deflate"
-                }
+                    "Inflate".tr(ru)
+                } else { "Deflate".tr(ru) }
                 .to_string(),
                 parameters: corners
                     .iter()
@@ -1198,14 +1055,16 @@ impl Engineer {
                         (true, true) => "шина не набирает температуру и не доходит до окна",
                         (true, false) => "the tyre is not building enough heat to reach the window",
                         (false, true) => "шина набирает больше давления, чем заложено в холодном",
-                        (false, false) => "the tyre is building more pressure than the cold setting allows for",
+                        (false, false) => {
+                            "the tyre is building more pressure than the cold setting allows for"
+                        }
                     }
                     .to_string(),
                     effect: format!(
                         "{} {} ({} {})",
                         Self::corner_phrase(corners, ru),
                         formatter.format_pressure(average),
-                        if ru { "цель" } else { "target" },
+                        "target".tr(ru),
                         formatter.format_pressure(optimal_pressure)
                     ),
                     confirm: match ru {
@@ -1231,7 +1090,7 @@ impl Engineer {
                     ),
                 }),
             });
-        };
+            };
 
         push(&low, true);
         push(&high, false);
@@ -1301,15 +1160,11 @@ impl Engineer {
             };
 
             recs.push(Recommendation {
-                component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                category: if ru { "Износ" } else { "Wear" }.to_string(),
+                component: "Tyres".tr(ru).to_string(),
+                category: "Wear".tr(ru).to_string(),
                 severity,
                 message: format!("{where_} {what}: {lowest:.1}%"),
-                action: if ru {
-                    "Пит-стоп / Осторожно"
-                } else {
-                    "Box / Careful"
-                }
+                action: "Box / Careful".tr(ru)
                 .to_string(),
                 parameters: corners
                     .iter()
@@ -1448,14 +1303,14 @@ impl Engineer {
                 .sum::<f32>()
                 / corners.len() as f32;
             let now_clause = if now.abs() > 0.05 {
-                format!(" ({}: {now:.1}°)", if ru { "сейчас" } else { "now" })
+                format!(" ({}: {now:.1}°)", "now".tr(ru))
             } else {
                 String::new()
             };
 
             recs.push(Recommendation {
-                component: if ru { "Подвеска" } else { "Suspension" }.to_string(),
-                category: if ru { "Развал" } else { "Camber" }.to_string(),
+                component: "Suspension".tr(ru).to_string(),
+                category: "Camber".tr(ru).to_string(),
                 severity: if more_camber {
                     Severity::Info
                 } else {
@@ -1584,40 +1439,27 @@ impl Engineer {
             let average =
                 cold.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / cold.len() as f32;
             recs.push(Recommendation {
-                component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                category: if ru {
-                    "Температура"
-                } else {
-                    "Temperature"
-                }
-                .to_string(),
+                component: "Tyres".tr(ru).to_string(),
+                category: "Temperature".tr(ru).to_string(),
                 severity: Severity::Warning,
                 message: format!(
                     "{} {}: {}",
                     Self::corner_phrase(&cold, ru),
-                    if ru { "ХОЛОДНЫЕ" } else { "COLD" },
+                    "COLD".tr(ru),
                     formatter.format_temp(average)
                 ),
-                action: if ru {
-                    "Греть шины"
-                } else {
-                    "Warm tyres"
-                }
-                .to_string(),
+                action: "Warm tyres".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.95,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "в шину не вкладывается достаточно энергии, чтобы она вышла в окно"
-                    } else {
-                        "not enough energy is going into the tyre to bring it into its window"
-                    }
-                    .to_string(),
+                    cause: "not enough energy is going into the tyre to bring it into its window"
+                        .tr(ru)
+                        .to_string(),
                     effect: format!(
                         "{} {} ({} {})",
                         Self::corner_phrase(&cold, ru),
                         formatter.format_temp(average),
-                        if ru { "окно от" } else { "window from" },
+                        "window from".tr(ru),
                         formatter.format_temp(min_temp)
                     ),
                     confirm: match ru {
@@ -1643,25 +1485,16 @@ impl Engineer {
             let average =
                 hot.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / hot.len() as f32;
             recs.push(Recommendation {
-                component: if ru { "Шины" } else { "Tyres" }.to_string(),
-                category: if ru { "Перегрев" } else { "Overheat" }.to_string(),
+                component: "Tyres".tr(ru).to_string(),
+                category: "Overheat".tr(ru).to_string(),
                 severity: Severity::Critical,
                 message: format!(
                     "{} {}: {}",
                     Self::corner_phrase(&hot, ru),
-                    if ru {
-                        "ПЕРЕГРЕВ"
-                    } else {
-                        "OVERHEATING"
-                    },
+                    "OVERHEATING".tr(ru),
                     formatter.format_temp(average)
                 ),
-                action: if ru {
-                    "Остудить шины"
-                } else {
-                    "Cool tyres"
-                }
-                .to_string(),
+                action: "Cool tyres".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.95,
                 // Deliberately vague about the mechanism, because there are
@@ -1671,17 +1504,14 @@ impl Engineer {
                 // be a guess dressed as a diagnosis; the check is the same
                 // whichever it is.
                 chain: Some(Chain {
-                    cause: if ru {
-                        "шина отдаёт больше энергии, чем успевает сбросить"
-                    } else {
-                        "the tyre is being given more energy than it can shed"
-                    }
-                    .to_string(),
+                    cause: "the tyre is being given more energy than it can shed"
+                        .tr(ru)
+                        .to_string(),
                     effect: format!(
                         "{} {} ({} {})",
                         Self::corner_phrase(&hot, ru),
                         formatter.format_temp(average),
-                        if ru { "окно до" } else { "window to" },
+                        "window to".tr(ru),
                         formatter.format_temp(max_temp)
                     ),
                     confirm: match ru {
@@ -1735,39 +1565,27 @@ impl Engineer {
         let formatter = self.config.formatter();
 
         recs.push(Recommendation {
-            component: if ru { "Тормоза" } else { "Brakes" }.to_string(),
-            category: if ru { "Перегрев" } else { "Overheat" }.to_string(),
+            component: "Brakes".tr(ru).to_string(),
+            category: "Overheat".tr(ru).to_string(),
             severity: Severity::Critical,
             message: format!(
                 "{} {}: {}",
                 Self::corner_phrase(&cooking, ru),
-                if ru {
-                    "перегрев тормозов"
-                } else {
-                    "brakes cooking"
-                },
+                "brakes cooking".tr(ru),
                 formatter.format_temp(hottest)
             ),
-            action: if ru {
-                "Сместить баланс / Охладить"
-            } else {
-                "Move bias / Cool down"
-            }
-            .to_string(),
+            action: "Move bias / Cool down".tr(ru).to_string(),
             parameters: vec![],
             confidence: 1.0,
             chain: Some(Chain {
-                cause: if ru {
-                    "в тормоза уходит больше энергии, чем они успевают сбросить"
-                } else {
-                    "more energy is going into the brakes than they can shed"
-                }
-                .to_string(),
+                cause: "more energy is going into the brakes than they can shed"
+                    .tr(ru)
+                    .to_string(),
                 effect: format!(
                     "{} {} ({} {})",
                     Self::corner_phrase(&cooking, ru),
                     formatter.format_temp(hottest),
-                    if ru { "предел" } else { "ceiling" },
+                    "ceiling".tr(ru),
                     formatter.format_temp(max_temp)
                 ),
                 confirm: match ru {
@@ -1806,27 +1624,15 @@ impl Engineer {
 
             if self.stats.lockup_frames_front > self.stats.lockup_frames_rear * 2 {
                 recs.push(Recommendation {
-                    component: if ru {
-                        "Тормоза".to_string()
-                    } else {
-                        "Brakes".to_string()
-                    },
-                    category: if ru {
-                        "Баланс".to_string()
-                    } else {
-                        "Bias".to_string()
-                    },
+                    component: "Brakes".tr(ru).to_string(),
+                    category: "Bias".tr(ru).to_string(),
                     severity: Severity::Warning,
                     message: if ru {
                         format!("Блокировка ПЕРЕДНИХ колес{}", current_bias_str)
                     } else {
                         format!("FRONT Locking detected{}", current_bias_str)
                     },
-                    action: if ru {
-                        "Сместить баланс НАЗАД".to_string()
-                    } else {
-                        "Move Bias REARWARDS".to_string()
-                    },
+                    action: "Move Bias REARWARDS".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.85,
                     // Evidence left empty on purpose, and it is not laziness.
@@ -1838,12 +1644,9 @@ impl Engineer {
                     // `confidence_level` fall back to the score above, which is
                     // the honest answer here.
                     chain: Some(Chain {
-                        cause: if ru {
-                            "слишком много торможения приходится на переднюю ось"
-                        } else {
-                            "too much of the braking is landing on the front axle"
-                        }
-                        .to_string(),
+                        cause: "too much of the braking is landing on the front axle"
+                            .tr(ru)
+                            .to_string(),
                         effect: match ru {
                             true => format!(
                                 "{} кадров блокировки спереди против {} сзади",
@@ -1854,47 +1657,29 @@ impl Engineer {
                                 self.stats.lockup_frames_front, self.stats.lockup_frames_rear
                             ),
                         },
-                        confirm: if ru {
-                            "блокировки спереди в следующем стинте после сдвига баланса назад"
-                        } else {
-                            "front lockups next run out, after moving the bias back"
-                        }
-                        .to_string(),
+                        confirm: "front lockups next run out, after moving the bias back"
+                            .tr(ru)
+                            .to_string(),
                         evidence: crate::confidence::Evidence::new(),
                     }),
                 });
             } else if self.stats.lockup_frames_rear > self.stats.lockup_frames_front * 2 {
                 recs.push(Recommendation {
-                    component: if ru {
-                        "Тормоза".to_string()
-                    } else {
-                        "Brakes".to_string()
-                    },
-                    category: if ru {
-                        "Баланс".to_string()
-                    } else {
-                        "Bias".to_string()
-                    },
+                    component: "Brakes".tr(ru).to_string(),
+                    category: "Bias".tr(ru).to_string(),
                     severity: Severity::Critical,
                     message: if ru {
                         format!("Блокировка ЗАДНИХ колес{}", current_bias_str)
                     } else {
                         format!("REAR Locking (Danger!){}", current_bias_str)
                     },
-                    action: if ru {
-                        "Сместить баланс ВПЕРЕД".to_string()
-                    } else {
-                        "Move Bias FORWARDS".to_string()
-                    },
+                    action: "Move Bias FORWARDS".tr(ru).to_string(),
                     parameters: vec![],
                     confidence: 0.95,
                     chain: Some(Chain {
-                        cause: if ru {
-                            "слишком много торможения приходится на заднюю ось"
-                        } else {
-                            "too much of the braking is landing on the rear axle"
-                        }
-                        .to_string(),
+                        cause: "too much of the braking is landing on the rear axle"
+                            .tr(ru)
+                            .to_string(),
                         effect: match ru {
                             true => format!(
                                 "{} кадров блокировки сзади против {} спереди",
@@ -1905,12 +1690,9 @@ impl Engineer {
                                 self.stats.lockup_frames_rear, self.stats.lockup_frames_front
                             ),
                         },
-                        confirm: if ru {
-                            "блокировки сзади в следующем стинте после сдвига баланса вперёд"
-                        } else {
-                            "rear lockups next run out, after moving the bias forward"
-                        }
-                        .to_string(),
+                        confirm: "rear lockups next run out, after moving the bias forward"
+                            .tr(ru)
+                            .to_string(),
                         evidence: crate::confidence::Evidence::new(),
                     }),
                 });
@@ -1924,27 +1706,11 @@ impl Engineer {
         let is_coasting = self.stats.coasting_frames > 60;
         if self.check_hysteresis("coast", is_coasting) && is_coasting {
             recs.push(Recommendation {
-                component: if ru {
-                    "Пилотаж".to_string()
-                } else {
-                    "Driving".to_string()
-                },
-                category: if ru {
-                    "Потеря времени".to_string()
-                } else {
-                    "Time Loss".to_string()
-                },
+                component: "Driving".tr(ru).to_string(),
+                category: "Time Loss".tr(ru).to_string(),
                 severity: Severity::Info,
-                message: if ru {
-                    "Много наката (Coasting)".to_string()
-                } else {
-                    "Excessive Coasting".to_string()
-                },
-                action: if ru {
-                    "Держите газ или тормозите".to_string()
-                } else {
-                    "Keep throttle or brake".to_string()
-                },
+                message: "Excessive Coasting".tr(ru).to_string(),
+                action: "Keep throttle or brake".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.7,
                 // The whole-lap counters below all carry a chain with empty
@@ -1956,23 +1722,17 @@ impl Engineer {
                 // been judged on. What they gain is the other three fields —
                 // the mechanism, the measurement, and something to check.
                 chain: Some(Chain {
-                    cause: if ru {
-                        "машина катится без нагрузки там, где должна тормозить или разгоняться"
-                    } else {
-                        "the car is rolling unloaded where it should be braking or driving"
-                    }
-                    .to_string(),
+                    cause: "the car is rolling unloaded where it should be braking or driving"
+                        .tr(ru)
+                        .to_string(),
                     effect: Self::frames_phrase(
                         self.stats.coasting_frames,
                         self.stats.total_frames,
                         ru,
                     ),
-                    confirm: if ru {
-                        "доля наката в следующем круге"
-                    } else {
-                        "the share of the next lap spent on neither pedal"
-                    }
-                    .to_string(),
+                    confirm: "the share of the next lap spent on neither pedal"
+                        .tr(ru)
+                        .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
             });
@@ -1980,32 +1740,17 @@ impl Engineer {
 
         if self.stats.understeer_frames > 30 {
             recs.push(Recommendation {
-                component: if ru {
-                    "Баланс".to_string()
-                } else {
-                    "Balance".to_string()
-                },
+                component: "Balance".tr(ru).to_string(),
                 category: "Understeer".to_string(),
                 severity: Severity::Warning,
-                message: if ru {
-                    "Снос передней оси (High Speed)".to_string()
-                } else {
-                    "High Speed Understeer".to_string()
-                },
-                action: if ru {
-                    "Больше крыла спереди / Мягче спереди".to_string()
-                } else {
-                    "More Front Wing / Softer Front".to_string()
-                },
+                message: "High Speed Understeer".tr(ru).to_string(),
+                action: "More Front Wing / Softer Front".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.85,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "передняя ось теряет сцепление раньше задней на скорости"
-                    } else {
-                        "the front axle runs out of grip before the rear at speed"
-                    }
-                    .to_string(),
+                    cause: "the front axle runs out of grip before the rear at speed"
+                        .tr(ru)
+                        .to_string(),
                     effect: Self::frames_phrase(
                         self.stats.understeer_frames,
                         self.stats.total_frames,
@@ -2014,12 +1759,9 @@ impl Engineer {
                     // Deliberately not "the car will understeer less": whether
                     // this is the car or the driving is a different question,
                     // and `driver_vs_car` is what answers it over a stint.
-                    confirm: if ru {
-                        "снос передней оси в следующем стинте после изменения"
-                    } else {
-                        "the understeer count next run out, after the change"
-                    }
-                    .to_string(),
+                    confirm: "the understeer count next run out, after the change"
+                        .tr(ru)
+                        .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
             });
@@ -2027,43 +1769,25 @@ impl Engineer {
 
         if self.stats.oversteer_frames > 30 {
             recs.push(Recommendation {
-                component: if ru {
-                    "Баланс".to_string()
-                } else {
-                    "Balance".to_string()
-                },
+                component: "Balance".tr(ru).to_string(),
                 category: "Oversteer".to_string(),
                 severity: Severity::Warning,
-                message: if ru {
-                    "Нестабильность сзади (High Speed)".to_string()
-                } else {
-                    "High Speed Oversteer".to_string()
-                },
-                action: if ru {
-                    "Больше крыла сзади".to_string()
-                } else {
-                    "More Rear Wing".to_string()
-                },
+                message: "High Speed Oversteer".tr(ru).to_string(),
+                action: "More Rear Wing".tr(ru).to_string(),
                 parameters: vec![],
                 confidence: 0.85,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "задняя ось теряет сцепление раньше передней на скорости"
-                    } else {
-                        "the rear axle runs out of grip before the front at speed"
-                    }
-                    .to_string(),
+                    cause: "the rear axle runs out of grip before the front at speed"
+                        .tr(ru)
+                        .to_string(),
                     effect: Self::frames_phrase(
                         self.stats.oversteer_frames,
                         self.stats.total_frames,
                         ru,
                     ),
-                    confirm: if ru {
-                        "нестабильность сзади в следующем стинте после изменения"
-                    } else {
-                        "the oversteer count next run out, after the change"
-                    }
-                    .to_string(),
+                    confirm: "the oversteer count next run out, after the change"
+                        .tr(ru)
+                        .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
             });
@@ -2073,16 +1797,8 @@ impl Engineer {
         if self.check_hysteresis("scrubbing", is_scrubbing) && is_scrubbing {
             let excess = self.stats.current_excess_steer;
             recs.push(Recommendation {
-                component: if ru {
-                    "Пилотаж".to_string()
-                } else {
-                    "Driving".to_string()
-                },
-                category: if ru {
-                    "Скраббинг".to_string()
-                } else {
-                    "Overdriving".to_string()
-                },
+                component: "Driving".tr(ru).to_string(),
+                category: "Overdriving".tr(ru).to_string(),
                 severity: Severity::Warning,
                 message: if ru {
                     format!("Перекрут руля на {:.0}°! Шины скользят.", excess)
@@ -2097,12 +1813,9 @@ impl Engineer {
                 parameters: vec![],
                 confidence: 0.95,
                 chain: Some(Chain {
-                    cause: if ru {
-                        "руля больше, чем поворот может взять — шины скребут, а не держат"
-                    } else {
-                        "more steering angle than the corner will take, so the tyres scrub"
-                    }
-                    .to_string(),
+                    cause: "more steering angle than the corner will take, so the tyres scrub"
+                        .tr(ru)
+                        .to_string(),
                     effect: match ru {
                         true => format!(
                             "{}, худший перекрут {excess:.0}°",
@@ -2121,12 +1834,9 @@ impl Engineer {
                             )
                         ),
                     },
-                    confirm: if ru {
-                        "перекрут руля в следующем круге на тех же поворотах"
-                    } else {
-                        "the over-rotation count through the same corners next lap"
-                    }
-                    .to_string(),
+                    confirm: "the over-rotation count through the same corners next lap"
+                        .tr(ru)
+                        .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
             });
@@ -2159,16 +1869,8 @@ impl Engineer {
             && self.stats.fuel_laps_remaining > 0.0
         {
             recs.push(Recommendation {
-                component: if ru {
-                    "Стратегия".to_string()
-                } else {
-                    "Strategy".to_string()
-                },
-                category: if ru {
-                    "Топливо".to_string()
-                } else {
-                    "Fuel".to_string()
-                },
+                component: "Strategy".tr(ru).to_string(),
+                category: "Fuel".tr(ru).to_string(),
                 severity: Severity::Critical,
                 message: if ru {
                     format!("ТОПЛИВО: {:.1} кр.", self.stats.fuel_laps_remaining)
@@ -2202,27 +1904,15 @@ impl Engineer {
 
                 if fuel_diff < -1.0 {
                     recs.push(Recommendation {
-                        component: if ru {
-                            "Стратегия".to_string()
-                        } else {
-                            "Strategy".to_string()
-                        },
-                        category: if ru {
-                            "Финиш".to_string()
-                        } else {
-                            "Race Finish".to_string()
-                        },
+                        component: "Strategy".tr(ru).to_string(),
+                        category: "Race Finish".tr(ru).to_string(),
                         severity: Severity::Warning,
                         message: if ru {
                             format!("Не хватит {:.1} л.", fuel_diff.abs())
                         } else {
                             format!("Short {:.1} L", fuel_diff.abs())
                         },
-                        action: if ru {
-                            "Экономить / Пит-стоп".to_string()
-                        } else {
-                            "Save Fuel / Box".to_string()
-                        },
+                        action: "Save Fuel / Box".tr(ru).to_string(),
                         parameters: vec![Parameter {
                             name: "Need".to_string(),
                             current: phys.fuel,

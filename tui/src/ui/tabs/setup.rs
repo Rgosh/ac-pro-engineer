@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
+use ac_core::i18n::Translate;
 use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
 
@@ -422,15 +423,9 @@ fn render_header_block(
 
     if selected.is_remote {
         let download_text = if is_installed {
-            if is_ru {
-                "✓ УСТАНОВЛЕНО (D для обновления)"
-            } else {
-                "✓ INSTALLED (D to overwrite)"
-            }
-        } else if is_ru {
-            "Нажми 'D' для СКАЧИВАНИЯ"
+            "✓ INSTALLED (D to overwrite)".tr(is_ru)
         } else {
-            "Press 'D' to DOWNLOAD"
+            "Press 'D' to DOWNLOAD".tr(is_ru)
         };
         let dl_color = if is_installed {
             Color::Green
@@ -468,14 +463,7 @@ fn render_header_block(
 
         if !selected.credits.is_empty() {
             lines.push(Line::from(vec![
-                Span::styled(
-                    if is_ru {
-                        "Создатели: "
-                    } else {
-                        "Credits: "
-                    },
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled("Credits: ".tr(is_ru), Style::default().fg(Color::DarkGray)),
                 Span::styled(
                     &selected.credits,
                     Style::default()
@@ -508,11 +496,7 @@ fn render_header_block(
     let (block_color, title, mut lines) = if let Some(best_setup) = best {
         let mut advice_lines = vec![Line::from(vec![
             Span::styled(
-                if is_ru {
-                    "⚠ СОВЕТ: "
-                } else {
-                    "⚠ ADVICE: "
-                },
+                "⚠ ADVICE: ".tr(is_ru),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -550,22 +534,10 @@ fn render_header_block(
                 Span::styled(diff, Style::default().fg(Color::White)),
             ]));
         }
-        (
-            Color::Yellow,
-            if is_ru {
-                "АНАЛИЗ СЕТАПА"
-            } else {
-                "SETUP ANALYSIS"
-            },
-            advice_lines,
-        )
+        (Color::Yellow, "SETUP ANALYSIS".tr(is_ru), advice_lines)
     } else {
         let mut verdict_lines = vec![Line::from(vec![Span::styled(
-            if is_ru {
-                "✓ ОТЛИЧНЫЙ ВЫБОР"
-            } else {
-                "✓ EXCELLENT CHOICE"
-            },
+            "✓ EXCELLENT CHOICE".tr(is_ru),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -578,11 +550,7 @@ fn render_header_block(
             ]));
         }
 
-        verdict_lines.push(Line::from(if is_ru {
-            "Этот сетап подходит."
-        } else {
-            "This setup is a good match."
-        }));
+        verdict_lines.push(Line::from("This setup is a good match.".tr(is_ru)));
 
         if !selected.credits.is_empty() {
             verdict_lines.push(Line::from(vec![
@@ -596,15 +564,7 @@ fn render_header_block(
             ]));
         }
 
-        (
-            Color::Green,
-            if is_ru {
-                "ВЕРДИКТ ИНЖЕНЕРА"
-            } else {
-                "ENGINEER VERDICT"
-            },
-            verdict_lines,
-        )
+        (Color::Green, "ENGINEER VERDICT".tr(is_ru), verdict_lines)
     };
 
     if has_status {
@@ -642,14 +602,10 @@ fn render_comparison_table(
         let diffs = selected.generate_diff(target);
 
         let header = Row::new(vec![
-            if is_ru {
-                "Параметр"
-            } else {
-                "Parameter"
-            },
-            if is_ru { "Текущий" } else { "Current" },
-            if is_ru { "Эталон" } else { "Reference" },
-            if is_ru { "Разница" } else { "Diff" },
+            "Parameter".tr(is_ru),
+            "Current".tr(is_ru),
+            "Reference".tr(is_ru),
+            "Diff".tr(is_ru),
         ])
         .style(
             Style::default()
@@ -659,13 +615,9 @@ fn render_comparison_table(
         .bottom_margin(1);
 
         if diffs.is_empty() {
-            let p = Paragraph::new(if is_ru {
-                "Сетапы полностью идентичны!"
-            } else {
-                "Setups are completely identical!"
-            })
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Green));
+            let p = Paragraph::new("Setups are completely identical!".tr(is_ru))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Green));
             f.render_widget(p, area);
             return;
         }
@@ -712,13 +664,9 @@ fn render_comparison_table(
         .block(Block::default().padding(Padding::new(1, 0, 0, 0)));
         f.render_widget(table, area);
     } else {
-        let p = Paragraph::new(if is_ru {
-            "Для сравнения выберите сетап в базе."
-        } else {
-            "Select a setup to see differences."
-        })
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
+        let p = Paragraph::new("Select a setup to see differences.".tr(is_ru))
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
     }
 }

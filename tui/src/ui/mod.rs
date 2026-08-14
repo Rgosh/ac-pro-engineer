@@ -1,5 +1,6 @@
 use crate::ui::localization::tr;
 use crate::{AppStage, AppState, AppTab};
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub mod file_menu;
@@ -85,11 +86,7 @@ fn render_too_small(f: &mut Frame<'_>, app: &AppState) {
 
     let lines = vec![
         Line::from(Span::styled(
-            if is_ru {
-                "ОКНО СЛИШКОМ МАЛЕНЬКОЕ"
-            } else {
-                "TERMINAL TOO SMALL"
-            },
+            "TERMINAL TOO SMALL".tr(is_ru),
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -100,11 +97,7 @@ fn render_too_small(f: &mut Frame<'_>, app: &AppState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            if is_ru {
-                "Увеличьте окно"
-            } else {
-                "Resize to continue"
-            },
+            "Resize to continue".tr(is_ru),
             Style::default().fg(Color::Yellow),
         )),
     ];

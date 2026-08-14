@@ -16,6 +16,7 @@
 use crate::analyzer::LapData;
 use crate::config::AppConfig;
 use crate::engineer::{Recommendation, Severity};
+use crate::i18n::Translate;
 
 /// The corners, in the order every array in AC's physics page uses.
 const CORNER_NAMES: [&str; 4] = ["FL", "FR", "RL", "RR"];
@@ -28,11 +29,11 @@ fn corner_phrase(corners: &[usize], ru: bool) -> String {
     match corners {
         [] => String::new(),
         [only] => CORNER_NAMES[*only].to_string(),
-        [0, 1] => if ru { "Перед" } else { "Fronts" }.to_string(),
-        [2, 3] => if ru { "Зад" } else { "Rears" }.to_string(),
-        [0, 2] => if ru { "Левые" } else { "Left side" }.to_string(),
-        [1, 3] => if ru { "Правые" } else { "Right side" }.to_string(),
-        [0, 1, 2, 3] => if ru { "Все шины" } else { "All four" }.to_string(),
+        [0, 1] => "Fronts".tr(ru).to_string(),
+        [2, 3] => "Rears".tr(ru).to_string(),
+        [0, 2] => "Left side".tr(ru).to_string(),
+        [1, 3] => "Right side".tr(ru).to_string(),
+        [0, 1, 2, 3] => "All four".tr(ru).to_string(),
         many => many
             .iter()
             .map(|index| CORNER_NAMES[*index])
@@ -98,33 +99,21 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             .sum::<f32>()
             / corners.len() as f32;
         push(
-            if ru { "Шины" } else { "Tyres" },
-            if ru { "Давление" } else { "Pressure" },
+            "Tyres".tr(ru),
+            "Pressure".tr(ru),
             Severity::Warning,
             format!(
                 "{} {} {} ({} {})",
                 corner_phrase(corners, ru),
-                if high {
-                    if ru { "перекачаны" } else { "over" }
-                } else if ru {
-                    "недокачаны"
-                } else {
-                    "under"
-                },
+                if high { "over".tr(ru) } else { "under".tr(ru) },
                 fmt.format_pressure(average),
-                if ru { "цель" } else { "target" },
+                "target".tr(ru),
                 fmt.format_pressure(target)
             ),
             if high {
-                if ru {
-                    "Спустить"
-                } else {
-                    "Take pressure out"
-                }
-            } else if ru {
-                "Накачать"
+                "Take pressure out".tr(ru)
             } else {
-                "Put pressure in"
+                "Put pressure in".tr(ru)
             }
             .to_string(),
         );
@@ -151,12 +140,8 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
         let average =
             corners.iter().map(|c| lap.avg_tyre_temp[*c]).sum::<f32>() / corners.len() as f32;
         push(
-            if ru { "Шины" } else { "Tyres" },
-            if ru {
-                "Температура"
-            } else {
-                "Temperature"
-            },
+            "Tyres".tr(ru),
+            "Temperature".tr(ru),
             if is_hot {
                 Severity::Warning
             } else {
@@ -166,28 +151,16 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 "{} {} {}",
                 corner_phrase(corners, ru),
                 if is_hot {
-                    if ru {
-                        "перегрев"
-                    } else {
-                        "over temperature"
-                    }
-                } else if ru {
-                    "холодные"
+                    "over temperature".tr(ru)
                 } else {
-                    "cold"
+                    "cold".tr(ru)
                 },
                 fmt.format_temp(average)
             ),
             if is_hot {
-                if ru {
-                    "Ниже давление / мягче стиль"
-                } else {
-                    "Less pressure / ease off"
-                }
-            } else if ru {
-                "Выше давление / больше нагрузки"
+                "Less pressure / ease off".tr(ru)
             } else {
-                "More pressure / work them harder"
+                "More pressure / work them harder".tr(ru)
             }
             .to_string(),
         );
@@ -219,51 +192,31 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
         };
         if spread > 12.0 {
             push(
-                if ru { "Подвеска" } else { "Suspension" },
-                if ru { "Развал" } else { "Camber" },
+                "Suspension".tr(ru),
+                "Camber".tr(ru),
                 Severity::Warning,
                 format!(
                     "{where_}: {} (I-O: {})",
-                    if ru {
-                        "перегрев внутренней части"
-                    } else {
-                        "inner edge running hot"
-                    },
+                    "inner edge running hot".tr(ru),
                     fmt.format_temp_delta(spread)
                 ),
-                if ru {
-                    "Меньше отриц. развала"
-                } else {
-                    "Less negative camber"
-                }
-                .to_string(),
+                "Less negative camber".tr(ru).to_string(),
             );
         } else if spread < 4.0 {
             push(
-                if ru { "Подвеска" } else { "Suspension" },
-                if ru { "Развал" } else { "Camber" },
+                "Suspension".tr(ru),
+                "Camber".tr(ru),
                 Severity::Info,
                 format!(
                     "{where_}: {} (I-O: {})",
                     if spread < 0.0 {
-                        if ru {
-                            "внешняя часть горячее"
-                        } else {
-                            "outer edge hotter"
-                        }
-                    } else if ru {
-                        "прогрев слишком равномерный"
+                        "outer edge hotter".tr(ru)
                     } else {
-                        "heated too evenly"
+                        "heated too evenly".tr(ru)
                     },
                     fmt.format_temp_delta(spread)
                 ),
-                if ru {
-                    "Больше отриц. развала"
-                } else {
-                    "More negative camber"
-                }
-                .to_string(),
+                "More negative camber".tr(ru).to_string(),
             );
         }
     }
@@ -281,29 +234,16 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             .map(|c| lap.max_brake_temp[*c])
             .fold(f32::MIN, f32::max);
         push(
-            if ru { "Тормоза" } else { "Brakes" },
-            if ru {
-                "Температура"
-            } else {
-                "Temperature"
-            },
+            "Brakes".tr(ru),
+            "Temperature".tr(ru),
             Severity::Critical,
             format!(
                 "{} {} {}",
                 corner_phrase(&cooking, ru),
-                if ru {
-                    "перегрев"
-                } else {
-                    "overheating"
-                },
+                "overheating".tr(ru),
                 fmt.format_temp(peak)
             ),
-            if ru {
-                "Открыть воздуховоды"
-            } else {
-                "Open the brake ducts"
-            }
-            .to_string(),
+            "Open the brake ducts".tr(ru).to_string(),
         );
     }
 
@@ -326,24 +266,11 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             .filter(|height| *height > 0.0)
             .fold(f32::MAX, f32::min);
         push(
-            if ru { "Аэро" } else { "Aero" },
-            if ru { "Клиренс" } else { "Ride height" },
+            "Aero".tr(ru),
+            "Ride height".tr(ru),
             Severity::Warning,
-            format!(
-                "{} ({:.0} mm)",
-                if ru {
-                    "Пробои по асфальту"
-                } else {
-                    "Bottoming out"
-                },
-                lowest
-            ),
-            if ru {
-                "Выше клиренс / жёстче пружины"
-            } else {
-                "Raise the ride height / stiffer springs"
-            }
-            .to_string(),
+            format!("{} ({:.0} mm)", "Bottoming out".tr(ru), lowest),
+            "Raise the ride height / stiffer springs".tr(ru).to_string(),
         );
     }
 
@@ -351,53 +278,19 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     // each is noise in a car being driven near the limit.
     if lap.oversteer_count > lap.understeer_count && lap.oversteer_count > 2 {
         push(
-            if ru { "Баланс" } else { "Balance" },
-            if ru {
-                "Избыточная"
-            } else {
-                "Oversteer"
-            },
+            "Balance".tr(ru),
+            "Oversteer".tr(ru),
             Severity::Info,
-            format!(
-                "{}: {}x",
-                if ru {
-                    "Избыточная"
-                } else {
-                    "Oversteer"
-                },
-                lap.oversteer_count
-            ),
-            if ru {
-                "Мягче задний стаб / больше заднего антикрыла"
-            } else {
-                "Softer rear ARB / more rear wing"
-            }
-            .to_string(),
+            format!("{}: {}x", "Oversteer".tr(ru), lap.oversteer_count),
+            "Softer rear ARB / more rear wing".tr(ru).to_string(),
         );
     } else if lap.understeer_count > lap.oversteer_count && lap.understeer_count > 2 {
         push(
-            if ru { "Баланс" } else { "Balance" },
-            if ru {
-                "Недостаточная"
-            } else {
-                "Understeer"
-            },
+            "Balance".tr(ru),
+            "Understeer".tr(ru),
             Severity::Info,
-            format!(
-                "{}: {}x",
-                if ru {
-                    "Недостаточная"
-                } else {
-                    "Understeer"
-                },
-                lap.understeer_count
-            ),
-            if ru {
-                "Мягче передний стаб / больше переднего антикрыла"
-            } else {
-                "Softer front ARB / more front wing"
-            }
-            .to_string(),
+            format!("{}: {}x", "Understeer".tr(ru), lap.understeer_count),
+            "Softer front ARB / more front wing".tr(ru).to_string(),
         );
     }
 
@@ -407,69 +300,34 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     // these fill whatever room is left.
     if lap.lockup_count > 2 {
         push(
-            if ru { "Пилотаж" } else { "Driving" },
-            if ru {
-                "Торможение"
-            } else {
-                "Braking"
-            },
+            "Driving".tr(ru),
+            "Braking".tr(ru),
             Severity::Info,
-            format!(
-                "{}: {}",
-                if ru {
-                    "Блокировки"
-                } else {
-                    "Lockups"
-                },
-                lap.lockup_count
-            ),
-            if ru {
-                "Мягче на педаль / больше ABS"
-            } else {
-                "Ease onto the pedal / more ABS"
-            }
-            .to_string(),
+            format!("{}: {}", "Lockups".tr(ru), lap.lockup_count),
+            "Ease onto the pedal / more ABS".tr(ru).to_string(),
         );
     }
     if lap.scrubbing_incidents > 2 {
         push(
-            if ru { "Пилотаж" } else { "Driving" },
-            if ru { "Руление" } else { "Steering" },
+            "Driving".tr(ru),
+            "Steering".tr(ru),
             Severity::Info,
             format!(
                 "{}: {}x, {:.0}°",
-                if ru {
-                    "Перекрут руля"
-                } else {
-                    "Over-rotation"
-                },
+                "Over-rotation".tr(ru),
                 lap.scrubbing_incidents,
                 lap.max_steering_over_rotation
             ),
-            if ru {
-                "Меньше угла — шины скребут"
-            } else {
-                "Less steering — the tyres are scrubbing"
-            }
-            .to_string(),
+            "Less steering — the tyres are scrubbing".tr(ru).to_string(),
         );
     }
     if lap.coasting_percent > 15.0 {
         push(
-            if ru { "Пилотаж" } else { "Driving" },
-            if ru { "Педали" } else { "Pedals" },
+            "Driving".tr(ru),
+            "Pedals".tr(ru),
             Severity::Info,
-            format!(
-                "{} {:.0}%",
-                if ru { "Накат" } else { "Coasting" },
-                lap.coasting_percent
-            ),
-            if ru {
-                "Раньше на газ после торможения"
-            } else {
-                "Get back on the throttle sooner"
-            }
-            .to_string(),
+            format!("{} {:.0}%", "Coasting".tr(ru), lap.coasting_percent),
+            "Get back on the throttle sooner".tr(ru).to_string(),
         );
     }
 

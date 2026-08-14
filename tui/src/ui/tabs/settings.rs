@@ -1,6 +1,7 @@
 use crate::AppState;
 use crate::ui::localization::tr;
 use ac_core::config::{AppConfig, Language, PressureUnit, TempUnit};
+use ac_core::i18n::Translate;
 use crossterm::event::KeyCode;
 use ratatui::{prelude::*, widgets::*};
 
@@ -367,11 +368,9 @@ impl SettingsState {
             SettingsCategory::Keys => {
                 // One line, and it has to fit: the description pane does not
                 // wrap, so a longer sentence comes out with a hole in it.
-                return if is_ru {
-                    "ENTER — назначить, DEL — стандарт, ESC — отмена".to_string()
-                } else {
-                    "ENTER to bind, DEL for the default, ESC to cancel".to_string()
-                };
+                return "ENTER to bind, DEL for the default, ESC to cancel"
+                    .tr(is_ru)
+                    .to_string();
             }
             SettingsCategory::System => match self.selected_index {
                 0 => {
@@ -381,185 +380,41 @@ impl SettingsState {
                         "Interface Language / Язык интерфейса"
                     }
                 }
-                1 => {
-                    if is_ru {
-                        "Интервал обновления телеметрии (мс). Меньше = Плавнее."
-                    } else {
-                        "Telemetry update rate (ms). Lower = Smoother."
-                    }
-                }
-                2 => {
-                    if is_ru {
-                        "Количество точек на графиках. Больше = Длиннее история."
-                    } else {
-                        "Number of data points on charts. Higher = Longer history."
-                    }
-                }
-                3 => {
-                    if is_ru {
-                        "Авто-сохранение настроек при выходе."
-                    } else {
-                        "Automatically save settings on exit."
-                    }
-                }
-                4 => {
-                    if is_ru {
-                        "Показывать баннер 'Оставить отзыв' при запуске."
-                    } else {
-                        "Show 'Leave Review' banner on startup."
-                    }
-                }
+                1 => "Telemetry update rate (ms). Lower = Smoother.".tr(is_ru),
+                2 => "Number of data points on charts. Higher = Longer history.".tr(is_ru),
+                3 => "Automatically save settings on exit.".tr(is_ru),
+                4 => "Show 'Leave Review' banner on startup.".tr(is_ru),
                 _ => "",
             },
             SettingsCategory::Display => match self.selected_index {
-                0 => {
-                    if is_ru {
-                        "Единицы давления (PSI / Bar / kPa)."
-                    } else {
-                        "Pressure units (PSI / Bar / kPa)."
-                    }
-                }
-                1 => {
-                    if is_ru {
-                        "Единицы температуры (Цельсий / Фаренгейт)."
-                    } else {
-                        "Temperature units (Celsius / Fahrenheit)."
-                    }
-                }
+                0 => "Pressure units (PSI / Bar / kPa).".tr(is_ru),
+                1 => "Temperature units (Celsius / Fahrenheit).".tr(is_ru),
                 _ => "",
             },
             SettingsCategory::RaceEngineer => match self.selected_index {
-                0 => {
-                    if is_ru {
-                        "Мин. давление шин (Предупреждение: Синий)."
-                    } else {
-                        "Min Tyre Pressure (Warning: Blue)."
-                    }
-                }
-                1 => {
-                    if is_ru {
-                        "Макс. давление шин (Предупреждение: Красный)."
-                    } else {
-                        "Max Tyre Pressure (Warning: Red)."
-                    }
-                }
-                2 => {
-                    if is_ru {
-                        "Мин. температура шин (Холодные)."
-                    } else {
-                        "Min Tyre Temp (Cold)."
-                    }
-                }
-                3 => {
-                    if is_ru {
-                        "Макс. температура шин (Перегрев)."
-                    } else {
-                        "Max Tyre Temp (Overheat)."
-                    }
-                }
-                4 => {
-                    if is_ru {
-                        "Критическая температура тормозов."
-                    } else {
-                        "Critical Brake Temp."
-                    }
-                }
-                5 => {
-                    if is_ru {
-                        "Остаток топлива для предупреждения (круги)."
-                    } else {
-                        "Fuel warning threshold (laps)."
-                    }
-                }
-                6 => {
-                    if is_ru {
-                        "Остаток жизни шины, ниже которого это предупреждение (%)."
-                    } else {
-                        "Tyre life below which it is a warning (%)."
-                    }
-                }
-                7 => {
-                    if is_ru {
-                        "Остаток жизни шины, ниже которого это критично (%)."
-                    } else {
-                        "Tyre life below which it is critical (%)."
-                    }
-                }
-                8 => {
-                    if is_ru {
-                        "Целевое горячее давление спереди."
-                    } else {
-                        "Target hot pressure, front."
-                    }
-                }
-                9 => {
-                    if is_ru {
-                        "Целевое горячее давление сзади."
-                    } else {
-                        "Target hot pressure, rear."
-                    }
-                }
-                10 => {
-                    if is_ru {
-                        "Считать дельту по своему лучшему кругу, а не по метру AC."
-                    } else {
-                        "Measure the delta against your own best lap, not AC's meter."
-                    }
-                }
+                0 => "Min Tyre Pressure (Warning: Blue).".tr(is_ru),
+                1 => "Max Tyre Pressure (Warning: Red).".tr(is_ru),
+                2 => "Min Tyre Temp (Cold).".tr(is_ru),
+                3 => "Max Tyre Temp (Overheat).".tr(is_ru),
+                4 => "Critical Brake Temp.".tr(is_ru),
+                5 => "Fuel warning threshold (laps).".tr(is_ru),
+                6 => "Tyre life below which it is a warning (%).".tr(is_ru),
+                7 => "Tyre life below which it is critical (%).".tr(is_ru),
+                8 => "Target hot pressure, front.".tr(is_ru),
+                9 => "Target hot pressure, rear.".tr(is_ru),
+                10 => "Measure the delta against your own best lap, not AC's meter.".tr(is_ru),
                 _ => "",
             },
             SettingsCategory::Overlay => match self.selected_index {
-                0 => {
-                    if is_ru {
-                        "Показывать блок телеметрии в игровом оверлее."
-                    } else {
-                        "Show the telemetry block in the in-game overlay."
-                    }
-                }
-                1 => {
-                    if is_ru {
-                        "Показывать советы инженера в игровом оверлее."
-                    } else {
-                        "Show engineer advice in the in-game overlay."
-                    }
-                }
-                2 => {
-                    if is_ru {
-                        "Показывать позицию, круг и условия трассы в оверлее."
-                    } else {
-                        "Show position, lap and track conditions in the overlay."
-                    }
-                }
-                3 => {
-                    if is_ru {
-                        "Показывать дельту и времена кругов в оверлее."
-                    } else {
-                        "Show delta and lap times in the overlay."
-                    }
-                }
-                4 => {
-                    if is_ru {
-                        "Показывать топливо и остаток кругов в оверлее."
-                    } else {
-                        "Show fuel and remaining laps in the overlay."
-                    }
-                }
-                5 => {
-                    if is_ru {
-                        "Сколько строк инженера уходит в оверлей (0-8). Панель \
-                         может показать меньше — у неё свой ползунок."
-                    } else {
-                        "How many engineer lines reach the overlay (0-8). The \
+                0 => "Show the telemetry block in the in-game overlay.".tr(is_ru),
+                1 => "Show engineer advice in the in-game overlay.".tr(is_ru),
+                2 => "Show position, lap and track conditions in the overlay.".tr(is_ru),
+                3 => "Show delta and lap times in the overlay.".tr(is_ru),
+                4 => "Show fuel and remaining laps in the overlay.".tr(is_ru),
+                5 => "How many engineer lines reach the overlay (0-8). The \
                          panel may draw fewer — it has a slider of its own."
-                    }
-                }
-                6 => {
-                    if is_ru {
-                        "Карточка при запуске. [I] — установить, [U] — удалить из игры."
-                    } else {
-                        "The startup card. [I] installs it, [U] removes it from the game."
-                    }
-                }
+                    .tr(is_ru),
+                6 => "The startup card. [I] installs it, [U] removes it from the game.".tr(is_ru),
                 _ => "",
             },
         }
@@ -596,15 +451,9 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .border_type(BorderType::Double)
         .style(Style::default().fg(colour).bg(Color::Black))
         .title(if removing {
-            if is_ru {
-                " УДАЛИТЬ ОВЕРЛЕЙ? "
-            } else {
-                " REMOVE THE OVERLAY? "
-            }
-        } else if is_ru {
-            " УСТАНОВИТЬ ОВЕРЛЕЙ? "
+            " REMOVE THE OVERLAY? ".tr(is_ru)
         } else {
-            " INSTALL THE OVERLAY? "
+            " INSTALL THE OVERLAY? ".tr(is_ru)
         })
         .title_alignment(Alignment::Center);
 
@@ -614,15 +463,9 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut lines = vec![Line::from("")];
     lines.push(Line::from(Span::styled(
         if removing {
-            if is_ru {
-                "  Из папки игры уйдут файлы панели."
-            } else {
-                "  The panel's files leave the game folder."
-            }
-        } else if is_ru {
-            "  Файлы панели лягут в папку игры."
+            "  The panel's files leave the game folder.".tr(is_ru)
         } else {
-            "  The panel's files go into the game folder."
+            "  The panel's files go into the game folder.".tr(is_ru)
         },
         white,
     )));
@@ -633,7 +476,7 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         format!(
             "  {} {}",
             ac_core::overlay::install::file_count(),
-            if is_ru { "файлов" } else { "files" }
+            "files".tr(is_ru)
         ),
         dim,
     )));
@@ -650,11 +493,7 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        if is_ru {
-            "  Настройки панели хранятся отдельно и не пострадают."
-        } else {
-            "  The panel's settings live elsewhere and are not touched."
-        },
+        "  The panel's settings live elsewhere and are not touched.".tr(is_ru),
         dim,
     )));
     lines.push(Line::from(""));
@@ -680,27 +519,14 @@ pub fn render_confirm_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Span::raw("      "),
         Span::styled(
             if removing {
-                if is_ru {
-                    " [ ДА, УДАЛИТЬ ] "
-                } else {
-                    " [ YES, REMOVE ] "
-                }
-            } else if is_ru {
-                " [ ДА, УСТАНОВИТЬ ] "
+                " [ YES, REMOVE ] ".tr(is_ru)
             } else {
-                " [ YES, INSTALL ] "
+                " [ YES, INSTALL ] ".tr(is_ru)
             },
             yes,
         ),
         Span::raw("     "),
-        Span::styled(
-            if is_ru {
-                " [ ОТМЕНА ] "
-            } else {
-                " [ CANCEL ] "
-            },
-            no,
-        ),
+        Span::styled(" [ CANCEL ] ".tr(is_ru), no),
     ]));
 
     f.render_widget(
@@ -758,11 +584,7 @@ pub fn render_diagnosis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         } else {
             Color::Red
         }))
-        .title(if is_ru {
-            " ПРОВЕРКА ОВЕРЛЕЯ "
-        } else {
-            " OVERLAY DIAGNOSTICS "
-        })
+        .title(" OVERLAY DIAGNOSTICS ".tr(is_ru))
         .title_alignment(Alignment::Center);
 
     let inner = block.inner(popup);
@@ -804,11 +626,7 @@ pub fn render_diagnosis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        format!(
-            "  {} {}",
-            if is_ru { "ОВЕРЛЕЙ" } else { "OVERLAY" },
-            report.verdict
-        ),
+        format!("  {} {}", "OVERLAY".tr(is_ru), report.verdict),
         Style::default()
             .fg(if report.workable {
                 Color::Green
@@ -819,11 +637,7 @@ pub fn render_diagnosis(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     )));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        if is_ru {
-            "  [R] проверить заново   ESC закрыть"
-        } else {
-            "  [R] check again   ESC to close"
-        },
+        "  [R] check again   ESC to close".tr(is_ru),
         Style::default().fg(Color::DarkGray),
     )));
 
@@ -861,15 +675,9 @@ pub fn render_result_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let is_ru = app.config.language == Language::Russian;
     let title = if removed {
-        if is_ru {
-            " ОВЕРЛЕЙ УДАЛЁН "
-        } else {
-            " OVERLAY REMOVED "
-        }
-    } else if is_ru {
-        " ОВЕРЛЕЙ УСТАНОВЛЕН "
+        " OVERLAY REMOVED ".tr(is_ru)
     } else {
-        " OVERLAY INSTALLED "
+        " OVERLAY INSTALLED ".tr(is_ru)
     };
 
     let block = Block::default()
@@ -901,25 +709,15 @@ pub fn render_result_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     lines.push(Line::from(Span::styled(
         if removed {
-            if is_ru {
-                "  Настройки панели сохранены — [I] вернёт всё как было."
-            } else {
-                "  Your settings are kept — [I] puts it back as it was."
-            }
-        } else if is_ru {
-            "  Удалить в любой момент — [U]. Настройки останутся."
+            "  Your settings are kept — [I] puts it back as it was.".tr(is_ru)
         } else {
-            "  Remove it any time with [U]. Your settings stay."
+            "  Remove it any time with [U]. Your settings stay.".tr(is_ru)
         },
         dim,
     )));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        if is_ru {
-            "  Любая клавиша — закрыть"
-        } else {
-            "  Any key to close"
-        },
+        "  Any key to close".tr(is_ru),
         dim,
     )));
 
@@ -971,36 +769,16 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .padding(Padding::new(0, 1, 1, 1));
 
     let categories = [
-        (
-            SettingsCategory::System,
-            if is_ru { "СИСТЕМА" } else { "SYSTEM" },
-            "💻",
-            "[A]",
-        ),
-        (
-            SettingsCategory::Display,
-            if is_ru { "ДИСПЛЕЙ" } else { "DISPLAY" },
-            "👁️",
-            "[S]",
-        ),
+        (SettingsCategory::System, "SYSTEM".tr(is_ru), "💻", "[A]"),
+        (SettingsCategory::Display, "DISPLAY".tr(is_ru), "👁️", "[S]"),
         (
             SettingsCategory::RaceEngineer,
-            if is_ru { "ИНЖЕНЕР" } else { "ENGINEER" },
+            "ENGINEER".tr(is_ru),
             "🔧",
             "[D]",
         ),
-        (
-            SettingsCategory::Overlay,
-            if is_ru { "ОВЕРЛЕЙ" } else { "OVERLAY" },
-            "🖥️",
-            "[F]",
-        ),
-        (
-            SettingsCategory::Keys,
-            if is_ru { "КЛАВИШИ" } else { "KEYS" },
-            "⌨️",
-            "[G]",
-        ),
+        (SettingsCategory::Overlay, "OVERLAY".tr(is_ru), "🖥️", "[F]"),
+        (SettingsCategory::Keys, "KEYS".tr(is_ru), "⌨️", "[G]"),
     ];
 
     let items: Vec<ListItem<'_>> = categories
@@ -1105,11 +883,7 @@ fn render_key_settings(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         let selected = index == state.selected_index;
 
         let value = if selected && state.capturing {
-            if is_ru {
-                "нажмите клавишу…".to_string()
-            } else {
-                "press a key…".to_string()
-            }
+            "press a key…".tr(is_ru).to_string()
         } else {
             crate::keys::describe(binding)
         };
@@ -1258,24 +1032,19 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         (
             tr("auto_save", lang),
             if config.auto_save {
-                if is_ru { "ВКЛ" } else { "ON" }
+                "ON".tr(is_ru)
             } else {
-                if is_ru { "ВЫКЛ" } else { "OFF" }
+                "OFF".tr(is_ru)
             }
             .to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Баннер в лаунчере"
-            } else {
-                "Launcher Banner"
-            }
-            .to_string(),
+            "Launcher Banner".tr(is_ru).to_string(),
             if !config.review_banner_hidden {
-                if is_ru { "ПОКАЗАТЬ" } else { "SHOW" }
+                "SHOW".tr(is_ru)
             } else {
-                if is_ru { "СКРЫТЬ" } else { "HIDE" }
+                "HIDE".tr(is_ru)
             }
             .to_string(),
             true,
@@ -1325,56 +1094,32 @@ fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
 
     let items = vec![
         (
-            if is_ru {
-                "Телеметрия в оверлее".to_string()
-            } else {
-                "Telemetry section".to_string()
-            },
+            "Telemetry section".tr(is_ru).to_string(),
             if overlay.show_telemetry { "ON" } else { "OFF" }.to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Советы инженера в оверлее".to_string()
-            } else {
-                "Engineer section".to_string()
-            },
+            "Engineer section".tr(is_ru).to_string(),
             if overlay.show_engineer { "ON" } else { "OFF" }.to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Блок сессии в оверлее".to_string()
-            } else {
-                "Session section".to_string()
-            },
+            "Session section".tr(is_ru).to_string(),
             if overlay.show_session { "ON" } else { "OFF" }.to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Тайминги в оверлее".to_string()
-            } else {
-                "Lap timing section".to_string()
-            },
+            "Lap timing section".tr(is_ru).to_string(),
             if overlay.show_timing { "ON" } else { "OFF" }.to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Топливо в оверлее".to_string()
-            } else {
-                "Fuel section".to_string()
-            },
+            "Fuel section".tr(is_ru).to_string(),
             if overlay.show_fuel { "ON" } else { "OFF" }.to_string(),
             true,
         ),
         (
-            if is_ru {
-                "Строк инженера".to_string()
-            } else {
-                "Engineer lines".to_string()
-            },
+            "Engineer lines".tr(is_ru).to_string(),
             overlay.engineer_lines.to_string(),
             false,
         ),
@@ -1461,46 +1206,26 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         (
             // Its own row, because it used to be `wear_warning - 2` and that
             // made every worn tyre a critical one two percent later.
-            if is_ru {
-                "Износ: критично ниже"
-            } else {
-                "Wear: critical below"
-            }
-            .to_string(),
+            "Wear: critical below".tr(is_ru).to_string(),
             format!("{:.0}%", alerts.wear_critical),
             false,
         ),
         (
-            if is_ru {
-                "Цель горяч. давления (Перед)"
-            } else {
-                "Target Hot Pressure (Front)"
-            }
-            .to_string(),
+            "Target Hot Pressure (Front)".tr(is_ru).to_string(),
             fmt.format_pressure(config.target_hot_pressure_front),
             false,
         ),
         (
-            if is_ru {
-                "Цель горяч. давления (Зад)"
-            } else {
-                "Target Hot Pressure (Rear)"
-            }
-            .to_string(),
+            "Target Hot Pressure (Rear)".tr(is_ru).to_string(),
             fmt.format_pressure(config.target_hot_pressure_rear),
             false,
         ),
         (
-            if is_ru {
-                "Виджет Ghost Delta"
-            } else {
-                "Ghost Delta Widget"
-            }
-            .to_string(),
+            "Ghost Delta Widget".tr(is_ru).to_string(),
             if config.show_ghost_delta {
-                if is_ru { "ВКЛ" } else { "ON" }
+                "ON".tr(is_ru)
             } else {
-                if is_ru { "ВЫКЛ" } else { "OFF" }
+                "OFF".tr(is_ru)
             }
             .to_string(),
             true,
@@ -1530,11 +1255,8 @@ fn render_description_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // one landed and five since the key map, and this line named three of them
     // -- so the two newest were reachable only by arrow key, and the help
     // overlay repeated the same wrong list.
-    let controls_text = if is_ru {
-        "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [A/S/D/F/G] Категории"
-    } else {
-        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D/F/G] Categories"
-    };
+    let controls_text =
+        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D/F/G] Categories".tr(is_ru);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)

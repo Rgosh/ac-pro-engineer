@@ -26,6 +26,7 @@ pub mod debrief;
 pub mod discord;
 pub mod driver_vs_car;
 pub mod engineer;
+pub mod i18n;
 pub mod memory;
 pub mod net;
 pub mod overlay;

@@ -2,6 +2,7 @@ use crate::AppState;
 use crate::ui::localization::tr;
 use ac_core::analyzer::LapData;
 use ac_core::config::Language;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 /// Live feed, post-stint debrief, and pressures.
@@ -117,21 +118,9 @@ fn render_sub_tabs(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = *lang == Language::Russian;
 
     let titles = vec![
-        if is_ru {
-            "🔴 РЕАЛЬНОЕ ВРЕМЯ [<-]"
-        } else {
-            "🔴 LIVE FEED [<-]"
-        },
-        if is_ru {
-            "📋 ДЕБРИФИНГ"
-        } else {
-            "📋 POST-STINT"
-        },
-        if is_ru {
-            "🎯 ДАВЛЕНИЯ [->]"
-        } else {
-            "🎯 PRESSURES [->]"
-        },
+        "🔴 LIVE FEED [<-]".tr(is_ru),
+        "📋 POST-STINT".tr(is_ru),
+        "🎯 PRESSURES [->]".tr(is_ru),
     ];
 
     let tabs = Tabs::new(titles)
@@ -213,31 +202,19 @@ fn render_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let style = &app.engineer.driving_style;
 
     let smooth_gauge = Gauge::default()
-        .block(Block::default().title(if is_ru {
-            "Плавность (Smoothness)"
-        } else {
-            "Smoothness"
-        }))
+        .block(Block::default().title("Smoothness".tr(is_ru)))
         .gauge_style(Style::default().fg(Color::Cyan).bg(Color::DarkGray))
         .percent(style.smoothness.clamp(0.0, 100.0) as u16);
     f.render_widget(smooth_gauge, layout[0]);
 
     let aggr_gauge = Gauge::default()
-        .block(Block::default().title(if is_ru {
-            "Агрессия (Aggression)"
-        } else {
-            "Aggression"
-        }))
+        .block(Block::default().title("Aggression".tr(is_ru)))
         .gauge_style(Style::default().fg(Color::Yellow).bg(Color::DarkGray))
         .percent(style.aggression.clamp(0.0, 100.0) as u16);
     f.render_widget(aggr_gauge, layout[1]);
 
     let trail_gauge = Gauge::default()
-        .block(Block::default().title(if is_ru {
-            "Трейл-брейкинг (Trail Braking)"
-        } else {
-            "Trail Braking"
-        }))
+        .block(Block::default().title("Trail Braking".tr(is_ru)))
         .gauge_style(Style::default().fg(Color::Magenta).bg(Color::DarkGray))
         .percent(style.trail_braking.clamp(0.0, 100.0) as u16);
     f.render_widget(trail_gauge, layout[2]);
@@ -246,11 +223,7 @@ fn render_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let lockup_line = Line::from(vec![
         Span::styled(
-            if is_ru {
-                "🛑 Блокировки колес: "
-            } else {
-                "🛑 Lockups detected: "
-            },
+            "🛑 Lockups detected: ".tr(is_ru),
             Style::default().fg(Color::Gray),
         ),
         Span::styled(
@@ -268,11 +241,7 @@ fn render_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let spin_line = Line::from(vec![
         Span::styled(
-            if is_ru {
-                "🌀 Пробуксовки/Спины: "
-            } else {
-                "🌀 Wheelspin/Spins: "
-            },
+            "🌀 Wheelspin/Spins: ".tr(is_ru),
             Style::default().fg(Color::Gray),
         ),
         Span::styled(
@@ -316,11 +285,7 @@ fn render_debrief_header(
     cur_idx: usize,
     is_ru: bool,
 ) {
-    let title = if is_ru {
-        " СВОДКА КРУГА (ВВЕРХ/ВНИЗ) "
-    } else {
-        " LAP SUMMARY (UP/DOWN) "
-    };
+    let title = " LAP SUMMARY (UP/DOWN) ".tr(is_ru);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -334,10 +299,7 @@ fn render_debrief_header(
         let ms = lap.lap_time_ms % 1000;
 
         lines.push(Line::from(vec![
-            Span::styled(
-                if is_ru { "КРУГ " } else { "LAP " },
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled("LAP ".tr(is_ru), Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format!("#{} / {}", cur_idx + 1, total_laps),
                 Style::default()
@@ -376,11 +338,7 @@ fn render_debrief_header(
             ),
         ]));
     } else {
-        lines.push(Line::from(if is_ru {
-            "Нет данных. Проедьте круг."
-        } else {
-            "No data available. Drive a lap."
-        }));
+        lines.push(Line::from("No data available. Drive a lap.".tr(is_ru)));
     }
 
     f.render_widget(
@@ -401,11 +359,7 @@ fn render_sector_advice(
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(if is_ru {
-            " ИНЖЕНЕРНЫЙ АНАЛИЗ И ТЕЛЕМЕТРИЯ "
-        } else {
-            " ENGINEER ANALYSIS & TELEMETRY "
-        });
+        .title(" ENGINEER ANALYSIS & TELEMETRY ".tr(is_ru));
 
     let inner_area = block.inner(area);
     f.render_widget(block, area);
@@ -696,25 +650,13 @@ fn render_sector_advice(
             if let Some(chain) = rec.chain.as_ref() {
                 if !chain.cause.is_empty() {
                     lines.push(Line::from(Span::styled(
-                        format!(
-                            "   {} {}",
-                            if is_ru { "причина:" } else { "cause:" },
-                            chain.cause
-                        ),
+                        format!("   {} {}", "cause:".tr(is_ru), chain.cause),
                         Style::default().fg(Color::DarkGray),
                     )));
                 }
                 if !chain.confirm.is_empty() {
                     lines.push(Line::from(Span::styled(
-                        format!(
-                            "   {} {}",
-                            if is_ru {
-                                "проверить:"
-                            } else {
-                                "confirm:"
-                            },
-                            chain.confirm
-                        ),
+                        format!("   {} {}", "confirm:".tr(is_ru), chain.confirm),
                         Style::default().fg(Color::DarkGray),
                     )));
                 }
@@ -739,11 +681,7 @@ fn render_sector_advice(
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    if is_ru {
-                        " Ничего не нашёл — круг чистый."
-                    } else {
-                        " Nothing to report — the lap was clean."
-                    },
+                    " Nothing to report — the lap was clean.".tr(is_ru),
                     Style::default().fg(Color::Green),
                 ),
             ]));
@@ -789,11 +727,7 @@ fn push_stint_verdicts(lines: &mut Vec<Line<'_>>, app: &AppState, is_ru: bool) {
     let heading = |lines: &mut Vec<Line<'_>>| {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            if is_ru {
-                "ЗА СТИНТ — МАШИНА ИЛИ ПИЛОТАЖ"
-            } else {
-                "OVER THE STINT — THE CAR OR THE DRIVING"
-            },
+            "OVER THE STINT — THE CAR OR THE DRIVING".tr(is_ru),
             Style::default()
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD),
@@ -867,11 +801,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let fmt = app.config.formatter();
 
     let block = Block::default()
-        .title(if is_ru {
-            " ЦЕЛЕВЫЕ ДАВЛЕНИЯ "
-        } else {
-            " PRESSURE TARGETS "
-        })
+        .title(" PRESSURE TARGETS ".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
     let inner = block.inner(area);
@@ -879,13 +809,9 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let Some(phys) = app.ac_physics() else {
         f.render_widget(
-            Paragraph::new(if is_ru {
-                "Ожидание телеметрии..."
-            } else {
-                "Waiting for telemetry..."
-            })
-            .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center),
+            Paragraph::new("Waiting for telemetry...".tr(is_ru))
+                .style(Style::default().fg(Color::DarkGray))
+                .alignment(Alignment::Center),
             inner,
         );
         return;
@@ -899,11 +825,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     // Cold targets, front and rear, from the configured hot targets.
     lines.push(Line::from(Span::styled(
-        if is_ru {
-            "СТАРТОВЫЕ (ХОЛОДНЫЕ) ДАВЛЕНИЯ"
-        } else {
-            "COLD SETUP PRESSURES"
-        },
+        "COLD SETUP PRESSURES".tr(is_ru),
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
@@ -911,9 +833,9 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     lines.push(Line::from(Span::styled(
         format!(
             "{} {:.0}°  |  {} {:.2}",
-            if is_ru { "Воздух" } else { "Air" },
+            "Air".tr(is_ru),
             fmt.temp_val(ambient),
-            if is_ru { "сцепление" } else { "grip" },
+            "grip".tr(is_ru),
             grip
         ),
         Style::default().fg(Color::DarkGray),
@@ -921,14 +843,8 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     lines.push(Line::from(""));
 
     for (label, target) in [
-        (
-            if is_ru { "Перед" } else { "Front" },
-            app.config.target_hot_pressure_front,
-        ),
-        (
-            if is_ru { "Зад" } else { "Rear" },
-            app.config.target_hot_pressure_rear,
-        ),
+        ("Front".tr(is_ru), app.config.target_hot_pressure_front),
+        ("Rear".tr(is_ru), app.config.target_hot_pressure_rear),
     ] {
         let estimate = ColdPressureCalculator::calculate(target, ambient, grip);
         lines.push(Line::from(vec![
@@ -946,7 +862,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 format!(
                     "  → {} {}",
                     fmt.format_pressure(estimate.target_hot_psi),
-                    if is_ru { "горячее" } else { "hot" }
+                    "hot".tr(is_ru)
                 ),
                 Style::default().fg(Color::Gray),
             ),
@@ -955,9 +871,9 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             format!(
                 "         -{:.1} {}  -{:.1} {}",
                 estimate.delta_temp_psi,
-                if is_ru { "темп." } else { "temp" },
+                "temp".tr(is_ru),
                 estimate.delta_grip_psi,
-                if is_ru { "сцеп." } else { "grip" }
+                "grip|short".tr(is_ru)
             ),
             Style::default().fg(Color::DarkGray),
         )));
@@ -965,11 +881,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        if is_ru {
-            "ПОКОРНЕРНАЯ КОРРЕКЦИЯ"
-        } else {
-            "PER-CORNER ADJUSTMENT"
-        },
+        "PER-CORNER ADJUSTMENT".tr(is_ru),
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
@@ -980,14 +892,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     for corner in &optimizer.corners {
         let delta = corner.recommended_delta_psi;
         let (delta_text, delta_color) = if delta.abs() < 0.05 {
-            (
-                if is_ru {
-                    "  ок".to_string()
-                } else {
-                    "  ok".to_string()
-                },
-                Color::Green,
-            )
+            ("  ok".tr(is_ru).to_string(), Color::Green)
         } else if delta > 0.0 {
             (format!("+{:.1}", delta), Color::Yellow)
         } else {

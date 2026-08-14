@@ -1,4 +1,5 @@
 use crate::AppState;
+use ac_core::i18n::Translate;
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
 
@@ -17,11 +18,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         .split(layout[0]);
 
     let temp_block = Block::default()
-        .title(if is_ru {
-            "Температуры (C)"
-        } else {
-            "Temps (C)"
-        })
+        .title("Temps (C)".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -81,11 +78,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     }
 
     let susp_block = Block::default()
-        .title(if is_ru {
-            "Амортизаторы (Сжатие/Отбой)"
-        } else {
-            "Damper Histograms (Bump/Rebound)"
-        })
+        .title("Damper Histograms (Bump/Rebound)".tr(is_ru))
         .borders(Borders::ALL);
     let inner_susp = susp_block.inner(left_col[1]);
     f.render_widget(susp_block, left_col[1]);
@@ -221,58 +214,34 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     f.render_widget(canvas, right_col[0]);
 
     let stab_block = Block::default()
-        .title(if is_ru {
-            "Стабильность"
-        } else {
-            "Stability"
-        })
+        .title("Stability".tr(is_ru))
         .borders(Borders::ALL);
 
     let stab_data = vec![
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Снос передней (Under)"
-            } else {
-                "Understeer"
-            }),
+            Cell::from("Understeer|with the English beside it".tr(is_ru)),
             Cell::from(lap.understeer_count.to_string()).style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Занос задней (Over)"
-            } else {
-                "Oversteer"
-            }),
+            Cell::from("Oversteer|with the English beside it".tr(is_ru)),
             Cell::from(lap.oversteer_count.to_string()).style(Style::default().fg(Color::Red)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Блокировки (Lockup)"
-            } else {
-                "Lockups"
-            }),
+            Cell::from("Lockups|with the English beside it".tr(is_ru)),
             Cell::from(lap.lockup_count.to_string()).style(Style::default().fg(Color::Magenta)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Скраббинг (Scrub)"
-            } else {
-                "Scrubbing"
-            }),
+            Cell::from("Scrubbing".tr(is_ru)),
             Cell::from(lap.scrubbing_incidents.to_string())
                 .style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Перекрут руля"
-            } else {
-                "Over-rotation"
-            }),
+            Cell::from("Over-rotation".tr(is_ru)),
             Cell::from(format!("{:.0}°", lap.max_steering_over_rotation))
                 .style(Style::default().fg(Color::Red)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru { "Пик G-Force" } else { "Peak G" }),
+            Cell::from("Peak G".tr(is_ru)),
             Cell::from(format!("{:.2} G", max_g)).style(Style::default().fg(Color::Cyan)),
         ]),
     ];

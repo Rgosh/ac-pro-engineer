@@ -1,4 +1,5 @@
 use crate::AppState;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::analyzer::LapData) {
@@ -29,17 +30,13 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
 
     let chart = Chart::new(vec![
         Dataset::default()
-            .name(if is_ru {
-                "Проскальзывание"
-            } else {
-                "Slip Ratio"
-            })
+            .name("Slip Ratio".tr(is_ru))
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Magenta))
             .graph_type(GraphType::Line)
             .data(&slip_data),
         Dataset::default()
-            .name(if is_ru { "Газ (Ref)" } else { "Gas (Ref)" })
+            .name("Gas (Ref)".tr(is_ru))
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::DarkGray))
             .graph_type(GraphType::Line)
@@ -47,11 +44,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Потеря Сцепления (Slip vs Time)"
-            } else {
-                "Traction Loss"
-            })
+            .title("Traction Loss".tr(is_ru))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -70,11 +63,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         .split(layout[1]);
 
     let block_stats = Block::default()
-        .title(if is_ru {
-            "Анализ Трекшена"
-        } else {
-            "Traction Stats"
-        })
+        .title("Traction Stats".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -90,38 +79,22 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
 
     let stats = vec![
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Использ. Сцепления"
-            } else {
-                "Grip Usage"
-            }),
+            Cell::from("Grip Usage".tr(is_ru)),
             Cell::from(format!("{:.1}%", lap.grip_usage_percent))
                 .style(Style::default().fg(Color::Green)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Агрессия на выходе"
-            } else {
-                "Exit Aggression"
-            }),
+            Cell::from("Exit Aggression".tr(is_ru)),
             Cell::from(format!("{:.1}%", lap.radar_stats.aggression * 100.0))
                 .style(Style::default().fg(Color::Red)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Плавность Газа"
-            } else {
-                "Throttle Smooth"
-            }),
+            Cell::from("Throttle Smooth".tr(is_ru)),
             Cell::from(format!("{:.1}%", lap.throttle_smoothness))
                 .style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Стабильность (TC)"
-            } else {
-                "Stability (TC)"
-            }),
+            Cell::from("Stability (TC)".tr(is_ru)),
             Cell::from(format!("{:.1}%", (1.0 - avg_slip / 10.0) * 100.0))
                 .style(Style::default().fg(Color::Yellow)),
         ]),
@@ -153,11 +126,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Газ в Повороте"
-            } else {
-                "Throttle in Corner"
-            })
+            .title("Throttle in Corner".tr(is_ru))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )

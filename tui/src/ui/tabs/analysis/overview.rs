@@ -1,4 +1,5 @@
 use crate::AppState;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(
@@ -27,11 +28,7 @@ pub fn render(
     let header_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)))
-        .title(if is_ru {
-            "ОБЗОР КРУГА"
-        } else {
-            "LAP OVERVIEW"
-        });
+        .title("LAP OVERVIEW".tr(is_ru));
 
     let min = lap.lap_time_ms / 60000;
     let sec = (lap.lap_time_ms % 60000) / 1000;
@@ -48,11 +45,7 @@ pub fn render(
             Style::default().fg(color),
         )
     } else {
-        Span::raw(if is_ru {
-            "Лучший в сессии"
-        } else {
-            "Session Best"
-        })
+        Span::raw("Session Best".tr(is_ru))
     };
 
     let valid_style = if lap.valid {
@@ -165,11 +158,7 @@ pub fn render(
     };
 
     sec_rows.push(Row::new(vec![
-        Cell::from(if is_ru {
-            "Теор. Оптим."
-        } else {
-            "Optimal"
-        }),
+        Cell::from("Optimal".tr(is_ru)),
         Cell::from("----"),
         optimal_cell,
         optimal_diff,
@@ -179,18 +168,16 @@ pub fn render(
         .header(
             Row::new(vec!["Sec", "Time", "Best", "Diff"]).style(Style::default().fg(Color::Gray)),
         )
-        .block(Block::default().borders(Borders::ALL).title(if is_ru {
-            "Сектора"
-        } else {
-            "Sector Analysis"
-        }));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Sector Analysis".tr(is_ru)),
+        );
     f.render_widget(sec_table, row1[0]);
 
-    let score_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Оценка Вождения"
-    } else {
-        "Driving Evaluation"
-    });
+    let score_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Driving Evaluation".tr(is_ru));
     let score_area = score_block.inner(row1[1]);
     f.render_widget(score_block, row1[1]);
 
@@ -216,51 +203,19 @@ pub fn render(
     };
 
     f.render_widget(
-        make_gauge(
-            if is_ru {
-                "Общий Рейтинг"
-            } else {
-                "Overall Score"
-            },
-            overall_score,
-            Color::Magenta,
-        ),
+        make_gauge("Overall Score".tr(is_ru), overall_score, Color::Magenta),
         score_layout[0],
     );
     f.render_widget(
-        make_gauge(
-            if is_ru {
-                "Стабильность"
-            } else {
-                "Stability"
-            },
-            stability_score,
-            Color::Green,
-        ),
+        make_gauge("Stability".tr(is_ru), stability_score, Color::Green),
         score_layout[1],
     );
     f.render_widget(
-        make_gauge(
-            if is_ru {
-                "Агрессия"
-            } else {
-                "Aggression"
-            },
-            aggression_score,
-            Color::Red,
-        ),
+        make_gauge("Aggression|bare".tr(is_ru), aggression_score, Color::Red),
         score_layout[2],
     );
     f.render_widget(
-        make_gauge(
-            if is_ru {
-                "Использ. Грипа"
-            } else {
-                "Grip Usage"
-            },
-            grip_score,
-            Color::Cyan,
-        ),
+        make_gauge("Grip Usage|shorter".tr(is_ru), grip_score, Color::Cyan),
         score_layout[3],
     );
 
@@ -273,11 +228,9 @@ pub fn render(
         ])
         .split(chunks[2]);
 
-    let car_schema_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Схема (T/B/W)"
-    } else {
-        "Car (T/B/W)"
-    });
+    let car_schema_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Car (T/B/W)".tr(is_ru));
     let car_area = car_schema_block.inner(row2[0]);
     f.render_widget(car_schema_block, row2[0]);
 
@@ -341,11 +294,9 @@ pub fn render(
     render_wheel(f, rear_wheels[0], "RL", 2);
     render_wheel(f, rear_wheels[1], "RR", 3);
 
-    let ms_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Микро-Сектора (Дельта)"
-    } else {
-        "Micro-Sectors (Delta)"
-    });
+    let ms_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Micro-Sectors (Delta)".tr(is_ru));
 
     let mut ms_rows = vec![];
 
@@ -409,11 +360,7 @@ pub fn render(
             ms_rows.push(Row::new(vec![Cell::from("No traces...")]));
         }
     } else {
-        ms_rows.push(Row::new(vec![Cell::from(if is_ru {
-            "Загрузите круг сравнения"
-        } else {
-            "Load Reference Lap"
-        })]));
+        ms_rows.push(Row::new(vec![Cell::from("Load Reference Lap".tr(is_ru))]));
     }
 
     let ms_table = Table::new(
@@ -423,18 +370,12 @@ pub fn render(
     .block(ms_block);
     f.render_widget(ms_table, row2[1]);
 
-    let stats_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Расширенная Статистика"
-    } else {
-        "Extended Stats"
-    });
+    let stats_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Extended Stats".tr(is_ru));
     let stats_rows = vec![
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Макс. Скорость"
-            } else {
-                "Top Speed"
-            }),
+            Cell::from("Top Speed".tr(is_ru)),
             Cell::from(format!(
                 "{:.1} km/h",
                 lap.telemetry_trace
@@ -444,11 +385,7 @@ pub fn render(
             )),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Мин. Скорость"
-            } else {
-                "Min Speed"
-            }),
+            Cell::from("Min Speed".tr(is_ru)),
             // Seeded with 999.0 before, so a lap with an empty trace showed
             // "999.0 km/h" as though it were a measurement.
             Cell::from({
@@ -465,11 +402,7 @@ pub fn render(
             }),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Средняя Скорость"
-            } else {
-                "Avg Speed"
-            }),
+            Cell::from("Avg Speed".tr(is_ru)),
             Cell::from(format!(
                 "{:.1} km/h",
                 if !lap.telemetry_trace.is_empty() {
@@ -481,19 +414,11 @@ pub fn render(
             )),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Расход Топлива"
-            } else {
-                "Fuel Used"
-            }),
+            Cell::from("Fuel Used".tr(is_ru)),
             Cell::from(format!("{:.2} L", lap.fuel_used)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Скраббинг (Ошибки)"
-            } else {
-                "Scrubbing (Errors)"
-            }),
+            Cell::from("Scrubbing (Errors)".tr(is_ru)),
             Cell::from(format!(
                 "{}x (Max {:.0}°)",
                 lap.scrubbing_incidents, lap.max_steering_over_rotation
@@ -518,11 +443,9 @@ pub fn render(
         ])
         .split(chunks[3]);
 
-    let env_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Среда"
-    } else {
-        "Environment"
-    });
+    let env_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Environment".tr(is_ru));
     let env_text = vec![
         Line::from(vec![
             Span::raw("Air Temp: "),
@@ -546,10 +469,9 @@ pub fn render(
         row3[0],
     );
 
-    let inputs_block =
-        Block::default()
-            .borders(Borders::ALL)
-            .title(if is_ru { "Ввод" } else { "Inputs" });
+    let inputs_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Inputs".tr(is_ru));
     let inputs_text = vec![
         Line::from(vec![
             Span::raw("Throttle Smoothness: "),
@@ -573,30 +495,20 @@ pub fn render(
         row3[1],
     );
 
-    let meta_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        "Метаданные"
-    } else {
-        "Metadata"
-    });
+    let meta_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Metadata".tr(is_ru));
 
     let car_name = if !lap.car_model.is_empty() {
         lap.car_model.as_str()
     } else {
-        if is_ru {
-            "Неизвестно"
-        } else {
-            "Unknown"
-        }
+        "Unknown".tr(is_ru)
     };
 
     let track_name = if !lap.track_name.is_empty() {
         lap.track_name.as_str()
     } else {
-        if is_ru {
-            "Неизвестно"
-        } else {
-            "Unknown"
-        }
+        "Unknown".tr(is_ru)
     };
 
     let date_str = if !lap.save_date.is_empty() {
@@ -607,10 +519,7 @@ pub fn render(
 
     let meta_text = vec![
         Line::from(vec![
-            Span::styled(
-                if is_ru { "Авто:   " } else { "Car:    " },
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled("Car:    ".tr(is_ru), Style::default().fg(Color::Gray)),
             Span::styled(
                 car_name,
                 Style::default()
@@ -619,10 +528,7 @@ pub fn render(
             ),
         ]),
         Line::from(vec![
-            Span::styled(
-                if is_ru { "Трасса: " } else { "Track:  " },
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled("Track:  ".tr(is_ru), Style::default().fg(Color::Gray)),
             Span::styled(
                 track_name,
                 Style::default()
@@ -631,24 +537,15 @@ pub fn render(
             ),
         ]),
         Line::from(vec![
-            Span::styled(
-                if is_ru { "Дата:   " } else { "Date:   " },
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled("Date:   ".tr(is_ru), Style::default().fg(Color::Gray)),
             Span::styled(date_str, Style::default().fg(Color::Cyan)),
         ]),
         Line::from(vec![
-            Span::styled(
-                if is_ru { "Время:  " } else { "Time:   " },
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled("Time:   ".tr(is_ru), Style::default().fg(Color::Gray)),
             Span::styled(&lap.timestamp, Style::default().fg(Color::Cyan)),
         ]),
         Line::from(vec![
-            Span::styled(
-                if is_ru { "Грип:   " } else { "Grip:   " },
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled("Grip:   ".tr(is_ru), Style::default().fg(Color::Gray)),
             Span::styled(
                 format!("{:.1}%", lap.track_grip),
                 Style::default().fg(Color::Green),

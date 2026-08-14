@@ -16,6 +16,7 @@
 use crate::AppState;
 use ac_core::analyzer::LapData;
 use ac_core::corners::{CornerComparison, Decomposition};
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 /// A corner has to cost more than this to be worth naming, in seconds.
@@ -40,11 +41,7 @@ pub fn render(
             f,
             area,
             border,
-            if is_ru {
-                "Нужен эталонный круг. Проедьте второй круг или загрузите сохранённый ('L')."
-            } else {
-                "Needs a reference lap. Drive a second one, or load a saved lap with 'L'."
-            },
+            "Needs a reference lap. Drive a second one, or load a saved lap with 'L'.".tr(is_ru),
         );
         return;
     };
@@ -56,11 +53,7 @@ pub fn render(
             f,
             area,
             border,
-            if is_ru {
-                "Это и есть эталонный круг — сравнивать не с чем."
-            } else {
-                "This is the reference lap — there is nothing to compare it with."
-            },
+            "This is the reference lap — there is nothing to compare it with.".tr(is_ru),
         );
         return;
     }
@@ -77,11 +70,7 @@ pub fn render(
             f,
             area,
             border,
-            if is_ru {
-                "В трейсе не найдено ни одного поворота. Круг слишком короткий или без телеметрии."
-            } else {
-                "No corners found in the trace — too short a lap, or no telemetry in it."
-            },
+            "No corners found in the trace — too short a lap, or no telemetry in it.".tr(is_ru),
         );
         return;
     }
@@ -178,11 +167,7 @@ fn render_header(
                 .fg(delta_colour(decomposition.total_ms))
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(if is_ru {
-            "  на круге"
-        } else {
-            "  on the lap"
-        }),
+        Span::raw("  on the lap".tr(is_ru)),
     ];
 
     // The run to the first corner is time too, and hiding it would leave the
@@ -191,7 +176,7 @@ fn render_header(
         spans.push(Span::styled(
             format!(
                 "   {} {}",
-                if is_ru { "до Т1" } else { "to T1" },
+                "to T1".tr(is_ru),
                 signed(decomposition.opening_ms)
             ),
             Style::default().fg(Color::DarkGray),
@@ -241,11 +226,7 @@ fn render_table(
             f,
             area,
             Style::default().fg(app.ui_state.get_color(&theme.border)),
-            if is_ru {
-                "Ни один поворот не стоил больше десятой. Хороший круг."
-            } else {
-                "No corner cost more than a tenth. That was a tidy lap."
-            },
+            "No corner cost more than a tenth. That was a tidy lap.".tr(is_ru),
         );
         return;
     }
@@ -313,11 +294,7 @@ fn render_table(
     )
     .block(
         Block::default()
-            .title(if is_ru {
-                " Где ушло время "
-            } else {
-                " Where the time went "
-            })
+            .title(" Where the time went ".tr(is_ru))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     );
@@ -347,11 +324,7 @@ fn render_detail(
             f,
             area,
             border,
-            if is_ru {
-                "Нечего разбирать — ни один поворот не стоил больше десятой."
-            } else {
-                "Nothing to pull apart — no corner cost more than a tenth."
-            },
+            "Nothing to pull apart — no corner cost more than a tenth.".tr(is_ru),
         );
         return;
     };
@@ -381,11 +354,7 @@ fn render_detail(
 
     if section.reference.is_none() {
         lines.push(Line::from(Span::styled(
-            if is_ru {
-                "  Эталонный круг не проходил здесь поворот — сравнить не с чем."
-            } else {
-                "  The reference lap has no corner here, so there is nothing to compare."
-            },
+            "  The reference lap has no corner here, so there is nothing to compare.".tr(is_ru),
             Style::default().fg(Color::DarkGray),
         )));
     } else {
@@ -409,24 +378,12 @@ fn render_detail(
             // Under a metre apart is the same braking point. "0 m earlier"
             // reads as a measurement rather than as the two being identical.
             Some(metres) if metres.abs() < 1.0 => row(
-                if is_ru {
-                    "Торможение"
-                } else {
-                    "Braking"
-                },
-                if is_ru {
-                    "в той же точке".to_string()
-                } else {
-                    "at the same point".to_string()
-                },
+                "Braking".tr(is_ru),
+                "at the same point".tr(is_ru).to_string(),
                 true,
             ),
             Some(metres) => row(
-                if is_ru {
-                    "Торможение"
-                } else {
-                    "Braking"
-                },
+                "Braking".tr(is_ru),
                 if is_ru {
                     format!(
                         "на {:.0} м {}",
@@ -447,37 +404,25 @@ fn render_detail(
                 metres.abs() < 5.0,
             ),
             None => row(
-                if is_ru {
-                    "Торможение"
-                } else {
-                    "Braking"
-                },
-                if is_ru {
-                    "нет данных".to_string()
-                } else {
-                    "not measured".to_string()
-                },
+                "Braking".tr(is_ru),
+                "not measured".tr(is_ru).to_string(),
                 true,
             ),
         }
 
         if let Some((entry, min, exit)) = section.speed_deltas() {
             row(
-                if is_ru { "Вход" } else { "Entry speed" },
+                "Entry speed".tr(is_ru),
                 format!("{entry:+.1} km/h"),
                 entry.abs() < 2.0,
             );
             row(
-                if is_ru {
-                    "Минимальная"
-                } else {
-                    "Minimum speed"
-                },
+                "Minimum speed".tr(is_ru),
                 format!("{min:+.1} km/h"),
                 min >= -1.0,
             );
             row(
-                if is_ru { "Выход" } else { "Exit speed" },
+                "Exit speed".tr(is_ru),
                 format!("{exit:+.1} km/h"),
                 exit >= -1.0,
             );
@@ -487,7 +432,7 @@ fn render_detail(
         // after the slowest point the driver picked the power back up.
         match section.throttle_delta_s() {
             Some(delta) => row(
-                if is_ru { "Газ" } else { "Throttle" },
+                "Throttle".tr(is_ru),
                 if is_ru {
                     format!(
                         "на {:.2} с {}",
@@ -508,12 +453,10 @@ fn render_detail(
                 delta <= 0.05,
             ),
             None if corner.throttle_delay_s().is_none() => row(
-                if is_ru { "Газ" } else { "Throttle" },
-                if is_ru {
-                    "не вернулся к газу в повороте".to_string()
-                } else {
-                    "never got back to throttle in the corner".to_string()
-                },
+                "Throttle".tr(is_ru),
+                "never got back to throttle in the corner"
+                    .tr(is_ru)
+                    .to_string(),
                 false,
             ),
             None => {}
@@ -523,11 +466,7 @@ fn render_detail(
     f.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }).block(
             Block::default()
-                .title(if is_ru {
-                    " Худший поворот "
-                } else {
-                    " The worst corner "
-                })
+                .title(" The worst corner ".tr(is_ru))
                 .borders(Borders::ALL)
                 .border_style(border),
         ),

@@ -1,3 +1,4 @@
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 use std::error::Error;
 use std::fs;
@@ -112,25 +113,17 @@ pub fn render(f: &mut Frame<'_>, area: Rect, menu: &mut FileMenu, is_ru: bool) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(if is_ru {
-            " Загрузить Телеметрию "
-        } else {
-            " Load Telemetry "
-        })
+        .title(" Load Telemetry ".tr(is_ru))
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
         .border_style(Style::default().fg(Color::Cyan));
 
     if menu.files.is_empty() {
-        let text = Paragraph::new(if is_ru {
-            "Нет сохраненных файлов.\nПапка 'saved_laps' пуста."
-        } else {
-            "No saved files found.\nCheck 'saved_laps' folder."
-        })
-        .alignment(Alignment::Center)
-        .block(block)
-        .style(Style::default().fg(Color::DarkGray));
+        let text = Paragraph::new("No saved files found.\nCheck 'saved_laps' folder.".tr(is_ru))
+            .alignment(Alignment::Center)
+            .block(block)
+            .style(Style::default().fg(Color::DarkGray));
         f.render_widget(text, popup_area);
     } else {
         let items: Vec<ListItem<'_>> = menu
@@ -163,11 +156,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, menu: &mut FileMenu, is_ru: bool) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(popup_area)[1];
 
-    let help_text = if is_ru {
-        "ENTER: Загрузить | ESC: Закрыть"
-    } else {
-        "ENTER: Load | ESC: Close"
-    };
+    let help_text = "ENTER: Load | ESC: Close".tr(is_ru);
     f.render_widget(
         Paragraph::new(help_text)
             .alignment(Alignment::Center)

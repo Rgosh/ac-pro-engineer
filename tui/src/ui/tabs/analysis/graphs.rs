@@ -1,4 +1,5 @@
 use crate::AppState;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(
@@ -65,11 +66,7 @@ pub fn render(
 
     let delta_chart = Chart::new(vec![
         Dataset::default()
-            .name(if is_ru {
-                "Дельта (сек)"
-            } else {
-                "Time Delta (s)"
-            })
+            .name("Time Delta (s)".tr(is_ru))
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(if has_delta {
                 Color::Yellow
@@ -81,11 +78,7 @@ pub fn render(
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Отставание от Лучшего (Время)"
-            } else {
-                "Time Delta vs Best"
-            })
+            .title("Time Delta vs Best".tr(is_ru))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -105,11 +98,7 @@ pub fn render(
 
     let mut speed_datasets = vec![
         Dataset::default()
-            .name(if is_ru {
-                "Тек. Скор"
-            } else {
-                "Cur Speed"
-            })
+            .name("Cur Speed".tr(is_ru))
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Cyan))
             .graph_type(GraphType::Line)
@@ -127,7 +116,7 @@ pub fn render(
             .collect();
         speed_datasets.push(
             Dataset::default()
-                .name(if is_ru { "Лучшая" } else { "Best" })
+                .name("Best".tr(is_ru))
                 .marker(symbols::Marker::Braille)
                 .style(Style::default().fg(Color::Gray))
                 .graph_type(GraphType::Line)
@@ -138,11 +127,7 @@ pub fn render(
     let speed_chart = Chart::new(speed_datasets)
         .block(
             Block::default()
-                .title(if is_ru {
-                    "Скорость (км/ч)"
-                } else {
-                    "Speed (km/h)"
-                })
+                .title("Speed (km/h)".tr(is_ru))
                 .borders(Borders::ALL),
         )
         .x_axis(Axis::default().bounds([0.0, max_time_s]).labels(vec![]))
@@ -178,11 +163,7 @@ pub fn render(
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Педали (%)"
-            } else {
-                "Pedals (%)"
-            })
+            .title("Pedals (%)".tr(is_ru))
             .borders(Borders::ALL),
     )
     .x_axis(Axis::default().bounds([0.0, max_time_s]).labels(vec![]))
@@ -207,11 +188,7 @@ pub fn render(
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Руль (град)"
-            } else {
-                "Steering (deg)"
-            })
+            .title("Steering (deg)".tr(is_ru))
             .borders(Borders::ALL),
     )
     .x_axis(Axis::default().bounds([0.0, max_time_s]).labels(x_labels))

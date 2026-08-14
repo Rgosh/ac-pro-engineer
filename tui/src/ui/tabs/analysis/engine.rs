@@ -1,4 +1,5 @@
 use crate::AppState;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::analyzer::LapData) {
@@ -38,11 +39,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Обороты Двигателя (RPM)"
-            } else {
-                "Engine RPM"
-            })
+            .title("Engine RPM".tr(is_ru))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -78,11 +75,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     let barchart = BarChart::default()
         .block(
             Block::default()
-                .title(if is_ru {
-                    "Распределение Передач (%)"
-                } else {
-                    "Gear Distribution (%)"
-                })
+                .title("Gear Distribution (%)".tr(is_ru))
                 .borders(Borders::ALL),
         )
         .data(&bar_data.iter().map(|(s, v)| (*s, *v)).collect::<Vec<_>>())
@@ -99,36 +92,20 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
         .split(layout[2]);
 
     let stats_block = Block::default()
-        .title(if is_ru {
-            "Эффективность"
-        } else {
-            "Efficiency"
-        })
+        .title("Efficiency".tr(is_ru))
         .borders(Borders::ALL);
 
     let stats_text = vec![
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Всего переключений"
-            } else {
-                "Total Shifts"
-            }),
+            Cell::from("Total Shifts".tr(is_ru)),
             Cell::from(lap.gear_shifts.to_string()).style(Style::default().fg(Color::White)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Ср. Расход (л/круг)"
-            } else {
-                "Fuel/Lap (Est)"
-            }),
+            Cell::from("Fuel/Lap (Est)".tr(is_ru)),
             Cell::from(format!("{:.2}", lap.fuel_used)).style(Style::default().fg(Color::Red)),
         ]),
         Row::new(vec![
-            Cell::from(if is_ru {
-                "Время в пол (WOT)"
-            } else {
-                "Time @ WOT"
-            }),
+            Cell::from("Time @ WOT".tr(is_ru)),
             Cell::from(format!("{:.1}%", lap.full_throttle_percent))
                 .style(Style::default().fg(Color::Green)),
         ]),
@@ -154,11 +131,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, lap: &ac_core::anal
     ])
     .block(
         Block::default()
-            .title(if is_ru {
-                "Топливо (кг)"
-            } else {
-                "Fuel Level"
-            })
+            .title("Fuel Level".tr(is_ru))
             .borders(Borders::ALL),
     )
     .x_axis(Axis::default().bounds([0.0, max_time_s]))

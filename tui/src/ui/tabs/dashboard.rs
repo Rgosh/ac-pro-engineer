@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 /// Draw a titled panel explaining that there is no telemetry yet.
@@ -11,15 +12,9 @@ fn render_waiting_panel(f: &mut Frame<'_>, area: Rect, app: &AppState, title: &s
     let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let message = if app.is_game_running {
-        if is_ru {
-            "Ожидание данных от Assetto Corsa..."
-        } else {
-            "Waiting for telemetry from Assetto Corsa..."
-        }
-    } else if is_ru {
-        "Assetto Corsa не запущена"
+        "Waiting for telemetry from Assetto Corsa...".tr(is_ru)
     } else {
-        "Assetto Corsa is not running"
+        "Assetto Corsa is not running".tr(is_ru)
     };
 
     let block = Block::default()

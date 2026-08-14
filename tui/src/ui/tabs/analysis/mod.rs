@@ -1,6 +1,7 @@
 use crate::AppState;
 use crate::ui::file_menu::FileMenu;
 use crate::ui::localization::tr;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
 use std::fs;
@@ -339,11 +340,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
-        let msg = if is_ru {
-            "Нет данных. Нажмите 'L' для загрузки или проедьте круг."
-        } else {
-            "No data. Press 'L' to load or drive a lap."
-        };
+        let msg = "No data. Press 'L' to load or drive a lap.".tr(is_ru);
         let text = Paragraph::new(msg)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center)
@@ -420,11 +417,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         // The key names come from `ui::widgets::render_tab_hints` on the
         // status row now, from the bindings themselves; what is left here is
         // the navigation, which is the same on every list and not rebindable.
-        let hint_text = if is_ru {
-            "←/→ Вкладки   ↑/↓ Круги".to_string()
-        } else {
-            "←/→ Tabs   ↑/↓ Laps".to_string()
-        };
+        let hint_text = "←/→ Tabs   ↑/↓ Laps".tr(is_ru).to_string();
         let hint_p = Paragraph::new(hint_text)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Right);

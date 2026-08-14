@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::ui::localization::tr;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -59,23 +60,15 @@ fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = app.config.language == ac_core::config::Language::Russian;
 
     let block = Block::default()
-        .title(if is_ru {
-            "История Темпа (Stint Pace)"
-        } else {
-            "Race Pace History"
-        })
+        .title("Race Pace History".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
     if app.analyzer.laps.is_empty() {
-        let p = Paragraph::new(if is_ru {
-            "Нет завершенных кругов"
-        } else {
-            "No completed laps yet"
-        })
-        .block(block)
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
+        let p = Paragraph::new("No completed laps yet".tr(is_ru))
+            .block(block)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
         return;
     }
@@ -101,11 +94,7 @@ fn render_pace_history(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let datasets = vec![
         Dataset::default()
-            .name(if is_ru {
-                "Время круга"
-            } else {
-                "Lap Time"
-            })
+            .name("Lap Time".tr(is_ru))
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Cyan))
             .graph_type(GraphType::Line)
@@ -181,45 +170,21 @@ fn render_fuel_calculator(
 
     let (verdict_text, verdict_color, sub_verdict) = if fuel_per_lap <= 0.0 {
         (
-            if is_ru {
-                "НЕТ ДАННЫХ"
-            } else {
-                "NO DATA"
-            },
+            "NO DATA".tr(is_ru),
             Color::Gray,
-            if is_ru {
-                "Проедьте пару кругов..."
-            } else {
-                "Drive more laps..."
-            },
+            "Drive more laps...".tr(is_ru),
         )
     } else if fuel_delta >= 0.0 {
         (
-            if is_ru {
-                "ТОПЛИВА ХВАТАЕТ"
-            } else {
-                "FUEL IS SAFE"
-            },
+            "FUEL IS SAFE".tr(is_ru),
             Color::Green,
-            if is_ru {
-                "Дозаправка не требуется"
-            } else {
-                "No refueling needed"
-            },
+            "No refueling needed".tr(is_ru),
         )
     } else {
         (
-            if is_ru {
-                "НУЖЕН ПИТ-СТОП"
-            } else {
-                "REFUEL NEEDED"
-            },
+            "REFUEL NEEDED".tr(is_ru),
             Color::Red,
-            if is_ru {
-                "Не хватит до финиша"
-            } else {
-                "Not enough to finish"
-            },
+            "Not enough to finish".tr(is_ru),
         )
     };
 
@@ -300,11 +265,7 @@ fn render_tyres_strategy(
     let is_ru = *lang == ac_core::config::Language::Russian;
 
     let block = Block::default()
-        .title(if is_ru {
-            "Прогноз Жизни Шин"
-        } else {
-            "Tyre Life Predictor"
-        })
+        .title("Tyre Life Predictor".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -341,7 +302,7 @@ fn render_tyres_strategy(
             // Not measured yet: the projection needs a completed lap.
             "—".to_string()
         } else if laps_rem <= 0.0 {
-            if is_ru { "конец" } else { "spent" }.to_string()
+            "spent".tr(is_ru).to_string()
         } else if laps_rem >= 500.0 {
             "> 500".to_string()
         } else if is_ru {

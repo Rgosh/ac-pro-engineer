@@ -1,5 +1,6 @@
 use crate::AppState;
 use ac_core::engineer::Engineer;
+use ac_core::i18n::Translate;
 use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::{prelude::*, widgets::*};
 
@@ -40,61 +41,25 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
 
     if clip_ratio > 0.02 {
         ffb_status_color = Color::Red;
-        status_text = if is_ru {
-            "КРИТИЧЕСКИЙ КЛИППИНГ"
-        } else {
-            "CRITICAL CLIPPING"
-        };
-        recommendation = if is_ru {
-            "Срочно снизьте Gain в настройках игры!"
-        } else {
-            "Lower Game Gain immediately!"
-        };
+        status_text = "CRITICAL CLIPPING".tr(is_ru);
+        recommendation = "Lower Game Gain immediately!".tr(is_ru);
     } else if clip_ratio > 0.001 {
         ffb_status_color = Color::Yellow;
-        status_text = if is_ru {
-            "ЛЕГКИЙ КЛИППИНГ"
-        } else {
-            "LIGHT CLIPPING"
-        };
-        recommendation = if is_ru {
-            "Чуть снизьте Gain (на 2-3%)"
-        } else {
-            "Lower Gain slightly (2-3%)"
-        };
+        status_text = "LIGHT CLIPPING".tr(is_ru);
+        recommendation = "Lower Gain slightly (2-3%)".tr(is_ru);
     } else if last_ffb.abs() < 0.6 && engineer.stats.total_frames > 300 {
         ffb_status_color = Color::Cyan;
-        status_text = if is_ru {
-            "СЛАБЫЙ СИГНАЛ"
-        } else {
-            "WEAK SIGNAL"
-        };
-        recommendation = if is_ru {
-            "Можно повысить Gain (безопасно)"
-        } else {
-            "Safe to increase Gain"
-        };
+        status_text = "WEAK SIGNAL".tr(is_ru);
+        recommendation = "Safe to increase Gain".tr(is_ru);
     } else {
         ffb_status_color = Color::Green;
-        status_text = if is_ru {
-            "ОПТИМАЛЬНО"
-        } else {
-            "OPTIMAL"
-        };
-        recommendation = if is_ru {
-            "Настройки отличные, не меняйте"
-        } else {
-            "Settings are perfect"
-        };
+        status_text = "OPTIMAL".tr(is_ru);
+        recommendation = "Settings are perfect".tr(is_ru);
     }
 
     let ffb_info_text = vec![
         Line::from(vec![
-            Span::raw(if is_ru {
-                "Состояние: "
-            } else {
-                "Status: "
-            }),
+            Span::raw("Status: ".tr(is_ru)),
             Span::styled(
                 status_text,
                 Style::default()
@@ -104,11 +69,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::raw(if is_ru {
-                "Потеря деталей (Clip): "
-            } else {
-                "Detail Loss (Clip): "
-            }),
+            Span::raw("Detail Loss (Clip): ".tr(is_ru)),
             Span::styled(
                 format!("{:.1}%", clip_ratio * 100.0),
                 Style::default().fg(if clip_ratio > 0.0 {
@@ -119,11 +80,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
             ),
         ]),
         Line::from(vec![
-            Span::raw(if is_ru {
-                "Текущая сила: "
-            } else {
-                "Current Force: "
-            }),
+            Span::raw("Current Force: ".tr(is_ru)),
             Span::styled(
                 format!("{:.0}%", last_ffb.abs() * 100.0),
                 Style::default().fg(Color::White),
@@ -131,11 +88,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            if is_ru {
-                "РЕКОМЕНДАЦИЯ:"
-            } else {
-                "ADVICE:"
-            },
+            "ADVICE:".tr(is_ru),
             Style::default().add_modifier(Modifier::UNDERLINED),
         )),
         Line::from(Span::styled(
@@ -147,11 +100,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
     let ffb_block = Paragraph::new(ffb_info_text)
         .block(
             Block::default()
-                .title(if is_ru {
-                    " Настройка FFB (Gain) "
-                } else {
-                    " FFB Gain Tuning "
-                })
+                .title(" FFB Gain Tuning ".tr(is_ru))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(ffb_status_color)),
         )
@@ -160,11 +109,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
 
     f.render_widget(ffb_block, top_row[0]);
 
-    let steer_block = Block::default().borders(Borders::ALL).title(if is_ru {
-        " Руль "
-    } else {
-        " Steering "
-    });
+    let steer_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Steering ".tr(is_ru));
 
     let canvas = Canvas::default()
         .block(steer_block)
@@ -248,11 +195,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
     );
 
     let graph_block = Block::default()
-        .title(if is_ru {
-            " История Сигналов (Последние 10 сек) "
-        } else {
-            " Signal History (Last 10s) "
-        })
+        .title(" Signal History (Last 10s) ".tr(is_ru))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 

@@ -1,6 +1,7 @@
 use crate::ui::localization::tr;
 use crate::{AppState, OverlayOnboarding};
 use ac_core::config::Language;
+use ac_core::i18n::Translate;
 use ac_core::updater::UpdateStatus;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::atomic::AtomicBool;
@@ -565,21 +566,13 @@ fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )
-        .title(if is_ru {
-            " ОБНОВЛЕНИЕ "
-        } else {
-            " UPDATE "
-        })
+        .title(" UPDATE ".tr(is_ru))
         .title_alignment(Alignment::Center);
 
     let text = vec![
         Line::from(""),
         Line::from(Span::styled(
-            if is_ru {
-                "УСПЕШНО ОБНОВЛЕНО!"
-            } else {
-                "SUCCESSFULLY UPDATED!"
-            },
+            "SUCCESSFULLY UPDATED!".tr(is_ru),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -587,11 +580,7 @@ fn render_success_popup(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Line::from(format!("v{}", ac_core::updater::CURRENT_VERSION)),
         Line::from(""),
         Line::from(Span::styled(
-            if is_ru {
-                "Нажмите ENTER чтобы продолжить"
-            } else {
-                "Press ENTER to continue"
-            },
+            "Press ENTER to continue".tr(is_ru),
             Style::default().fg(Color::DarkGray),
         )),
     ];
@@ -663,16 +652,8 @@ fn render_main_content(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 fn render_review_banner(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = app.config.language == Language::Russian;
-    let text = if is_ru {
-        "⭐ Это Open Source проект. Ваш отзыв помогает нам расти!"
-    } else {
-        "⭐ This is an Open Source project. Your review helps us grow!"
-    };
-    let hint = if is_ru {
-        "[O] Оставить отзыв  [H] Скрыть навсегда"
-    } else {
-        "[O] Leave Review  [H] Hide Forever"
-    };
+    let text = "⭐ This is an Open Source project. Your review helps us grow!".tr(is_ru);
+    let hint = "[O] Leave Review  [H] Hide Forever".tr(is_ru);
 
     let content = vec![Line::from(vec![
         Span::styled(
@@ -705,59 +686,16 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let update_label = match *update_status {
-        UpdateStatus::Downloading(pct) => format!(
-            "♻   {}: {:.0}%",
-            if is_ru {
-                "Скачивание"
-            } else {
-                "Downloading"
-            },
-            pct
-        ),
-        UpdateStatus::UpdateAvailable => format!(
-            "🔥  {}!",
-            if is_ru {
-                "ДОСТУПНО"
-            } else {
-                "AVAILABLE"
-            }
-        ),
-        UpdateStatus::Checking => format!(
-            "⏳  {}",
-            if is_ru {
-                "Проверка..."
-            } else {
-                "Checking..."
-            }
-        ),
-        UpdateStatus::NoUpdate => format!(
-            "✅  {}",
-            if is_ru {
-                "Версии & Откат"
-            } else {
-                "Versions & Rollback"
-            }
-        ),
-        UpdateStatus::Error(_) => format!(
-            "❌  {}",
-            if is_ru {
-                "Ошибка сети"
-            } else {
-                "Net Error"
-            }
-        ),
+        UpdateStatus::Downloading(pct) => format!("♻   {}: {:.0}%", "Downloading".tr(is_ru), pct),
+        UpdateStatus::UpdateAvailable => format!("🔥  {}!", "AVAILABLE".tr(is_ru)),
+        UpdateStatus::Checking => format!("⏳  {}", "Checking...".tr(is_ru)),
+        UpdateStatus::NoUpdate => format!("✅  {}", "Versions & Rollback".tr(is_ru)),
+        UpdateStatus::Error(_) => format!("❌  {}", "Net Error".tr(is_ru)),
         _ => format!("♻   {}", tr("launch_upd", lang)),
     };
 
     let menu_items = [
-        format!(
-            "🖥️  {}",
-            if is_ru {
-                "ЗАПУСК (ТЕРМИНАЛ)"
-            } else {
-                "START (TERMINAL TUI)"
-            }
-        ),
+        format!("🖥️  {}", "START (TERMINAL TUI)".tr(is_ru)),
         format!("⚙️   {}", tr("launch_sett", lang)),
         match app.config.language {
             Language::English => "LANGUAGE: < ENGLISH >",
@@ -872,22 +810,14 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Span::raw(format!("{} ", tr("launch_stat", lang))),
                 if actual_running {
                     Span::styled(
-                        if is_ru {
-                            "ОБНАРУЖЕНО (ГОТОВО К СТАРТУ)"
-                        } else {
-                            "DETECTED (READY TO START)"
-                        },
+                        "DETECTED (READY TO START)".tr(is_ru),
                         Style::default()
                             .fg(Color::Green)
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
                     Span::styled(
-                        if is_ru {
-                            "ОЖИДАНИЕ SIMULATOR..."
-                        } else {
-                            "WAITING FOR SIMULATOR..."
-                        },
+                        "WAITING FOR SIMULATOR...".tr(is_ru),
                         Style::default()
                             .fg(Color::Yellow)
                             .add_modifier(Modifier::ITALIC),
@@ -967,11 +897,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             let mut lines = vec![];
             if let UpdateStatus::Downloading(pct) = *update_status {
                 lines.push(Line::from(Span::styled(
-                    if is_ru {
-                        "Загрузка..."
-                    } else {
-                        "Downloading..."
-                    },
+                    "Downloading...".tr(is_ru),
                     Style::default().fg(Color::Cyan),
                 )));
                 // The bar is 20 cells wide, so `filled` has to be capped
@@ -986,16 +912,12 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 )));
             } else if let UpdateStatus::Downloaded(_) = *update_status {
                 lines.push(Line::from(Span::styled(
-                    if is_ru { "ГОТОВО!" } else { "READY!" },
+                    "READY!".tr(is_ru),
                     Style::default()
                         .fg(Color::Green)
                         .add_modifier(Modifier::BOLD),
                 )));
-                lines.push(Line::from(if is_ru {
-                    "Нажмите ENTER..."
-                } else {
-                    "Press ENTER..."
-                }));
+                lines.push(Line::from("Press ENTER...".tr(is_ru)));
             } else if let Some(info) = app.updater.get_selected_release() {
                 lines.push(Line::from(vec![
                     Span::raw("ver: "),
@@ -1024,20 +946,12 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 ]));
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    if is_ru {
-                        " [←/→] Выбор версии   [ENTER] Установка"
-                    } else {
-                        " [←/→] Select Version   [ENTER] Install"
-                    },
+                    " [←/→] Select Version   [ENTER] Install".tr(is_ru),
                     Style::default().fg(Color::DarkGray).bg(Color::Black),
                 )));
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    if is_ru {
-                        "Список изменений:"
-                    } else {
-                        "Changelog:"
-                    },
+                    "Changelog:".tr(is_ru),
                     Style::default().fg(Color::Cyan),
                 )));
                 lines.push(Line::from(Span::styled(
@@ -1047,19 +961,11 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 if is_legacy_version(&info.version) {
                     lines.push(Line::from(""));
                     lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "⚠️ ВНИМАНИЕ: Старая версия!"
-                        } else {
-                            "⚠️ WARNING: Legacy Version!"
-                        },
+                        "⚠️ WARNING: Legacy Version!".tr(is_ru),
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     )));
                     lines.push(Line::from(Span::styled(
-                        if is_ru {
-                            "В ней нет апдейтера. Вы не сможете вернуться обратно."
-                        } else {
-                            "No updater inside. You won't be able to switch back."
-                        },
+                        "No updater inside. You won't be able to switch back.".tr(is_ru),
                         Style::default().fg(Color::Red),
                     )));
                 }
@@ -1100,35 +1006,17 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let (msg, color) = match *update_status {
         UpdateStatus::UpdateAvailable => (
-            if is_ru {
-                "🔥 ДОСТУПНО ОБНОВЛЕНИЕ"
-            } else {
-                "🔥 UPDATE AVAILABLE"
-            }
-            .to_string(),
+            "🔥 UPDATE AVAILABLE".tr(is_ru).to_string(),
             Color::LightGreen,
         ),
-        UpdateStatus::Downloading(_) => (
-            if is_ru {
-                "♻ Скачивание..."
-            } else {
-                "♻ Downloading..."
-            }
-            .to_string(),
-            Color::Cyan,
-        ),
+        UpdateStatus::Downloading(_) => ("♻ Downloading...".tr(is_ru).to_string(), Color::Cyan),
         _ => {
             let actual_running = app.is_game_running;
             if actual_running {
                 (tr("launch_on", lang), Color::Green)
             } else {
                 (
-                    if is_ru {
-                        "ОЖИДАНИЕ СИМУЛЯТОРА..."
-                    } else {
-                        "WAITING FOR SIMULATOR..."
-                    }
-                    .to_string(),
+                    "WAITING FOR SIMULATOR...|spelled out".tr(is_ru).to_string(),
                     Color::Yellow,
                 )
             }
@@ -1149,11 +1037,7 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // language and the release on the update row, O opens the review page, H
     // hides the banner and Q leaves, and none of that was written anywhere on
     // the screen it works on.
-    let controls_hint = if is_ru {
-        "[↑/↓] Навигация  [←/→] Менять  [ENTER] Выбор  [Q] Выход"
-    } else {
-        "[↑/↓] Select  [←/→] Change  [ENTER] Open  [Q] Quit"
-    };
+    let controls_hint = "[↑/↓] Select  [←/→] Change  [ENTER] Open  [Q] Quit".tr(is_ru);
     let controls = Paragraph::new(controls_hint)
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Gray));
