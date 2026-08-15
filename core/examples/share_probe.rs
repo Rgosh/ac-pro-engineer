@@ -134,7 +134,17 @@ fn main() {
         eprintln!("cannot open a sending socket: {error}");
         std::process::exit(1);
     });
-    println!("\nsending to {target}");
+    // How big it is on the wire matters more than it sounds: a datagram over
+    // about 1472 bytes is split by IP into fragments, and losing any one of
+    // them discards the whole thing. Nothing on loopback ever notices, so the
+    // number is printed rather than trusted.
+    let bytes = ac_core::broadcast::udp::payload_size(&frame, "assetto_corsa", "probe");
+    println!(
+        "\non the wire: {bytes} bytes — {} in one Ethernet frame, {} in one mesh-VPN frame",
+        if bytes <= 1472 { "fits" } else { "FRAGMENTS" },
+        if bytes <= 1252 { "fits" } else { "FRAGMENTS" },
+    );
+    println!("sending to {target}");
     if let Err(error) = sink.publish(&frame) {
         eprintln!("send failed: {error}");
         std::process::exit(1);

@@ -38,12 +38,39 @@ pub const MAGIC: &str = "acpe";
 /// changes meaning or disappears.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// A UDP datagram's practical ceiling before fragmentation starts to hurt.
+/// The size at which a message has stopped being a message and become a bug.
 ///
-/// Not enforced by truncating — a message over this is a bug to fix rather than
-/// something to silently cut in half — but worth a warning, and worth knowing
-/// that the debrief is the part that grows.
+/// Not enforced by truncating — something over this is to be fixed rather than
+/// silently cut in half — but worth a warning, and worth knowing that the
+/// debrief is the part that grows.
+///
+/// **This is not the fragmentation threshold, and deliberately so.** A datagram
+/// stops fitting one Ethernet frame at 1472 bytes and one Tailscale frame at
+/// about 1252, and the measured sizes sit either side of that:
+///
+/// | what is on the wire | bytes | one Ethernet frame | one mesh-VPN frame |
+/// |---|---|---|---|
+/// | no advice yet | 953 | yes | yes |
+/// | four lines of live advice | 1188 | yes | yes |
+/// | eight full lines plus three laps of debrief | 3971 | no, 3 fragments | no, 4 |
+///
+/// So the stream a spectator watches is one packet, and the burst after a lap
+/// is three or four. IP reassembles them; losing any one fragment discards the
+/// whole datagram, which on a LAN is nothing and across a VPN is an occasional
+/// missed update that the next one at 10 Hz replaces a tenth of a second later.
+/// Warning at the fragmentation point instead would fire after every lap for a
+/// thing that works, and a warning nobody can act on is a warning nobody reads.
 const SAFE_DATAGRAM_BYTES: usize = 8192;
+
+/// What a datagram may be and still cross one Ethernet frame: 1500 less 20 of
+/// IP header and 8 of UDP.
+#[cfg(test)]
+const ETHERNET_PAYLOAD: usize = 1472;
+
+/// The same for a mesh VPN, which tunnels and so has less room: Tailscale and
+/// ZeroTier both default to a 1280-byte MTU.
+#[cfg(test)]
+const MESH_VPN_PAYLOAD: usize = 1252;
 
 #[derive(Serialize, Deserialize)]
 pub struct Corner {
@@ -249,6 +276,17 @@ impl UdpSink {
     }
 }
 
+/// How many bytes this frame would put on the wire.
+///
+/// For `share_probe`, and for anyone checking a link before they rely on it:
+/// the number decides whether a spectator receives one packet or a handful of
+/// fragments, and nothing on loopback can tell the difference.
+pub fn payload_size(frame: &OverlayFrame, game: &str, driver: &str) -> usize {
+    serde_json::to_vec(&message(frame, game, driver))
+        .map(|bytes| bytes.len())
+        .unwrap_or(0)
+}
+
 impl Sink for UdpSink {
     fn name(&self) -> &str {
         &self.name
@@ -369,8 +407,47 @@ mod tests {
         }
     }
 
-    /// The whole message has to fit a datagram at the sizes it actually reaches:
-    /// eight advice lines and three laps of debrief with eight lines each.
+    /// The stream a spectator actually watches fits **one** packet.
+    ///
+    /// This is the claim the site makes about watching a friend over a mesh
+    /// VPN, and it is the one worth pinning: while a driver is on track the
+    /// message carries live advice and no debrief, and at that size it crosses
+    /// a network as a single datagram with nothing to reassemble and nothing to
+    /// lose halfway.
+    ///
+    /// A field added carelessly to the live part would push it over, and the
+    /// symptom would not be an error — it would be a spectator whose screen
+    /// stutters on a lossy link, which is the sort of thing that gets blamed on
+    /// the network for a month.
+    #[test]
+    fn the_live_stream_crosses_a_network_in_one_packet() {
+        let mut frame = OverlayFrame::empty();
+        // Four lines is a busy moment: pressures, temperatures, brakes, wear.
+        let typical = "Fronts over 28.4 psi (target 27.5)";
+        frame.set_messages(&(0..4).map(|_| advice_line(typical)).collect::<Vec<_>>());
+
+        let bytes = serde_json::to_vec(&message(&frame, "assetto_corsa", "somebody"))
+            .expect("the message serialises");
+        assert!(
+            bytes.len() <= MESH_VPN_PAYLOAD,
+            "live advice is {} bytes, past the {MESH_VPN_PAYLOAD} a mesh VPN carries \
+             in one frame — a spectator would be reassembling fragments the whole \
+             session",
+            bytes.len()
+        );
+        assert!(bytes.len() <= ETHERNET_PAYLOAD);
+    }
+
+    /// And the burst after a lap does not, which is a fact rather than a fault.
+    ///
+    /// The debrief is three laps of eight lines and it fragments — three frames
+    /// on Ethernet, four through a tunnel. That is fine and this test exists to
+    /// say it is *known* fine: IP reassembles, a lost fragment costs one update
+    /// out of ten a second, and the alternative is a protocol with sequencing
+    /// and retries for a spectator view.
+    ///
+    /// The ceiling below is the one that means "something is wrong", not the
+    /// one where fragmentation begins.
     #[test]
     fn a_full_message_fits_one_datagram() {
         let mut frame = OverlayFrame::empty();
