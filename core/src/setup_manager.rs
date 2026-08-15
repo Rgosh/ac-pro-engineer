@@ -1,4 +1,4 @@
-use crate::games::assetto_corsa::setups;
+use crate::games::registry::SetupStore;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -340,6 +340,9 @@ pub struct SetupManager {
 
     pub fetch_state: Arc<Mutex<FetchState>>,
     pub last_status: Arc<Mutex<String>>,
+    /// How this game's setups are read and written, or `None` for a game
+    /// that keeps none this program can handle.
+    store: Option<&'static SetupStore>,
     pub shutdown_flag: Arc<std::sync::atomic::AtomicBool>,
     pub bg_thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
@@ -355,8 +358,11 @@ impl<T> SafeLock<T> for Mutex<T> {
 }
 
 impl Default for SetupManager {
+    /// A manager with no setup store, which is the right default: reading
+    /// setups is something a *game* can do, and a default cannot know which
+    /// game it is for.
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -379,7 +385,13 @@ impl Drop for SetupManager {
 }
 
 impl SetupManager {
-    pub fn new() -> Self {
+    /// Build a manager that reads setups with `scan`.
+    ///
+    /// `None` is a game that keeps no setups this program can read — iRacing
+    /// stores them in a format of its own — and the manager then holds an
+    /// empty list rather than pretending the folder is empty. The screens read
+    /// [`Capabilities::setups`](crate::games::Capabilities::setups) and say so.
+    pub fn new(store: Option<&'static SetupStore>) -> Self {
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let bg_thread_slot = Arc::new(Mutex::new(None));
 
@@ -406,6 +418,7 @@ impl SetupManager {
 
             shutdown_flag: shutdown.clone(),
             bg_thread: bg_thread_slot.clone(),
+            store,
         };
 
         let setups_clone = manager.setups.clone();
@@ -469,7 +482,10 @@ impl SetupManager {
                     last_scan = Some(Instant::now());
 
                     let configured_docs = documents_clone.safe_lock().clone();
-                    let mut all_setups = setups::scan_folders(&car, &track, &configured_docs);
+                    let mut all_setups = match store {
+                        Some(store) => (store.scan)(&car, &track, &configured_docs),
+                        None => Vec::new(),
+                    };
                     let current_state = fetch_state_clone.safe_lock().clone();
 
                     match current_state {
@@ -573,9 +589,7 @@ impl SetupManager {
     /// Linux and local setups were never discovered there.
     fn setups_root(&self) -> Option<PathBuf> {
         let configured = self.documents_override.safe_lock().clone();
-        crate::games::assetto_corsa::setups::setups_root(
-            (!configured.as_os_str().is_empty()).then_some(configured.as_path()),
-        )
+        (self.store?.root)((!configured.as_os_str().is_empty()).then_some(configured.as_path()))
     }
 
     /// Point the manager at a specific AC Documents folder. Empty resumes
@@ -599,8 +613,10 @@ impl SetupManager {
         if let Some(root) = self.setups_root() {
             let safe_name = sanitize_filename_component(&setup.name);
             let safe_author = sanitize_filename_component(&setup.author);
-            let file_name =
-                crate::games::assetto_corsa::setups::file_name(&safe_author, &safe_name);
+            let Some(store) = self.store else {
+                return false;
+            };
+            let file_name = (store.file_name)(&safe_author, &safe_name);
             let target_dir = root
                 .join(sanitize_filename_component(target_car))
                 .join("downloaded");
@@ -727,6 +743,10 @@ impl SetupManager {
         }
 
         {
+            let Some(store) = self.store else {
+                *status_lock = "Err: this game keeps no setups this program can write".to_string();
+                return false;
+            };
             let root = match self.setups_root() {
                 Some(d) => d,
                 None => {
@@ -745,7 +765,7 @@ impl SetupManager {
 
             let safe_name = sanitize_filename_component(&setup.name);
             let safe_author = sanitize_filename_component(&setup.author);
-            let file_name = setups::file_name(&safe_author, &safe_name);
+            let file_name = (store.file_name)(&safe_author, &safe_name);
             let file_path = match safe_join_under(&target_dir, &file_name) {
                 Some(p) => p,
                 None => {
@@ -753,7 +773,7 @@ impl SetupManager {
                     return false;
                 }
             };
-            let content = setups::generate_ini_content(setup);
+            let content = (store.serialise)(setup);
 
             match fs::write(&file_path, content) {
                 Ok(_) => {
@@ -970,7 +990,7 @@ mod tests {
 
     #[test]
     fn test_fetch_state_context_change_resets_state() {
-        let mgr = SetupManager::new();
+        let mgr = SetupManager::new(None);
         mgr.set_context("ks_ferrari_sf70h", "monza");
         *mgr.fetch_state.safe_lock() = FetchState::Ready;
 
@@ -997,7 +1017,7 @@ mod tests {
 
     #[test]
     fn test_setup_manager_shutdown_joins_background_thread() {
-        let mgr = SetupManager::new();
+        let mgr = SetupManager::new(None);
         assert!(mgr.bg_thread.safe_lock().is_some());
         assert!(!mgr.shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
 

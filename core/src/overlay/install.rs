@@ -11,7 +11,7 @@
 //! whenever they differ from what is embedded. So updating the application
 //! updates the overlay, with no step for the user to forget.
 
-use crate::ac_paths;
+use crate::games::assetto_corsa::paths as ac_paths;
 use std::io;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};

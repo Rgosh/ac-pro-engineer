@@ -55,7 +55,20 @@ const SPEAKS_AC: &[&str] = &[
 /// Assetto Corsa mod and ACC has none, so this is not a boundary a second game
 /// crosses — it is a feature one game has. See §8 of `docs/roadmap.md`, which
 /// is where that decision is written down.
-const SPEAKS_AC_FOLDERS: &[&str] = &["core/src/overlay/"];
+const SPEAKS_AC_FOLDERS: &[&str] = &[
+    "core/src/overlay/",
+    // Launches `shm-bridge.exe` inside Assetto Corsa's own Proton prefix. Same
+    // reason as the overlay: it is a thing one game needs, not a boundary.
+    "tui/src/platform/",
+];
+
+/// The terminal must not name a simulator.
+///
+/// This is the rule the registry exists for. Whichever game is being read is
+/// an entry in `games::registry`, and a screen that reaches past it for
+/// `assetto_corsa::` is a screen that has to be edited again for the second
+/// game — which is exactly the ten call sites the registry replaced.
+const INTERFACE_DIRS: &[&str] = &["tui/src"];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -89,6 +102,57 @@ fn ac_struct_lines(source: &str) -> Vec<(usize, String)> {
         })
         .map(|(index, line)| (index + 1, line.trim().to_string()))
         .collect()
+}
+
+/// No screen names a simulator: they ask the registry which game is being
+/// read, and take what it hands back.
+#[test]
+fn the_interface_does_not_name_a_game() {
+    let root = workspace_root();
+
+    let mut files = Vec::new();
+    for dir in INTERFACE_DIRS {
+        rust_files(&root.join(dir), &mut files);
+    }
+    files.sort();
+
+    let mut problems = Vec::new();
+    for file in &files {
+        let relative = file
+            .strip_prefix(&root)
+            .expect("walked from the root")
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if SPEAKS_AC.contains(&relative.as_str())
+            || SPEAKS_AC_FOLDERS
+                .iter()
+                .any(|folder| relative.starts_with(folder))
+        {
+            continue;
+        }
+        let Ok(source) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (number, line) in source.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if line.contains("games::assetto_corsa") || line.contains("assetto_corsa::") {
+                problems.push(format!("{relative}:{}: {trimmed}", number + 1));
+            }
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "the interface names a simulator:\n{}\n\n\
+         Ask `games::registry` instead — `AppState::game` is the entry being \
+         read, and its `Backend` holds the connection, the process names, the \
+         car scan and the setup store.",
+        problems.join("\n")
+    );
 }
 
 /// Assetto Corsa's file layout, its process and its Steam appid stay in its

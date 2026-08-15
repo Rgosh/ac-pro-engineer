@@ -23,9 +23,11 @@
 pub mod assetto_corsa;
 pub mod catalogue;
 pub mod reading;
+pub mod registry;
 
 pub use catalogue::CarSpecs;
 pub use reading::{Car, Fixed, Reading, Session, SessionKind, Status};
+pub use registry::{Backend, Game, Support};
 
 /// Which simulator a source speaks for.
 ///
