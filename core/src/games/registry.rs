@@ -184,13 +184,43 @@ pub static GAMES: &[Game] = &[
 
 /// The game this build reads unless told otherwise.
 ///
-/// One playable entry today, so this cannot fail. When there are two, the
-/// choice becomes a setting and a detection pass, and this is the function
-/// that grows — not every call site.
+/// One playable entry today, so this cannot fail.
 pub fn default_game() -> &'static Game {
     playable()
         .next()
         .expect("this build has at least one playable game")
+}
+
+/// Which playable game is up right now, if any.
+///
+/// Both halves have to agree: the process is there *and* the game's telemetry
+/// can actually be reached. They are different questions and they come apart
+/// in practice — under Proton, Assetto Corsa runs long before its bridge
+/// mirrors anything, and rFactor 2 will not publish at all until the driver
+/// installs a plugin. A launcher that treats "running" as "readable" tells
+/// somebody to wait when it should be telling them what is missing.
+///
+/// With one playable entry this answers "is Assetto Corsa up", which is what
+/// the terminal already asked. It becomes the selector unchanged when there is
+/// a second.
+pub fn detect_running() -> Option<&'static Game> {
+    playable().find(|game| {
+        game.backend().is_some_and(|backend| {
+            backend
+                .processes
+                .iter()
+                .any(|name| crate::process::is_process_running(name))
+                && (backend.telemetry_is_reachable)()
+        })
+    })
+}
+
+/// The game to read: whichever is running, or the default to wait for.
+///
+/// Never `None`, because the terminal has to have something to name on its
+/// launcher while nothing is running at all.
+pub fn game_to_read() -> &'static Game {
+    detect_running().unwrap_or_else(default_game)
 }
 
 pub fn playable() -> impl Iterator<Item = &'static Game> {
@@ -269,6 +299,23 @@ mod tests {
             "and the capability flag agrees with the store"
         );
         assert_eq!(default_game().id, ac.id);
+    }
+
+    /// Detection agrees with the table: with one playable entry it can only
+    /// ever answer Assetto Corsa or nothing, and the fallback is that same
+    /// entry either way.
+    #[test]
+    fn the_game_to_read_is_a_playable_one() {
+        let chosen = game_to_read();
+        assert!(chosen.is_playable(), "{} is not readable", chosen.name);
+        if let Some(running) = detect_running() {
+            assert_eq!(
+                running.id, chosen.id,
+                "a running game is the one that gets read"
+            );
+        } else {
+            assert_eq!(chosen.id, default_game().id);
+        }
     }
 
     /// The list is the plan, so it has to hold the games that were actually

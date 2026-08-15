@@ -377,9 +377,11 @@ impl AppState {
             let _res = config.save();
         }
 
-        // Which game this build reads, decided once. Everything below asks
-        // the entry rather than naming a simulator.
-        let game = ac_core::games::registry::default_game();
+        // Which game this build reads, decided once. Everything below asks the
+        // entry rather than naming a simulator. With one playable game this is
+        // that game whether or not it is running; with two it is whichever is
+        // up, and nothing else changes.
+        let game = ac_core::games::registry::game_to_read();
 
         let setup_manager = SetupManager::new(game.backend().and_then(|b| b.setups.as_ref()));
         setup_manager.set_documents_override(&config.ac_documents_path);
