@@ -526,6 +526,47 @@ a.card:hover .go::after{transform:translateX(4px)}
 a.card.pending{opacity:.72}
 a.card.pending:hover{opacity:1}
 
+/* A status table: one line per thing, and a mark that says where it stands.
+   Prose describing the state of six items is six sentences nobody finishes; a
+   column of marks is read at a glance and cannot hide a "mostly". The mark
+   carries a letter as well as a colour, because a red and a green dot are the
+   same dot to a colour-blind reader and to a printed page. */
+table.status td:first-child{width:auto}
+table.status td.mark{
+  width:1%;white-space:nowrap;text-align:center;padding-right:14px;
+  font-size:15px;font-weight:700;
+}
+table.status td.mark.yes{color:var(--good)}
+table.status td.mark.wip{color:var(--warn)}
+table.status td.mark.no{color:var(--bad)}
+table.status td.what{color:var(--text);font-weight:600}
+table.status td.note{color:var(--dim);font-size:13.5px}
+table.status tr.is-no td.what{color:var(--dim);font-weight:500}
+
+/* The key above such a table. */
+.legend{
+  display:flex;flex-wrap:wrap;gap:16px;margin:0 0 14px;
+  font-size:13px;color:var(--dim);
+}
+.legend b{font-weight:700}
+.legend .yes{color:var(--good)}
+.legend .wip{color:var(--warn)}
+.legend .no{color:var(--bad)}
+
+@media (max-width:640px){
+  /* Three columns of prose do not fit a phone, and stacking the mark onto a
+     line of its own loses what it refers to. So the mark keeps the left edge
+     and spans both lines, with the thing above and the note under it. */
+  .stacked table.status,.stacked table.status tbody{display:block}
+  .stacked table.status tr{
+    display:grid;grid-template-columns:auto 1fr;gap:1px 10px;
+    padding:10px 0;border-bottom:1px solid var(--border);
+  }
+  .stacked table.status td{display:block;padding:0;border:0}
+  .stacked table.status td.mark{grid-row:span 2;align-self:start;width:auto;padding:0}
+  .legend{gap:12px;font-size:12.5px}
+}
+
 figure{margin:0 0 24px}
 figure img{
   width:100%;height:auto;display:block;
