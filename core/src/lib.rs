@@ -8,12 +8,13 @@
 
 pub mod games;
 
-// Where these two used to live. Kept as re-exports so the move into `games/`
-// changed no call sites: every `ac_core::ac_structs::AcPhysics` in the tree,
-// the tests included, still resolves. New code should reach for
-// `games::assetto_corsa::{paths, structs}` and say which game it means.
+// Where AC's file paths used to live, kept as a re-export so the move into
+// `games/` changed no call sites. The matching `ac_structs` alias is gone: the
+// three shared-memory structs are no longer anybody's business outside the
+// folder that reads them — see `games::reading` — and the two places that do
+// speak AC's layout, the fake-telemetry simulator and the layout tests, now
+// import it by its full name and say which game they mean.
 pub use games::assetto_corsa::paths as ac_paths;
-pub use games::assetto_corsa::structs as ac_structs;
 pub mod analyzer;
 pub mod atomic_file;
 pub mod broadcast;

@@ -28,7 +28,8 @@
 //! see the note on the tail fields of `AcGraphics`. Settling it needs a
 //! capture taken from lap 2 or later, with TC/ABS set and the headlights on.
 
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic, COORD_X, COORD_Y, COORD_Z};
+use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics, AcStatic};
+use ac_core::games::reading::{COORD_X, COORD_Y, COORD_Z};
 use zerocopy::TryFromBytes;
 
 /// First 360 bytes of `/dev/shm/acpmf_graphics`, mid-lap at Imola.

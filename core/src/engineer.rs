@@ -1,5 +1,5 @@
-use crate::ac_structs::{AcGraphics, AcPhysics};
 use crate::config::{AppConfig, Language};
+use crate::games::{Car, Session};
 use crate::i18n::{Translate, tr_fmt};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
@@ -158,7 +158,7 @@ pub struct EngineerStats {
     /// Fuel used on each of the last few completed laps, newest last.
     ///
     /// AC's own `fuel_x_lap` sits in the part of the graphics page that is
-    /// not confirmed against a live capture (see the note in ac_structs.rs),
+    /// not confirmed against a live capture (see the note in `games/assetto_corsa/structs.rs`),
     /// and it reads zero on lap one regardless. Everything on the strategy
     /// tab was gated on it being positive, so the tab showed "NO DATA" for
     /// the whole first lap and, if that offset is wrong, forever.
@@ -277,9 +277,9 @@ impl Engineer {
         self.stats.input_history.set_capacity(config.history_size);
     }
 
-    pub fn update(&mut self, phys: &AcPhysics, gfx: &AcGraphics, _session: &SessionInfo) {
-        self.update_stats(phys, gfx);
-        self.analyze_driving_style(phys);
+    pub fn update(&mut self, car: &Car, session: &Session, _info: &SessionInfo) {
+        self.update_stats(car, session);
+        self.analyze_driving_style(car);
 
         if self.stats.total_frames > self.history_size as u32 {
             debug!("Engineer history buffer reached limit, resetting counters.");
@@ -287,13 +287,13 @@ impl Engineer {
         }
     }
 
-    fn update_stats(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
+    fn update_stats(&mut self, car: &Car, session: &Session) {
         let dt_sec = (self.config.update_rate as f32 / 1000.0).clamp(0.001, 1.0);
         let ticks_norm = (dt_sec * 60.0).round().max(1.0) as u32;
 
         self.stats.total_frames += ticks_norm;
 
-        if phys.final_ff.abs() > 0.98 {
+        if car.force_feedback.abs() > 0.98 {
             self.stats.ffb_clip_frames += ticks_norm;
         }
 
@@ -301,27 +301,27 @@ impl Engineer {
             let t = self.stats.total_frames as f64;
             self.stats.input_history.push((
                 t,
-                phys.steer_angle as f64,
-                phys.gas as f64,
-                phys.brake as f64,
-                phys.final_ff as f64,
+                car.steer_angle as f64,
+                car.throttle as f64,
+                car.brake as f64,
+                car.force_feedback as f64,
             ));
         }
 
         for i in 0..4 {
-            if phys.suspension_travel[i] < 0.005 {
+            if car.suspension_travel[i] < 0.005 {
                 self.stats.bottoming_frames[i] += ticks_norm;
             }
         }
 
-        let rake = phys.ride_height[1] - phys.ride_height[0];
+        let rake = car.ride_height_m[1] - car.ride_height_m[0];
         let rake_mm = rake * 1000.0;
-        if phys.speed_kmh > 50.0 && phys.speed_kmh < 90.0 {
+        if car.speed_kmh > 50.0 && car.speed_kmh < 90.0 {
             if self.stats.low_speed_rake == 0.0 {
                 self.stats.low_speed_rake = rake_mm;
             }
             self.stats.low_speed_rake = self.stats.low_speed_rake * 0.98 + rake_mm * 0.02;
-        } else if phys.speed_kmh > 160.0 {
+        } else if car.speed_kmh > 160.0 {
             if self.stats.high_speed_rake == 0.0 {
                 self.stats.high_speed_rake = rake_mm;
             }
@@ -332,11 +332,11 @@ impl Engineer {
         // corner being driven; a lane change on a straight does not reach it,
         // and a straight is where the inner and outer edges of a correctly
         // cambered tyre read the same temperature.
-        if phys.speed_kmh > 50.0 && phys.acc_g[0].abs() > 0.5 {
+        if car.speed_kmh > 50.0 && car.acc_g[0].abs() > 0.5 {
             let first_sample = self.stats.camber_frames == 0;
             self.stats.camber_frames = self.stats.camber_frames.saturating_add(ticks_norm);
             for i in 0..4 {
-                let spread = phys.tyre_temp_i[i] - phys.tyre_temp_o[i];
+                let spread = car.tyre_temp_inner_c[i] - car.tyre_temp_outer_c[i];
                 if first_sample {
                     self.stats.camber_spread[i] = spread;
                 } else {
@@ -346,16 +346,16 @@ impl Engineer {
             }
         }
 
-        let current_laps = gfx.completed_laps;
+        let current_laps = session.completed_laps;
         if current_laps != self.stats.last_lap_count {
-            self.record_fuel_for_completed_lap(phys.fuel);
-            if self.stats.last_lap_count == -1 || current_laps == 0 || phys.speed_kmh < 10.0 {
-                self.stats.base_tyre_wear = phys.tyre_wear;
+            self.record_fuel_for_completed_lap(car.fuel_litres);
+            if self.stats.last_lap_count == -1 || current_laps == 0 || car.speed_kmh < 10.0 {
+                self.stats.base_tyre_wear = car.tyre_wear;
                 self.stats.stint_laps = 0;
             } else {
                 self.stats.stint_laps += 1;
                 for i in 0..4 {
-                    let wear_used = self.stats.base_tyre_wear[i] - phys.tyre_wear[i];
+                    let wear_used = self.stats.base_tyre_wear[i] - car.tyre_wear[i];
                     if wear_used > 0.0 && self.stats.stint_laps > 0 {
                         let wear_per_lap = wear_used / self.stats.stint_laps as f32;
                         // Laps until the tyre is *done*, not until it is two
@@ -367,7 +367,7 @@ impl Engineer {
                             .wear_critical
                             .min(self.config.alerts.wear_warning)
                             .max(0.0);
-                        let remaining_wear = phys.tyre_wear[i] - replacement_threshold;
+                        let remaining_wear = car.tyre_wear[i] - replacement_threshold;
                         if wear_per_lap > 0.001 {
                             let laps = (remaining_wear / wear_per_lap).max(0.0);
                             self.stats.tyre_laps_remaining[i] =
@@ -379,37 +379,33 @@ impl Engineer {
             self.stats.last_lap_count = current_laps;
         }
 
-        if phys.speed_kmh > 30.0 {
-            if (phys.wheel_slip[0].abs() > 0.2 || phys.wheel_slip[1].abs() > 0.2)
-                && phys.brake > 0.1
-            {
+        if car.speed_kmh > 30.0 {
+            if (car.wheel_slip[0].abs() > 0.2 || car.wheel_slip[1].abs() > 0.2) && car.brake > 0.1 {
                 self.stats.lockup_frames_front += ticks_norm;
             }
-            if (phys.wheel_slip[2].abs() > 0.2 || phys.wheel_slip[3].abs() > 0.2)
-                && phys.brake > 0.1
-            {
+            if (car.wheel_slip[2].abs() > 0.2 || car.wheel_slip[3].abs() > 0.2) && car.brake > 0.1 {
                 self.stats.lockup_frames_rear += ticks_norm;
             }
         }
 
         for i in 0..4 {
-            if phys.wheel_slip[i] > 0.15 && phys.gas > 0.3 && phys.speed_kmh < 120.0 {
+            if car.wheel_slip[i] > 0.15 && car.throttle > 0.3 && car.speed_kmh < 120.0 {
                 self.stats.wheel_spin_frames += ticks_norm;
             }
         }
 
-        if phys.speed_kmh > 30.0 && phys.gas < 0.05 && phys.brake < 0.05 {
+        if car.speed_kmh > 30.0 && car.throttle < 0.05 && car.brake < 0.05 {
             self.stats.coasting_frames += ticks_norm;
         }
 
-        if phys.speed_kmh > 40.0 {
-            let front_slip = phys.wheel_slip[0].max(phys.wheel_slip[1]);
-            let rear_slip = phys.wheel_slip[2].max(phys.wheel_slip[3]);
+        if car.speed_kmh > 40.0 {
+            let front_slip = car.wheel_slip[0].max(car.wheel_slip[1]);
+            let rear_slip = car.wheel_slip[2].max(car.wheel_slip[3]);
 
-            if front_slip > 0.15 && front_slip > rear_slip + 0.05 && phys.steer_angle.abs() > 0.15 {
+            if front_slip > 0.15 && front_slip > rear_slip + 0.05 && car.steer_angle.abs() > 0.15 {
                 self.stats.understeer_frames += ticks_norm;
                 self.stats.scrubbing_frames += ticks_norm;
-                let excess = (phys.steer_angle.abs() - 0.15) * 57.2958;
+                let excess = (car.steer_angle.abs() - 0.15) * 57.2958;
                 if excess > self.stats.current_excess_steer {
                     self.stats.current_excess_steer = excess;
                 }
@@ -424,15 +420,15 @@ impl Engineer {
         // Prefer AC's own figure when it is reporting one, and fall back to
         // what we measured ourselves otherwise. Either way the strategy tab
         // has something to work with from the second lap onward.
-        let fuel_per_lap = if gfx.fuel_x_lap > 0.0 {
-            Some(gfx.fuel_x_lap)
+        let fuel_per_lap = if session.fuel_per_lap > 0.0 {
+            Some(session.fuel_per_lap)
         } else {
             self.measured_fuel_per_lap()
         };
         match fuel_per_lap {
             Some(per_lap) if per_lap > 0.0 => {
                 self.stats.fuel_consumption_rate = per_lap;
-                self.stats.fuel_laps_remaining = phys.fuel / per_lap;
+                self.stats.fuel_laps_remaining = car.fuel_litres / per_lap;
             }
             // Nothing to go on. Clear rather than leave the previous value
             // standing: it was never reset, so after a refuel or a session
@@ -444,20 +440,20 @@ impl Engineer {
             }
         }
 
-        self.stats.current_delta = phys.performance_meter;
+        self.stats.current_delta = car.reference_delta_s;
 
-        if gfx.i_best_time > 0 {
+        if session.best_lap_ms > 0 {
             self.stats.predicted_lap_time =
-                (gfx.i_best_time as f32 / 1000.0) + phys.performance_meter;
-        } else if gfx.i_last_time > 0 {
-            self.stats.predicted_lap_time = gfx.i_last_time as f32 / 1000.0;
+                (session.best_lap_ms as f32 / 1000.0) + car.reference_delta_s;
+        } else if session.last_lap_ms > 0 {
+            self.stats.predicted_lap_time = session.last_lap_ms as f32 / 1000.0;
         }
     }
 
-    fn analyze_driving_style(&mut self, phys: &AcPhysics) {
-        let gas_diff = (phys.gas - self.driving_style.prev_gas).abs();
-        let brake_diff = (phys.brake - self.driving_style.prev_brake).abs();
-        let steer_diff = (phys.steer_angle - self.driving_style.prev_steer).abs();
+    fn analyze_driving_style(&mut self, car: &Car) {
+        let gas_diff = (car.throttle - self.driving_style.prev_gas).abs();
+        let brake_diff = (car.brake - self.driving_style.prev_brake).abs();
+        let steer_diff = (car.steer_angle - self.driving_style.prev_steer).abs();
 
         let throttle_smoothness = (100.0 - (gas_diff * 1000.0)).clamp(0.0, 100.0);
         let brake_smoothness = (100.0 - (brake_diff * 1000.0)).clamp(0.0, 100.0);
@@ -466,19 +462,19 @@ impl Engineer {
         self.driving_style.smoothness = 0.95 * self.driving_style.smoothness
             + 0.05 * (throttle_smoothness + brake_smoothness + steer_smoothness) / 3.0;
 
-        self.driving_style.prev_gas = phys.gas;
-        self.driving_style.prev_brake = phys.brake;
-        self.driving_style.prev_steer = phys.steer_angle;
+        self.driving_style.prev_gas = car.throttle;
+        self.driving_style.prev_brake = car.brake;
+        self.driving_style.prev_steer = car.steer_angle;
 
         // acc_g is [lateral, vertical, longitudinal]. This combined the
         // lateral and *vertical* axes, so it measured cornering plus the ~1 g
         // the car carries standing still, and never saw braking or
         // acceleration at all.
-        let combined_g = (phys.acc_g[0].powi(2) + phys.acc_g[2].powi(2)).sqrt();
+        let combined_g = (car.acc_g[0].powi(2) + car.acc_g[2].powi(2)).sqrt();
         self.driving_style.aggression =
             0.9 * self.driving_style.aggression + 0.1 * combined_g.min(2.5) / 2.5 * 100.0;
 
-        if phys.brake > 0.1 && phys.steer_angle.abs() > 0.1 {
+        if car.brake > 0.1 && car.steer_angle.abs() > 0.1 {
             self.driving_style.trail_braking =
                 0.95 * self.driving_style.trail_braking + 0.05 * 100.0;
         } else {
@@ -566,25 +562,25 @@ impl Engineer {
 
     pub fn analyze_live(
         &mut self,
-        phys: &AcPhysics,
-        gfx: &AcGraphics,
+        car: &Car,
+        session: &Session,
         setup: Option<&CarSetup>,
     ) -> Vec<Recommendation> {
         let mut recommendations = Vec::new();
 
-        self.analyze_tyre_pressure(phys, gfx, &mut recommendations);
-        self.analyze_tyre_temperature(phys, &mut recommendations);
-        self.analyze_tyre_wear(phys, &mut recommendations);
+        self.analyze_tyre_pressure(car, session, &mut recommendations);
+        self.analyze_tyre_temperature(car, &mut recommendations);
+        self.analyze_tyre_wear(car, &mut recommendations);
 
-        self.analyze_camber(phys, &mut recommendations);
-        self.analyze_suspension(phys, &mut recommendations);
-        self.analyze_brakes(phys, &mut recommendations);
+        self.analyze_camber(car, &mut recommendations);
+        self.analyze_suspension(car, &mut recommendations);
+        self.analyze_brakes(car, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
-        self.analyze_aero(phys, &mut recommendations);
+        self.analyze_aero(car, &mut recommendations);
 
         self.analyze_driving_errors(&mut recommendations);
-        self.analyze_strategy(phys, gfx, &mut recommendations);
-        self.analyze_ffb_clipping(phys, &mut recommendations);
+        self.analyze_strategy(car, session, &mut recommendations);
+        self.analyze_ffb_clipping(car, &mut recommendations);
 
         recommendations.sort_by(|a, b| {
             b.severity
@@ -600,7 +596,7 @@ impl Engineer {
         recommendations
     }
 
-    fn analyze_suspension(&mut self, _phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_suspension(&mut self, _car: &Car, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         // Which corners, not merely whether. The loop used to break on the
         // first one over the threshold, which was enough to raise the alert and
@@ -670,11 +666,11 @@ impl Engineer {
         }
     }
 
-    fn analyze_aero(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_aero(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         if self.stats.high_speed_rake != 0.0
             && self.stats.low_speed_rake != 0.0
-            && phys.speed_kmh > 150.0
+            && car.speed_kmh > 150.0
         {
             let rake_loss = self.stats.low_speed_rake - self.stats.high_speed_rake;
             if self.check_hysteresis("aero_rake", rake_loss > 10.0) && rake_loss > 10.0 {
@@ -804,7 +800,7 @@ impl Engineer {
         advice
     }
 
-    fn analyze_ffb_clipping(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_ffb_clipping(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         let clip_ratio = if self.stats.total_frames > 0 {
             self.stats.ffb_clip_frames as f32 / self.stats.total_frames as f32
@@ -812,7 +808,7 @@ impl Engineer {
             0.0
         };
 
-        let is_clipping = clip_ratio > 0.05 && phys.speed_kmh > 10.0;
+        let is_clipping = clip_ratio > 0.05 && car.speed_kmh > 10.0;
 
         if self.check_hysteresis("ffb_clip", is_clipping) && is_clipping {
             recs.push(Recommendation {
@@ -920,13 +916,13 @@ impl Engineer {
 
     fn analyze_tyre_pressure(
         &mut self,
-        phys: &AcPhysics,
-        gfx: &AcGraphics,
+        car: &Car,
+        session: &Session,
         recs: &mut Vec<Recommendation>,
     ) {
         let ru = self.is_ru();
 
-        let compound_name = gfx.tyre_compound.to_string().to_lowercase();
+        let compound_name = session.compound.to_string().to_lowercase();
 
         let class_name = if compound_name.contains("street")
             || compound_name.contains("sport")
@@ -955,18 +951,18 @@ impl Engineer {
             (pressure_min + pressure_max) / 2.0
         };
 
-        let grip_compensation = (1.0 - gfx.surface_grip.clamp(0.80, 1.0)) * 1.5;
+        let grip_compensation = (1.0 - session.surface_grip.clamp(0.80, 1.0)) * 1.5;
         let optimal_pressure = base_optimal + grip_compensation;
 
         let mut low: Vec<usize> = Vec::new();
         let mut high: Vec<usize> = Vec::new();
 
         for i in 0..4 {
-            let pressure = phys.wheels_pressure[i];
+            let pressure = car.tyre_pressure_psi[i];
             let is_error = pressure < pressure_min || pressure > pressure_max;
 
             let key = format!("pres_{}", i);
-            if !self.check_hysteresis(&key, is_error) || phys.speed_kmh <= 10.0 || !is_error {
+            if !self.check_hysteresis(&key, is_error) || car.speed_kmh <= 10.0 || !is_error {
                 continue;
             }
 
@@ -989,7 +985,7 @@ impl Engineer {
             }
             let average = corners
                 .iter()
-                .map(|i| phys.wheels_pressure[*i])
+                .map(|i| car.tyre_pressure_psi[*i])
                 .sum::<f32>()
                 / corners.len() as f32;
             let difference = (average - optimal_pressure).abs();
@@ -1022,7 +1018,7 @@ impl Engineer {
                     .iter()
                     .map(|i| Parameter {
                         name: CORNER_NAMES[*i].to_string(),
-                        current: phys.wheels_pressure[*i],
+                        current: car.tyre_pressure_psi[*i],
                         target: optimal_pressure,
                         unit: formatter.pressure_symbol().to_string(),
                     })
@@ -1063,7 +1059,7 @@ impl Engineer {
                     evidence: crate::confidence::Evidence::from_values(
                         corners
                             .iter()
-                            .map(|i| phys.wheels_pressure[*i] - optimal_pressure),
+                            .map(|i| car.tyre_pressure_psi[*i] - optimal_pressure),
                     ),
                 }),
             });
@@ -1073,7 +1069,7 @@ impl Engineer {
         push(&high, false);
     }
 
-    fn analyze_tyre_wear(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_tyre_wear(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
 
         // AC counts wear down from 100, so all four corners reading zero is not
@@ -1081,7 +1077,7 @@ impl Engineer {
         // yet. Without this the panel opens with four CRITICAL lines telling a
         // driver who just left the pits that every tyre is gone, which is the
         // kind of thing that gets an engineer ignored for the rest of the race.
-        if phys.tyre_wear.iter().all(|wear| *wear <= 0.0) {
+        if car.tyre_wear.iter().all(|wear| *wear <= 0.0) {
             return;
         }
 
@@ -1098,7 +1094,7 @@ impl Engineer {
         let mut worn: Vec<usize> = Vec::new();
         let mut critical: Vec<usize> = Vec::new();
 
-        for (i, wear) in phys.tyre_wear.iter().copied().enumerate() {
+        for (i, wear) in car.tyre_wear.iter().copied().enumerate() {
             let is_worn = wear < warning_threshold;
             // The hysteresis is still per corner: it is per-corner state, and
             // one wheel picking up a flat spot should not reset the timers on
@@ -1125,7 +1121,7 @@ impl Engineer {
             }
             let lowest = corners
                 .iter()
-                .map(|i| phys.tyre_wear[*i])
+                .map(|i| car.tyre_wear[*i])
                 .fold(f32::MAX, f32::min);
             let where_ = Self::corner_phrase(corners, ru);
             let where_low = Self::corner_phrase_mid(corners, ru);
@@ -1147,7 +1143,7 @@ impl Engineer {
                     .iter()
                     .map(|i| Parameter {
                         name: format!("{} life", CORNER_NAMES[*i]),
-                        current: phys.tyre_wear[*i],
+                        current: car.tyre_wear[*i],
                         target: 100.0,
                         unit: "%".to_string(),
                     })
@@ -1195,7 +1191,7 @@ impl Engineer {
                     evidence: crate::confidence::Evidence::from_values(
                         corners
                             .iter()
-                            .map(|i| warning_threshold - phys.tyre_wear[*i]),
+                            .map(|i| warning_threshold - car.tyre_wear[*i]),
                     ),
                 }),
             });
@@ -1213,13 +1209,13 @@ impl Engineer {
     /// wheels reads -0.023 rad on the left and +0.021 on the right. Negating
     /// the right-hand corners puts all four on one scale, where negative means
     /// the top of the tyre leans in — which is what a driver means by camber.
-    fn camber_degrees(phys: &AcPhysics, corner: usize) -> f32 {
+    fn camber_degrees(car: &Car, corner: usize) -> f32 {
         let sign = if corner == 1 || corner == 3 {
             -1.0
         } else {
             1.0
         };
-        phys.camber_rad[corner].to_degrees() * sign
+        car.camber_rad[corner].to_degrees() * sign
     }
 
     /// Cornering ticks needed before the camber average is worth publishing.
@@ -1233,7 +1229,7 @@ impl Engineer {
     /// cornering — see the field. The instantaneous spread this used to read
     /// is near zero on every straight, so it published four Info lines about
     /// nothing every time the car left a corner.
-    fn analyze_camber(&self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_camber(&self, car: &Car, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         if self.stats.camber_frames < Self::CAMBER_MIN_FRAMES {
             return;
@@ -1274,7 +1270,7 @@ impl Engineer {
             // and printing it read as "now: -9" beside a car showing -1.3°.
             let now = corners
                 .iter()
-                .map(|i| Self::camber_degrees(phys, *i))
+                .map(|i| Self::camber_degrees(car, *i))
                 .sum::<f32>()
                 / corners.len() as f32;
             let now_clause = if now.abs() > 0.05 {
@@ -1366,7 +1362,7 @@ impl Engineer {
         push(&too_little, true);
     }
 
-    fn analyze_tyre_temperature(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_tyre_temperature(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
         let min_temp = self
             .config
             .alerts
@@ -1379,7 +1375,7 @@ impl Engineer {
             .max(self.config.alerts.tyre_temp_max);
         let ru = self.is_ru();
 
-        if phys.speed_kmh <= 100.0 {
+        if car.speed_kmh <= 100.0 {
             return;
         }
 
@@ -1387,7 +1383,7 @@ impl Engineer {
         let mut hot: Vec<usize> = Vec::new();
 
         for i in 0..4 {
-            let temp = phys.get_avg_tyre_temp(i);
+            let temp = car.avg_tyre_temp_c(i);
             let out_of_band = temp < min_temp || temp > max_temp;
             // Same gate as the pressure and wear alerts. This ran on every
             // frame, so a tyre that stayed cold produced a fresh recommendation
@@ -1406,7 +1402,7 @@ impl Engineer {
 
         if !cold.is_empty() {
             let average =
-                cold.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / cold.len() as f32;
+                cold.iter().map(|i| car.avg_tyre_temp_c(*i)).sum::<f32>() / cold.len() as f32;
             recs.push(Recommendation {
                 component: "Tyres".tr(ru).to_string(),
                 category: "Temperature".tr(ru).to_string(),
@@ -1440,7 +1436,7 @@ impl Engineer {
                         ],
                     ),
                     evidence: crate::confidence::Evidence::from_values(
-                        cold.iter().map(|i| min_temp - phys.get_avg_tyre_temp(*i)),
+                        cold.iter().map(|i| min_temp - car.avg_tyre_temp_c(*i)),
                     ),
                 }),
             });
@@ -1448,7 +1444,7 @@ impl Engineer {
 
         if !hot.is_empty() {
             let average =
-                hot.iter().map(|i| phys.get_avg_tyre_temp(*i)).sum::<f32>() / hot.len() as f32;
+                hot.iter().map(|i| car.avg_tyre_temp_c(*i)).sum::<f32>() / hot.len() as f32;
             recs.push(Recommendation {
                 component: "Tyres".tr(ru).to_string(),
                 category: "Overheat".tr(ru).to_string(),
@@ -1488,14 +1484,14 @@ impl Engineer {
                         ],
                     ),
                     evidence: crate::confidence::Evidence::from_values(
-                        hot.iter().map(|i| phys.get_avg_tyre_temp(*i) - max_temp),
+                        hot.iter().map(|i| car.avg_tyre_temp_c(*i) - max_temp),
                     ),
                 }),
             });
         }
     }
 
-    fn analyze_brakes(&mut self, phys: &AcPhysics, recs: &mut Vec<Recommendation>) {
+    fn analyze_brakes(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
         let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
 
@@ -1505,7 +1501,7 @@ impl Engineer {
             // it this pushed a fresh recommendation on every single frame the
             // brake was over temperature — dozens a second, burying every
             // other message in the list.
-            let too_hot = phys.brake_temp[i] > max_temp;
+            let too_hot = car.brake_temp_c[i] > max_temp;
             if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
                 cooking.push(i);
             }
@@ -1521,7 +1517,7 @@ impl Engineer {
         // place in the application that did.
         let hottest = cooking
             .iter()
-            .map(|i| phys.brake_temp[*i])
+            .map(|i| car.brake_temp_c[*i])
             .fold(0.0_f32, f32::max);
         let formatter = self.config.formatter();
 
@@ -1558,7 +1554,7 @@ impl Engineer {
                     ],
                 ),
                 evidence: crate::confidence::Evidence::from_values(
-                    cooking.iter().map(|i| phys.brake_temp[*i] - max_temp),
+                    cooking.iter().map(|i| car.brake_temp_c[*i] - max_temp),
                 ),
             }),
         });
@@ -1797,7 +1793,7 @@ impl Engineer {
     /// A `Chain` filled in here would be three fields of ceremony that made the
     /// advice look better researched than it is, and that is the opposite of
     /// what the field is for.
-    fn analyze_strategy(&self, phys: &AcPhysics, gfx: &AcGraphics, recs: &mut Vec<Recommendation>) {
+    fn analyze_strategy(&self, car: &Car, session: &Session, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
 
         if self.stats.fuel_laps_remaining < self.config.alerts.fuel_warning_laps
@@ -1819,23 +1815,25 @@ impl Engineer {
             });
         }
 
-        if (gfx.session_time_left > 0.0 || gfx.number_of_laps > 0) && gfx.fuel_x_lap > 0.0 {
+        if (session.session_time_left_ms > 0.0 || session.total_laps > 0)
+            && session.fuel_per_lap > 0.0
+        {
             // Whole laps, not the display fraction: a timed race runs until
             // the leader completes the lap the clock ran out on, and the lap
             // already in progress still has to be finished.
             let laps_remaining_in_race = crate::session_info::SessionTiming::laps_to_fuel_for(
-                gfx.session_time_left,
-                gfx.i_best_time,
-                gfx.i_last_time,
-                gfx.number_of_laps,
-                gfx.completed_laps,
-                gfx.normalized_car_position,
+                session.session_time_left_ms,
+                session.best_lap_ms,
+                session.last_lap_ms,
+                session.total_laps,
+                session.completed_laps,
+                session.track_position,
             );
 
             if laps_remaining_in_race > 0.0 {
-                let fuel_needed =
-                    (laps_remaining_in_race * gfx.fuel_x_lap) + self.config.fuel_safety_margin;
-                let fuel_diff = phys.fuel - fuel_needed;
+                let fuel_needed = (laps_remaining_in_race * session.fuel_per_lap)
+                    + self.config.fuel_safety_margin;
+                let fuel_diff = car.fuel_litres - fuel_needed;
 
                 if fuel_diff < -1.0 {
                     recs.push(Recommendation {
@@ -1846,7 +1844,7 @@ impl Engineer {
                         action: "Save Fuel / Box".tr(ru).to_string(),
                         parameters: vec![Parameter {
                             name: "Need".to_string(),
-                            current: phys.fuel,
+                            current: car.fuel_litres,
                             target: fuel_needed,
                             unit: "L".to_string(),
                         }],
@@ -1869,34 +1867,34 @@ mod tests {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
 
-        let mut phys = AcPhysics {
+        let mut car = Car {
             tyre_wear: [0.0; 4],
             ..Default::default()
         };
         let mut recs = Vec::new();
-        engineer.analyze_tyre_wear(&phys, &mut recs);
+        engineer.analyze_tyre_wear(&car, &mut recs);
         assert!(recs.is_empty(), "no wear data means no wear advice");
 
         // One corner reporting something plausible is data, and a corner at 40%
         // in that state is worth saying out loud. Alerts are held back for a
         // second before they are reported, so the timer is aged by hand here
         // rather than by sleeping through it.
-        phys.tyre_wear = [98.0, 97.0, 40.0, 96.0];
+        car.tyre_wear = [98.0, 97.0, 40.0, 96.0];
         let aged = std::time::Instant::now() - std::time::Duration::from_secs(2);
         engineer
             .alert_timers
             .insert("wear_2".to_string(), (aged, std::time::Instant::now()));
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_wear(&phys, &mut recs);
+        engineer.analyze_tyre_wear(&car, &mut recs);
         assert!(
             recs.iter().any(|rec| rec.message.contains("RL")),
             "the worn corner is reported once there is data: {recs:?}"
         );
     }
     use super::{Engineer, Severity};
-    use crate::ac_structs::{AcGraphics, AcPhysics};
     use crate::config::{AppConfig, PressureUnit};
+    use crate::games::{Car, Session};
 
     /// Age every alert timer past the one-second hold, so a test does not have
     /// to sleep through it.
@@ -1972,27 +1970,27 @@ mod tests {
 
         // Over pressure, over temperature, cooking brakes and a worn set, all
         // at once — four different analysers, four different shapes of chain.
-        let phys = AcPhysics {
-            wheels_pressure: [31.0, 31.2, 30.8, 31.1],
-            tyre_core_temp: [120.0; 4],
-            tyre_temp_i: [120.0; 4],
-            tyre_temp_m: [120.0; 4],
-            tyre_temp_o: [120.0; 4],
-            brake_temp: [900.0, 910.0, 880.0, 895.0],
+        let car = Car {
+            tyre_pressure_psi: [31.0, 31.2, 30.8, 31.1],
+            tyre_core_temp_c: [120.0; 4],
+            tyre_temp_inner_c: [120.0; 4],
+            tyre_temp_middle_c: [120.0; 4],
+            tyre_temp_outer_c: [120.0; 4],
+            brake_temp_c: [900.0, 910.0, 880.0, 895.0],
             tyre_wear: [80.0, 81.0, 79.0, 82.0],
             speed_kmh: 180.0,
             ..Default::default()
         };
-        let gfx = AcGraphics {
+        let session = Session {
             surface_grip: 1.0,
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_pressure(&phys, &gfx, &mut recs);
-        engineer.analyze_tyre_temperature(&phys, &mut recs);
-        engineer.analyze_brakes(&phys, &mut recs);
-        engineer.analyze_tyre_wear(&phys, &mut recs);
+        engineer.analyze_tyre_pressure(&car, &session, &mut recs);
+        engineer.analyze_tyre_temperature(&car, &mut recs);
+        engineer.analyze_brakes(&car, &mut recs);
+        engineer.analyze_tyre_wear(&car, &mut recs);
 
         assert!(
             recs.len() >= 4,
@@ -2044,11 +2042,11 @@ mod tests {
 
     /// Drive `phys` through `update` often enough for the camber average to
     /// have something behind it.
-    fn drive(engineer: &mut Engineer, phys: &AcPhysics, ticks: u32) {
-        let gfx = AcGraphics::default();
-        let session = crate::session_info::SessionInfo::default();
+    fn drive(engineer: &mut Engineer, car: &Car, ticks: u32) {
+        let session = Session::default();
+        let info = crate::session_info::SessionInfo::default();
         for _ in 0..ticks {
-            engineer.update(phys, &gfx, &session);
+            engineer.update(car, &session, &info);
         }
     }
 
@@ -2061,17 +2059,17 @@ mod tests {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 240.0,
             acc_g: [0.0, 1.0, 0.0],
-            tyre_temp_i: [90.0; 4],
-            tyre_temp_o: [90.0; 4],
+            tyre_temp_inner_c: [90.0; 4],
+            tyre_temp_outer_c: [90.0; 4],
             ..Default::default()
         };
-        drive(&mut engineer, &phys, 600);
+        drive(&mut engineer, &car, 600);
 
         let mut recs = Vec::new();
-        engineer.analyze_camber(&phys, &mut recs);
+        engineer.analyze_camber(&car, &mut recs);
         assert!(recs.is_empty(), "ten seconds of straight line: {recs:?}");
     }
 
@@ -2082,12 +2080,12 @@ mod tests {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 160.0,
             acc_g: [1.2, 1.0, 0.0],
             // Outer edge hotter than inner: not enough negative camber.
-            tyre_temp_i: [90.0; 4],
-            tyre_temp_o: [94.0; 4],
+            tyre_temp_inner_c: [90.0; 4],
+            tyre_temp_outer_c: [94.0; 4],
             camber_rad: [
                 (-1.5f32).to_radians(),
                 1.5f32.to_radians(),
@@ -2096,10 +2094,10 @@ mod tests {
             ],
             ..Default::default()
         };
-        drive(&mut engineer, &phys, 120);
+        drive(&mut engineer, &car, 120);
 
         let mut recs = Vec::new();
-        engineer.analyze_camber(&phys, &mut recs);
+        engineer.analyze_camber(&car, &mut recs);
 
         assert_eq!(recs.len(), 1, "one fact, one line: {recs:?}");
         assert!(
@@ -2124,17 +2122,17 @@ mod tests {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 160.0,
             acc_g: [-1.2, 1.0, 0.0],
-            tyre_temp_i: [110.0, 110.0, 90.0, 90.0],
-            tyre_temp_o: [90.0, 90.0, 82.0, 82.0],
+            tyre_temp_inner_c: [110.0, 110.0, 90.0, 90.0],
+            tyre_temp_outer_c: [90.0, 90.0, 82.0, 82.0],
             ..Default::default()
         };
-        drive(&mut engineer, &phys, 120);
+        drive(&mut engineer, &car, 120);
 
         let mut recs = Vec::new();
-        engineer.analyze_camber(&phys, &mut recs);
+        engineer.analyze_camber(&car, &mut recs);
 
         assert_eq!(recs.len(), 1, "{recs:?}");
         assert!(
@@ -2155,7 +2153,7 @@ mod tests {
     /// right, which is a car about to spin rather than a normal setup.
     #[test]
     fn the_two_sides_of_the_car_report_camber_on_one_scale() {
-        let phys = AcPhysics {
+        let car = Car {
             camber_rad: [
                 (-1.3f32).to_radians(),
                 1.3f32.to_radians(),
@@ -2166,12 +2164,12 @@ mod tests {
         };
         for corner in 0..4 {
             assert!(
-                Engineer::camber_degrees(&phys, corner) < 0.0,
+                Engineer::camber_degrees(&car, corner) < 0.0,
                 "corner {corner} reads positive on a car with negative camber"
             );
         }
-        assert!((Engineer::camber_degrees(&phys, 0) + 1.3).abs() < 0.01);
-        assert!((Engineer::camber_degrees(&phys, 1) + 1.3).abs() < 0.01);
+        assert!((Engineer::camber_degrees(&car, 0) + 1.3).abs() < 0.01);
+        assert!((Engineer::camber_degrees(&car, 1) + 1.3).abs() < 0.01);
     }
 
     /// Four corners of one problem used to be four recommendations, which is
@@ -2184,16 +2182,16 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 180.0,
-            tyre_temp_i: [55.0; 4],
-            tyre_temp_m: [55.0; 4],
-            tyre_temp_o: [55.0; 4],
+            tyre_temp_inner_c: [55.0; 4],
+            tyre_temp_middle_c: [55.0; 4],
+            tyre_temp_outer_c: [55.0; 4],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_temperature(&phys, &mut recs);
+        engineer.analyze_tyre_temperature(&car, &mut recs);
 
         assert_eq!(recs.len(), 1, "one fact, one line: {recs:?}");
         assert!(
@@ -2211,16 +2209,16 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 180.0,
-            tyre_temp_i: [130.0, 130.0, 90.0, 90.0],
-            tyre_temp_m: [130.0, 130.0, 90.0, 90.0],
-            tyre_temp_o: [130.0, 130.0, 90.0, 90.0],
+            tyre_temp_inner_c: [130.0, 130.0, 90.0, 90.0],
+            tyre_temp_middle_c: [130.0, 130.0, 90.0, 90.0],
+            tyre_temp_outer_c: [130.0, 130.0, 90.0, 90.0],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_temperature(&phys, &mut recs);
+        engineer.analyze_tyre_temperature(&car, &mut recs);
 
         assert_eq!(recs.len(), 1);
         assert!(
@@ -2238,16 +2236,16 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 180.0,
-            tyre_temp_i: [50.0, 50.0, 130.0, 130.0],
-            tyre_temp_m: [50.0, 50.0, 130.0, 130.0],
-            tyre_temp_o: [50.0, 50.0, 130.0, 130.0],
+            tyre_temp_inner_c: [50.0, 50.0, 130.0, 130.0],
+            tyre_temp_middle_c: [50.0, 50.0, 130.0, 130.0],
+            tyre_temp_outer_c: [50.0, 50.0, 130.0, 130.0],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_temperature(&phys, &mut recs);
+        engineer.analyze_tyre_temperature(&car, &mut recs);
 
         assert_eq!(recs.len(), 2, "{recs:?}");
         assert!(recs.iter().any(|rec| rec.message.contains("Fronts")));
@@ -2263,13 +2261,13 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             tyre_wear: [93.0; 4],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_wear(&phys, &mut recs);
+        engineer.analyze_tyre_wear(&car, &mut recs);
 
         assert_eq!(recs.len(), 1, "{recs:?}");
         assert_eq!(
@@ -2280,12 +2278,12 @@ mod tests {
         );
 
         // And below the critical threshold it still is one.
-        let phys = AcPhysics {
+        let car = Car {
             tyre_wear: [70.0; 4],
             ..Default::default()
         };
         let mut recs = Vec::new();
-        engineer.analyze_tyre_wear(&phys, &mut recs);
+        engineer.analyze_tyre_wear(&car, &mut recs);
         assert_eq!(recs[0].severity, Severity::Critical, "{recs:?}");
     }
 
@@ -2316,14 +2314,14 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 120.0,
-            wheels_pressure: [20.0; 4],
+            tyre_pressure_psi: [20.0; 4],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_tyre_pressure(&phys, &AcGraphics::default(), &mut recs);
+        engineer.analyze_tyre_pressure(&car, &Session::default(), &mut recs);
 
         assert_eq!(
             recs.len(),
@@ -2351,13 +2349,13 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
-            brake_temp: [950.0, 950.0, 300.0, 300.0],
+        let car = Car {
+            brake_temp_c: [950.0, 950.0, 300.0, 300.0],
             ..Default::default()
         };
 
         let mut recs = Vec::new();
-        engineer.analyze_brakes(&phys, &mut recs);
+        engineer.analyze_brakes(&car, &mut recs);
 
         assert_eq!(recs.len(), 1, "{recs:?}");
         assert!(recs[0].message.contains("Fronts"), "{}", recs[0].message);
@@ -2376,18 +2374,18 @@ mod tests {
         let mut engineer = Engineer::new(&config);
         age_the_alerts(&mut engineer);
 
-        let phys = AcPhysics {
+        let car = Car {
             speed_kmh: 180.0,
-            wheels_pressure: [20.0; 4],
+            tyre_pressure_psi: [20.0; 4],
             tyre_wear: [70.0; 4],
-            brake_temp: [950.0; 4],
-            tyre_temp_i: [130.0; 4],
-            tyre_temp_m: [130.0; 4],
-            tyre_temp_o: [130.0; 4],
+            brake_temp_c: [950.0; 4],
+            tyre_temp_inner_c: [130.0; 4],
+            tyre_temp_middle_c: [130.0; 4],
+            tyre_temp_outer_c: [130.0; 4],
             ..Default::default()
         };
 
-        let recs = engineer.analyze_live(&phys, &AcGraphics::default(), None);
+        let recs = engineer.analyze_live(&car, &Session::default(), None);
 
         // Four distinct problems. Ungrouped this was sixteen lines, and the
         // four the overlay publishes were all about tyre temperature.
@@ -2405,14 +2403,14 @@ mod tests {
         let mut config = AppConfig::default();
         config.alerts.tyre_pressure_max = 31.0;
         let mut engineer = Engineer::new(&config);
-        let physics = AcPhysics {
+        let car = Car {
             speed_kmh: 60.0,
-            wheels_pressure: [30.0; 4],
+            tyre_pressure_psi: [30.0; 4],
             ..Default::default()
         };
-        let graphics = AcGraphics::default();
+        let session = Session::default();
 
-        let recommendations = engineer.analyze_live(&physics, &graphics, None);
+        let recommendations = engineer.analyze_live(&car, &session, None);
         assert!(!recommendations.iter().any(|rec| rec.category == "Pressure"));
 
         config.alerts.tyre_pressure_max = 29.0;
@@ -2425,7 +2423,7 @@ mod tests {
                 .insert(format!("pres_{}", i), (past, past));
         }
 
-        let recommendations = engineer.analyze_live(&physics, &graphics, None);
+        let recommendations = engineer.analyze_live(&car, &session, None);
         assert!(recommendations.iter().any(|rec| rec.category == "Pressure"));
     }
 
@@ -2436,10 +2434,10 @@ mod tests {
     fn overheating_alerts_are_not_repeated_every_frame() {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
-        let graphics = AcGraphics::default();
-        let physics = AcPhysics {
+        let session = Session::default();
+        let car = Car {
             speed_kmh: 150.0,
-            brake_temp: [1500.0; 4],
+            brake_temp_c: [1500.0; 4],
             ..Default::default()
         };
 
@@ -2448,7 +2446,7 @@ mod tests {
         let mut total = 0;
         for _ in 0..50 {
             total += engineer
-                .analyze_live(&physics, &graphics, None)
+                .analyze_live(&car, &session, None)
                 .iter()
                 .filter(|rec| rec.category == "Overheat")
                 .count();
@@ -2466,31 +2464,31 @@ mod tests {
     fn fuel_estimate_falls_back_to_measured_consumption() {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
-        let session = crate::session_info::SessionInfo::default();
+        let info = crate::session_info::SessionInfo::default();
 
         // AC reports nothing, as it does on lap one and as it would
         // permanently if that offset is wrong.
-        let graphics = |laps| AcGraphics {
+        let session = |laps| Session {
             completed_laps: laps,
-            fuel_x_lap: 0.0,
+            fuel_per_lap: 0.0,
             ..Default::default()
         };
-        let physics = |fuel| AcPhysics {
-            fuel,
+        let car = |fuel| Car {
+            fuel_litres: fuel,
             speed_kmh: 120.0,
             ..Default::default()
         };
 
         // Start the stint with a full tank.
-        engineer.update(&physics(50.0), &graphics(0), &session);
+        engineer.update(&car(50.0), &session(0), &info);
         assert_eq!(
             engineer.stats.fuel_laps_remaining, 0.0,
             "nothing measured yet, so no estimate is claimed"
         );
 
         // Two laps at 2.5 L each.
-        engineer.update(&physics(47.5), &graphics(1), &session);
-        engineer.update(&physics(45.0), &graphics(2), &session);
+        engineer.update(&car(47.5), &session(1), &info);
+        engineer.update(&car(45.0), &session(2), &info);
 
         assert!(
             (engineer.stats.fuel_consumption_rate - 2.5).abs() < 0.01,
@@ -2510,23 +2508,23 @@ mod tests {
     fn refuelling_discards_the_measured_history() {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
-        let session = crate::session_info::SessionInfo::default();
-        let graphics = |laps| AcGraphics {
+        let info = crate::session_info::SessionInfo::default();
+        let session = |laps| Session {
             completed_laps: laps,
             ..Default::default()
         };
-        let physics = |fuel| AcPhysics {
-            fuel,
+        let car = |fuel| Car {
+            fuel_litres: fuel,
             speed_kmh: 120.0,
             ..Default::default()
         };
 
-        engineer.update(&physics(20.0), &graphics(0), &session);
-        engineer.update(&physics(17.5), &graphics(1), &session);
+        engineer.update(&car(20.0), &session(0), &info);
+        engineer.update(&car(17.5), &session(1), &info);
         assert!(engineer.stats.fuel_laps_remaining > 0.0);
 
         // Pit stop: the tank goes up.
-        engineer.update(&physics(60.0), &graphics(2), &session);
+        engineer.update(&car(60.0), &session(2), &info);
         assert_eq!(
             engineer.stats.fuel_laps_remaining, 0.0,
             "the estimate is dropped rather than carried across the stop"
@@ -2540,17 +2538,17 @@ mod tests {
     fn aggression_ignores_the_vertical_axis() {
         let config = AppConfig::default();
         let mut engineer = Engineer::new(&config);
-        let graphics = AcGraphics::default();
-        let session = crate::session_info::SessionInfo::default();
+        let session = Session::default();
+        let info = crate::session_info::SessionInfo::default();
 
         // Straight line, steady speed, 1 g down. Nothing aggressive here.
-        let cruising = AcPhysics {
+        let cruising = Car {
             speed_kmh: 120.0,
             acc_g: [0.0, 1.0, 0.0],
             ..Default::default()
         };
         for _ in 0..200 {
-            engineer.update(&cruising, &graphics, &session);
+            engineer.update(&cruising, &session, &info);
         }
         let cruising_aggression = engineer.driving_style.aggression;
         assert!(
@@ -2560,13 +2558,13 @@ mod tests {
 
         // Hard braking. This is the case the old formula could not see at all,
         // because longitudinal g lives at index 2.
-        let braking = AcPhysics {
+        let braking = Car {
             speed_kmh: 120.0,
             acc_g: [0.0, 1.0, -1.8],
             ..Default::default()
         };
         for _ in 0..200 {
-            engineer.update(&braking, &graphics, &session);
+            engineer.update(&braking, &session, &info);
         }
         assert!(
             engineer.driving_style.aggression > cruising_aggression + 20.0,
@@ -2590,14 +2588,14 @@ pub struct TyrePressureOptimizer {
 }
 
 impl TyrePressureOptimizer {
-    pub fn calculate(phys: &AcPhysics, target_psi: f32) -> Self {
+    pub fn calculate(car: &Car, target_psi: f32) -> Self {
         let labels = ["FL", "FR", "RL", "RR"];
         let mut corners = Vec::with_capacity(4);
 
         for (i, label) in labels.iter().enumerate() {
-            let p_psi = phys.wheels_pressure[i];
-            let t_i = phys.tyre_temp_i[i];
-            let t_o = phys.tyre_temp_o[i];
+            let p_psi = car.tyre_pressure_psi[i];
+            let t_i = car.tyre_temp_inner_c[i];
+            let t_o = car.tyre_temp_outer_c[i];
             let spread = t_i - t_o;
             let p_delta = target_psi - p_psi;
 

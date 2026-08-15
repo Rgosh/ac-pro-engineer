@@ -400,7 +400,7 @@ fn render_sector_advice(
         let rl_brake = lap.avg_brake_temp[2];
         let rr_brake = lap.avg_brake_temp[3];
 
-        // AC publishes ride height per axle, not per corner — AcPhysics
+        // AC publishes ride height per axle, not per corner — the reading
         // carries [front, rear] and nothing more. Both corners of an axle
         // therefore show the same number; there is no per-corner measurement
         // to display, and none to compare.
@@ -800,7 +800,7 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let Some(phys) = app.ac_physics() else {
+    let Some(phys) = app.car() else {
         f.render_widget(
             Paragraph::new("Waiting for telemetry...".tr(is_ru))
                 .style(Style::default().fg(Color::DarkGray))
@@ -810,8 +810,8 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         return;
     };
 
-    let gfx = app.ac_graphics();
-    let ambient = phys.air_temp;
+    let gfx = app.session();
+    let ambient = phys.air_temp_c;
     let grip = gfx.map(|g| g.surface_grip).unwrap_or(1.0);
 
     let mut lines = Vec::new();

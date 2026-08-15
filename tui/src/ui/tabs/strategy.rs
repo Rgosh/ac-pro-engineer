@@ -9,7 +9,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // Through the accessors, so --demo populates this tab like the others.
     // Reading `app.mem` directly meant the whole strategy tab said "no data"
     // in demo mode.
-    let (Some(gfx_ref), Some(phys_ref)) = (app.ac_graphics(), app.ac_physics()) else {
+    let (Some(gfx_ref), Some(phys_ref)) = (app.session(), app.car()) else {
         let block = Block::default()
             .title("STRATEGY".tr_lang(lang).to_string())
             .borders(Borders::ALL)
@@ -130,8 +130,8 @@ fn render_fuel_calculator(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    gfx: &ac_core::ac_structs::AcGraphics,
-    phys: &ac_core::ac_structs::AcPhysics,
+    gfx: &ac_core::games::Session,
+    phys: &ac_core::games::Car,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
@@ -145,19 +145,19 @@ fn render_fuel_calculator(
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let fuel_per_lap = gfx.fuel_x_lap;
-    let current_fuel = phys.fuel;
+    let fuel_per_lap = gfx.fuel_per_lap;
+    let current_fuel = phys.fuel_litres;
 
     let mut laps_remaining = ac_core::session_info::SessionTiming::remaining_laps(
-        gfx.session_time_left,
-        gfx.i_best_time,
-        gfx.i_last_time,
-        gfx.number_of_laps,
+        gfx.session_time_left_ms,
+        gfx.best_lap_ms,
+        gfx.last_lap_ms,
+        gfx.total_laps,
         gfx.completed_laps,
-        gfx.normalized_car_position,
+        gfx.track_position,
     );
 
-    if laps_remaining == 0.0 && gfx.session < 3 {
+    if laps_remaining == 0.0 && gfx.kind.has_no_finish() {
         laps_remaining = 5.0;
     }
 
@@ -257,7 +257,7 @@ fn render_tyres_strategy(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    phys: &ac_core::ac_structs::AcPhysics,
+    phys: &ac_core::games::Car,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
@@ -369,8 +369,8 @@ fn render_environment(
     f: &mut Frame<'_>,
     area: Rect,
     app: &AppState,
-    gfx: &ac_core::ac_structs::AcGraphics,
-    phys: &ac_core::ac_structs::AcPhysics,
+    gfx: &ac_core::games::Session,
+    phys: &ac_core::games::Car,
 ) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
@@ -401,17 +401,17 @@ fn render_environment(
         ]),
         Row::new(vec![
             Cell::from("Air Temp".tr_lang(lang).to_string()),
-            Cell::from(fmt.format_temp_prec(phys.air_temp, 1))
+            Cell::from(fmt.format_temp_prec(phys.air_temp_c, 1))
                 .style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
             Cell::from("Road Temp".tr_lang(lang).to_string()),
-            Cell::from(fmt.format_temp_prec(phys.road_temp, 1))
+            Cell::from(fmt.format_temp_prec(phys.road_temp_c, 1))
                 .style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![
             Cell::from("Wind Spd".tr_lang(lang).to_string()),
-            Cell::from(format!("{:.1} km/h", gfx.wind_speed))
+            Cell::from(format!("{:.1} km/h", gfx.wind_speed_kmh))
                 .style(Style::default().fg(Color::White)),
         ]),
     ];

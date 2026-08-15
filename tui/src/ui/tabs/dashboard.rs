@@ -91,9 +91,9 @@ fn render_tyre_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     render_tyre_widget(f, rear[1], 3, app, "RR");
 
     // Accessor again, so the summary populates under --demo too.
-    if let Some(data) = app.ac_physics() {
-        let avg_pressure: f32 = data.wheels_pressure.iter().sum::<f32>() / 4.0;
-        let avg_temp: f32 = (0..4).map(|i| data.get_avg_tyre_temp(i)).sum::<f32>() / 4.0;
+    if let Some(data) = app.car() {
+        let avg_pressure: f32 = data.tyre_pressure_psi.iter().sum::<f32>() / 4.0;
+        let avg_temp: f32 = (0..4).map(|i| data.avg_tyre_temp_c(i)).sum::<f32>() / 4.0;
 
         let fmt = app.config.formatter();
         let summary_text = vec![
@@ -127,7 +127,7 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // mock data, which is why the whole cockpit was blank under --demo. And
     // an early `return` drawing nothing at all is indistinguishable from a
     // rendering bug, so say what is going on instead.
-    let (Some(phys), Some(gfx)) = (app.ac_physics(), app.ac_graphics()) else {
+    let (Some(phys), Some(gfx)) = (app.car(), app.session()) else {
         render_waiting_panel(f, area, app, "COCKPIT");
         return;
     };
@@ -155,16 +155,16 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     } else {
         8000.0
     };
-    let rpm_ratio = (phys.rpms as f32 / max_rpm).clamp(0.0, 1.0);
+    let rpm_ratio = (phys.rpm as f32 / max_rpm).clamp(0.0, 1.0);
 
     let (rpm_color, label_text) = if rpm_ratio > 0.96 {
         (Color::Blue, "SHIFT NOW!".to_string())
     } else if rpm_ratio > 0.90 {
-        (Color::Red, format!("{} RPM", phys.rpms))
+        (Color::Red, format!("{} RPM", phys.rpm))
     } else if rpm_ratio > 0.75 {
-        (Color::Yellow, format!("{} RPM", phys.rpms))
+        (Color::Yellow, format!("{} RPM", phys.rpm))
     } else {
-        (Color::Green, format!("{} RPM", phys.rpms))
+        (Color::Green, format!("{} RPM", phys.rpm))
     };
 
     let gauge_style = if rpm_ratio > 0.96 {
@@ -189,11 +189,7 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(layout[1]);
 
-    let gear_char = match phys.gear {
-        0 => "R".to_string(),
-        1 => "N".to_string(),
-        n => format!("{}", n - 1),
-    };
+    let gear_char = crate::ui::widgets::gear_label(phys.gear);
 
     let speed_block = Block::default().borders(Borders::RIGHT);
     let speed_p = Paragraph::new(vec![
@@ -232,7 +228,7 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     render_mini_bar(f, pedals_layout[0], "C", phys.clutch, Color::Blue);
     render_mini_bar(f, pedals_layout[1], "B", phys.brake, Color::Red);
-    render_mini_bar(f, pedals_layout[2], "T", phys.gas, Color::Green);
+    render_mini_bar(f, pedals_layout[2], "T", phys.throttle, Color::Green);
 
     let elec_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -250,7 +246,7 @@ fn render_central_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let tc_level = phys.tc_level;
     let abs_level = phys.abs_level;
-    let tc_cut = gfx.tccut;
+    let tc_cut = gfx.tc_cut;
     let map_level = gfx.engine_map;
     let bias = phys.brake_bias * 100.0;
 
@@ -349,7 +345,7 @@ fn render_mini_bar(f: &mut Frame<'_>, area: Rect, label: &str, val: f32, color: 
 }
 
 fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let (Some(phys), Some(gfx)) = (app.ac_physics(), app.ac_graphics()) else {
+    let (Some(phys), Some(gfx)) = (app.car(), app.session()) else {
         render_waiting_panel(f, area, app, "SESSION");
         return;
     };
@@ -390,7 +386,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Span::styled("Time Left: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 ac_core::session_info::SessionTiming::format_time_left_minutes(
-                    gfx.session_time_left,
+                    gfx.session_time_left_ms,
                 ),
                 Style::default().fg(Color::Yellow),
             ),
@@ -402,7 +398,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(Color::Gray),
             ),
             Span::styled(
-                format!("{:.1} L", phys.fuel),
+                format!("{:.1} L", phys.fuel_litres),
                 Style::default().fg(get_fuel_color(app.engineer.stats.fuel_laps_remaining)),
             ),
         ]),
@@ -423,9 +419,9 @@ fn render_quick_info_vertical(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_tyre_widget(f: &mut Frame<'_>, area: Rect, idx: usize, app: &AppState, label: &str) {
-    if let Some(data) = app.ac_physics() {
-        let temp = data.get_avg_tyre_temp(idx);
-        let press = data.wheels_pressure[idx];
+    if let Some(data) = app.car() {
+        let temp = data.avg_tyre_temp_c(idx);
+        let press = data.tyre_pressure_psi[idx];
         let wear = data.tyre_wear[idx];
 
         let block = Block::default().borders(Borders::ALL).title(label);

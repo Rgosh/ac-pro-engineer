@@ -21,6 +21,9 @@
 //!   `if` statements through the middle of the engineer.
 
 pub mod assetto_corsa;
+pub mod reading;
+
+pub use reading::{Car, Fixed, Reading, Session, SessionKind, Status};
 
 /// Which simulator a source speaks for.
 ///
@@ -57,6 +60,12 @@ pub struct Capabilities {
 /// recent reading; everything about *interpreting* that reading belongs above,
 /// in the analyser and the engineer, which is what makes them reusable when a
 /// second game arrives.
+///
+/// The reading comes out of [`poll`](Self::poll) and nowhere else. It used to
+/// come out beside it, through accessors returning Assetto Corsa's own structs,
+/// which meant the trait could be — and was — bypassed entirely: five screens,
+/// the engineer and the analyser read AC's memory layout directly while this
+/// file described a boundary that carried no data.
 pub trait Source {
     /// Which game this is, for broadcast messages and logs.
     fn id(&self) -> GameId;
@@ -64,8 +73,8 @@ pub trait Source {
     /// What it can and cannot report.
     fn capabilities(&self) -> Capabilities;
 
-    /// Take a fresh reading. `false` means nothing could be read this tick —
+    /// Take a fresh reading. `None` means nothing could be read this tick —
     /// the game is not running, or has not published yet — which is a normal
     /// state and not an error.
-    fn poll(&mut self) -> bool;
+    fn poll(&mut self) -> Option<Reading>;
 }

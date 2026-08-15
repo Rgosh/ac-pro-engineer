@@ -1,7 +1,7 @@
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic, StringU16_33};
 use ac_core::analyzer::{LapData, RadarStats, TelemetryPoint};
 use ac_core::config::Language;
 use ac_core::engineer::{Recommendation, Severity};
+use ac_core::games::{Car, Fixed, Reading, Session, Status};
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
 use ac_tui::ui::screenshot::buffer_to_png;
@@ -52,28 +52,28 @@ fn create_populated_app_state() -> AppState {
         max_fuel: 110.0,
     };
 
-    // Mock Physics — also the base each history sample is derived from below.
-    let phys = AcPhysics {
+    // The car — also the base each history sample is derived from below.
+    let car = Car {
         speed_kmh: 248.5,
-        rpms: 11450,
-        gear: 6,
-        fuel: 36.8,
-        gas: 0.94,
+        rpm: 11450,
+        gear: 5,
+        fuel_litres: 36.8,
+        throttle: 0.94,
         brake: 0.0,
         clutch: 0.0,
         steer_angle: -0.12,
         acc_g: [1.38, 0.0, 0.65],
-        wheels_pressure: [27.4, 27.6, 27.5, 27.3],
+        tyre_pressure_psi: [27.4, 27.6, 27.5, 27.3],
         // A stint's worth of wear, not a fresh set. Every screenshot showed
         // "0%" in red on all four corners, because nothing filled this in —
         // which reads as the readout being broken rather than as no data.
         tyre_wear: [96.8, 96.4, 94.9, 95.2],
-        tyre_temp_i: [89.2, 88.0, 92.1, 90.5],
-        tyre_temp_m: [86.4, 85.2, 89.0, 87.8],
-        tyre_temp_o: [82.1, 81.0, 85.2, 84.0],
-        brake_temp: [450.0, 442.0, 380.0, 375.0],
-        air_temp: 22.5,
-        road_temp: 34.0,
+        tyre_temp_inner_c: [89.2, 88.0, 92.1, 90.5],
+        tyre_temp_middle_c: [86.4, 85.2, 89.0, 87.8],
+        tyre_temp_outer_c: [82.1, 81.0, 85.2, 84.0],
+        brake_temp_c: [450.0, 442.0, 380.0, 375.0],
+        air_temp_c: 22.5,
+        road_temp_c: 34.0,
         tc: 3.0,
         abs: 2.0,
         // The cockpit block reads these, and at zero it showed "MAP 0" and
@@ -81,37 +81,39 @@ fn create_populated_app_state() -> AppState {
         brake_bias: 0.567,
         ..Default::default()
     };
-    app.mock_physics = Some(phys);
-
-    // Mock Graphics
-    app.mock_graphics = Some(AcGraphics {
+    // The session as it stands.
+    let session = Session {
+        status: Status::Live,
         surface_grip: 0.98,
         completed_laps: 5,
-        i_current_time: 42500,
-        i_last_time: 81452,
-        i_best_time: 81452,
+        current_lap_ms: 42500,
+        last_lap_ms: 81452,
+        best_lap_ms: 81452,
         position: 2,
-        fuel_x_lap: 2.85,
+        fuel_per_lap: 2.85,
         // Half an hour left, a car a third of the way round, and a delta worth
         // looking at. The footer and the session block read these, and with
         // them at zero the screenshots showed "-:--.---" and "0.0 min" beside
         // live telemetry.
-        session_time_left: 1_512_000.0,
-        normalized_car_position: 0.34,
-        current_sector_index: 1,
+        session_time_left_ms: 1_512_000.0,
+        track_position: 0.34,
+        current_sector: 1,
         engine_map: 4,
-        last_sector_time: 27_940,
-        number_of_laps: 0,
+        last_sector_ms: 27_940,
+        total_laps: 0,
         ..Default::default()
-    });
+    };
 
-    // Mock Static
-    app.mock_static = Some(AcStatic {
-        max_rpm: 12500,
-        max_fuel: 110.0,
-        car_model: StringU16_33::from("ks_ferrari_sf70h"),
-        track: StringU16_33::from("monza"),
-        ..Default::default()
+    app.reading = Some(Reading {
+        car,
+        session,
+        fixed: Fixed {
+            max_rpm: 12500,
+            max_fuel_litres: 110.0,
+            car_model: "ks_ferrari_sf70h".to_string(),
+            track: "monza".to_string(),
+            ..Default::default()
+        },
     });
 
     // Physics & Telemetry History
@@ -119,10 +121,10 @@ fn create_populated_app_state() -> AppState {
     let mut trace_points = Vec::with_capacity(300);
     for i in 0..300 {
         let t = i as f32 * 0.05;
-        let mut p = phys;
+        let mut p = car;
         p.speed_kmh = 180.0 + (t * 2.0).sin() * 70.0;
-        p.rpms = (8000.0 + (t * 2.0).sin() * 3500.0) as i32;
-        p.gas = (0.5 + (t * 1.5).cos() * 0.5).clamp(0.0, 1.0);
+        p.rpm = (8000.0 + (t * 2.0).sin() * 3500.0) as i32;
+        p.throttle = (0.5 + (t * 1.5).cos() * 0.5).clamp(0.0, 1.0);
         p.brake = if (t * 1.5).cos() < -0.3 { 0.8 } else { 0.0 };
         p.steer_angle = (t * 0.8).sin() * 0.4;
         p.acc_g = [(t * 0.8).sin() * 1.5, 0.0, (t * 1.5).cos() * 1.2];
@@ -140,7 +142,7 @@ fn create_populated_app_state() -> AppState {
             // corner detection saw the whole lap as one straight.
             distance: i as f32 / 300.0,
             speed: p.speed_kmh,
-            gas: p.gas,
+            gas: p.throttle,
             brake: p.brake,
             steer: p.steer_angle,
             gear: p.gear,
@@ -152,31 +154,27 @@ fn create_populated_app_state() -> AppState {
         });
     }
     for (index, p) in history.into_iter().enumerate() {
-        app.physics_history.push(p);
-        // The footer reads the *graphics* history for the lap times, and
+        app.car_history.push(p);
+        // The footer reads the *session* history for the lap times, and
         // nothing filled it — so every screenshot showed "L: -:--.---" and
         // "B: -:--.---" underneath a live session.
-        if let Some(mut g) = app.mock_graphics {
-            g.i_current_time = 42_500 + index as i32 * 8;
-            app.graphics_history.push(g);
-        }
+        let mut g = session;
+        g.current_lap_ms = 42_500 + index as i32 * 8;
+        app.session_history.push(g);
     }
 
     // The curated frame goes in last, so the history ends where the live
     // readouts are.
     //
-    // The header's rev bar reads `physics_history.last()` and the cockpit
+    // The header's rev bar reads `car_history.last()` and the cockpit
     // reads the live physics — the same tick in the running application, and
     // two unrelated numbers here, because the loop above walks a sine and the
     // mock is set to one good-looking frame. Every Dashboard screenshot went
     // out with "4505 / 12500 RPM" across the top and "11450 RPM" in the
     // cockpit underneath it, which reads as the program disagreeing with
     // itself.
-    app.physics_history.push(phys);
-    if let Some(mut g) = app.mock_graphics {
-        g.i_current_time = 42_500;
-        app.graphics_history.push(g);
-    }
+    app.car_history.push(car);
+    app.session_history.push(session);
 
     // Lap Data for Analysis
     let mock_lap = LapData {

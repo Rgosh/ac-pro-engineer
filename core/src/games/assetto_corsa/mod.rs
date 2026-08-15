@@ -7,11 +7,11 @@
 //! Either way what arrives here is the same bytes in the same layout.
 
 pub mod paths;
+pub mod reading;
 pub mod shm;
 pub mod structs;
 
-use crate::games::{Capabilities, GameId, Source};
-use structs::{AcGraphics, AcPhysics, AcStatic};
+use crate::games::{Capabilities, GameId, Reading, Source};
 
 /// The identifier this game goes out under.
 pub const GAME_ID: GameId = "assetto_corsa";
@@ -36,18 +36,6 @@ impl AssettoCorsa {
             memory: shm::Memory::try_connect()?,
         })
     }
-
-    pub fn physics(&self) -> &AcPhysics {
-        self.memory.physics()
-    }
-
-    pub fn graphics(&self) -> &AcGraphics {
-        self.memory.graphics()
-    }
-
-    pub fn stat(&self) -> &AcStatic {
-        self.memory.stat()
-    }
 }
 
 impl Source for AssettoCorsa {
@@ -69,7 +57,12 @@ impl Source for AssettoCorsa {
         }
     }
 
-    fn poll(&mut self) -> bool {
-        self.memory.refresh().is_ok()
+    fn poll(&mut self) -> Option<Reading> {
+        self.memory.refresh().ok()?;
+        Some(reading::reading_of(
+            self.memory.physics(),
+            self.memory.graphics(),
+            self.memory.stat(),
+        ))
     }
 }

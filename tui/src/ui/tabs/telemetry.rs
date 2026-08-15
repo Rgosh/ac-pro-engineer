@@ -1,5 +1,5 @@
 use crate::AppState;
-use ac_core::ac_structs::{COORD_X, COORD_Z};
+use ac_core::games::reading::{COORD_X, COORD_Z};
 use ac_core::i18n::Translate;
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
@@ -8,7 +8,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    if app.physics_history.is_empty() {
+    if app.car_history.is_empty() {
         let block = Block::default()
             .title("TELEMETRY".tr_lang(lang).to_string())
             .borders(Borders::ALL)
@@ -59,16 +59,16 @@ fn render_speed_rpm_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let max_x = app.config.history_size as f64;
 
     let speed_data: Vec<(f64, f64)> = app
-        .physics_history
+        .car_history
         .iter()
         .enumerate()
         .map(|(i, p)| (i as f64, p.speed_kmh as f64))
         .collect();
     let rpm_data: Vec<(f64, f64)> = app
-        .physics_history
+        .car_history
         .iter()
         .enumerate()
-        .map(|(i, p)| (i as f64, p.rpms as f64 / 25.0))
+        .map(|(i, p)| (i as f64, p.rpm as f64 / 25.0))
         .collect();
 
     let chart = Chart::new(vec![
@@ -106,13 +106,13 @@ fn render_inputs_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let max_x = app.config.history_size as f64;
 
     let gas: Vec<(f64, f64)> = app
-        .physics_history
+        .car_history
         .iter()
         .enumerate()
-        .map(|(i, p)| (i as f64, p.gas as f64 * 100.0))
+        .map(|(i, p)| (i as f64, p.throttle as f64 * 100.0))
         .collect();
     let brake: Vec<(f64, f64)> = app
-        .physics_history
+        .car_history
         .iter()
         .enumerate()
         .map(|(i, p)| (i as f64, p.brake as f64 * 100.0))
@@ -149,7 +149,7 @@ fn render_steering_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let max_x = app.config.history_size as f64;
 
     let steer: Vec<(f64, f64)> = app
-        .physics_history
+        .car_history
         .iter()
         .enumerate()
         .map(|(i, p)| (i as f64, p.steer_angle as f64 * 360.0))
@@ -214,7 +214,7 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .map(|p| (p.x as f64, p.y as f64))
             .collect();
         (points, min_x, max_x, min_y, max_y)
-    } else if app.is_demo_mode || !app.physics_history.is_empty() {
+    } else if app.is_demo_mode || !app.car_history.is_empty() {
         let mut points = Vec::with_capacity(100);
         for i in 0..100 {
             let angle = (i as f64 / 100.0) * std::f64::consts::TAU;
@@ -240,13 +240,13 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let x_bounds = [min_x - margin_x, max_x + margin_x];
     let y_bounds = [min_y - margin_y, max_y + margin_y];
 
-    let car_pos = if let Some(gfx) = app.ac_graphics() {
-        let cx = gfx.car_coordinates[COORD_X] as f64;
-        let cy = gfx.car_coordinates[COORD_Z] as f64;
+    let car_pos = if let Some(gfx) = app.session() {
+        let cx = gfx.car_position_m[COORD_X] as f64;
+        let cy = gfx.car_position_m[COORD_Z] as f64;
         if cx.is_finite() && cy.is_finite() && (cx != 0.0 || cy != 0.0) {
             Some((cx, cy))
         } else if app.is_demo_mode {
-            let progress = gfx.normalized_car_position.clamp(0.0, 1.0) as f64;
+            let progress = gfx.track_position.clamp(0.0, 1.0) as f64;
             let angle = progress * std::f64::consts::TAU;
             let cx = 400.0 * angle.cos() + 50.0 * (2.0 * angle).cos();
             let cy = 250.0 * angle.sin() + 30.0 * (3.0 * angle).sin();
@@ -288,7 +288,7 @@ fn render_friction_circle(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let theme = &app.ui_state.theme;
 
-    if let Some(data) = app.ac_physics() {
+    if let Some(data) = app.car() {
         let lat = data.acc_g[0] as f64;
         let lon = data.acc_g[2] as f64;
 
@@ -330,11 +330,11 @@ fn render_friction_circle(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     color: Color::DarkGray,
                 });
 
-                let history_len = app.physics_history.len();
+                let history_len = app.car_history.len();
                 let trail_count = 30;
                 if history_len > trail_count {
                     for i in 0..trail_count {
-                        let p = &app.physics_history[history_len - 1 - i];
+                        let p = &app.car_history[history_len - 1 - i];
 
                         ctx.draw(&Points {
                             coords: &[(p.acc_g[0] as f64, p.acc_g[2] as f64)],
@@ -375,7 +375,7 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    if let Some(phys) = app.ac_physics() {
+    if let Some(phys) = app.car() {
         let rows = vec![
             Row::new(vec![
                 Cell::from("Speed").style(Style::default().fg(Color::Gray)),
@@ -387,17 +387,8 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             ]),
             Row::new(vec![
                 Cell::from("Gear").style(Style::default().fg(Color::Gray)),
-                Cell::from(
-                    (if phys.gear == 0 {
-                        "R".into()
-                    } else if phys.gear == 1 {
-                        "N".into()
-                    } else {
-                        (phys.gear - 1).to_string()
-                    })
-                    .to_string(),
-                )
-                .style(Style::default().fg(Color::Yellow)),
+                Cell::from(crate::ui::widgets::gear_label(phys.gear))
+                    .style(Style::default().fg(Color::Yellow)),
             ]),
             Row::new(vec![
                 Cell::from("Lat G").style(Style::default().fg(Color::Gray)),

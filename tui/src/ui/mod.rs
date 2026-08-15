@@ -258,8 +258,8 @@ impl UIRenderer {
         let mut current_rpm: i32 = 0;
         let mut max_rpm: i32 = 8000;
 
-        if let Some(phys) = app.physics_history.last() {
-            current_rpm = phys.rpms;
+        if let Some(phys) = app.car_history.last() {
+            current_rpm = phys.rpm;
             let game_max = app.session_info.max_rpm;
 
             if game_max > 0 {
@@ -380,11 +380,11 @@ impl UIRenderer {
     }
 
     fn render_footer(&self, f: &mut Frame<'_>, area: Rect, app: &AppState) {
-        let (air, road, fuel, last, best) = if let Some(phys) = app.physics_history.last() {
-            let gfx = app.graphics_history.last();
-            let l = gfx.map(|g| g.i_last_time).unwrap_or(0);
-            let b = gfx.map(|g| g.i_best_time).unwrap_or(0);
-            (phys.air_temp, phys.road_temp, phys.fuel, l, b)
+        let (air, road, fuel, last, best) = if let Some(phys) = app.car_history.last() {
+            let gfx = app.session_history.last();
+            let l = gfx.map(|g| g.last_lap_ms).unwrap_or(0);
+            let b = gfx.map(|g| g.best_lap_ms).unwrap_or(0);
+            (phys.air_temp_c, phys.road_temp_c, phys.fuel_litres, l, b)
         } else {
             (0.0, 0.0, 0.0, 0, 0)
         };

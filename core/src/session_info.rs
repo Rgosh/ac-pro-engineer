@@ -39,12 +39,14 @@ pub struct SessionTiming;
 impl SessionTiming {
     /// Calculate remaining laps in the session.
     ///
-    /// - `session_time_left_ms`: remaining session time in milliseconds (from `AcGraphics::session_time_left`)
-    /// - `best_lap_time_ms`: best lap time in milliseconds (from `AcGraphics::i_best_time`)
-    /// - `last_lap_time_ms`: last lap time in milliseconds (from `AcGraphics::i_last_time`)
-    /// - `number_of_laps`: total laps if lap-limited race (from `AcGraphics::number_of_laps`)
-    /// - `completed_laps`: completed laps (from `AcGraphics::completed_laps`)
-    /// - `normalized_car_position`: track position 0.0..1.0 (from `AcGraphics::normalized_car_position`)
+    /// Every argument is a field of [`Session`](crate::games::Session):
+    ///
+    /// - `session_time_left_ms`: remaining session time in milliseconds
+    /// - `best_lap_time_ms`: best lap time in milliseconds
+    /// - `last_lap_time_ms`: last lap time in milliseconds
+    /// - `number_of_laps`: `total_laps`, non-zero only in a lap-limited race
+    /// - `completed_laps`: completed laps
+    /// - `normalized_car_position`: `track_position`, 0.0..1.0 around the lap
     ///
     /// Returns estimated remaining laps (fractional).
     pub fn remaining_laps(

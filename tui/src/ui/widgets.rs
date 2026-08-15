@@ -18,6 +18,20 @@ pub fn safe_ratio(value: f64) -> f64 {
     }
 }
 
+/// The gear a driver would call it, from [`Car::gear`](ac_core::games::Car).
+///
+/// One function because there were three copies of this, and a boundary
+/// convention kept in three places is one that gets changed in two. The
+/// reading counts reverse as −1 and neutral as 0 — the game's own numbering,
+/// whatever it is, is translated in the game's folder.
+pub fn gear_label(gear: i32) -> String {
+    match gear {
+        -1 => "R".to_string(),
+        0 => "N".to_string(),
+        n => n.to_string(),
+    }
+}
+
 pub fn get_tyre_color(temp: f32) -> Color {
     match temp {
         t if t < 70.0 => Color::Blue,
@@ -92,7 +106,7 @@ pub fn render_tyre_widget(
     app: &AppState,
     label: &str,
 ) {
-    if let Some(data) = app.ac_physics() {
+    if let Some(data) = app.car() {
         let theme = &app.ui_state.theme;
         let block = Block::default()
             .title(label)
@@ -111,15 +125,15 @@ pub fn render_tyre_widget(
             .split(inner);
 
         let fmt = app.config.formatter();
-        let pressure = data.wheels_pressure[index];
+        let pressure = data.tyre_pressure_psi[index];
         let pressure_text = fmt.format_pressure(pressure);
         let pressure_widget = Paragraph::new(pressure_text)
             .style(Style::default().fg(get_pressure_color(pressure)))
             .alignment(Alignment::Center);
 
-        let temp_i = data.tyre_temp_i[index];
-        let temp_m = data.tyre_temp_m[index];
-        let temp_o = data.tyre_temp_o[index];
+        let temp_i = data.tyre_temp_inner_c[index];
+        let temp_m = data.tyre_temp_middle_c[index];
+        let temp_o = data.tyre_temp_outer_c[index];
         let avg_temp = (temp_i + temp_m + temp_o) / 3.0;
         let temp_text = format!(
             "I{:.0} M{:.0} O{:.0}",
@@ -137,7 +151,7 @@ pub fn render_tyre_widget(
             .style(Style::default().fg(get_wear_color(wear)))
             .alignment(Alignment::Center);
 
-        let brake_temp = data.brake_temp[index];
+        let brake_temp = data.brake_temp_c[index];
         let brake_text = format!("B{}", fmt.format_temp(brake_temp));
         let brake_widget = Paragraph::new(brake_text)
             .style(Style::default().fg(get_brake_color(brake_temp)))
@@ -182,7 +196,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         ])
         .split(area);
 
-    if let Some(data) = app.ac_physics() {
+    if let Some(data) = app.car() {
         let speed_block = Block::default()
             .title("SPD".tr_lang(lang).to_string())
             .borders(Borders::ALL);
@@ -204,11 +218,11 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         // pegged at the redline colour before the car has even been loaded.
         // `render_header` has the same guard.
         let rpm_ratio = if app.session_info.max_rpm > 0 {
-            data.rpms as f32 / app.session_info.max_rpm as f32
+            data.rpm as f32 / app.session_info.max_rpm as f32
         } else {
             0.0
         };
-        let rpm = Paragraph::new(format!("{}\nRPM", data.rpms))
+        let rpm = Paragraph::new(format!("{}\nRPM", data.rpm))
             .style(
                 Style::default()
                     .fg(get_rpm_color(rpm_ratio))
@@ -218,11 +232,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
             .block(rpm_block);
         f.render_widget(rpm, layout[1]);
 
-        let gear = match data.gear {
-            0 => "R".to_string(),
-            1 => "N".to_string(),
-            n => format!("{}", n - 1),
-        };
+        let gear = gear_label(data.gear);
         let gear_block = Block::default()
             .title("GEAR".tr_lang(lang).to_string())
             .borders(Borders::ALL);
@@ -307,7 +317,17 @@ pub fn render_tab_hints(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_ratio;
+    use super::{gear_label, safe_ratio};
+
+    /// Reverse and neutral are the two the reading renumbered, and the two
+    /// every screen used to decode for itself.
+    #[test]
+    fn the_gear_label_reads_the_readings_numbering() {
+        assert_eq!(gear_label(-1), "R");
+        assert_eq!(gear_label(0), "N");
+        assert_eq!(gear_label(1), "1");
+        assert_eq!(gear_label(6), "6");
+    }
 
     #[test]
     fn safe_ratio_passes_values_already_in_range() {

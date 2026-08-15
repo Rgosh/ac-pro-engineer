@@ -154,17 +154,6 @@ impl From<[u16; 33]> for StringU16_33 {
     }
 }
 
-/// Index of the world X axis in [`AcGraphics::car_coordinates`].
-pub const COORD_X: usize = 0;
-/// Index of the world Y axis — altitude — in [`AcGraphics::car_coordinates`].
-///
-/// A track map wants the ground plane, so it plots [`COORD_X`] against
-/// [`COORD_Z`] and leaves this one alone. Reading altitude as a ground
-/// coordinate is precisely what the old ACC layout did.
-pub const COORD_Y: usize = 1;
-/// Index of the world Z axis in [`AcGraphics::car_coordinates`].
-pub const COORD_Z: usize = 2;
-
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, TryFromBytes)]
 pub struct AcGraphics {

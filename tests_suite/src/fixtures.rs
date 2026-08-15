@@ -1,10 +1,10 @@
-use ac_core::ac_structs::{AcGraphics, AcPhysics};
+use ac_core::games::{Car, Reading, Session, Status};
 use ac_core::session_info::SessionInfo;
 use ac_tui::AppState;
 
 pub struct TelemetrySampleFixture {
-    pub physics: AcPhysics,
-    pub graphics: AcGraphics,
+    pub car: Car,
+    pub state: Session,
     pub session: SessionInfo,
 }
 
@@ -52,15 +52,15 @@ impl TelemetrySessionFixture {
                 let lat_g = steer * (speed_kmh / 120.0) * 3.0;
                 let inner = 88.0 + lap as f32 * 2.0;
 
-                let phys = AcPhysics {
+                let car = Car {
                     speed_kmh,
-                    rpms: (5000.0 + (speed_kmh / 220.0) * 3500.0) as i32,
-                    gas: if step % 20 < 15 { 0.9 } else { 0.0 },
+                    rpm: (5000.0 + (speed_kmh / 220.0) * 3500.0) as i32,
+                    throttle: if step % 20 < 15 { 0.9 } else { 0.0 },
                     brake: if step % 20 >= 15 { 0.7 } else { 0.0 },
                     steer_angle: steer,
                     acc_g: [lat_g, 1.0, 0.0],
                     tyre_wear: [wear_factor; 4],
-                    wheels_pressure: [
+                    tyre_pressure_psi: [
                         27.2 + (lap as f32 * 0.3),
                         27.5 + (lap as f32 * 0.3),
                         26.8,
@@ -69,9 +69,9 @@ impl TelemetrySessionFixture {
                     // The outer edge runs hotter than the inner: a car that
                     // wants more negative camber, which is what the engineer
                     // should say about it.
-                    tyre_temp_i: [inner; 4],
-                    tyre_temp_m: [inner + 1.5; 4],
-                    tyre_temp_o: [inner + 4.0; 4],
+                    tyre_temp_inner_c: [inner; 4],
+                    tyre_temp_middle_c: [inner + 1.5; 4],
+                    tyre_temp_outer_c: [inner + 4.0; 4],
                     camber_rad: [
                         (-1.5f32).to_radians(),
                         1.5f32.to_radians(),
@@ -79,28 +79,28 @@ impl TelemetrySessionFixture {
                         2.2f32.to_radians(),
                     ],
                     // Fuel consumption
-                    fuel: (50.0 - total_time * 0.02).max(1.0),
+                    fuel_litres: (50.0 - total_time * 0.02).max(1.0),
                     ..Default::default()
                 };
 
-                let gfx = AcGraphics {
-                    status: 1,
+                let state = Session {
+                    status: Status::Replay,
                     completed_laps: lap,
-                    normalized_car_position: progress,
-                    i_current_time: (progress * lap_time_sec * 1000.0) as i32,
-                    i_last_time: if lap > 0 {
+                    track_position: progress,
+                    current_lap_ms: (progress * lap_time_sec * 1000.0) as i32,
+                    last_lap_ms: if lap > 0 {
                         (lap_time_sec * 1000.0) as i32
                     } else {
                         0
                     },
-                    i_best_time: if lap > 1 {
+                    best_lap_ms: if lap > 1 {
                         (lap_time_sec * 1000.0) as i32
                     } else {
                         0
                     },
-                    session_time_left: (1800.0 - total_time) * 1000.0,
-                    fuel_x_lap: 2.1,
-                    car_coordinates: [
+                    session_time_left_ms: (1800.0 - total_time) * 1000.0,
+                    fuel_per_lap: 2.1,
+                    car_position_m: [
                         400.0 * (progress * std::f32::consts::TAU).cos(),
                         0.0,
                         250.0 * (progress * std::f32::consts::TAU).sin(),
@@ -116,8 +116,8 @@ impl TelemetrySessionFixture {
                 };
 
                 samples.push(TelemetrySampleFixture {
-                    physics: phys,
-                    graphics: gfx,
+                    car,
+                    state,
                     session,
                 });
             }
@@ -142,15 +142,15 @@ mod tests {
         // Process all 630 telemetry samples through the full application pipeline
         for sample in &fixture.samples {
             app.session_info = sample.session.clone();
-            app.process_tick_logic(
-                sample.physics,
-                sample.graphics,
-                ac_core::ac_structs::AcStatic::default(),
-            );
+            app.process_tick_logic(Reading {
+                car: sample.car,
+                session: sample.state,
+                ..Default::default()
+            });
         }
 
         // 1. Verify telemetry history buffers aggregated correctly
-        assert_eq!(app.physics_history.len(), app.config.history_size);
+        assert_eq!(app.car_history.len(), app.config.history_size);
 
         // 2. Verify SessionInfo updated correctly from stream
         assert_eq!(app.session_info.car_name, "ks_ferrari_488_gt3");
@@ -164,7 +164,7 @@ mod tests {
         let last_sample = fixture.samples.last().expect("the fixture is not empty");
         let recs = app
             .engineer
-            .analyze_live(&last_sample.physics, &last_sample.graphics, None);
+            .analyze_live(&last_sample.car, &last_sample.state, None);
         assert!(!recs.is_empty());
     }
 }

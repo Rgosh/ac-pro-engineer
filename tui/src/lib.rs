@@ -4,12 +4,12 @@ pub mod ui;
 
 use crate::ui::UIState;
 use ac_core::RingBuffer;
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
 use ac_core::config::AppConfig;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
+use ac_core::games::{Car, Fixed, Reading, Session, Source, Status};
 use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -163,7 +163,7 @@ pub enum AppStage {
     Running,
 }
 
-/// Sector count to assume until AcStatic says otherwise. AC's own tracks are
+/// Sector count to assume until the reading says otherwise. AC's own tracks are
 /// almost all three-sector.
 pub const DEFAULT_SECTOR_COUNT: i32 = 3;
 
@@ -202,7 +202,18 @@ impl PerfStats {
 }
 
 pub struct AppState {
-    pub mem: Option<ac_core::games::assetto_corsa::AssettoCorsa>,
+    /// The game being read, behind the trait rather than in front of it.
+    ///
+    /// This was an `AssettoCorsa` until v0.3.7, and every screen reached
+    /// through it into AC's own shared-memory structs — which is how a folder
+    /// per game ended up carrying no data across its own boundary.
+    pub game: Option<Box<dyn Source + Send>>,
+    /// The most recent reading, and the only thing the screens draw from.
+    ///
+    /// A demo run and a screenshot run put a made-up one here, which is why
+    /// there is no separate mock: above this field a reading somebody invented
+    /// and a reading the game published are the same thing.
+    pub reading: Option<Reading>,
     pub setup_manager: SetupManager,
     pub content_manager: ContentManager,
     pub record_manager: RecordManager,
@@ -233,14 +244,14 @@ pub struct AppState {
     pub is_connected: bool,
     pub active_tab: AppTab,
     pub session_info: SessionInfo,
-    pub physics_history: RingBuffer<AcPhysics>,
-    pub graphics_history: RingBuffer<AcGraphics>,
-    pub current_lap_physics: Vec<AcPhysics>,
-    pub current_lap_graphics: Vec<AcGraphics>,
+    pub car_history: RingBuffer<Car>,
+    pub session_history: RingBuffer<Session>,
+    pub current_lap_cars: Vec<Car>,
+    pub current_lap_sessions: Vec<Session>,
     pub current_lap_number: i32,
     pub current_lap_sectors: [i32; 3],
     pub last_sector_index: i32,
-    /// How many sectors this track publishes, from AcStatic. Not every track
+    /// How many sectors this track publishes, from the reading. Not every track
     /// runs three — mods use two or four — and assuming three left the extra
     /// slots permanently zero, which `theoretical_best_lap_ms` reads as "no
     /// data" and so never produced a result on those tracks.
@@ -307,9 +318,6 @@ pub struct AppState {
     /// of them deletes.
     pub overlay_confirm: Option<OverlayAction>,
     pub overlay_confirm_selection: usize,
-    pub mock_physics: Option<AcPhysics>,
-    pub mock_graphics: Option<AcGraphics>,
-    pub mock_static: Option<AcStatic>,
     pub is_demo_mode: bool,
     pub demo_tick_counter: u64,
     pub show_help: bool,
@@ -407,10 +415,8 @@ impl AppState {
         };
 
         let mut state = Self {
-            mem: None,
-            mock_physics: None,
-            mock_graphics: None,
-            mock_static: None,
+            game: None,
+            reading: None,
             is_demo_mode: false,
             demo_tick_counter: 0,
             setup_manager,
@@ -446,10 +452,10 @@ impl AppState {
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
-            physics_history: RingBuffer::new(config.history_size),
-            graphics_history: RingBuffer::new(config.history_size),
-            current_lap_physics: Vec::with_capacity(36000),
-            current_lap_graphics: Vec::with_capacity(36000),
+            car_history: RingBuffer::new(config.history_size),
+            session_history: RingBuffer::new(config.history_size),
+            current_lap_cars: Vec::with_capacity(36000),
+            current_lap_sessions: Vec::with_capacity(36000),
             current_lap_number: -1,
             current_lap_sectors: [0; 3],
             last_sector_index: 0,
@@ -812,11 +818,16 @@ impl AppState {
             max_fuel: 110.0,
         };
 
-        self.mock_static = Some(AcStatic {
-            max_rpm: 12500,
-            max_fuel: 110.0,
-            car_model: ac_core::ac_structs::StringU16_33::from("ks_ferrari_sf70h"),
-            track: ac_core::ac_structs::StringU16_33::from("monza"),
+        // The half of the demo reading that does not move. `update_demo_tick`
+        // fills in the car and the session sixty times a second on top of it.
+        self.reading = Some(Reading {
+            fixed: Fixed {
+                max_rpm: 12500,
+                max_fuel_litres: 110.0,
+                car_model: "ks_ferrari_sf70h".to_string(),
+                track: "monza".to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         });
 
@@ -919,83 +930,81 @@ impl AppState {
 
         let speed = 180.0 + (t * 1.5).sin() * 90.0;
         let rpm = (8500.0 + (t * 1.5).sin() * 3200.0) as i32;
-        let gear = ((speed / 45.0) as i32).clamp(1, 7);
+        let gear = ((speed / 45.0) as i32).clamp(0, 6);
         let gas = (0.5 + (t * 1.2).cos() * 0.5).clamp(0.0, 1.0);
         let brake = if (t * 1.2).cos() < -0.4 { 0.75 } else { 0.0 };
         let steer = (t * 0.7).sin() * 0.35;
         let lat_g = (t * 0.7).sin() * 1.6;
         let lon_g = (t * 1.2).cos() * 1.3;
 
-        self.mock_physics = Some(AcPhysics {
+        let car = Car {
             speed_kmh: speed,
-            rpms: rpm,
+            rpm,
             gear,
-            fuel: 34.2,
-            gas,
+            fuel_litres: 34.2,
+            throttle: gas,
             brake,
             clutch: 0.0,
             steer_angle: steer,
             acc_g: [lat_g, 0.0, lon_g],
-            wheels_pressure: [27.4, 27.6, 27.5, 27.3],
-            tyre_temp_i: [89.2 + (t.sin() * 2.0), 88.0, 92.1, 90.5],
-            tyre_temp_m: [86.4 + (t.sin() * 2.0), 85.2, 89.0, 87.8],
-            tyre_temp_o: [82.1 + (t.sin() * 2.0), 81.0, 85.2, 84.0],
-            brake_temp: [450.0 + (t.cos() * 30.0), 442.0, 380.0, 375.0],
-            air_temp: 22.5,
-            road_temp: 34.0,
+            tyre_pressure_psi: [27.4, 27.6, 27.5, 27.3],
+            tyre_temp_inner_c: [89.2 + (t.sin() * 2.0), 88.0, 92.1, 90.5],
+            tyre_temp_middle_c: [86.4 + (t.sin() * 2.0), 85.2, 89.0, 87.8],
+            tyre_temp_outer_c: [82.1 + (t.sin() * 2.0), 81.0, 85.2, 84.0],
+            brake_temp_c: [450.0 + (t.cos() * 30.0), 442.0, 380.0, 375.0],
+            air_temp_c: 22.5,
+            road_temp_c: 34.0,
             tc: 3.0,
             abs: 2.0,
             ..Default::default()
-        });
+        };
 
-        self.mock_graphics = Some(AcGraphics {
+        let session = Session {
+            status: Status::Live,
             surface_grip: 0.98,
             completed_laps: 5,
-            i_current_time: ((t * 1000.0) as i32) % 81452,
-            i_last_time: 81452,
-            i_best_time: 81452,
+            current_lap_ms: ((t * 1000.0) as i32) % 81452,
+            last_lap_ms: 81452,
+            best_lap_ms: 81452,
             position: 2,
-            fuel_x_lap: 2.85,
+            fuel_per_lap: 2.85,
             ..Default::default()
-        });
+        };
+
+        let reading = self.reading.get_or_insert_with(Reading::default);
+        reading.car = car;
+        reading.session = session;
     }
 
-    pub fn ac_graphics(&self) -> Option<&AcGraphics> {
-        if let Some(ref mock) = self.mock_graphics {
-            Some(mock)
-        } else {
-            self.mem.as_ref().map(|mem| mem.graphics())
-        }
+    pub fn car(&self) -> Option<&Car> {
+        self.reading.as_ref().map(|reading| &reading.car)
     }
 
-    pub fn ac_physics(&self) -> Option<&AcPhysics> {
-        if let Some(ref mock) = self.mock_physics {
-            Some(mock)
-        } else {
-            self.mem.as_ref().map(|mem| mem.physics())
-        }
+    pub fn session(&self) -> Option<&Session> {
+        self.reading.as_ref().map(|reading| &reading.session)
     }
 
-    pub fn ac_static(&self) -> Option<&AcStatic> {
-        if let Some(ref mock) = self.mock_static {
-            Some(mock)
-        } else {
-            self.mem.as_ref().map(|mem| mem.stat())
-        }
+    pub fn fixed(&self) -> Option<&Fixed> {
+        self.reading.as_ref().map(|reading| &reading.fixed)
     }
 
-    pub fn process_tick_logic(&mut self, phys: AcPhysics, gfx: AcGraphics, stat: AcStatic) {
-        let stat_spline_length = stat.track_spline_length;
-        // AcStatic::sector_count was read by nothing, so every track was
-        // treated as three-sector.
-        if stat.sector_count > 0 && stat.sector_count as usize <= self.current_lap_sectors.len() {
-            self.track_sector_count = stat.sector_count;
+    pub fn process_tick_logic(&mut self, reading: Reading) {
+        // Both are `Copy`, so the reading can be kept whole for the screens
+        // while the tick works from its two halves.
+        let (car, session) = (reading.car, reading.session);
+        let track_length_m = reading.fixed.track_length_m;
+        // The sector count was read by nothing, so every track was treated as
+        // three-sector.
+        let sector_count = reading.fixed.sector_count;
+        if sector_count > 0 && sector_count as usize <= self.current_lap_sectors.len() {
+            self.track_sector_count = sector_count;
         }
+        self.reading = Some(reading);
 
-        self.update_live_buffers(&phys, &gfx);
-        self.update_session_info(&gfx);
+        self.update_live_buffers(&car, &session);
+        self.update_session_info(&session);
         self.engineer.update_config(&self.config);
-        self.engineer.update(&phys, &gfx, &self.session_info);
+        self.engineer.update(&car, &session, &self.session_info);
 
         // The engineer sets `current_delta` from AC's own performance meter,
         // which is measured against whatever reference the game picked. With
@@ -1010,14 +1019,14 @@ impl AppState {
                 .and_then(|i| self.analyzer.laps.get(i))
             && let Some(delta) = ac_core::analyzer::calculate_ghost_delta(
                 best,
-                gfx.normalized_car_position,
-                gfx.i_current_time as f32 / 1000.0,
+                session.track_position,
+                session.current_lap_ms as f32 / 1000.0,
             )
         {
             self.engineer.stats.current_delta = delta;
         }
 
-        self.publish_overlay_frame(&phys, &gfx);
+        self.publish_overlay_frame(&car, &session);
 
         // Sector splits are captured on the transition *out* of a sector,
         // when AC publishes the one just finished in `last_sector_time`. The
@@ -1026,7 +1035,7 @@ impl AppState {
         // AC publishes first decides whether the last split lands in this lap
         // or the next one, so it is derived from the lap time at lap close
         // instead — see `close_current_lap_sectors`.
-        let current_sector = gfx.current_sector_index;
+        let current_sector = session.current_sector;
         if current_sector != self.last_sector_index {
             let finished = self.last_sector_index;
             let is_final_sector = finished == self.track_sector_count - 1;
@@ -1034,26 +1043,26 @@ impl AppState {
                 && (finished as usize) < self.current_lap_sectors.len()
                 && !is_final_sector
             {
-                self.current_lap_sectors[finished as usize] = gfx.last_sector_time;
+                self.current_lap_sectors[finished as usize] = session.last_sector_ms;
             }
             self.last_sector_index = current_sector;
         }
 
-        let completed_laps = gfx.completed_laps;
+        let completed_laps = session.completed_laps;
         if self.current_lap_number == -1 {
             self.current_lap_number = completed_laps;
         }
 
         if completed_laps != self.current_lap_number {
             if completed_laps == self.current_lap_number + 1 {
-                let last_lap_time = gfx.i_last_time;
-                if last_lap_time > 10000 && !self.current_lap_physics.is_empty() {
+                let last_lap_time = session.last_lap_ms;
+                if last_lap_time > 10000 && !self.current_lap_cars.is_empty() {
                     self.close_current_lap_sectors(last_lap_time);
                     self.analyzer.process_lap(
                         self.current_lap_number,
                         last_lap_time,
-                        &self.current_lap_physics,
-                        &self.current_lap_graphics,
+                        &self.current_lap_cars,
+                        &self.current_lap_sessions,
                         self.current_lap_sectors,
                         self.session_info.car_name.clone(),
                         self.session_info.track_name.clone(),
@@ -1083,7 +1092,7 @@ impl AppState {
                         &self.session_info.track_name,
                         &self.session_info.track_config,
                         car_specs,
-                        stat_spline_length,
+                        track_length_m,
                     );
 
                     // The driver's own best is tracked against their own
@@ -1099,35 +1108,35 @@ impl AppState {
                     self.analyzer.set_world_record(reference);
                 }
             }
-            self.current_lap_physics.clear();
-            self.current_lap_graphics.clear();
+            self.current_lap_cars.clear();
+            self.current_lap_sessions.clear();
             self.current_lap_sectors = [0; 3];
             self.current_lap_number = completed_laps;
         }
 
-        if (gfx.status != 0 || self.is_demo_mode)
-            && (phys.speed_kmh > 1.0 || phys.rpms > 1000)
-            && self.current_lap_physics.len() < 36000
+        if (session.status.is_on_track() || self.is_demo_mode)
+            && (car.speed_kmh > 1.0 || car.rpm > 1000)
+            && self.current_lap_cars.len() < 36000
         {
-            self.current_lap_physics.push(phys);
-            self.current_lap_graphics.push(gfx);
+            self.current_lap_cars.push(car);
+            self.current_lap_sessions.push(session);
         }
 
         if !self.session_info.car_name.is_empty() && self.session_info.car_name != "-" {
             self.setup_manager
                 .set_context(&self.session_info.car_name, &self.session_info.track_name);
             self.setup_manager.detect_current(
-                phys.fuel,
-                phys.brake_bias / 100.0,
-                &phys.wheels_pressure,
-                &phys.tyre_temp_m,
+                car.fuel_litres,
+                car.brake_bias / 100.0,
+                &car.tyre_pressure_psi,
+                &car.tyre_temp_middle_c,
             );
         }
 
         let active_setup = self.setup_manager.get_active_setup();
         self.recommendations = self
             .engineer
-            .analyze_live(&phys, &gfx, active_setup.as_ref());
+            .analyze_live(&car, &session, active_setup.as_ref());
     }
 
     pub fn tick(&mut self) {
@@ -1147,10 +1156,8 @@ impl AppState {
 
         if self.is_demo_mode {
             self.update_demo_tick();
-            if let (Some(phys), Some(gfx), Some(stat)) =
-                (self.mock_physics, self.mock_graphics, self.mock_static)
-            {
-                self.process_tick_logic(phys, gfx, stat);
+            if let Some(reading) = self.reading.clone() {
+                self.process_tick_logic(reading);
             }
             return;
         }
@@ -1202,7 +1209,7 @@ impl AppState {
             return;
         }
 
-        let Some(mem) = self.mem.as_mut() else {
+        let Some(game) = self.game.as_mut() else {
             self.publish_overlay_idle();
             return;
         };
@@ -1211,14 +1218,12 @@ impl AppState {
         // sessions, which is a state and not a failure — the panel is told the
         // application is alive and has no car, which is the distinction v0.3.5
         // added.
-        if !ac_core::games::Source::poll(mem) {
+        let Some(reading) = game.poll() else {
             self.publish_overlay_idle();
             return;
-        }
+        };
 
-        let (phys, gfx, stat) = (*mem.physics(), *mem.graphics(), *mem.stat());
-
-        self.process_tick_logic(phys, gfx, stat);
+        self.process_tick_logic(reading);
     }
 
     /// Fill in the final sector split from the lap time.
@@ -1356,7 +1361,7 @@ impl AppState {
     /// Everything here is a copy of an already-computed value: the overlay
     /// draws on AC's render thread, so no work that can be done on this side
     /// belongs on that one.
-    fn publish_overlay_frame(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
+    fn publish_overlay_frame(&mut self, car: &Car, session: &Session) {
         use ac_core::overlay::frame::flags;
 
         // Nowhere for it to go. Both are usually present, and checking is
@@ -1369,28 +1374,29 @@ impl AppState {
 
         let best_sectors = self.best_sectors();
 
-        frame.speed_kmh = phys.speed_kmh;
-        frame.rpm = phys.rpms;
+        frame.speed_kmh = car.speed_kmh;
+        frame.rpm = car.rpm;
         // AC encodes reverse as 0 and neutral as 1. Translated here so the
         // overlay does not have to know that.
-        frame.gear = phys.gear - 1;
-        frame.fuel_litres = phys.fuel;
-        frame.air_temp_c = phys.air_temp;
-        frame.road_temp_c = phys.road_temp;
-        frame.surface_grip = gfx.surface_grip;
+        frame.gear = car.gear - 1;
+        frame.fuel_litres = car.fuel_litres;
+        frame.air_temp_c = car.air_temp_c;
+        frame.road_temp_c = car.road_temp_c;
+        frame.surface_grip = session.surface_grip;
 
-        frame.tyre_pressure_psi = phys.wheels_pressure;
-        frame.tyre_wear_percent = phys.tyre_wear;
-        frame.brake_temp_c = phys.brake_temp;
+        frame.tyre_pressure_psi = car.tyre_pressure_psi;
+        frame.tyre_wear_percent = car.tyre_wear;
+        frame.brake_temp_c = car.brake_temp_c;
         for i in 0..4 {
             frame.tyre_temp_c[i] =
-                (phys.tyre_temp_i[i] + phys.tyre_temp_m[i] + phys.tyre_temp_o[i]) / 3.0;
+                (car.tyre_temp_inner_c[i] + car.tyre_temp_middle_c[i] + car.tyre_temp_outer_c[i])
+                    / 3.0;
         }
 
-        frame.last_lap_ms = gfx.i_last_time;
-        frame.best_lap_ms = gfx.i_best_time;
-        frame.current_lap_ms = gfx.i_current_time;
-        frame.position = gfx.position;
+        frame.last_lap_ms = session.last_lap_ms;
+        frame.best_lap_ms = session.best_lap_ms;
+        frame.current_lap_ms = session.current_lap_ms;
+        frame.position = session.position;
 
         frame.fuel_laps_remaining = self.engineer.stats.fuel_laps_remaining;
         frame.fuel_per_lap = self.engineer.stats.fuel_consumption_rate;
@@ -1398,7 +1404,7 @@ impl AppState {
 
         frame.apply_session(&self.session_info);
 
-        frame.set_flag(flags::PIT_LIMITER, phys.pit_limiter_on != 0);
+        frame.set_flag(flags::PIT_LIMITER, car.pit_limiter);
         frame.set_flag(
             flags::FUEL_WARNING,
             self.engineer.stats.fuel_laps_remaining > 0.0
@@ -1421,8 +1427,8 @@ impl AppState {
         // The tyre's edges, which the panel needs to show whether a tyre is
         // leaning the right way rather than only how hot it is — the middle one
         // has been going across since the first frame.
-        frame.tyre_temp_inner_c = phys.tyre_temp_i;
-        frame.tyre_temp_outer_c = phys.tyre_temp_o;
+        frame.tyre_temp_inner_c = car.tyre_temp_inner_c;
+        frame.tyre_temp_outer_c = car.tyre_temp_outer_c;
         frame.tyre_laps_remaining = self.engineer.stats.tyre_laps_remaining;
         frame.stint_laps = self.engineer.stats.stint_laps.max(0) as u32;
 
@@ -1450,14 +1456,17 @@ impl AppState {
     }
 
     pub fn disconnect(&mut self) {
-        self.mem = None;
+        self.game = None;
+        // Left behind, the screens would keep drawing the last numbers of a
+        // session that has ended as though the car were still on track.
+        self.reading = None;
         self.is_connected = false;
         self.session_info = SessionInfo::default();
         self.recommendations.clear();
-        self.physics_history.clear();
-        self.graphics_history.clear();
-        self.current_lap_physics.clear();
-        self.current_lap_graphics.clear();
+        self.car_history.clear();
+        self.session_history.clear();
+        self.current_lap_cars.clear();
+        self.current_lap_sessions.clear();
         self.current_lap_number = -1;
         // These were left behind on disconnect, so the first sector
         // transition after reconnecting was measured against the previous
@@ -1471,22 +1480,22 @@ impl AppState {
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.mem.is_none() {
-            let mut mem = ac_core::games::assetto_corsa::AssettoCorsa::connect()?;
+        if self.game.is_none() {
+            let mut game = ac_core::games::assetto_corsa::AssettoCorsa::connect()?;
             // One reading before anything is believed: connecting only proves
             // the mappings exist, and on Linux they can exist with nothing in
             // them yet — the bridge creates them before the game has published.
-            if !ac_core::games::Source::poll(&mut mem) {
+            let Some(reading) = game.poll() else {
                 return Err("connected to Assetto Corsa but read nothing".into());
-            }
+            };
 
-            let st = mem.stat();
-            self.session_info.car_name = st.car_model.to_string();
-            self.session_info.track_name = st.track.to_string();
-            self.session_info.track_config = st.track_configuration.to_string();
-            self.session_info.player_name = st.player_nick.to_string();
-            self.session_info.max_rpm = st.max_rpm;
-            self.session_info.max_fuel = st.max_fuel;
+            let fixed = &reading.fixed;
+            self.session_info.car_name = fixed.car_model.clone();
+            self.session_info.track_name = fixed.track.clone();
+            self.session_info.track_config = fixed.track_config.clone();
+            self.session_info.player_name = fixed.driver_name.clone();
+            self.session_info.max_rpm = fixed.max_rpm;
+            self.session_info.max_fuel = fixed.max_fuel_litres;
 
             let specs = self
                 .content_manager
@@ -1497,45 +1506,38 @@ impl AppState {
                 &self.session_info.track_name,
                 &self.session_info.track_config,
                 specs.as_ref(),
-                st.track_spline_length,
+                fixed.track_length_m,
             );
             self.analyzer.set_world_record(rec);
             // Stamped onto every lap from here, so a corner report can say
             // "14 m later on the brakes" rather than a fraction of a lap.
-            self.analyzer.set_track_length(st.track_spline_length);
+            self.analyzer.set_track_length(fixed.track_length_m);
             self.is_connected = true;
 
-            self.mem = Some(mem);
+            self.reading = Some(reading);
+            self.game = Some(Box::new(game));
         }
         Ok(())
     }
 
     pub fn apply_config(&mut self) {
         let cap = self.config.history_size;
-        self.physics_history.set_capacity(cap);
-        self.graphics_history.set_capacity(cap);
+        self.car_history.set_capacity(cap);
+        self.session_history.set_capacity(cap);
         self.engineer.update_config(&self.config);
     }
 
-    pub fn update_live_buffers(&mut self, phys: &AcPhysics, gfx: &AcGraphics) {
-        self.physics_history.push(*phys);
-        self.graphics_history.push(*gfx);
+    pub fn update_live_buffers(&mut self, car: &Car, session: &Session) {
+        self.car_history.push(*car);
+        self.session_history.push(*session);
     }
 
-    pub fn update_session_info(&mut self, gfx: &AcGraphics) {
-        self.session_info.lap_count = gfx.completed_laps;
-        self.session_info.session_time_left = gfx.session_time_left;
-        self.session_info.session_type = match gfx.session {
-            0 => "Booking".to_string(),
-            1 => "Practice".to_string(),
-            2 => "Qualifying".to_string(),
-            3 => "Race".to_string(),
-            4 => "Hotlap".to_string(),
-            5 => "Time Attack".to_string(),
-            6 => "Drift".to_string(),
-            7 => "Drag".to_string(),
-            _ => "Unknown".to_string(),
-        };
+    pub fn update_session_info(&mut self, session: &Session) {
+        self.session_info.lap_count = session.completed_laps;
+        self.session_info.session_time_left = session.session_time_left_ms;
+        // The table this used to hold moved into the game folder, which is
+        // where knowing that a race is session number three belongs.
+        self.session_info.session_type = session.kind.label().to_string();
     }
 }
 
@@ -1620,22 +1622,20 @@ mod tests {
     fn demo_mode_executes_full_telemetry_pipeline() {
         let mut app = AppState::new();
         app.is_demo_mode = true;
-        app.mock_static = Some(ac_core::ac_structs::AcStatic::default());
+        // The demo tick fills the car and the session in; what it needs to
+        // find already there is a reading to fill them into.
+        app.reading = Some(Reading::default());
         app.stage = AppStage::Running;
 
-        assert_eq!(app.physics_history.len(), 0);
+        assert_eq!(app.car_history.len(), 0);
 
         for _ in 0..10 {
             app.tick();
         }
 
-        assert_eq!(app.physics_history.len(), 10);
-        assert_eq!(app.graphics_history.len(), 10);
-        assert!(
-            app.physics_history
-                .last()
-                .is_some_and(|p| p.speed_kmh > 0.0)
-        );
+        assert_eq!(app.car_history.len(), 10);
+        assert_eq!(app.session_history.len(), 10);
+        assert!(app.car_history.last().is_some_and(|p| p.speed_kmh > 0.0));
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
     }
@@ -1734,7 +1734,7 @@ mod tests {
         assert_eq!(app.current_lap_sectors[2], 0);
     }
 
-    /// Two-sector mod tracks exist, and AcStatic says so.
+    /// Two-sector mod tracks exist, and the reading says so.
     #[test]
     fn final_sector_honours_a_two_sector_track() {
         let mut app = AppState::new();

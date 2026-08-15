@@ -32,7 +32,7 @@ use ac_core::broadcast::receiver::{FrameReceiver, Received};
 use ac_core::broadcast::udp::UdpSink;
 use ac_core::config::AppConfig;
 use ac_core::engineer::Engineer;
-use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics};
+use ac_core::games::{Car, Session};
 use ac_core::overlay::frame::{MESSAGE_SLOTS, OverlayFrame, flags};
 use ac_core::session_info::SessionInfo;
 use std::net::SocketAddr;
@@ -40,17 +40,17 @@ use std::thread::sleep;
 use std::time::Duration;
 
 /// A car in enough trouble that several rules have something to say.
-fn troubled_car() -> AcPhysics {
-    AcPhysics {
-        wheels_pressure: [31.0, 31.2, 30.8, 31.1],
-        tyre_core_temp: [120.0; 4],
-        tyre_temp_i: [124.0; 4],
-        tyre_temp_m: [120.0; 4],
-        tyre_temp_o: [112.0; 4],
-        brake_temp: [900.0, 910.0, 880.0, 895.0],
+fn troubled_car() -> Car {
+    Car {
+        tyre_pressure_psi: [31.0, 31.2, 30.8, 31.1],
+        tyre_core_temp_c: [120.0; 4],
+        tyre_temp_inner_c: [124.0; 4],
+        tyre_temp_middle_c: [120.0; 4],
+        tyre_temp_outer_c: [112.0; 4],
+        brake_temp_c: [900.0, 910.0, 880.0, 895.0],
         tyre_wear: [80.0, 81.0, 79.0, 82.0],
         speed_kmh: 180.0,
-        fuel: 4.0,
+        fuel_litres: 4.0,
         ..Default::default()
     }
 }
@@ -91,12 +91,12 @@ fn main() {
 
     let config = AppConfig::default();
     let mut engineer = Engineer::new(&config);
-    let physics = troubled_car();
-    let graphics = AcGraphics {
+    let car = troubled_car();
+    let session = Session {
         surface_grip: 1.0,
         ..Default::default()
     };
-    let session = SessionInfo::default();
+    let info = SessionInfo::default();
 
     // Every alert waits a second of the condition actually holding before it is
     // said — one odd frame is not a finding. That is wall-clock time inside the
@@ -104,21 +104,21 @@ fn main() {
     // wait, then ask again. Skipping this is what made the first run of this
     // probe report an empty frame and look like a broken feed.
     for _ in 0..30 {
-        engineer.update(&physics, &graphics, &session);
+        engineer.update(&car, &session, &info);
     }
-    let _ = engineer.analyze_live(&physics, &graphics, None);
+    let _ = engineer.analyze_live(&car, &session, None);
     print!("holding the alerts for their second... ");
     std::io::Write::flush(&mut std::io::stdout()).ok();
     sleep(Duration::from_millis(1200));
     for _ in 0..30 {
-        engineer.update(&physics, &graphics, &session);
+        engineer.update(&car, &session, &info);
     }
-    let recommendations = engineer.analyze_live(&physics, &graphics, None);
+    let recommendations = engineer.analyze_live(&car, &session, None);
     println!("done\n");
 
     let mut frame = OverlayFrame::empty();
-    frame.speed_kmh = physics.speed_kmh;
-    frame.tyre_pressure_psi = physics.wheels_pressure;
+    frame.speed_kmh = car.speed_kmh;
+    frame.tyre_pressure_psi = car.tyre_pressure_psi;
     frame.set_flag(flags::CONNECTED, true);
     frame.set_messages(&recommendations);
 

@@ -1,5 +1,6 @@
-use crate::ac_structs::{AcGraphics, AcPhysics, COORD_X, COORD_Z};
 use crate::config::Language;
+use crate::games::reading::{COORD_X, COORD_Z};
+use crate::games::{Car, Session};
 use crate::records::TrackRecord;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -332,15 +333,15 @@ impl TelemetryAnalyzer {
         &mut self,
         lap_number: i32,
         lap_time_ms: i32,
-        physics_log: &[AcPhysics],
-        graphics_log: &[AcGraphics],
+        car_log: &[Car],
+        session_log: &[Session],
         sectors: [i32; 3],
         car_name: String,
         track_name: String,
         target_pressure: f32,
         update_rate_ms: u64,
     ) {
-        if physics_log.is_empty() {
+        if car_log.is_empty() {
             return;
         }
 
@@ -356,28 +357,28 @@ impl TelemetryAnalyzer {
             }
         }
 
-        let air_temp = physics_log.first().map(|p| p.air_temp).unwrap_or(20.0);
-        let road_temp = physics_log.first().map(|p| p.road_temp).unwrap_or(20.0);
-        let track_grip = graphics_log.first().map(|g| g.surface_grip).unwrap_or(1.0) * 100.0;
+        let air_temp = car_log.first().map(|p| p.air_temp_c).unwrap_or(20.0);
+        let road_temp = car_log.first().map(|p| p.road_temp_c).unwrap_or(20.0);
+        let track_grip = session_log.first().map(|g| g.surface_grip).unwrap_or(1.0) * 100.0;
         let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
         let save_date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-        let max_speed = physics_log.iter().map(|p| p.speed_kmh).fold(0.0, f32::max);
-        let avg_speed = if !physics_log.is_empty() {
-            physics_log.iter().map(|p| p.speed_kmh).sum::<f32>() / physics_log.len() as f32
+        let max_speed = car_log.iter().map(|p| p.speed_kmh).fold(0.0, f32::max);
+        let avg_speed = if !car_log.is_empty() {
+            car_log.iter().map(|p| p.speed_kmh).sum::<f32>() / car_log.len() as f32
         } else {
             0.0
         };
 
-        let start_fuel = physics_log.first().map(|p| p.fuel).unwrap_or(0.0);
-        let end_fuel = physics_log.last().map(|p| p.fuel).unwrap_or(0.0);
+        let start_fuel = car_log.first().map(|p| p.fuel_litres).unwrap_or(0.0);
+        let end_fuel = car_log.last().map(|p| p.fuel_litres).unwrap_or(0.0);
         let fuel_used = (start_fuel - end_fuel).max(0.0);
 
         let mut coasting_frames = 0;
         let mut overlap_frames = 0;
         let mut full_throttle_frames = 0;
         let mut gear_shifts = 0;
-        let mut prev_gear = physics_log.first().map(|p| p.gear).unwrap_or(0);
+        let mut prev_gear = car_log.first().map(|p| p.gear).unwrap_or(0);
 
         let mut trail_braking_score_acc = 0.0;
         let mut trail_braking_samples = 0.0;
@@ -412,16 +413,16 @@ impl TelemetryAnalyzer {
         let mut sum_brake_temp_avg = [0.0; 4];
         let mut sum_ride_height = [0.0; 2];
 
-        let mut prev_susp_travel = physics_log
+        let mut prev_susp_travel = car_log
             .first()
             .map(|p| p.suspension_travel)
             .unwrap_or([0.0; 4]);
         let mut damper_counts = [[0.0_f32; 4]; 4];
         let mut damper_total_moves = [0.0_f32; 4];
 
-        let log_len = physics_log.len() as f32;
+        let log_len = car_log.len() as f32;
 
-        for p in physics_log {
+        for p in car_log {
             if p.speed_kmh > 50.0 {
                 pressure_sample_frames += 1;
             }
@@ -454,13 +455,13 @@ impl TelemetryAnalyzer {
                 prev_gear = p.gear;
             }
 
-            if p.gas > 0.95 {
+            if p.throttle > 0.95 {
                 full_throttle_frames += 1;
             }
-            if p.speed_kmh > 30.0 && p.gas < 0.05 && p.brake < 0.05 {
+            if p.speed_kmh > 30.0 && p.throttle < 0.05 && p.brake < 0.05 {
                 coasting_frames += 1;
             }
-            if p.gas > 0.1 && p.brake > 0.1 {
+            if p.throttle > 0.1 && p.brake > 0.1 {
                 overlap_frames += 1;
             }
 
@@ -499,23 +500,25 @@ impl TelemetryAnalyzer {
             }
 
             for i in 0..4 {
-                if p.brake_temp[i] > max_brake_temp[i] {
-                    max_brake_temp[i] = p.brake_temp[i];
+                if p.brake_temp_c[i] > max_brake_temp[i] {
+                    max_brake_temp[i] = p.brake_temp_c[i];
                 }
-                let t_avg = (p.tyre_temp_i[i] + p.tyre_temp_m[i] + p.tyre_temp_o[i]) / 3.0;
+                let t_avg =
+                    (p.tyre_temp_inner_c[i] + p.tyre_temp_middle_c[i] + p.tyre_temp_outer_c[i])
+                        / 3.0;
                 sum_tyre_temp[i] += t_avg;
                 sum_susp_travel[i] += p.suspension_travel[i];
 
                 if p.speed_kmh > 50.0 {
-                    press_sum += p.wheels_pressure[i];
-                    press_dev_acc += (p.wheels_pressure[i] - target_pressure).abs();
+                    press_sum += p.tyre_pressure_psi[i];
+                    press_dev_acc += (p.tyre_pressure_psi[i] - target_pressure).abs();
                 }
 
-                sum_wheels_pressure[i] += p.wheels_pressure[i];
-                sum_tyre_temp_i[i] += p.tyre_temp_i[i];
-                sum_tyre_temp_m[i] += p.tyre_temp_m[i];
-                sum_tyre_temp_o[i] += p.tyre_temp_o[i];
-                sum_brake_temp_avg[i] += p.brake_temp[i];
+                sum_wheels_pressure[i] += p.tyre_pressure_psi[i];
+                sum_tyre_temp_i[i] += p.tyre_temp_inner_c[i];
+                sum_tyre_temp_m[i] += p.tyre_temp_middle_c[i];
+                sum_tyre_temp_o[i] += p.tyre_temp_outer_c[i];
+                sum_brake_temp_avg[i] += p.brake_temp_c[i];
 
                 let delta_travel = p.suspension_travel[i] - prev_susp_travel[i];
                 let dt_sec = update_rate_ms as f32 / 1000.0;
@@ -536,8 +539,8 @@ impl TelemetryAnalyzer {
                 prev_susp_travel[i] = p.suspension_travel[i];
             }
 
-            sum_ride_height[0] += p.ride_height[0];
-            sum_ride_height[1] += p.ride_height[1];
+            sum_ride_height[0] += p.ride_height_m[0];
+            sum_ride_height[1] += p.ride_height_m[1];
         }
 
         let mut damper_histograms = [[0.0; 4]; 4];
@@ -697,19 +700,19 @@ impl TelemetryAnalyzer {
         let mut min_y = f32::MAX;
         let mut max_y = f32::MIN;
 
-        for (i, p) in physics_log.iter().enumerate() {
+        for (i, p) in car_log.iter().enumerate() {
             if i % step == 0 {
-                let g = if i < graphics_log.len() {
-                    &graphics_log[i]
+                let g = if i < session_log.len() {
+                    &session_log[i]
                 } else {
-                    match graphics_log.last() {
+                    match session_log.last() {
                         Some(last) => last,
                         None => continue,
                     }
                 };
 
-                let x = g.car_coordinates[COORD_X];
-                let z = g.car_coordinates[COORD_Z];
+                let x = g.car_position_m[COORD_X];
+                let z = g.car_position_m[COORD_Z];
 
                 if x.abs() > 0.1 || z.abs() > 0.1 {
                     if x < min_x {
@@ -734,19 +737,22 @@ impl TelemetryAnalyzer {
                 };
 
                 trace.push(TelemetryPoint {
-                    distance: g.normalized_car_position,
-                    time_ms: g.i_current_time,
+                    distance: g.track_position,
+                    time_ms: g.current_lap_ms,
                     speed: p.speed_kmh,
-                    gas: p.gas,
+                    gas: p.throttle,
                     brake: p.brake,
-                    gear: p.gear - 1,
+                    // The reading already counts reverse as −1; this used to
+                    // subtract one itself, because what arrived here was AC's
+                    // own numbering.
+                    gear: p.gear,
                     steer: p.steer_angle,
                     lat_g: p.acc_g[0],
                     lon_g: p.acc_g[2],
                     slip_avg,
                     x,
                     y: z,
-                    rpms: p.rpms,
+                    rpms: p.rpm,
                 });
             }
         }
@@ -1056,19 +1062,19 @@ pub fn calculate_ghost_delta(
 #[cfg(test)]
 mod tests {
     use super::{LapData, TelemetryAnalyzer, samples_per_incident};
-    use crate::ac_structs::{AcGraphics, AcPhysics};
+    use crate::games::{Car, Session};
 
     #[test]
     fn pressure_metrics_only_use_high_speed_samples() {
         let mut analyzer = TelemetryAnalyzer::new();
-        let high_speed = AcPhysics {
+        let high_speed = Car {
             speed_kmh: 120.0,
-            wheels_pressure: [28.0; 4],
+            tyre_pressure_psi: [28.0; 4],
             ..Default::default()
         };
-        let low_speed = AcPhysics {
+        let low_speed = Car {
             speed_kmh: 30.0,
-            wheels_pressure: [20.0; 4],
+            tyre_pressure_psi: [20.0; 4],
             ..Default::default()
         };
 
@@ -1076,7 +1082,7 @@ mod tests {
             1,
             90_000,
             &[high_speed, low_speed],
-            &[AcGraphics::default()],
+            &[Session::default()],
             [0, 0, 0],
             "test_car".to_string(),
             "test_track".to_string(),
@@ -1100,9 +1106,9 @@ mod tests {
     #[test]
     fn a_lap_with_no_high_speed_samples_reports_no_pressure() {
         let mut analyzer = TelemetryAnalyzer::new();
-        let crawling = AcPhysics {
+        let crawling = Car {
             speed_kmh: 30.0,
-            wheels_pressure: [20.0; 4],
+            tyre_pressure_psi: [20.0; 4],
             ..Default::default()
         };
 
@@ -1110,7 +1116,7 @@ mod tests {
             1,
             90_000,
             &[crawling, crawling],
-            &[AcGraphics::default()],
+            &[Session::default()],
             [0, 0, 0],
             "test_car".to_string(),
             "test_track".to_string(),
@@ -1153,7 +1159,7 @@ mod tests {
     #[test]
     fn a_lap_with_no_coordinates_reports_zero_bounds() {
         let mut analyzer = TelemetryAnalyzer::new();
-        let sample = AcPhysics {
+        let sample = Car {
             speed_kmh: 120.0,
             ..Default::default()
         };
@@ -1163,7 +1169,7 @@ mod tests {
             1,
             90_000,
             &[sample; 10],
-            &[AcGraphics::default(); 10],
+            &[Session::default(); 10],
             [0, 0, 0],
             "test_car".to_string(),
             "test_track".to_string(),

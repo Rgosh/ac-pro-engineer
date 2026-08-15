@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
+use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics, AcStatic};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::thread;

@@ -341,17 +341,17 @@ fn test_21_localization_russian_wizard() {
 
 #[test]
 fn test_22_tyre_pressure_optimizer() {
-    use ac_core::ac_structs::AcPhysics;
     use ac_core::engineer::TyrePressureOptimizer;
+    use ac_core::games::Car;
 
-    let phys = AcPhysics {
-        wheels_pressure: [26.0, 27.5, 27.5, 27.5],
-        tyre_temp_i: [95.0, 85.0, 85.0, 85.0],
-        tyre_temp_o: [80.0, 85.0, 85.0, 85.0],
+    let car = Car {
+        tyre_pressure_psi: [26.0, 27.5, 27.5, 27.5],
+        tyre_temp_inner_c: [95.0, 85.0, 85.0, 85.0],
+        tyre_temp_outer_c: [80.0, 85.0, 85.0, 85.0],
         ..Default::default()
     };
 
-    let opt = TyrePressureOptimizer::calculate(&phys, 27.5);
+    let opt = TyrePressureOptimizer::calculate(&car, 27.5);
     assert_eq!(opt.corners[0].corner_name, "FL");
     assert!(opt.corners[0].recommended_delta_psi > 0.0);
 }
@@ -578,8 +578,8 @@ fn test_35_config_resolve_data_path_and_autosave_semantics() {
 
 #[test]
 fn test_36_engineer_update_rate_independence() {
-    use ac_core::ac_structs::{AcGraphics, AcPhysics};
     use ac_core::engineer::Engineer;
+    use ac_core::games::{Car, Session};
     use ac_core::session_info::SessionInfo;
 
     let mut cfg_fast = get_english_config();
@@ -591,24 +591,24 @@ fn test_36_engineer_update_rate_independence() {
     let mut eng_fast = Engineer::new(&cfg_fast);
     let mut eng_slow = Engineer::new(&cfg_slow);
 
-    let phys = AcPhysics {
+    let car = Car {
         speed_kmh: 100.0,
         brake: 0.8,
         wheel_slip: [0.4, 0.4, 0.0, 0.0],
         ..Default::default()
     };
 
-    let gfx = AcGraphics::default();
-    let session = SessionInfo::default();
+    let state = Session::default();
+    let info = SessionInfo::default();
 
     // 1 second simulation at 60 Hz = 60 steps
     for _ in 0..60 {
-        eng_fast.update(&phys, &gfx, &session);
+        eng_fast.update(&car, &state, &info);
     }
 
     // 1 second simulation at 10 Hz = 10 steps
     for _ in 0..10 {
-        eng_slow.update(&phys, &gfx, &session);
+        eng_slow.update(&car, &state, &info);
     }
 
     // Both should accumulate approximately equal lockup frames (~60 normalized frames)
@@ -643,8 +643,8 @@ fn test_37_track_map_bounds_and_zero_coords_safety() {
 
 #[test]
 fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
-    use ac_core::ac_structs::{AcGraphics, AcPhysics};
     use ac_core::engineer::Engineer;
+    use ac_core::games::{Car, Session};
     use ac_core::session_info::SessionInfo;
 
     let mut cfg1 = get_english_config();
@@ -655,17 +655,17 @@ fn test_38_target_tyre_pressure_config_affects_engineer_recommendations() {
     cfg2.target_tyre_pressure = 32.0;
     let mut eng2 = Engineer::new(&cfg2);
 
-    let phys = AcPhysics {
+    let car = Car {
         speed_kmh: 80.0,
-        wheels_pressure: [25.0; 4], // low pressure
+        tyre_pressure_psi: [25.0; 4], // low pressure
         ..Default::default()
     };
 
-    let gfx = AcGraphics::default();
-    let _session = SessionInfo::default();
+    let state = Session::default();
+    let _info = SessionInfo::default();
 
-    let recs1 = eng1.analyze_live(&phys, &gfx, None);
-    let recs2 = eng2.analyze_live(&phys, &gfx, None);
+    let recs1 = eng1.analyze_live(&car, &state, None);
+    let recs2 = eng2.analyze_live(&car, &state, None);
 
     // Target tyre pressure in config dynamically shifts the engineer recommendations
     let target1 = recs1
@@ -717,7 +717,7 @@ fn test_39_corrupted_records_file_and_atomic_save_safety() {
 
 #[test]
 fn test_40_string_u16_formatting_has_no_side_effects() {
-    use ac_core::ac_structs::StringU16_33;
+    use ac_core::games::assetto_corsa::structs::StringU16_33;
 
     let _s = StringU16_33::from("ks_ferrari_488_gt3");
     let s = StringU16_33::from("ks_ferrari_488_gt3");

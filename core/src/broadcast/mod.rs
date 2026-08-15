@@ -28,7 +28,7 @@
 //! nothing else, and needs to know nothing about which simulator produced it.
 //! That is what makes the format game-neutral without any work: an
 //! [`OverlayFrame`] has speed, gear, four corners, lap times and advice text in
-//! it, and no `AcPhysics` anywhere.
+//! it, and nothing of any one simulator's own layout anywhere.
 
 pub mod receiver;
 pub mod shm;

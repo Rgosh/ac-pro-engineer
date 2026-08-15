@@ -13,9 +13,10 @@
 //! Linux only: it reads `/dev/shm` directly, which is where Proton and the
 //! simulator both put AC's maps.
 
-use ac_core::ac_structs::{AcGraphics, AcPhysics, AcStatic};
 use ac_core::config::AppConfig;
 use ac_core::engineer::{Engineer, Severity};
+use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics, AcStatic};
+use ac_core::games::{Car, Session};
 use ac_core::session_info::SessionInfo;
 use std::mem::size_of;
 use std::thread::sleep;
@@ -54,7 +55,7 @@ fn main() {
 
     let config = AppConfig::default();
     let mut engineer = Engineer::new(&config);
-    let session = SessionInfo::default();
+    let info = SessionInfo::default();
 
     println!("reading /dev/shm/acpmf_* — {samples} samples, one per second\n");
 
@@ -69,38 +70,46 @@ fn main() {
         };
         let stat = read_map::<AcStatic>("acpmf_static");
 
+        // This probe reads AC's pages itself, so that a missing static page
+        // still leaves something to print. Everything past this line works in
+        // the neutral reading, like the application does.
+        let (car, session): (Car, Session) = ((&phys).into(), (&gfx).into());
+
         engineer.update_config(&config);
-        engineer.update(&phys, &gfx, &session);
-        let recommendations = engineer.analyze_live(&phys, &gfx, None);
+        engineer.update(&car, &session, &info);
+        let recommendations = engineer.analyze_live(&car, &session, None);
 
         println!("── sample {sample} ─────────────────────────────────────────────");
         println!(
             "speed {:6.1} km/h   gear {}   rpm {}   fuel {:.1} L{}",
-            phys.speed_kmh,
-            phys.gear - 1,
-            phys.rpms,
-            phys.fuel,
+            car.speed_kmh,
+            car.gear,
+            car.rpm,
+            car.fuel_litres,
             stat.map(|s| format!("   max fuel {:.0} L", s.max_fuel))
                 .unwrap_or_default()
         );
         println!(
             "pressure  {:5.1} {:5.1} {:5.1} {:5.1} psi",
-            phys.wheels_pressure[0],
-            phys.wheels_pressure[1],
-            phys.wheels_pressure[2],
-            phys.wheels_pressure[3]
+            car.tyre_pressure_psi[0],
+            car.tyre_pressure_psi[1],
+            car.tyre_pressure_psi[2],
+            car.tyre_pressure_psi[3]
         );
         println!(
             "tyre temp {:5.0} {:5.0} {:5.0} {:5.0} °C  (middle)",
-            phys.tyre_temp_m[0], phys.tyre_temp_m[1], phys.tyre_temp_m[2], phys.tyre_temp_m[3]
+            car.tyre_temp_middle_c[0],
+            car.tyre_temp_middle_c[1],
+            car.tyre_temp_middle_c[2],
+            car.tyre_temp_middle_c[3]
         );
         println!(
             "brake     {:5.0} {:5.0} {:5.0} {:5.0} °C",
-            phys.brake_temp[0], phys.brake_temp[1], phys.brake_temp[2], phys.brake_temp[3]
+            car.brake_temp_c[0], car.brake_temp_c[1], car.brake_temp_c[2], car.brake_temp_c[3]
         );
         println!(
             "wear      {:5.1} {:5.1} {:5.1} {:5.1} %",
-            phys.tyre_wear[0], phys.tyre_wear[1], phys.tyre_wear[2], phys.tyre_wear[3]
+            car.tyre_wear[0], car.tyre_wear[1], car.tyre_wear[2], car.tyre_wear[3]
         );
         println!(
             "fuel/lap {:.2} L   laps left {:.1}   delta {:+.3} s",
