@@ -13,12 +13,12 @@ Worth being precise, because it is less than it looks. Of `core/`:
 
 | Module | Game-specific? |
 |---|---|
-| `ac_structs.rs` | **Yes** — AC's four shared-memory pages, field for field |
-| `ac_paths.rs` | **Yes** — where Steam puts AC, where its setups live |
+| `games/assetto_corsa/structs.rs` | **Yes** — AC's shared-memory pages, field for field |
+| `games/assetto_corsa/paths.rs` | **Yes** — where Steam puts AC, where its setups live |
 | `setup_manager.rs` | **Yes** — AC's setup `.ini`, and its click indices |
 | `content_manager.rs` | **Yes** — reads AC's car data |
 | `analyzer.rs` | No — laps, sectors, averages, histograms |
-| `engineer.rs` | No, once it stops taking `AcPhysics` |
+| `engineer.rs` | No — takes `Car` and `Session`, as of v0.3.7 |
 | `debrief.rs` | No, same |
 | `records.rs`, `ring_buffer.rs`, `atomic_file.rs` | No |
 | `overlay/` | **Transport**, not a game — see below |
@@ -47,10 +47,15 @@ four modules behind a trait, and let the rest talk to the model.
                    → CSP panel    → anything    (in-proc)    front end)
 ```
 
-### `telemetry` — the model
+### `games/reading.rs` — the model. **Built**
 
-One neutral `Sample`: speed, gear, rpm, four corners of pressure/temperature/
-wear/brake, ride height, fuel, lap and sector timing, session state. Plus a
+One neutral `Reading`, in three parts: `Car` (what the car is doing this
+instant), `Session` (where it is in the session, and the clock) and `Fixed`
+(the car, the track, the driver, the limits). Speed, gear, rpm, four corners of
+pressure/temperature/wear/brake, ride height, fuel, lap and sector timing,
+session state. Units are in the field names and conventions are stated rather
+than inherited — `Car::gear` is −1 for reverse because that is what a driver
+means, and AC's 0-is-reverse is translated once, at the boundary. Plus a
 `Capabilities` set, because this is the part that always goes wrong: a game that
 cannot report inner/outer tyre temperature must be *distinguishable* from a game
 reporting zero. The camber advice is built on that difference, and a model that
@@ -68,14 +73,18 @@ pub trait Source {
 }
 ```
 
-`sources/assetto_corsa/` gets today's `ac_structs`, `ac_paths`, `setup_manager`,
-`content_manager` and the `Memory` reader currently living in `tui/src/lib.rs`.
-Nothing else in the tree should mention `AcPhysics` again.
+`games/assetto_corsa/` has the structs, the paths and the `Memory` reader that
+used to live in `tui/src/lib.rs`; `setup_manager` and `content_manager` are
+still outside it. Nothing else in the tree mentions `AcPhysics` — and as of
+v0.3.7 that is a test rather than an intention, because the first time round
+the trait was written, held and bypassed. See
+`tests_suite/src/boundary_tests.rs`.
 
-### `engineer` — advice from the model only
+### `engineer` — advice from the model only. **Built**
 
-Takes `Sample` and `Lap`, not `AcPhysics`. This is mostly a signature change:
-`debrief.rs` already works off `LapData` and would move over almost unchanged.
+Takes `Car`, `Session` and `Lap`, not `AcPhysics`. It was mostly a signature
+change, as expected: `debrief.rs` already worked off `LapData` and did not move
+at all.
 
 ### `broadcast` — transports, plural
 
@@ -217,11 +226,16 @@ every move costs every Linux driver a bridge update.
 2. ~~**A folder per game, and the core reads it.**~~ Done.
    `core/src/games/assetto_corsa/` holds the structs, the paths and the shared
    memory reader that used to live in the terminal, behind a `Source` trait
-   with a `Capabilities` set. The neutral `Sample` is still to come — the
-   engineer takes `AcPhysics` for now.
-3. **The engineer moves onto the model.** Delete the adapter. This is where the
-   compound-aware thresholds below belong, because the model is where a compound
-   becomes a first-class thing rather than a string match.
+   with a `Capabilities` set. The neutral reading was still to come — the
+   engineer took `AcPhysics`, and so did the analyser and five screens, which
+   meant the boundary was a folder and carried no data.
+3. ~~**The engineer moves onto the model.**~~ Done, v0.3.7.
+   `Source::poll` returns a `Reading` and there are no accessors beside it;
+   `games/assetto_corsa/reading.rs` converts. 109 references to AC's structs
+   across ten files became none, with no change to a single screenshot, and
+   two source-level tests keep it that way. Still open here: the compound-aware
+   thresholds below, and **the capability flags, which are consulted by
+   nobody.**
 4. ~~**`broadcast`, with sinks.**~~ Done. `Sink`, a `Broadcaster` that fans out
    and never waits, the shared-memory mapping wearing the same interface, and a
    UDP sink sending the computed frame as JSON. Off unless `broadcast_to` is
