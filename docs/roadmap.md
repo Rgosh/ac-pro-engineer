@@ -286,9 +286,19 @@ Three things worth keeping:
 Found on the way, and fixed separately in `ce1458c`: `DiscordClient::new`
 connected to Discord's IPC socket from `AppState::new`, so the test suite went
 from 0.4 s to 374 s the moment Discord was opened on this machine — on an
-unchanged tree. The remaining 58 s is the same mistake in `SetupManager`, whose
-background thread opens with a blocking manifest fetch that its `Drop` waits
-for. **Still owed.**
+unchanged tree.
+
+**Correction to what was first written here.** The 58 s that remained after
+that fix was blamed on `SetupManager`. It was not: it was still Discord, whose
+connect had only moved from the constructor into the tick, where every test
+that ticked paid for one attempt. Removing rich presence entirely (`154d78a`,
+below) took the suite to 0.34 s with `SetupManager` untouched.
+
+The structural complaint about `SetupManager` stands on its own — its
+background thread opens with a blocking manifest fetch and its `Drop` waits for
+it, so on a machine with slow or blocked DNS every test that builds an app
+state pays up to five seconds. It is a risk rather than a measured cost.
+**Still owed.**
 
 The item as it was written follows.
 
@@ -317,6 +327,26 @@ disappears — for each of the four, and for each new flag added in §6.
 
 Only worth starting after §4 and §5. Everything here is additive once they are
 done.
+
+**Since this was written, the seam is built** — `games::registry`, `90633ba`.
+A game is an entry in one table with either a working backend (capabilities,
+process names, connect, car scan, setup store) or a sentence saying what it
+still needs, and the terminal names no simulator at all: a test fails if
+anything under `tui/src` does. Five games are listed as planned — Competizione,
+AC EVO, iRacing, rFactor 2, Le Mans Ultimate — carrying **no guessed appid, no
+guessed process name and no capabilities**, because a default capability in a
+table reads exactly like a measurement.
+
+So 6.1 to 6.4 below are still the whole job for ACC; what has changed is that
+none of them requires touching anything outside the new folder. The site says
+the same thing at `/acc/`, generated from the same list.
+
+Two of these are worth restating in the light of iRacing being on the list:
+**6.2's discriminator matters more than it looks**, and iRacing will not fit
+the three-fixed-pages shape at all — it publishes a header and a session
+string through a mapped file of its own. It is the entry most likely to find
+the wrong assumptions in the boundary, which is the argument for doing ACC
+first and iRacing second rather than the other way round.
 
 **6.1 The structs, from a real capture.** ACC uses the same page names
 (`acpmf_physics` and the rest) with a different and longer layout. Take them
