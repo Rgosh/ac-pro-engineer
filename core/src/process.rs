@@ -85,7 +85,7 @@ pub fn is_process_running(target_name: &str) -> bool {
     use std::fs;
 
     let target_lower = target_name.to_lowercase();
-    let is_proc_alive = if let Ok(entries) = fs::read_dir("/proc") {
+    if let Ok(entries) = fs::read_dir("/proc") {
         entries.flatten().any(|entry| {
             let path = entry.path().join("cmdline");
             if let Ok(cmdline) = fs::read_to_string(path) {
@@ -99,13 +99,7 @@ pub fn is_process_running(target_name: &str) -> bool {
         })
     } else {
         false
-    };
-
-    if !is_proc_alive {
-        return false;
     }
-
-    std::path::Path::new("/dev/shm/acpmf_physics").exists() && is_proc_alive
 }
 
 #[cfg(target_os = "windows")]
@@ -173,6 +167,14 @@ mod tests {
 /// second answer is as good as a fresh one here.
 pub struct ProcessWatcher {
     names: Vec<String>,
+    /// A second question the game gets to ask, beyond "is the process there".
+    ///
+    /// On Linux the game runs under Proton and its telemetry only arrives once
+    /// `shm-bridge.exe` is up, so a running `acs.exe` with no mapping is a game
+    /// this application cannot read — and the launcher says so rather than
+    /// waiting silently. Which mapping that is is a fact about a game, so the
+    /// game supplies the test and this module only remembers the answer.
+    corroboration: Option<fn() -> bool>,
     last_checked: Option<std::time::Instant>,
     last_answer: bool,
 }
@@ -185,9 +187,16 @@ impl ProcessWatcher {
     pub fn new(names: &[&str]) -> Self {
         Self {
             names: names.iter().map(|n| n.to_string()).collect(),
+            corroboration: None,
             last_checked: None,
             last_answer: false,
         }
+    }
+
+    /// Also require the game's own evidence that it can be read.
+    pub fn corroborated_by(mut self, evidence: fn() -> bool) -> Self {
+        self.corroboration = Some(evidence);
+        self
     }
 
     /// Whether any watched process is running, rescanning if the cached
@@ -196,7 +205,8 @@ impl ProcessWatcher {
         let expired = self.last_checked.is_none_or(|at| at.elapsed() >= CACHE_TTL);
 
         if expired {
-            self.last_answer = self.names.iter().any(|name| is_process_running(name));
+            self.last_answer = self.names.iter().any(|name| is_process_running(name))
+                && self.corroboration.is_none_or(|evidence| evidence());
             self.last_checked = Some(std::time::Instant::now());
         }
 

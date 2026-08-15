@@ -25,7 +25,15 @@ use tracing::{debug, info};
 /// Only the Proton lookup needs it, and that is Linux-only — on Windows the
 /// game writes to the real Documents folder and there is no prefix to find.
 #[cfg(not(target_os = "windows"))]
-const AC_APP_ID: &str = "244210";
+/// Assetto Corsa on Steam.
+///
+/// Written down once: the Proton bridge is launched against this appid and the
+/// install is found under it, and the two disagreeing is a class of bug that
+/// costs an evening. ACC is 805550 and belongs to its own folder.
+pub const AC_APP_ID: &str = "244210";
+
+/// The same, for the callers that need it as a number.
+pub const AC_APP_ID_NUMBER: u32 = 244210;
 
 /// Directory name of the game inside a Steam library.
 const AC_DIR_NAME: &str = "assettocorsa";

@@ -181,23 +181,21 @@ mod tests {
         assert!(!client.is_connected());
     }
 
-    /// A machine with no Discord must not attempt a connection on every tick.
+    /// A refused connection must not be retried on the next tick.
     ///
-    /// The first update may try — and on a machine that *does* run Discord it
-    /// will succeed, which is fine — but a failure has to buy an hour of quiet,
-    /// not one frame of it.
+    /// The failure is arranged by taking the IPC client away rather than by
+    /// hoping the machine has no Discord: a test whose meaning depends on what
+    /// the developer has open is a test that says something different for
+    /// everyone who runs it.
     #[test]
     fn a_refused_connection_is_not_retried_every_frame() {
         let mut client = DiscordClient::new();
+        client.client = None;
         let info = SessionInfo::default();
 
         client.update(false, &info, 0.0);
-        if client.is_connected() {
-            // Discord is running on this machine, so there is nothing to say
-            // about the back-off; the connection is what was wanted.
-            return;
-        }
 
+        assert!(!client.is_connected());
         let scheduled = client
             .next_attempt
             .expect("a failed attempt schedules the next one");
@@ -208,13 +206,22 @@ mod tests {
     }
 
     /// The throttle applies to the whole body, including the connect attempt.
+    ///
+    /// The connection is pushed out of reach first, so the test measures the
+    /// throttle and not this machine's Discord. Without that it asserted on
+    /// how long a real IPC handshake takes — which on a machine where that
+    /// handshake is slow is the very thing that made it fail, and the very
+    /// thing this file exists to keep off the critical path.
     #[test]
     fn updates_are_throttled_to_their_interval() {
         let mut client = DiscordClient::new();
+        client.next_attempt = Some(Instant::now() + Duration::from_secs(3600));
         let info = SessionInfo::default();
 
         client.update(false, &info, 0.0);
         let before = client.last_update;
+        assert!(!client.is_connected(), "no connection was attempted");
+
         client.update(false, &info, 0.0);
         assert_eq!(
             before, client.last_update,

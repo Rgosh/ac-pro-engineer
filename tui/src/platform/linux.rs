@@ -11,7 +11,7 @@ use tracing::{error, info};
 /// that quitting the app never feels hung.
 const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-static GAME_ID: u32 = 244210;
+use ac_core::games::assetto_corsa::paths::AC_APP_ID_NUMBER as GAME_ID;
 
 /// This is a helper struct to start a `Shared Memory Bridge` (`shm-bridge.exe`) process in Proton.
 ///
