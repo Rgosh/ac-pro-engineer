@@ -6,8 +6,10 @@
 //! `shm-bridge.exe` runs inside the prefix and mirrors them out to `/dev/shm`.
 //! Either way what arrives here is the same bytes in the same layout.
 
+pub mod content;
 pub mod paths;
 pub mod reading;
+pub mod setups;
 pub mod shm;
 pub mod structs;
 
@@ -15,6 +17,37 @@ use crate::games::{Capabilities, GameId, Reading, Source};
 
 /// The identifier this game goes out under.
 pub const GAME_ID: GameId = "assetto_corsa";
+
+/// The processes that mean Assetto Corsa is running.
+///
+/// `acs.exe` is the game, on Windows and equally under Proton, where it is a
+/// Windows process either way. `simulator.exe` is this project's own fake
+/// telemetry source, which stands in for the game while developing — the
+/// launcher treats it as the game because for every purpose above this line
+/// it is one.
+///
+/// Which process names mean "the game is up" is a fact about a game, and the
+/// only place it can be checked against is the game itself. Steam appid 244210
+/// is the other half of the same fact and lives in `paths.rs`.
+pub const PROCESS_NAMES: &[&str] = &["acs.exe", "simulator.exe"];
+
+/// Whether Assetto Corsa's telemetry can actually be read on this machine.
+///
+/// On Linux the game is a Windows process under Proton and its pages reach us
+/// only once `shm-bridge.exe` mirrors them into `/dev/shm`, so a running
+/// `acs.exe` with no mapping is a game this application cannot see. On Windows
+/// the game writes the pages itself and the process being up is the whole
+/// answer.
+pub fn telemetry_is_reachable() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        true
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::path::Path::new("/dev/shm/acpmf_physics").exists()
+    }
+}
 
 /// What Assetto Corsa measures.
 ///
