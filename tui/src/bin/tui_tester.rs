@@ -1,7 +1,7 @@
 use ac_core::analyzer::{LapData, RadarStats, TelemetryPoint};
 use ac_core::config::Language;
 use ac_core::engineer::{Recommendation, Severity};
-use ac_core::games::{Car, Fixed, Reading, Session, Status};
+use ac_core::games::{Capabilities, Car, Fixed, Reading, Session, Status};
 use ac_core::session_info::SessionInfo;
 use ac_tui::ui::UIRenderer;
 use ac_tui::ui::screenshot::buffer_to_png;
@@ -107,6 +107,10 @@ fn create_populated_app_state() -> AppState {
     app.reading = Some(Reading {
         car,
         session,
+        // These screenshots stand in for Assetto Corsa, which measures all of
+        // it. A harness that left this at the default would photograph an
+        // engineer with nothing to say about tyres.
+        capabilities: Capabilities::all(),
         fixed: Fixed {
             max_rpm: 12500,
             max_fuel_litres: 110.0,

@@ -9,7 +9,7 @@ use ac_core::config::AppConfig;
 use ac_core::content_manager::ContentManager;
 use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
-use ac_core::games::{Car, Fixed, Reading, Session, Source, Status};
+use ac_core::games::{Capabilities, Car, Fixed, Reading, Session, Source, Status};
 use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -821,6 +821,9 @@ impl AppState {
         // The half of the demo reading that does not move. `update_demo_tick`
         // fills in the car and the session sixty times a second on top of it.
         self.reading = Some(Reading {
+            // The demo stands in for a running Assetto Corsa, so it reports
+            // what one reports.
+            capabilities: Capabilities::all(),
             fixed: Fixed {
                 max_rpm: 12500,
                 max_fuel_litres: 110.0,
@@ -988,6 +991,16 @@ impl AppState {
         self.reading.as_ref().map(|reading| &reading.fixed)
     }
 
+    /// What the game being read can measure, if one is being read at all.
+    ///
+    /// `None` is **not** "nothing measured": it is "no game", which answers a
+    /// different question. A lap loaded from a file has sector times in it
+    /// whether or not a simulator is running, so a screen drawing saved data
+    /// must not be told the game does not publish them.
+    pub fn capabilities(&self) -> Option<ac_core::games::Capabilities> {
+        self.reading.as_ref().map(|reading| reading.capabilities)
+    }
+
     pub fn process_tick_logic(&mut self, reading: Reading) {
         // Both are `Copy`, so the reading can be kept whole for the screens
         // while the tick works from its two halves.
@@ -999,11 +1012,18 @@ impl AppState {
         if sector_count > 0 && sector_count as usize <= self.current_lap_sectors.len() {
             self.track_sector_count = sector_count;
         }
+        let capabilities = reading.capabilities;
         self.reading = Some(reading);
 
         self.update_live_buffers(&car, &session);
         self.update_session_info(&session);
         self.engineer.update_config(&self.config);
+        // Beside the config, and for the same reason: it is a property of the
+        // run rather than of the tick, and the engineer withholds everything
+        // until it is told. A tick that forgot this would produce an engineer
+        // with nothing to say, which is loud — the alternative default is a
+        // wrong verdict, which is not.
+        self.engineer.update_capabilities(capabilities);
         self.engineer.update(&car, &session, &self.session_info);
 
         // The engineer sets `current_delta` from AC's own performance meter,
@@ -1624,7 +1644,10 @@ mod tests {
         app.is_demo_mode = true;
         // The demo tick fills the car and the session in; what it needs to
         // find already there is a reading to fill them into.
-        app.reading = Some(Reading::default());
+        app.reading = Some(Reading {
+            capabilities: Capabilities::all(),
+            ..Default::default()
+        });
         app.stage = AppStage::Running;
 
         assert_eq!(app.car_history.len(), 0);
@@ -1638,6 +1661,39 @@ mod tests {
         assert!(app.car_history.last().is_some_and(|p| p.speed_kmh > 0.0));
         assert_ne!(app.session_info.car_name, "");
         assert_ne!(app.session_info.track_name, "");
+    }
+
+    /// The tick is what tells the engineer which game it is reading, and
+    /// nothing else does.
+    ///
+    /// Everything else about the capability flags is tested where the rules
+    /// are; this is the wire between the game's answer and the engineer's ear.
+    /// It is the one link whose failure is silent in the other direction — an
+    /// engineer never told anything withholds every tyre verdict, which looks
+    /// like a quiet session rather than like a bug.
+    #[test]
+    fn the_tick_tells_the_engineer_what_the_game_measures() {
+        let mut app = AppState::new();
+
+        let complete = Reading {
+            capabilities: Capabilities::all(),
+            ..Default::default()
+        };
+        app.process_tick_logic(complete);
+        assert_eq!(app.engineer.capabilities(), Capabilities::all());
+
+        // And it is the *reading* that decides, not a value latched once: a
+        // game swapped underneath — reconnecting to another simulator — has to
+        // narrow what the engineer will say.
+        let partial = Capabilities {
+            tyre_wear: false,
+            ..Capabilities::all()
+        };
+        app.process_tick_logic(Reading {
+            capabilities: partial,
+            ..Default::default()
+        });
+        assert_eq!(app.engineer.capabilities(), partial);
     }
 
     /// The panel has to be reachable before a session starts.

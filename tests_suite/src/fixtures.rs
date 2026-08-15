@@ -1,4 +1,4 @@
-use ac_core::games::{Car, Reading, Session, Status};
+use ac_core::games::{Capabilities, Car, Reading, Session, Status};
 use ac_core::session_info::SessionInfo;
 use ac_tui::AppState;
 
@@ -145,6 +145,10 @@ mod tests {
             app.process_tick_logic(Reading {
                 car: sample.car,
                 session: sample.state,
+                // The fixture is three laps of Assetto Corsa, which measures
+                // all four. Left at the default it would be a game that
+                // publishes nothing, and the engineer would rightly say so.
+                capabilities: Capabilities::all(),
                 ..Default::default()
             });
         }

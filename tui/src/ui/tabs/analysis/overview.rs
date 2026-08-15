@@ -164,16 +164,35 @@ pub fn render(
         optimal_diff,
     ]));
 
-    let sec_table = Table::new(sec_rows, [Constraint::Ratio(1, 4); 4])
-        .header(
-            Row::new(vec!["Sec", "Time", "Best", "Diff"]).style(Style::default().fg(Color::Gray)),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Sector Analysis".tr(is_ru)),
+    // A game that does not publish sector times is a different state from a
+    // session that has not set any: the table of dashes above reads as "no
+    // laps yet", and waiting for laps that can never arrive is worse than
+    // being told. Only said while a game is actually being read — a lap out
+    // of a file has its sectors regardless.
+    let sector_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Sector Analysis".tr(is_ru));
+
+    if app
+        .capabilities()
+        .is_some_and(|capabilities| !capabilities.sectors)
+    {
+        f.render_widget(
+            Paragraph::new("Sector times are not published by this game.".tr(is_ru))
+                .style(Style::default().fg(Color::DarkGray))
+                .alignment(Alignment::Center)
+                .block(sector_block),
+            row1[0],
         );
-    f.render_widget(sec_table, row1[0]);
+    } else {
+        let sec_table = Table::new(sec_rows, [Constraint::Ratio(1, 4); 4])
+            .header(
+                Row::new(vec!["Sec", "Time", "Best", "Diff"])
+                    .style(Style::default().fg(Color::Gray)),
+            )
+            .block(sector_block);
+        f.render_widget(sec_table, row1[0]);
+    }
 
     let score_block = Block::default()
         .borders(Borders::ALL)
@@ -559,4 +578,87 @@ pub fn render(
             .alignment(Alignment::Left),
         row3[2],
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ac_core::analyzer::LapData;
+    use ac_core::games::{Capabilities, Reading};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// Draw the overview against a game with the given capabilities and read
+    /// the screen back as text.
+    ///
+    /// `None` for the reading is the state the launcher and a lap loaded from
+    /// a file are in: no game, which is not the same as a game that measures
+    /// nothing.
+    fn screen(capabilities: Option<Capabilities>) -> String {
+        let mut app = AppState::new();
+        app.reading = capabilities.map(|capabilities| Reading {
+            capabilities,
+            ..Default::default()
+        });
+
+        let lap = LapData {
+            lap_number: 3,
+            lap_time_ms: 81_452,
+            sectors: [24_120, 28_350, 28_982],
+            valid: true,
+            ..Default::default()
+        };
+
+        let mut terminal =
+            Terminal::new(TestBackend::new(120, 30)).expect("a terminal to draw into");
+        terminal
+            .draw(|f| render(f, f.size(), &app, &lap, None))
+            .expect("the overview draws");
+
+        let buffer = terminal.backend().buffer().clone();
+        let mut text = String::new();
+        for y in 0..30 {
+            for x in 0..120 {
+                text.push_str(buffer.get(x, y).symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    /// The verdict disappears, and says why.
+    ///
+    /// A table of dashes would have been the alternative, and it reads as "no
+    /// laps recorded yet" — so the driver waits for numbers that can never
+    /// arrive.
+    #[test]
+    fn a_game_without_sectors_says_so_instead_of_drawing_dashes() {
+        let drawn = screen(Some(Capabilities {
+            sectors: false,
+            ..Capabilities::all()
+        }));
+        assert!(drawn.contains("not published by this game"), "{drawn}");
+        assert!(
+            !drawn.contains("24.120"),
+            "a sector time this game cannot have measured: {drawn}"
+        );
+    }
+
+    /// And a game that does publish them still shows them, which is the half
+    /// that would pass on a screen that had simply stopped drawing.
+    #[test]
+    fn a_game_with_sectors_still_shows_them() {
+        let drawn = screen(Some(Capabilities::all()));
+        assert!(drawn.contains("24.120"), "{drawn}");
+        assert!(!drawn.contains("not published by this game"), "{drawn}");
+    }
+
+    /// No game running is not a game that measures nothing. A lap read back
+    /// from a file has its sectors in it, and the screen has to draw them.
+    #[test]
+    fn a_lap_with_no_game_behind_it_still_shows_its_sectors() {
+        let drawn = screen(None);
+        assert!(drawn.contains("24.120"), "{drawn}");
+        assert!(!drawn.contains("not published by this game"), "{drawn}");
+    }
 }

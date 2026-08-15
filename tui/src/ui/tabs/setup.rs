@@ -119,6 +119,23 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         height: inner.height.saturating_sub(1),
     };
 
+    // The browser is the Setup Cloud, which is this project's own service and
+    // has setups for a game whether or not that game keeps its own on disk.
+    // The local half is the one that cannot exist without them.
+    if !is_browser
+        && app
+            .capabilities()
+            .is_some_and(|capabilities| !capabilities.setups)
+    {
+        f.render_widget(
+            Paragraph::new("This game does not keep setups this program can read.".tr_lang(lang))
+                .style(Style::default().fg(Color::DarkGray))
+                .alignment(Alignment::Center),
+            content_area,
+        );
+        return;
+    }
+
     if is_browser {
         render_browser_mode(f, content_area, app);
     } else {
@@ -662,5 +679,60 @@ fn render_comparison_table(
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ac_core::games::{Capabilities, Reading};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn screen(capabilities: Option<Capabilities>) -> String {
+        let mut app = AppState::new();
+        app.reading = capabilities.map(|capabilities| Reading {
+            capabilities,
+            ..Default::default()
+        });
+
+        let mut terminal =
+            Terminal::new(TestBackend::new(120, 30)).expect("a terminal to draw into");
+        terminal
+            .draw(|f| render(f, f.size(), &app))
+            .expect("the setup tab draws");
+
+        let buffer = terminal.backend().buffer().clone();
+        let mut text = String::new();
+        for y in 0..30 {
+            for x in 0..120 {
+                text.push_str(buffer.get(x, y).symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    /// An empty setup list on a game that has no setups to read is indistinguishable
+    /// from a game whose folder happens to be empty, and the driver goes looking
+    /// for the folder.
+    #[test]
+    fn a_game_without_setups_says_so_rather_than_showing_an_empty_list() {
+        let drawn = screen(Some(Capabilities {
+            setups: false,
+            ..Capabilities::all()
+        }));
+        assert!(drawn.contains("does not keep setups"), "{drawn}");
+        assert!(!drawn.contains("AVAILABLE SETUPS"), "{drawn}");
+    }
+
+    /// The control: a game that does keep them gets the list, empty or not.
+    #[test]
+    fn a_game_with_setups_gets_the_list() {
+        for capabilities in [Some(Capabilities::all()), None] {
+            let drawn = screen(capabilities);
+            assert!(drawn.contains("AVAILABLE SETUPS"), "{drawn}");
+            assert!(!drawn.contains("does not keep setups"), "{drawn}");
+        }
     }
 }
