@@ -1,4 +1,7 @@
 #[cfg(test)]
+pub mod boundary_tests;
+
+#[cfg(test)]
 pub mod core_tests;
 
 #[cfg(test)]
