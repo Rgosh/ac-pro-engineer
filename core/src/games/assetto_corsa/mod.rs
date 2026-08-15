@@ -16,6 +16,25 @@ use crate::games::{Capabilities, GameId, Reading, Source};
 /// The identifier this game goes out under.
 pub const GAME_ID: GameId = "assetto_corsa";
 
+/// What Assetto Corsa measures.
+///
+/// All four, and every one of them checked against a real capture rather than
+/// assumed: `tests_suite/src/shm_layout_tests.rs` parses bytes taken verbatim
+/// from a live `/dev/shm/acpmf_*`. AC does publish the inner and outer tyre
+/// temperatures — 33.5 and 34.0 °C on a cold front-left — which is why the
+/// camber advice is possible on this game at all.
+///
+/// A constant rather than only a method, because anything reading AC's pages
+/// has to be able to say so without holding a connection: a probe reading
+/// `/dev/shm` by hand is still reading Assetto Corsa, and an engineer that is
+/// not told withholds every verdict that rests on a measurement.
+pub const CAPABILITIES: Capabilities = Capabilities {
+    tyre_edge_temps: true,
+    sectors: true,
+    setups: true,
+    tyre_wear: true,
+};
+
 /// A connection to a running Assetto Corsa.
 ///
 /// Holds the three mappings and the last good reading of each. Constructing it
@@ -44,25 +63,17 @@ impl Source for AssettoCorsa {
     }
 
     fn capabilities(&self) -> Capabilities {
-        // All four, and every one of them checked against a real capture rather
-        // than assumed: `tests_suite/src/shm_layout_tests.rs` parses bytes taken
-        // verbatim from a live `/dev/shm/acpmf_*`. AC does publish the inner and
-        // outer tyre temperatures — 33.5 and 34.0 °C on a cold front-left — which
-        // is why the camber advice is possible here at all.
-        Capabilities {
-            tyre_edge_temps: true,
-            sectors: true,
-            setups: true,
-            tyre_wear: true,
-        }
+        CAPABILITIES
     }
 
     fn poll(&mut self) -> Option<Reading> {
         self.memory.refresh().ok()?;
-        Some(reading::reading_of(
+        let mut reading = reading::reading_of(
             self.memory.physics(),
             self.memory.graphics(),
             self.memory.stat(),
-        ))
+        );
+        reading.capabilities = self.capabilities();
+        Some(reading)
     }
 }

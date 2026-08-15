@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, Language};
-use crate::games::{Car, Session};
+use crate::games::{Capabilities, Car, Session};
 use crate::i18n::{Translate, tr_fmt};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
@@ -130,6 +130,14 @@ const FUEL_HISTORY_LAPS: usize = 3;
 
 pub struct Engineer {
     config: AppConfig,
+    /// What the game feeding this engineer can actually measure.
+    ///
+    /// Starts at nothing measured, and every rule that rests on a measurement
+    /// checks here before it says anything. A game is expected to announce
+    /// itself through [`update_capabilities`](Engineer::update_capabilities)
+    /// on the way in; until it does, the engineer withholds rather than reads
+    /// a default as a reading.
+    capabilities: Capabilities,
     history_size: usize,
     pub stats: EngineerStats,
     pub driving_style: DrivingStyle,
@@ -263,6 +271,7 @@ impl Engineer {
         info!("Engineer module initialized.");
         Self {
             config: config.clone(),
+            capabilities: Capabilities::default(),
             history_size: 600,
             stats: EngineerStats::new(),
             driving_style: DrivingStyle::new(),
@@ -275,6 +284,20 @@ impl Engineer {
     pub fn update_config(&mut self, config: &AppConfig) {
         self.config = config.clone();
         self.stats.input_history.set_capacity(config.history_size);
+    }
+
+    /// Tell the engineer what the game it is reading can measure.
+    ///
+    /// Carried on every [`Reading`](crate::games::Reading), and passed on here
+    /// once a tick beside the config. Nothing else needs to change when a
+    /// second game arrives with a different answer.
+    pub fn update_capabilities(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
+    }
+
+    /// What the engineer is currently willing to speak about.
+    pub fn capabilities(&self) -> Capabilities {
+        self.capabilities
     }
 
     pub fn update(&mut self, car: &Car, session: &Session, _info: &SessionInfo) {
@@ -332,7 +355,7 @@ impl Engineer {
         // corner being driven; a lane change on a straight does not reach it,
         // and a straight is where the inner and outer edges of a correctly
         // cambered tyre read the same temperature.
-        if car.speed_kmh > 50.0 && car.acc_g[0].abs() > 0.5 {
+        if self.capabilities.tyre_edge_temps && car.speed_kmh > 50.0 && car.acc_g[0].abs() > 0.5 {
             let first_sample = self.stats.camber_frames == 0;
             self.stats.camber_frames = self.stats.camber_frames.saturating_add(ticks_norm);
             for i in 0..4 {
@@ -352,7 +375,7 @@ impl Engineer {
             if self.stats.last_lap_count == -1 || current_laps == 0 || car.speed_kmh < 10.0 {
                 self.stats.base_tyre_wear = car.tyre_wear;
                 self.stats.stint_laps = 0;
-            } else {
+            } else if self.capabilities.tyre_wear {
                 self.stats.stint_laps += 1;
                 for i in 0..4 {
                     let wear_used = self.stats.base_tyre_wear[i] - car.tyre_wear[i];
@@ -569,10 +592,20 @@ impl Engineer {
         let mut recommendations = Vec::new();
 
         self.analyze_tyre_pressure(car, session, &mut recommendations);
-        self.analyze_tyre_temperature(car, &mut recommendations);
-        self.analyze_tyre_wear(car, &mut recommendations);
-
-        self.analyze_camber(car, &mut recommendations);
+        // Both of these are built on measurements a game may simply not make,
+        // and a missing measurement reads as zero — which is a confident
+        // verdict about a car nobody drove. ACC publishes core tyre
+        // temperature and no tread across it at all; the camber rule *is*
+        // inner minus outer, and the temperature band is written against the
+        // mean of the three. Neither has anything to fall back on that is the
+        // same physical quantity, so neither runs.
+        if self.capabilities.tyre_edge_temps {
+            self.analyze_tyre_temperature(car, &mut recommendations);
+            self.analyze_camber(car, &mut recommendations);
+        }
+        if self.capabilities.tyre_wear {
+            self.analyze_tyre_wear(car, &mut recommendations);
+        }
         self.analyze_suspension(car, &mut recommendations);
         self.analyze_brakes(car, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
@@ -1865,7 +1898,7 @@ mod tests {
     #[test]
     fn wear_of_zero_on_every_corner_is_no_data_rather_than_four_dead_tyres() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
 
         let mut car = Car {
             tyre_wear: [0.0; 4],
@@ -1894,7 +1927,7 @@ mod tests {
     }
     use super::{Engineer, Severity};
     use crate::config::{AppConfig, PressureUnit};
-    use crate::games::{Car, Session};
+    use crate::games::{Capabilities, Car, Session};
 
     /// Age every alert timer past the one-second hold, so a test does not have
     /// to sleep through it.
@@ -1965,7 +1998,7 @@ mod tests {
     #[test]
     fn the_advice_a_driver_actually_sees_carries_a_usable_chain() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         // Over pressure, over temperature, cooking brakes and a worn set, all
@@ -2042,6 +2075,171 @@ mod tests {
 
     /// Drive `phys` through `update` often enough for the camber average to
     /// have something behind it.
+    /// The four flags, one at a time: a game that does not measure a thing
+    /// must not have a verdict about it.
+    ///
+    /// This is the half of `Capabilities` that did not exist. The type was
+    /// declared, documented and checked against a real capture, and then
+    /// consulted by nobody — so on Assetto Corsa, which measures all four,
+    /// nothing ever went wrong, and on the first game that does not it would
+    /// have read four defaults as four measurements.
+    mod capabilities {
+        use super::*;
+
+        /// A car in enough trouble that both gated rules have something to say
+        /// about it, and the ungated ones do too.
+        fn a_car_in_trouble() -> Car {
+            Car {
+                speed_kmh: 180.0,
+                tyre_pressure_psi: [20.0; 4],
+                tyre_wear: [70.0; 4],
+                brake_temp_c: [950.0; 4],
+                // Cooking, and the inner edge far hotter than the outer: too
+                // much negative camber as well as too much heat.
+                tyre_temp_inner_c: [140.0; 4],
+                tyre_temp_middle_c: [130.0; 4],
+                tyre_temp_outer_c: [118.0; 4],
+                acc_g: [1.2, 1.0, 0.0],
+                ..Default::default()
+            }
+        }
+
+        /// "Tyres/Overheat", "Brakes/Overheat" — the component as well as the
+        /// category, because two different rules both call their finding an
+        /// overheat and only one of them rests on a tread temperature.
+        fn advice_about(engineer: &mut Engineer, car: &Car) -> Vec<String> {
+            age_the_alerts(engineer);
+            drive(engineer, car, 120);
+            age_the_alerts(engineer);
+            engineer
+                .analyze_live(car, &Session::default(), None)
+                .into_iter()
+                .map(|rec| format!("{}/{}", rec.component, rec.category))
+                .collect()
+        }
+
+        /// Both halves in one: everything measured says all of it, and nothing
+        /// measured says only what does not depend on a measurement the game
+        /// withheld. The brakes are in both lists, which is the control — a
+        /// silent engineer would pass a test that only checked for absence.
+        #[test]
+        fn a_game_that_measures_nothing_still_says_what_it_can() {
+            let config = AppConfig::default();
+            let car = a_car_in_trouble();
+
+            let mut complete = engineer_reading_a_complete_game(&config);
+            let said = advice_about(&mut complete, &car);
+            for expected in [
+                "Tyres/Overheat",
+                "Suspension/Camber",
+                "Tyres/Wear",
+                "Brakes/Overheat",
+            ] {
+                assert!(said.iter().any(|c| c == expected), "{expected}: {said:?}");
+            }
+            // The pressure rule names the compound it judged against —
+            // "Tyres (Racing)" — so it is matched by what it found.
+            assert!(said.iter().any(|c| c.ends_with("/Pressure")), "{said:?}");
+
+            let mut blind = Engineer::new(&config);
+            let said = advice_about(&mut blind, &car);
+            assert!(
+                said.iter().any(|c| c == "Brakes/Overheat"),
+                "the brakes rest on no withheld measurement: {said:?}"
+            );
+            assert!(
+                said.iter().any(|c| c.ends_with("/Pressure")),
+                "nor does the pressure: {said:?}"
+            );
+            for withheld in ["Tyres/Overheat", "Suspension/Camber", "Tyres/Wear"] {
+                assert!(
+                    !said.iter().any(|c| c == withheld),
+                    "{withheld} rests on a measurement this game does not make: {said:?}"
+                );
+            }
+        }
+
+        /// Tyre wear alone. The rule reads a percentage that counts down from
+        /// 100, and an unpublished one reads as zero — which is exactly the
+        /// "four tyres WORN OUT" this project has already shipped once.
+        #[test]
+        fn without_tyre_wear_there_is_no_wear_verdict() {
+            let config = AppConfig::default();
+            let car = a_car_in_trouble();
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities {
+                tyre_wear: false,
+                ..Capabilities::all()
+            });
+            let said = advice_about(&mut engineer, &car);
+            assert!(!said.iter().any(|c| c == "Tyres/Wear"), "{said:?}");
+            assert!(
+                said.iter().any(|c| c == "Tyres/Overheat"),
+                "only the wear flag was taken away: {said:?}"
+            );
+        }
+
+        /// Tread temperature alone, which gates two rules: the camber advice is
+        /// inner minus outer, and the temperature band is the mean of the three.
+        /// ACC publishes core temperature and neither of those.
+        #[test]
+        fn without_tread_temperatures_there_is_no_camber_or_temperature_verdict() {
+            let config = AppConfig::default();
+            let car = a_car_in_trouble();
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities {
+                tyre_edge_temps: false,
+                ..Capabilities::all()
+            });
+            let said = advice_about(&mut engineer, &car);
+            assert!(!said.iter().any(|c| c == "Suspension/Camber"), "{said:?}");
+            assert!(!said.iter().any(|c| c == "Tyres/Overheat"), "{said:?}");
+            assert!(
+                said.iter().any(|c| c == "Tyres/Wear"),
+                "only the tread flag was taken away: {said:?}"
+            );
+            assert!(
+                said.iter().any(|c| c == "Brakes/Overheat"),
+                "the brakes are measured and still cooking: {said:?}"
+            );
+        }
+
+        /// The stat behind the camber verdict has to stop being collected too.
+        ///
+        /// Withholding only at the rule would leave `camber_spread` averaging
+        /// zero minus zero over a whole stint — a number that reads as a
+        /// perfectly cambered car rather than as no reading, and the moment a
+        /// flag was flipped back on it would be believed.
+        #[test]
+        fn an_unmeasured_tread_leaves_no_camber_history_behind() {
+            let config = AppConfig::default();
+            let car = a_car_in_trouble();
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities {
+                tyre_edge_temps: false,
+                ..Capabilities::all()
+            });
+            drive(&mut engineer, &car, 120);
+            assert_eq!(engineer.stats.camber_frames, 0);
+            assert_eq!(engineer.stats.camber_spread, [0.0; 4]);
+        }
+    }
+
+    /// An engineer reading a game that measures everything.
+    ///
+    /// Which is what Assetto Corsa does, and what every test in this file
+    /// assumed before the capability flags gated anything. Spelled out rather
+    /// than defaulted: the point of the flags is that a rule resting on a
+    /// measurement has to be told the measurement exists.
+    fn engineer_reading_a_complete_game(config: &AppConfig) -> Engineer {
+        let mut engineer = Engineer::new(config);
+        engineer.update_capabilities(Capabilities::all());
+        engineer
+    }
+
     fn drive(engineer: &mut Engineer, car: &Car, ticks: u32) {
         let session = Session::default();
         let info = crate::session_info::SessionInfo::default();
@@ -2057,7 +2255,7 @@ mod tests {
     #[test]
     fn a_straight_is_not_a_camber_problem() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
 
         let car = Car {
             speed_kmh: 240.0,
@@ -2078,7 +2276,7 @@ mod tests {
     #[test]
     fn four_corners_wanting_camber_are_one_piece_of_advice() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
 
         let car = Car {
             speed_kmh: 160.0,
@@ -2120,7 +2318,7 @@ mod tests {
     #[test]
     fn inner_edges_cooking_ask_for_less_camber() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
 
         let car = Car {
             speed_kmh: 160.0,
@@ -2179,7 +2377,7 @@ mod tests {
     #[test]
     fn four_cold_tyres_are_one_piece_of_advice() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2206,7 +2404,7 @@ mod tests {
     #[test]
     fn two_hot_fronts_are_named_as_an_axle() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2233,7 +2431,7 @@ mod tests {
     #[test]
     fn cold_and_hot_stay_separate_problems() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2258,7 +2456,7 @@ mod tests {
     #[test]
     fn a_tyre_most_of_the_way_through_a_stint_is_not_critical() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2311,7 +2509,7 @@ mod tests {
             pressure_unit: PressureUnit::Bar,
             ..AppConfig::default()
         };
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2346,7 +2544,7 @@ mod tests {
     #[test]
     fn cooking_brakes_are_grouped_and_named_by_corner() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2371,7 +2569,7 @@ mod tests {
     #[test]
     fn several_problems_at_once_still_leave_room_for_each_other() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         age_the_alerts(&mut engineer);
 
         let car = Car {
@@ -2402,7 +2600,7 @@ mod tests {
     fn tyre_pressure_alert_uses_updated_configuration() {
         let mut config = AppConfig::default();
         config.alerts.tyre_pressure_max = 31.0;
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         let car = Car {
             speed_kmh: 60.0,
             tyre_pressure_psi: [30.0; 4],
@@ -2433,7 +2631,7 @@ mod tests {
     #[test]
     fn overheating_alerts_are_not_repeated_every_frame() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         let session = Session::default();
         let car = Car {
             speed_kmh: 150.0,
@@ -2463,7 +2661,7 @@ mod tests {
     #[test]
     fn fuel_estimate_falls_back_to_measured_consumption() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         let info = crate::session_info::SessionInfo::default();
 
         // AC reports nothing, as it does on lap one and as it would
@@ -2507,7 +2705,7 @@ mod tests {
     #[test]
     fn refuelling_discards_the_measured_history() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         let info = crate::session_info::SessionInfo::default();
         let session = |laps| Session {
             completed_laps: laps,
@@ -2537,7 +2735,7 @@ mod tests {
     #[test]
     fn aggression_ignores_the_vertical_axis() {
         let config = AppConfig::default();
-        let mut engineer = Engineer::new(&config);
+        let mut engineer = engineer_reading_a_complete_game(&config);
         let session = Session::default();
         let info = crate::session_info::SessionInfo::default();
 

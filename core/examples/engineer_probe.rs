@@ -76,6 +76,12 @@ fn main() {
         let (car, session): (Car, Session) = ((&phys).into(), (&gfx).into());
 
         engineer.update_config(&config);
+        // These are Assetto Corsa's pages, so the engineer is told what
+        // Assetto Corsa measures. Without it every verdict resting on a tyre
+        // measurement is withheld — correctly, since an engineer that has not
+        // been told which game it is reading cannot know a default from a
+        // reading.
+        engineer.update_capabilities(ac_core::games::assetto_corsa::CAPABILITIES);
         engineer.update(&car, &session, &info);
         let recommendations = engineer.analyze_live(&car, &session, None);
 

@@ -91,6 +91,10 @@ fn main() {
 
     let config = AppConfig::default();
     let mut engineer = Engineer::new(&config);
+    // The car below is an Assetto Corsa car, so the engineer is told what that
+    // game measures — otherwise the tyre verdicts this probe exists to send
+    // are withheld before they ever reach the wire.
+    engineer.update_capabilities(ac_core::games::assetto_corsa::CAPABILITIES);
     let car = troubled_car();
     let session = Session {
         surface_grip: 1.0,

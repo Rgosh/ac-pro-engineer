@@ -138,11 +138,16 @@ impl From<&AcStatic> for Fixed {
 }
 
 /// The three pages as one reading.
+///
+/// The capabilities are left at their default — nothing measured — and filled
+/// in by [`Source::poll`](crate::games::Source::poll), which is the only place
+/// that speaks for the game as a whole.
 pub fn reading_of(physics: &AcPhysics, graphics: &AcGraphics, stat: &AcStatic) -> Reading {
     Reading {
         car: physics.into(),
         session: graphics.into(),
         fixed: stat.into(),
+        capabilities: Default::default(),
     }
 }
 

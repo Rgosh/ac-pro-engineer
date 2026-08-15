@@ -41,6 +41,11 @@ pub type GameId = &'static str;
 /// destroyed tyres, and a lap with no published temperatures produced a camber
 /// verdict about a car nobody had driven. A game that cannot report a thing
 /// must be able to say so.
+///
+/// **Default is nothing measured**, and deliberately: a consumer that is never
+/// told what the game reports withholds everything rather than inventing it.
+/// That failure is loud — the advice goes silent, and the screenshots show it —
+/// where the permissive default fails silently, one wrong verdict at a time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Capabilities {
     /// Inner and outer tyre surface temperatures, not just the middle. The
@@ -52,6 +57,23 @@ pub struct Capabilities {
     pub setups: bool,
     /// Tyre wear is published.
     pub tyre_wear: bool,
+}
+
+impl Capabilities {
+    /// Everything measured.
+    ///
+    /// For tests, and for a game that genuinely reports all of it. Assetto
+    /// Corsa spells its own out by hand instead, beside the capture that
+    /// proves each one — a game claiming this without having checked is the
+    /// mistake the whole type exists to prevent.
+    pub fn all() -> Self {
+        Self {
+            tyre_edge_temps: true,
+            sectors: true,
+            setups: true,
+            tyre_wear: true,
+        }
+    }
 }
 
 /// A running simulator, as far as the rest of the program is concerned.

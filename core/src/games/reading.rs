@@ -22,6 +22,7 @@
 //!   Nothing here can express the difference on its own — that is what the
 //!   capability flags are for, and why they have to be consulted.
 
+use super::Capabilities;
 use std::fmt::{Debug, Display, Formatter};
 
 /// Index of the front-left wheel in every `[f32; 4]` below.
@@ -355,6 +356,14 @@ pub struct Reading {
     pub car: Car,
     pub session: Session,
     pub fixed: Fixed,
+    /// What the game that produced this can actually measure.
+    ///
+    /// It travels *with* the numbers rather than being asked for separately,
+    /// because the two are only ever right together: a field left at its
+    /// default and a field measured as zero are the same four bytes, and the
+    /// difference between them is the difference between "no reading" and
+    /// "four destroyed tyres".
+    pub capabilities: Capabilities,
 }
 
 #[cfg(test)]
