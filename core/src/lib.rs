@@ -8,13 +8,12 @@
 
 pub mod games;
 
-// Where AC's file paths used to live, kept as a re-export so the move into
-// `games/` changed no call sites. The matching `ac_structs` alias is gone: the
-// three shared-memory structs are no longer anybody's business outside the
-// folder that reads them — see `games::reading` — and the two places that do
-// speak AC's layout, the fake-telemetry simulator and the layout tests, now
-// import it by its full name and say which game they mean.
-pub use games::assetto_corsa::paths as ac_paths;
+// Both `ac_paths` and `ac_structs` used to be re-exported here so that moving
+// them into `games/` changed no call sites. Neither is now: what a game keeps
+// where is that game's business, and the places that legitimately speak
+// Assetto Corsa — its own folder, the overlay that installs a mod into it, the
+// fake-telemetry simulator and the layout tests — say so by importing it under
+// its own name.
 pub mod analyzer;
 pub mod atomic_file;
 pub mod broadcast;
@@ -24,7 +23,6 @@ pub mod content_manager;
 pub mod corners;
 pub mod crash_logger;
 pub mod debrief;
-pub mod discord;
 pub mod driver_vs_car;
 pub mod engineer;
 pub mod i18n;

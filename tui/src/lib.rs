@@ -7,9 +7,8 @@ use ac_core::RingBuffer;
 use ac_core::analyzer::{AnalysisResult, TelemetryAnalyzer};
 use ac_core::config::AppConfig;
 use ac_core::content_manager::ContentManager;
-use ac_core::discord::DiscordClient;
 use ac_core::engineer::{Engineer, Recommendation};
-use ac_core::games::{Capabilities, Car, Fixed, Reading, Session, Source, Status};
+use ac_core::games::{Capabilities, Car, Fixed, Game, Reading, Session, Source, Status};
 use ac_core::process::ProcessWatcher;
 use ac_core::records::RecordManager;
 use ac_core::session_info::SessionInfo;
@@ -203,33 +202,38 @@ impl PerfStats {
 
 /// The car catalogue of the game this build reads.
 ///
-/// The terminal names the game here, the same way it does when it connects to
-/// one: walking `content/cars` is Assetto Corsa's file layout and lives in
-/// Assetto Corsa's folder. A second game is a second arm here and no change
-/// anywhere else — the specs come back in the neutral shape either way.
-fn scan_installed_cars(configured: Option<&std::path::Path>) -> ContentManager {
-    use ac_core::games::assetto_corsa::{content, paths};
-
-    match paths::ac_install_root(configured) {
-        Some(root) => ContentManager::from_cars(content::scan_cars(&root)),
-        None => {
-            // Detection used to be four hardcoded Windows drive letters, which
-            // found nothing on Linux — so the catalogue was always empty,
-            // every lookup returned None, and everything downstream silently
-            // did nothing. Worth a line in the log rather than a shrug.
-            tracing::info!("No Assetto Corsa installation found; car specs unavailable");
-            ContentManager::new()
-        }
+/// The game is asked for its own scan rather than named here. Detection used
+/// to be four hardcoded Windows drive letters, which found nothing on Linux —
+/// so the catalogue was always empty, every lookup returned None, and
+/// everything downstream silently did nothing. An empty catalogue is still a
+/// normal state, so it is logged rather than treated as a failure.
+fn scan_installed_cars(game: &Game, configured: Option<&std::path::Path>) -> ContentManager {
+    let Some(backend) = game.backend() else {
+        return ContentManager::new();
+    };
+    let cars = (backend.scan_cars)(configured);
+    if cars.is_empty() {
+        tracing::info!(
+            game = game.name,
+            "No installation found; car specs unavailable"
+        );
     }
+    ContentManager::from_cars(cars)
 }
 
 pub struct AppState {
-    /// The game being read, behind the trait rather than in front of it.
+    /// Which game this run is reading, out of the registry.
+    ///
+    /// One playable entry today. It is a field rather than a call so that the
+    /// day there are two, the choice is made once at startup instead of being
+    /// re-decided by every screen that needs to know.
+    pub game: &'static Game,
+    /// The live connection to it, behind the trait rather than in front of it.
     ///
     /// This was an `AssettoCorsa` until v0.3.7, and every screen reached
     /// through it into AC's own shared-memory structs — which is how a folder
     /// per game ended up carrying no data across its own boundary.
-    pub game: Option<Box<dyn Source + Send>>,
+    pub source: Option<Box<dyn Source + Send>>,
     /// The most recent reading, and the only thing the screens draw from.
     ///
     /// A demo run and a screenshot run put a made-up one here, which is why
@@ -240,7 +244,6 @@ pub struct AppState {
     pub content_manager: ContentManager,
     pub record_manager: RecordManager,
     pub updater: Updater,
-    pub discord: DiscordClient,
     pub engineer: Engineer,
     pub analyzer: TelemetryAnalyzer,
     pub ui_state: UIState,
@@ -374,7 +377,11 @@ impl AppState {
             let _res = config.save();
         }
 
-        let setup_manager = SetupManager::new();
+        // Which game this build reads, decided once. Everything below asks
+        // the entry rather than naming a simulator.
+        let game = ac_core::games::registry::default_game();
+
+        let setup_manager = SetupManager::new(game.backend().and_then(|b| b.setups.as_ref()));
         setup_manager.set_documents_override(&config.ac_documents_path);
 
         // Built before the struct literal, where `config` is still ours to
@@ -388,7 +395,7 @@ impl AppState {
                 match target.parse() {
                     Ok(address) => match ac_core::broadcast::udp::UdpSink::new(
                         address,
-                        ac_core::games::assetto_corsa::GAME_ID,
+                        game.id,
                         config.overlay.broadcast_name.clone(),
                         config.overlay.broadcast_hz,
                     ) {
@@ -437,15 +444,15 @@ impl AppState {
         };
 
         let mut state = Self {
-            game: None,
+            game,
+            source: None,
             reading: None,
             is_demo_mode: false,
             demo_tick_counter: 0,
             setup_manager,
-            content_manager: scan_installed_cars(config.ac_install_override()),
+            content_manager: scan_installed_cars(game, config.ac_install_override()),
             record_manager: RecordManager::new(),
             updater: Updater::new(),
-            discord: DiscordClient::new(),
             engineer: Engineer::new(&config),
             analyzer: TelemetryAnalyzer::new(),
             ui_state: UIState::new(),
@@ -470,8 +477,11 @@ impl AppState {
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
-            game_watcher: ProcessWatcher::new(ac_core::games::assetto_corsa::PROCESS_NAMES)
-                .corroborated_by(ac_core::games::assetto_corsa::telemetry_is_reachable),
+            game_watcher: match game.backend() {
+                Some(backend) => ProcessWatcher::new(backend.processes)
+                    .corroborated_by(backend.telemetry_is_reachable),
+                None => ProcessWatcher::new(&[]),
+            },
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
@@ -1193,10 +1203,6 @@ impl AppState {
         if self.pump_received_frame() {
             return;
         }
-        let delta = self.engineer.stats.current_delta;
-        self.discord
-            .update(self.is_connected, &self.session_info, delta);
-
         if self.is_demo_mode {
             self.update_demo_tick();
             if let Some(reading) = self.reading.clone() {
@@ -1252,7 +1258,7 @@ impl AppState {
             return;
         }
 
-        let Some(game) = self.game.as_mut() else {
+        let Some(source) = self.source.as_mut() else {
             self.publish_overlay_idle();
             return;
         };
@@ -1261,7 +1267,7 @@ impl AppState {
         // sessions, which is a state and not a failure — the panel is told the
         // application is alive and has no car, which is the distinction v0.3.5
         // added.
-        let Some(reading) = game.poll() else {
+        let Some(reading) = source.poll() else {
             self.publish_overlay_idle();
             return;
         };
@@ -1499,7 +1505,7 @@ impl AppState {
     }
 
     pub fn disconnect(&mut self) {
-        self.game = None;
+        self.source = None;
         // Left behind, the screens would keep drawing the last numbers of a
         // session that has ended as though the car were still on track.
         self.reading = None;
@@ -1523,13 +1529,17 @@ impl AppState {
     }
 
     pub fn connect_memory(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.game.is_none() {
-            let mut game = ac_core::games::assetto_corsa::AssettoCorsa::connect()?;
+        if self.source.is_none() {
+            let backend = self
+                .game
+                .backend()
+                .ok_or("this build cannot read the selected game")?;
+            let mut source = (backend.connect)()?;
             // One reading before anything is believed: connecting only proves
             // the mappings exist, and on Linux they can exist with nothing in
             // them yet — the bridge creates them before the game has published.
-            let Some(reading) = game.poll() else {
-                return Err("connected to Assetto Corsa but read nothing".into());
+            let Some(reading) = source.poll() else {
+                return Err(format!("connected to {} but read nothing", self.game.name).into());
             };
 
             let fixed = &reading.fixed;
@@ -1558,7 +1568,7 @@ impl AppState {
             self.is_connected = true;
 
             self.reading = Some(reading);
-            self.game = Some(Box::new(game));
+            self.source = Some(source);
         }
         Ok(())
     }

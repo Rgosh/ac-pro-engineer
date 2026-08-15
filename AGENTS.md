@@ -17,7 +17,6 @@ RaceEngineer/
 │       ├── analyzer.rs      # Telemetry analyzer and telemetry recording
 │       ├── config.rs        # AppConfig (JSON configuration, theme, language, paths)
 │       ├── content_manager.rs# Car and track content reader
-│       ├── discord.rs       # Discord Rich Presence integration
 │       ├── engineer.rs      # Real-time engineer recommendations and advice engine
 │       ├── memory.rs        # Cross-platform shared memory reader (Win32 / dev/shm)
 │       ├── overlay/         # The in-game CSP panel: its frame, writer, bridge and installer

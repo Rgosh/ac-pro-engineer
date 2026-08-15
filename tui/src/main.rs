@@ -1081,7 +1081,7 @@ fn step(current: usize, total: usize, forward: bool) -> usize {
 /// happened and may not happen again.
 ///
 /// A PNG, because the thing a driver does with this is paste it into a bug
-/// report or a Discord message, and neither of those opens an SVG.
+/// report or a chat message, and neither of those opens an SVG.
 fn save_screenshot(
     buffer: &ratatui::buffer::Buffer,
     width: u16,

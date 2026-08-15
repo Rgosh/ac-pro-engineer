@@ -812,7 +812,7 @@ fn test_43_ghost_delta_calculation() {
 }
 
 /// `updater::CURRENT_VERSION` is `ac_core`'s own `CARGO_PKG_VERSION`, and it is
-/// what the app displays, what Discord rich presence reports, and what release
+/// what the app displays, what the overlay frame carries, and what release
 /// tags are compared against to decide whether an update is newer.
 ///
 /// When `ac_core` carried a hardcoded version it silently fell behind the
