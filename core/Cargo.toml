@@ -65,3 +65,12 @@ zip = { workspace = true }
 # Only so `net` can prove that a blocking client builds inside a runtime. This
 # crate has no async in it and must not grow any.
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+# `cargo test` does not run an example's tests unless it is told to, and an
+# example carrying a `mod tests` nobody runs is worse than one with none: it
+# reads as coverage. What is tested here is the shape of the hex it prints —
+# the whole point of the tool is that its output pastes into a layout test
+# unedited.
+[[example]]
+name = "capture_pages"
+test = true
