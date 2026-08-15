@@ -21,8 +21,10 @@
 //!   `if` statements through the middle of the engineer.
 
 pub mod assetto_corsa;
+pub mod catalogue;
 pub mod reading;
 
+pub use catalogue::CarSpecs;
 pub use reading::{Car, Fixed, Reading, Session, SessionKind, Status};
 
 /// Which simulator a source speaks for.

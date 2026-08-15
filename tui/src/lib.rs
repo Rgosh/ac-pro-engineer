@@ -201,6 +201,28 @@ impl PerfStats {
     }
 }
 
+/// The car catalogue of the game this build reads.
+///
+/// The terminal names the game here, the same way it does when it connects to
+/// one: walking `content/cars` is Assetto Corsa's file layout and lives in
+/// Assetto Corsa's folder. A second game is a second arm here and no change
+/// anywhere else — the specs come back in the neutral shape either way.
+fn scan_installed_cars(configured: Option<&std::path::Path>) -> ContentManager {
+    use ac_core::games::assetto_corsa::{content, paths};
+
+    match paths::ac_install_root(configured) {
+        Some(root) => ContentManager::from_cars(content::scan_cars(&root)),
+        None => {
+            // Detection used to be four hardcoded Windows drive letters, which
+            // found nothing on Linux — so the catalogue was always empty,
+            // every lookup returned None, and everything downstream silently
+            // did nothing. Worth a line in the log rather than a shrug.
+            tracing::info!("No Assetto Corsa installation found; car specs unavailable");
+            ContentManager::new()
+        }
+    }
+}
+
 pub struct AppState {
     /// The game being read, behind the trait rather than in front of it.
     ///
@@ -420,7 +442,7 @@ impl AppState {
             is_demo_mode: false,
             demo_tick_counter: 0,
             setup_manager,
-            content_manager: ContentManager::with_root_override(config.ac_install_override()),
+            content_manager: scan_installed_cars(config.ac_install_override()),
             record_manager: RecordManager::new(),
             updater: Updater::new(),
             discord: DiscordClient::new(),
@@ -448,7 +470,8 @@ impl AppState {
             stage: AppStage::Launcher,
             launcher_selection: 0,
             is_game_running: false,
-            game_watcher: ProcessWatcher::new(&["acs.exe", "simulator.exe"]),
+            game_watcher: ProcessWatcher::new(ac_core::games::assetto_corsa::PROCESS_NAMES)
+                .corroborated_by(ac_core::games::assetto_corsa::telemetry_is_reachable),
             is_connected: false,
             active_tab: AppTab::Dashboard,
             session_info: SessionInfo::default(),
