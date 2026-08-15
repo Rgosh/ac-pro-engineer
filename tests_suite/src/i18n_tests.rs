@@ -1,10 +1,10 @@
-//! Russian belongs in the catalogue, not in the code.
+//! Russian belongs in the dictionary, not in the code.
 //!
-//! `core/src/i18n.rs` holds every translated word; the code says what it means
-//! in English and asks for the Russian at the point it draws. This walks the
-//! tree and insists on that, because the rule is one nobody can enforce by
+//! `data/locales/ru.json` holds every translated word; the code says what it
+//! means in English and asks for the Russian at the point it draws. This walks
+//! the tree and insists on that, because the rule is one nobody can enforce by
 //! reading a diff — a new `if ru { "…" } else { "…" }` looks exactly like the
-//! four hundred that used to be there.
+//! five hundred that used to be there.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 /// Files allowed to contain Cyrillic, and why.
 ///
-/// * `i18n.rs` **is** the catalogue.
+/// * `i18n.rs` is the loader, and its tests quote Russian to check it.
 /// * `keys.rs` maps a Cyrillic key to the Latin one under the same finger, so a
 ///   rebound letter keeps working when the driver's layout is Russian. Those
 ///   are keys on a keyboard, not words on a screen, and translating them would
@@ -21,7 +21,7 @@ const EXEMPT: &[&str] = &["core/src/i18n.rs", "tui/src/keys.rs"];
 
 /// The Cyrillic that is left, per file, and why each line is not a translation.
 ///
-/// Every translatable string is in the catalogue now — 501 of them. What
+/// Every translatable string is in the dictionary now. What
 /// remains is text that happens to be Russian for a reason other than being a
 /// message to a driver, and moving any of it into `i18n.rs` would make the
 /// program wrong rather than tidier.
@@ -77,7 +77,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Join a string literal that was written across two lines.
 ///
 /// A `\` at the end of a line inside a literal swallows the newline *and* the
-/// indentation after it, so one catalogue key can be two lines of source. rustc
+/// indentation after it, so one dictionary key can be two lines of source. rustc
 /// sees one string; a text search has to do the same or it will report a key
 /// nobody uses when the truth is that it is spelled across a line break.
 fn join_continuations(source: &str) -> String {
@@ -136,7 +136,7 @@ fn no_file_grows_new_russian_in_the_code() {
         if found > allowed {
             problems.push(format!(
                 "{relative}: {found} lines of Russian, {allowed} allowed. \
-                 Say it in English and put the translation in core/src/i18n.rs."
+                 Say it in English and put the translation in data/locales/ru.json."
             ));
         } else if found < allowed {
             problems.push(format!(
@@ -149,7 +149,7 @@ fn no_file_grows_new_russian_in_the_code() {
     assert!(problems.is_empty(), "\n{}", problems.join("\n"));
 }
 
-/// The catalogue is only useful if what is in it is what the code asks for.
+/// The dictionary is only useful if what is in it is what the code asks for.
 ///
 /// An entry nobody looks up is either a word that was removed and left behind,
 /// or a key that was edited on one side only — and the second is the one that
@@ -168,12 +168,17 @@ fn every_translation_is_reachable_from_the_code() {
         .collect();
     let sources = join_continuations(&raw);
 
-    let orphans: Vec<&str> = ac_core::i18n::CATALOGUE
-        .iter()
-        .map(|(english, _)| *english)
+    let dictionary: std::collections::HashMap<String, String> = serde_json::from_str(
+        &fs::read_to_string(root.join("data/locales/ru.json")).expect("ru.json"),
+    )
+    .expect("ru.json is valid JSON");
+
+    let orphans: Vec<&str> = dictionary
+        .keys()
+        .map(|english| english.as_str())
         // The literal as it appears in the code, escaped the same way. Anything
         // with a newline or a line continuation in it is spelled differently in
-        // the source than in the catalogue, and matching those on text would be
+        // the source than in the dictionary, and matching those on text would be
         // a test about escaping rather than about translations.
         .filter(|english| !english.contains('\n'))
         .filter(|english| !sources.contains(&format!("\"{english}\"")))
@@ -181,7 +186,7 @@ fn every_translation_is_reachable_from_the_code() {
 
     assert!(
         orphans.is_empty(),
-        "the catalogue translates {} words nothing asks for:\n  {}",
+        "the dictionary translates {} words nothing asks for:\n  {}",
         orphans.len(),
         orphans.join("\n  ")
     );

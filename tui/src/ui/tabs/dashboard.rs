@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
@@ -61,7 +60,7 @@ fn render_tyre_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let block = Block::default()
-        .title(tr("dash_tyre_status", lang))
+        .title("TYRE MONITOR".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -358,7 +357,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
     let block = Block::default()
-        .title(tr("dash_session", lang))
+        .title("SESSION INFO".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -368,7 +367,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let list = vec![
         Line::from(vec![
             Span::styled(
-                format!("{}: ", tr("lbl_car", lang)),
+                format!("{}: ", "Car".tr_lang(lang)),
                 Style::default().fg(Color::Gray),
             ),
             Span::styled(
@@ -378,7 +377,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ]),
         Line::from(vec![
             Span::styled(
-                format!("{}: ", tr("lbl_track", lang)),
+                format!("{}: ", "Track|as the terminal abbreviates it".tr_lang(lang)),
                 Style::default().fg(Color::Gray),
             ),
             Span::styled(
@@ -399,7 +398,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         Line::from(""),
         Line::from(vec![
             Span::styled(
-                format!("{}: ", tr("lbl_fuel", lang)),
+                format!("{}: ", "Fuel|as the terminal abbreviates it".tr_lang(lang)),
                 Style::default().fg(Color::Gray),
             ),
             Span::styled(

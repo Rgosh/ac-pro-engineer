@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::config::{AppConfig, Language, PressureUnit, TempUnit};
 use ac_core::i18n::{Translate, tr_fmt};
 use crossterm::event::KeyCode;
@@ -1027,19 +1026,23 @@ fn render_system_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     };
 
     let items = vec![
-        (tr("lang", lang), lang_str.to_string(), false),
         (
-            tr("update_rate", lang),
+            "Language".tr_lang(lang).to_string(),
+            lang_str.to_string(),
+            false,
+        ),
+        (
+            "Update Rate".tr_lang(lang).to_string(),
             format!("{} ms", config.update_rate),
             false,
         ),
         (
-            tr("history_size", lang),
+            "History Size".tr_lang(lang).to_string(),
             format!("{} pts", config.history_size),
             false,
         ),
         (
-            tr("auto_save", lang),
+            "Auto Save".tr_lang(lang).to_string(),
             if config.auto_save {
                 "ON".tr(is_ru)
             } else {
@@ -1083,8 +1086,16 @@ fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     };
 
     let items = vec![
-        (tr("unit_pressure", lang), p_unit.to_string(), false),
-        (tr("unit_temp", lang), t_unit.to_string(), false),
+        (
+            "Pressure Unit".tr_lang(lang).to_string(),
+            p_unit.to_string(),
+            false,
+        ),
+        (
+            "Temperature Unit".tr_lang(lang).to_string(),
+            t_unit.to_string(),
+            false,
+        ),
     ];
 
     for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
@@ -1172,37 +1183,37 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
 
     let items = vec![
         (
-            tr("alert_p_min", lang),
+            "Min Pressure".tr_lang(lang).to_string(),
             fmt.format_pressure(alerts.tyre_pressure_min),
             false,
         ),
         (
-            tr("alert_p_max", lang),
+            "Max Pressure".tr_lang(lang).to_string(),
             fmt.format_pressure(alerts.tyre_pressure_max),
             false,
         ),
         (
-            tr("alert_t_min", lang),
+            "Min Tyre Temp".tr_lang(lang).to_string(),
             fmt.format_temp(alerts.tyre_temp_min),
             false,
         ),
         (
-            tr("alert_t_max", lang),
+            "Max Tyre Temp".tr_lang(lang).to_string(),
             fmt.format_temp(alerts.tyre_temp_max),
             false,
         ),
         (
-            tr("alert_b_max", lang),
+            "Max Brake Temp".tr_lang(lang).to_string(),
             fmt.format_temp(alerts.brake_temp_max),
             false,
         ),
         (
-            tr("alert_fuel", lang),
+            "Fuel Warning".tr_lang(lang).to_string(),
             format!("{:.1}", alerts.fuel_warning_laps),
             false,
         ),
         (
-            tr("alert_wear", lang),
+            "Wear Warning".tr_lang(lang).to_string(),
             format!("{:.0}%", alerts.wear_warning),
             false,
         ),

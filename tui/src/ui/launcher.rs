@@ -1,4 +1,3 @@
-use crate::ui::localization::tr;
 use crate::{AppState, OverlayOnboarding};
 use ac_core::config::Language;
 use ac_core::i18n::Translate;
@@ -691,21 +690,21 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         UpdateStatus::Checking => format!("⏳  {}", "Checking...".tr(is_ru)),
         UpdateStatus::NoUpdate => format!("✅  {}", "Versions & Rollback".tr(is_ru)),
         UpdateStatus::Error(_) => format!("❌  {}", "Net Error".tr(is_ru)),
-        _ => format!("♻   {}", tr("launch_upd", lang)),
+        _ => format!("♻   {}", "CHECK UPDATES".tr_lang(lang)),
     };
 
     let menu_items = [
         format!("🖥️  {}", "START (TERMINAL TUI)".tr(is_ru)),
-        format!("⚙️   {}", tr("launch_sett", lang)),
+        format!("⚙️   {}", "SETTINGS".tr_lang(lang)),
         match app.config.language {
             Language::English => "LANGUAGE: < ENGLISH >",
             Language::Russian => "ЯЗЫК: < РУССКИЙ >",
         }
         .to_string(),
-        format!("📚  {}", tr("launch_docs", lang)),
-        format!("👤  {}", tr("launch_cred", lang)),
+        format!("📚  {}", "DOCUMENTATION".tr_lang(lang)),
+        format!("👤  {}", "CREDITS / AUTHOR".tr_lang(lang)),
         update_label,
-        format!("❌  {}", tr("launch_exit", lang)),
+        format!("❌  {}", "EXIT".tr_lang(lang)),
     ];
 
     let sel = app.launcher_selection;
@@ -752,7 +751,7 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)))
-            .title(tr("launch_menu_title", lang))
+            .title(" MAIN MENU ".tr_lang(lang).to_string())
             .title_alignment(Alignment::Center),
     );
 
@@ -766,14 +765,14 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let title = match app.launcher_selection {
-        0 => tr("launch_info_title", lang),
-        1 => tr("launch_conf_title", lang),
-        2 => tr("launch_lang_title", lang),
-        3 => tr("launch_doc_title", lang),
-        4 => tr("launch_cred_title", lang),
-        5 => tr("launch_upd_title", lang),
-        6 => tr("launch_shut_title", lang),
-        _ => tr("launch_info_title", lang),
+        0 => " INFORMATION ".tr_lang(lang).to_string(),
+        1 => "APP CONFIGURATION".tr_lang(lang).to_string(),
+        2 => "INTERFACE LANGUAGE".tr_lang(lang).to_string(),
+        3 => "USER MANUAL".tr_lang(lang).to_string(),
+        4 => "CREDITS & AUTHOR".tr_lang(lang).to_string(),
+        5 => "SYSTEM UPDATE".tr_lang(lang).to_string(),
+        6 => "SHUTDOWN".tr_lang(lang).to_string(),
+        _ => " INFORMATION ".tr_lang(lang).to_string(),
     };
 
     let block = Block::default()
@@ -799,15 +798,20 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             )),
             Line::from(""),
             Line::from(Span::styled(
-                tr("launch_ready", lang),
+                "READY TO RACE".tr_lang(lang).to_string(),
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             )),
-            Line::from(tr("launch_conn_desc", lang)),
+            Line::from(
+                "Connect to Assetto Corsa Shared Memory.
+Make sure the game is running."
+                    .tr_lang(lang)
+                    .to_string(),
+            ),
             Line::from(""),
             Line::from(vec![
-                Span::raw(format!("{} ", tr("launch_stat", lang))),
+                Span::raw(format!("{} ", "Connection Status:".tr_lang(lang))),
                 if actual_running {
                     Span::styled(
                         "DETECTED (READY TO START)".tr(is_ru),
@@ -827,47 +831,63 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ],
         1 => vec![
             Line::from(Span::styled(
-                tr("launch_conf_title", lang),
+                "APP CONFIGURATION".tr_lang(lang).to_string(),
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(tr("launch_conf_desc", lang)),
+            Line::from("Press ENTER to open settings.".tr_lang(lang).to_string()),
         ],
         2 => vec![
             Line::from(Span::styled(
-                tr("launch_lang_title", lang),
+                "INTERFACE LANGUAGE".tr_lang(lang).to_string(),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(tr("launch_lang_desc", lang)),
+            Line::from(
+                "Use LEFT / RIGHT arrows to switch language instantly."
+                    .tr_lang(lang)
+                    .to_string(),
+            ),
         ],
         3 => vec![
             Line::from(Span::styled(
-                tr("launch_doc_title", lang),
+                "USER MANUAL".tr_lang(lang).to_string(),
                 Style::default()
                     .fg(Color::Magenta)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
-                tr("launch_nav", lang),
+                "Navigation:".tr_lang(lang).to_string(),
                 Style::default().add_modifier(Modifier::UNDERLINED),
             )),
-            Line::from(tr("launch_nav_desc", lang)),
+            Line::from(
+                " F1-F8 : Switch Tabs
+ Q     : Return / Quit
+ Arrows: Navigate"
+                    .tr_lang(lang)
+                    .to_string(),
+            ),
             Line::from(""),
             Line::from(Span::styled(
-                tr("launch_feat", lang),
+                "Features:".tr_lang(lang).to_string(),
                 Style::default().add_modifier(Modifier::UNDERLINED),
             )),
-            Line::from(tr("launch_feat_desc", lang)),
+            Line::from(
+                " • Telemetry: Live graphs
+ • Engineer: Real-time advice
+ • Analysis: Lap comparison"
+                    .tr_lang(lang)
+                    .to_string(),
+            ),
         ],
         4 => vec![
             Line::from(Span::styled(
-                tr("launch_cred_title", lang),
+                "CREDITS & AUTHOR".tr_lang(lang).to_string(),
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
@@ -877,7 +897,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Line::from(format!("Version: {}", ac_core::updater::CURRENT_VERSION)),
             Line::from(""),
             Line::from(Span::styled(
-                tr("launch_created", lang),
+                "Created by:".tr_lang(lang).to_string(),
                 Style::default().fg(Color::Gray),
             )),
             Line::from(Span::styled(
@@ -887,7 +907,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(tr("launch_thanks", lang)),
+            Line::from("Special thanks to:".tr_lang(lang).to_string()),
             Line::from("  Kunos Simulazioni (Assetto Corsa)"),
             Line::from("  Rust Community (Ratatui, Serde, Tauri)"),
             Line::from(""),
@@ -983,11 +1003,16 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         }
         6 => vec![
             Line::from(Span::styled(
-                tr("launch_shut_title", lang),
+                "SHUTDOWN".tr_lang(lang).to_string(),
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(tr("launch_safe", lang)),
+            Line::from(
+                "Data is saved automatically.
+Press ENTER to close."
+                    .tr_lang(lang)
+                    .to_string(),
+            ),
         ],
         _ => vec![],
     };
@@ -1013,7 +1038,7 @@ fn render_status_bar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         _ => {
             let actual_running = app.is_game_running;
             if actual_running {
-                (tr("launch_on", lang), Color::Green)
+                ("✓ System Online".tr_lang(lang).to_string(), Color::Green)
             } else {
                 (
                     "WAITING FOR SIMULATOR...|spelled out".tr(is_ru).to_string(),

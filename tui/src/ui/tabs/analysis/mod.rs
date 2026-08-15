@@ -1,6 +1,5 @@
 use crate::AppState;
 use crate::ui::file_menu::FileMenu;
-use crate::ui::localization::tr;
 use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
@@ -333,7 +332,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     if !has_data {
         let block = Block::default()
-            .title(tr("tab_anal", lang))
+            .title("ANALYSIS".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -489,7 +488,7 @@ fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
 
     let block = Block::default()
-        .title(tr("anal_laps_list", lang))
+        .title("Laps History".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 

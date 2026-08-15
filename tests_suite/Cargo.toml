@@ -10,6 +10,8 @@ publish = false
 [dependencies]
 ac_core = { path = "../core" }
 ac_tui = { path = "../tui" }
+# The i18n test reads data/locales/ru.json to check nothing in it is orphaned.
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # Parses captured shared-memory pages through the same call the app uses.
 zerocopy = { workspace = true }

@@ -2114,6 +2114,7 @@ version = "0.3.6"
 dependencies = [
  "ac_core",
  "ac_tui",
+ "serde_json",
  "tokio",
  "zerocopy",
 ]

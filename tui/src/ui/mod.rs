@@ -1,4 +1,3 @@
-use crate::ui::localization::tr;
 use crate::{AppStage, AppState, AppTab};
 use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
@@ -6,7 +5,6 @@ use ratatui::{prelude::*, widgets::*};
 pub mod file_menu;
 pub mod help_overlay;
 pub mod launcher;
-pub mod localization;
 pub mod screenshot;
 pub mod tabs;
 pub mod widgets;
@@ -297,14 +295,14 @@ impl UIRenderer {
         }
 
         let tabs = vec![
-            format!("🏁 {}", tr("tab_dash", lang)),
-            format!("📊 {}", tr("tab_tele", lang)),
-            format!("👨‍🔧 {}", tr("tab_eng", lang)),
-            format!("🔧 {}", tr("tab_setup", lang)),
-            format!("📈 {}", tr("tab_anal", lang)),
-            format!("🎯 {}", tr("tab_strat", lang)),
+            format!("🏁 {}", "DASHBOARD".tr_lang(lang).to_string()),
+            format!("📊 {}", "TELEMETRY".tr_lang(lang).to_string()),
+            format!("👨‍🔧 {}", "ENGINEER".tr_lang(lang).to_string()),
+            format!("🔧 {}", "SETUP".tr_lang(lang).to_string()),
+            format!("📈 {}", "ANALYSIS".tr_lang(lang).to_string()),
+            format!("🎯 {}", "STRATEGY".tr_lang(lang).to_string()),
             "🎮 FFB".to_string(),
-            format!("⚙️ {}", tr("tab_set", lang)),
+            format!("⚙️ {}", "SETTINGS".tr_lang(lang).to_string()),
             "📖 Guide".to_string(),
         ];
 

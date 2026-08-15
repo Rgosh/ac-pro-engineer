@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 
@@ -12,11 +11,11 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     // in demo mode.
     let (Some(gfx_ref), Some(phys_ref)) = (app.ac_graphics(), app.ac_physics()) else {
         let block = Block::default()
-            .title(tr("tab_strat", lang))
+            .title("STRATEGY".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
         let message = if app.is_game_running {
-            tr("no_data", lang)
+            "Waiting for data...".tr_lang(lang).to_string()
         } else {
             "Assetto Corsa is not running"
                 .tr(*lang == ac_core::config::Language::Russian)
@@ -139,7 +138,7 @@ fn render_fuel_calculator(
     let is_ru = *lang == ac_core::config::Language::Russian;
 
     let block = Block::default()
-        .title(tr("strat_fuel_title", lang))
+        .title("Fuel Calculator".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -213,27 +212,27 @@ fn render_fuel_calculator(
 
     let rows = vec![
         Row::new(vec![
-            Cell::from(tr("strat_cons", lang)),
+            Cell::from("Avg Cons.".tr_lang(lang).to_string()),
             Cell::from(format!("{:.2} L/lap", fuel_per_lap))
                 .style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_laps_rem", lang)),
+            Cell::from("Laps Rem.".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1} laps", laps_remaining))
                 .style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_fuel_rem", lang)),
+            Cell::from("Fuel Rem.".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1} L", current_fuel))
                 .style(Style::default().fg(get_fuel_color(app.engineer.stats.fuel_laps_remaining))),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_needed", lang)),
+            Cell::from("Fuel Needed".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1} L", total_needed_safe))
                 .style(Style::default().fg(Color::White)),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_delta", lang)),
+            Cell::from("Fuel Delta".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1} L", fuel_delta)).style(
                 Style::default()
                     .fg(if fuel_delta >= 0.0 {
@@ -377,7 +376,11 @@ fn render_environment(
     let lang = &app.config.language;
 
     let block = Block::default()
-        .title(tr("strat_env_title", lang))
+        .title(
+            "Environment|as the terminal abbreviates it"
+                .tr_lang(lang)
+                .to_string(),
+        )
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -387,7 +390,7 @@ fn render_environment(
     let fmt = app.config.formatter();
     let rows = vec![
         Row::new(vec![
-            Cell::from(tr("strat_grip", lang)),
+            Cell::from("Track Grip".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1}%", gfx.surface_grip * 100.0)).style(Style::default().fg(
                 if gfx.surface_grip > 0.95 {
                     Color::Green
@@ -397,17 +400,17 @@ fn render_environment(
             )),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_air", lang)),
+            Cell::from("Air Temp".tr_lang(lang).to_string()),
             Cell::from(fmt.format_temp_prec(phys.air_temp, 1))
                 .style(Style::default().fg(Color::Cyan)),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_road", lang)),
+            Cell::from("Road Temp".tr_lang(lang).to_string()),
             Cell::from(fmt.format_temp_prec(phys.road_temp, 1))
                 .style(Style::default().fg(Color::Yellow)),
         ]),
         Row::new(vec![
-            Cell::from(tr("strat_wind", lang)),
+            Cell::from("Wind Spd".tr_lang(lang).to_string()),
             Cell::from(format!("{:.1} km/h", gfx.wind_speed))
                 .style(Style::default().fg(Color::White)),
         ]),

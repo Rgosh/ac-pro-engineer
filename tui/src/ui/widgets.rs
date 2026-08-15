@@ -1,5 +1,5 @@
 use crate::AppState;
-use crate::ui::localization::tr;
+use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 
 /// Coerce a value into the 0.0..=1.0 that `Gauge::ratio` and
@@ -184,7 +184,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
 
     if let Some(data) = app.ac_physics() {
         let speed_block = Block::default()
-            .title(tr("lbl_speed", lang))
+            .title("SPD".tr_lang(lang).to_string())
             .borders(Borders::ALL);
         let speed = Paragraph::new(format!("{}\nkm/h", data.speed_kmh as i32))
             .style(
@@ -197,7 +197,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         f.render_widget(speed, layout[0]);
 
         let rpm_block = Block::default()
-            .title(tr("lbl_rpm", lang))
+            .title("RPM".tr_lang(lang).to_string())
             .borders(Borders::ALL);
         // max_rpm is 0 until the static page has been read, so this division
         // has to be guarded — otherwise the ratio is inf and the readout sits
@@ -224,7 +224,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
             n => format!("{}", n - 1),
         };
         let gear_block = Block::default()
-            .title(tr("lbl_gear", lang))
+            .title("GEAR".tr_lang(lang).to_string())
             .borders(Borders::ALL);
         let gear_widget = Paragraph::new(gear)
             .style(
@@ -239,7 +239,7 @@ pub fn render_telemetry_bar_vertical(f: &mut Frame<'_>, area: Rect, app: &AppSta
         let delta = app.engineer.stats.current_delta;
         let delta_sign = if delta >= 0.0 { "+" } else { "" };
         let delta_block = Block::default()
-            .title(tr("lbl_delta", lang))
+            .title("DELTA".tr_lang(lang).to_string())
             .borders(Borders::ALL);
         let delta_widget = Paragraph::new(format!("{}{:.3}", delta_sign, delta))
             .style(

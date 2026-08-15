@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::analyzer::LapData;
 use ac_core::config::Language;
 use ac_core::i18n::{Translate, tr_fmt};
@@ -142,7 +141,7 @@ fn render_live_recs(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
 
     let block = Block::default()
-        .title(tr("eng_recs", lang))
+        .title("LIVE ADVICE".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
@@ -177,7 +176,7 @@ fn render_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let is_ru = *lang == Language::Russian;
 
     let block = Block::default()
-        .title(tr("eng_analysis", lang))
+        .title("DRIVING STYLE".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));

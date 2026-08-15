@@ -1,6 +1,6 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::ac_structs::{COORD_X, COORD_Z};
+use ac_core::i18n::Translate;
 use ratatui::widgets::canvas::{Canvas, Circle, Line as CanvasLine, Points};
 use ratatui::{prelude::*, widgets::*};
 
@@ -10,10 +10,10 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     if app.physics_history.is_empty() {
         let block = Block::default()
-            .title(tr("tab_tele", lang))
+            .title("TELEMETRY".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
-        let text = Paragraph::new(tr("no_data", lang))
+        let text = Paragraph::new("Waiting for data...".tr_lang(lang).to_string())
             .alignment(Alignment::Center)
             .block(block);
         f.render_widget(text, area);
@@ -73,7 +73,7 @@ fn render_speed_rpm_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let chart = Chart::new(vec![
         Dataset::default()
-            .name(tr("lbl_speed", lang))
+            .name("SPD".tr_lang(lang).to_string())
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Cyan))
             .data(&speed_data),
@@ -85,7 +85,7 @@ fn render_speed_rpm_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     ])
     .block(
         Block::default()
-            .title(tr("graph_speed_rpm", lang))
+            .title("Speed & RPM".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -120,19 +120,19 @@ fn render_inputs_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let chart = Chart::new(vec![
         Dataset::default()
-            .name(tr("lbl_throttle", lang))
+            .name("THR".tr_lang(lang).to_string())
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Green))
             .data(&gas),
         Dataset::default()
-            .name(tr("lbl_brake", lang))
+            .name("BRK".tr_lang(lang).to_string())
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::Red))
             .data(&brake),
     ])
     .block(
         Block::default()
-            .title(tr("graph_inputs", lang))
+            .title("Pedal Inputs".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -157,14 +157,14 @@ fn render_steering_graph(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let chart = Chart::new(vec![
         Dataset::default()
-            .name(tr("lbl_steer", lang))
+            .name("Angle".tr_lang(lang).to_string())
             .marker(symbols::Marker::Braille)
             .style(Style::default().fg(Color::White))
             .data(&steer),
     ])
     .block(
         Block::default()
-            .title(tr("graph_steering", lang))
+            .title("Steering Angle".tr_lang(lang).to_string())
             .borders(Borders::ALL)
             .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
     )
@@ -179,7 +179,7 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
 
     let block = Block::default()
-        .title(tr("tele_map", lang))
+        .title("Track Map".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -224,7 +224,7 @@ fn render_track_map(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         }
         (points, -500.0, 500.0, -350.0, 350.0)
     } else {
-        let p = Paragraph::new(tr("tele_map_waiting", lang))
+        let p = Paragraph::new("Drive a lap to generate map...".tr_lang(lang).to_string())
             .block(block)
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray));
@@ -296,7 +296,7 @@ fn render_friction_circle(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(tr("tele_friction", lang))
+                    .title("Friction Circle (G-G)".tr_lang(lang).to_string())
                     .border_style(Style::default().fg(app.ui_state.get_color(&theme.border))),
             )
             .x_bounds([-3.0, 3.0])
@@ -368,7 +368,7 @@ fn render_live_stats(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
 
     let block = Block::default()
-        .title(tr("tele_live", lang))
+        .title("Live Telemetry".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 

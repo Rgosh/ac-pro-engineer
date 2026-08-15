@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::ui::localization::tr;
 use ac_core::i18n::{Translate, tr_fmt};
 use ac_core::setup_manager::CarSetup;
 use ratatui::{prelude::*, widgets::*};
@@ -20,7 +19,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
 
     let main_block = Block::default()
-        .title(tr("tab_setup", lang))
+        .title("SETUP".tr_lang(lang).to_string())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
@@ -129,7 +128,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .split(content_area);
         let setups = app.setup_manager.get_setups();
         let best_setup_idx = app.setup_manager.get_best_match_index();
-        let list_title = format!("{} ({})", tr("set_list", lang), current_car);
+        let list_title = format!("{} ({})", "AVAILABLE SETUPS".tr_lang(lang), current_car);
 
         render_setup_list_classic(f, layout[0], app, &setups, best_setup_idx, &list_title);
 
@@ -162,7 +161,7 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             render_header_block(f, right_layout[0], app, selected_setup, None);
             render_comparison_table(f, right_layout[1], app, selected_setup, None);
         } else {
-            let no_data = Paragraph::new(tr("set_no_file", lang))
+            let no_data = Paragraph::new("No setup files found".tr_lang(lang).to_string())
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Center)
                 .block(Block::default().borders(Borders::LEFT));
@@ -431,7 +430,7 @@ fn render_header_block(
         let mut lines = vec![
             Line::from(vec![
                 Span::styled(
-                    tr("set_server_title", lang),
+                    "REMOTE SETUP".tr_lang(lang).to_string(),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
