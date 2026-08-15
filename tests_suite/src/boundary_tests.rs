@@ -19,6 +19,21 @@ use std::path::{Path, PathBuf};
 /// AC's three shared-memory pages. Nothing outside the game folder may name one.
 const AC_STRUCTS: &[&str] = &["AcPhysics", "AcGraphics", "AcStatic"];
 
+/// How Assetto Corsa is laid out on disk and in the process table.
+///
+/// The structs were only half of it. A neutral module that knows setups are
+/// INI under `Documents/Assetto Corsa/setups`, that cars are JSON under
+/// `content/cars`, that the process is `acs.exe` or that Steam calls this game
+/// 244210 is a module a second simulator cannot reuse — and none of that
+/// announces itself in a type name.
+const AC_LAYOUT: &[&str] = &[
+    "\"Assetto Corsa\"",
+    "acs.exe",
+    "ui_car.json",
+    "acpmf_",
+    "244210",
+];
+
 /// Files outside `games/` that legitimately speak Assetto Corsa, and why.
 ///
 /// Both of these exist *because* of AC's byte layout rather than in spite of
@@ -28,7 +43,19 @@ const SPEAKS_AC: &[&str] = &[
     // Writes fake `acpmf_*` pages for developing without the game. It is a
     // stand-in for AC, so it has to lay the bytes out the way AC does.
     "tui/src/bin/simulator.rs",
+    // The generic process matcher, whose *tests* use `acs.exe` as the string
+    // to match. The matcher itself takes the name as an argument.
+    "core/src/process.rs",
 ];
+
+/// Folders exempt from the layout rule, and why.
+///
+/// `overlay/` installs a Custom Shaders Patch Lua app into the game's own
+/// folder and drives `shm-bridge.exe` inside its Proton prefix. CSP is an
+/// Assetto Corsa mod and ACC has none, so this is not a boundary a second game
+/// crosses — it is a feature one game has. See §8 of `docs/roadmap.md`, which
+/// is where that decision is written down.
+const SPEAKS_AC_FOLDERS: &[&str] = &["core/src/overlay/"];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -62,6 +89,61 @@ fn ac_struct_lines(source: &str) -> Vec<(usize, String)> {
         })
         .map(|(index, line)| (index + 1, line.trim().to_string()))
         .collect()
+}
+
+/// Assetto Corsa's file layout, its process and its Steam appid stay in its
+/// own folder, so that a second game is a folder beside it.
+#[test]
+fn no_file_outside_the_game_folder_knows_where_assetto_corsa_keeps_things() {
+    let root = workspace_root();
+
+    let mut files = Vec::new();
+    rust_files(&root.join("core/src"), &mut files);
+    rust_files(&root.join("tui/src"), &mut files);
+    files.sort();
+
+    let mut problems = Vec::new();
+    for file in &files {
+        let relative = file
+            .strip_prefix(&root)
+            .expect("walked from the root")
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if relative.starts_with("core/src/games/")
+            || SPEAKS_AC.contains(&relative.as_str())
+            || SPEAKS_AC_FOLDERS
+                .iter()
+                .any(|folder| relative.starts_with(folder))
+        {
+            continue;
+        }
+        let Ok(source) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (number, line) in source.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if let Some(marker) = AC_LAYOUT.iter().find(|marker| line.contains(**marker)) {
+                problems.push(format!(
+                    "{relative}:{}: {marker} in {}",
+                    number + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "Assetto Corsa's own layout outside `core/src/games/`:\n{}\n\n\
+         Where a game keeps its files, what its process is called and what \
+         Steam numbers it are facts about that game. Put them in its folder \
+         and hand back the neutral shape — `CarSpecs`, `CarSetup`, a `bool`.",
+        problems.join("\n")
+    );
 }
 
 /// The reason §4 of the roadmap existed: the trait describing the boundary was
