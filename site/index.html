@@ -146,7 +146,11 @@
   --bg:#0a0a0f;
   --bg-raised:#101018;
   --text:#dcdce6;
-  --dim:#6d7180;
+  /* Lifted 8% from #6d7180, which measured 4.07:1 against this background —
+     under the 4.5:1 a body of text needs. It is `.sub`, `.lede`, `.note` and
+     the second column of every table, so almost all the prose here was below
+     the line and read as washed out rather than as quiet. Same hue, 4.63:1. */
+  --dim:#767a8a;
   --highlight:#00b4ff;
   --accent:#ffa500;
   --border:#3c4655;
@@ -270,16 +274,26 @@ nav.tabs .menu{
 }
 nav.tabs .has-menu:hover .menu,
 nav.tabs .has-menu:focus-within .menu{display:block}
+@media (prefers-reduced-motion:no-preference){
+  /* The same entrance the folds use, so the menu belongs to the page rather
+     than appearing on top of it. Opt-in, like every other movement here. */
+  nav.tabs .has-menu:hover .menu,
+  nav.tabs .has-menu:focus-within .menu{animation:foldin .16s ease both}
+}
 nav.tabs .menu a{
   display:flex;align-items:center;gap:8px;
   padding:9px 14px;border-bottom:0;font-size:13px;letter-spacing:.02em;
 }
 nav.tabs .menu a:hover{color:var(--text);background:#15151f;border-bottom:0}
 nav.tabs .menu a.on{color:var(--highlight)}
-nav.tabs .menu .soon{
-  margin-left:auto;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--dim);border:1px solid var(--border);border-radius:20px;padding:1px 7px;
+/* Where each game stands, said in the menu rather than only on its page: a
+   list of names reads as a list of things that work. */
+nav.tabs .menu .tag{
+  margin-left:auto;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  border:1px solid var(--border);border-radius:20px;padding:1px 7px;flex:none;
 }
+nav.tabs .menu .tag.full{color:var(--good);border-color:rgba(63,208,127,.4)}
+nav.tabs .menu .tag.soon{color:var(--dim)}
 
 @media (max-width:640px){
   /* Wide enough to be tappable, and pinned to the left edge rather than
@@ -645,6 +659,16 @@ td:first-child{color:var(--text);white-space:normal}
 td:last-child{color:var(--dim)}
 td code{color:var(--highlight)}
 
+/* Tables are how most of this site says things, and the widest of them are
+   three columns of prose: the eye loses which row it is on between the label
+   and the note. A row under the pointer costs nothing and fixes it. Not on
+   phones, where there is no pointer and rows are already separated. */
+@media (hover:hover){
+  tbody tr{transition:background-color .12s ease}
+  tbody tr:hover{background:#101019}
+}
+
+
 details.fold{
   border:1px solid var(--border);border-radius:6px;background:var(--bg-raised);
   margin:0 0 10px;overflow:hidden;
@@ -855,8 +879,8 @@ footer .cols a:hover{color:var(--highlight)}
     <span class="has-menu">
       <button class="games" type="button" aria-haspopup="true">GAMES</button>
       <span class="menu">
-        <a href="https://proengineer.app/ac/">Assetto Corsa</a>
-        <a href="https://proengineer.app/acc/">Assetto Corsa Competizione <span class="soon">not yet</span></a>
+        <a href="https://proengineer.app/ac/">Assetto Corsa <span class="tag full">full support</span></a>
+        <a href="https://proengineer.app/acc/">Assetto Corsa Competizione <span class="tag soon">not yet</span></a>
       </span>
     </span>
     <a href="https://proengineer.app/features/">FEATURES</a>
