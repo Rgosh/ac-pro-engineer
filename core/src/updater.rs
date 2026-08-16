@@ -57,10 +57,18 @@ struct GitHubAsset {
     size: u64,
 }
 
-/// Cargo bin name of the end-user application as published in release assets.
-const APP_BIN_STEM: &str = "ac_pro_engineer";
-/// The same binary as published for Windows.
-const APP_BIN_EXE: &str = "ac_pro_engineer.exe";
+/// Names the end-user binary can carry in a release asset, newest first.
+///
+/// The program is becoming `pro_engineer`: it is a platform for several
+/// simulators and the `ac_` prefix says otherwise. A rename is only safe if
+/// the *old* clients can still find the new file, and they cannot be changed
+/// after the fact — so this release is the one that learns both names, and
+/// every release after it may drop the old one.
+///
+/// The order matters: the new name is preferred where an archive happens to
+/// carry both, which is what a transitional release should ship so that
+/// clients older than this one keep updating too.
+const APP_BIN_STEMS: &[&str] = &["pro_engineer", "ac_pro_engineer"];
 
 /// Name prefixes a release *archive* of the application can carry. dist names
 /// archives after the Cargo package (`ac_tui`); older manual releases used the
@@ -70,7 +78,13 @@ const APP_BIN_EXE: &str = "ac_pro_engineer.exe";
 /// offering updates. That is the safe direction to fail: a missed update is
 /// recoverable, installing another package's archive over the running
 /// executable is not.
-const APP_ARCHIVE_PREFIXES: &[&str] = &["ac_tui-", "ac_pro_engineer-", "ac-pro-engineer-"];
+const APP_ARCHIVE_PREFIXES: &[&str] = &[
+    "pro_engineer-",
+    "pro-engineer-",
+    "ac_tui-",
+    "ac_pro_engineer-",
+    "ac-pro-engineer-",
+];
 
 /// Archive extensions a release might plausibly use.
 const ARCHIVE_EXTS: &[&str] = &[
@@ -121,14 +135,16 @@ pub enum AssetKind {
 fn classify_asset(name: &str) -> Option<AssetKind> {
     let lower = name.to_ascii_lowercase();
 
-    // A bare binary is only ever the exact Cargo bin name. v0.2.2 shipped the
+    // A bare binary is only ever one of the exact bin names. v0.2.2 shipped the
     // untagged Linux build alongside the Windows one, so the `.exe` extension
     // is what tells the two apart.
-    if lower == APP_BIN_STEM {
-        return cfg!(target_os = "linux").then_some(AssetKind::Executable);
-    }
-    if lower == APP_BIN_EXE {
-        return cfg!(target_os = "windows").then_some(AssetKind::Executable);
+    for stem in APP_BIN_STEMS {
+        if lower == *stem {
+            return cfg!(target_os = "linux").then_some(AssetKind::Executable);
+        }
+        if lower == format!("{stem}.exe") {
+            return cfg!(target_os = "windows").then_some(AssetKind::Executable);
+        }
     }
 
     // Past that point the asset has to be an archive of this application.
@@ -176,12 +192,19 @@ fn classify_asset(name: &str) -> Option<AssetKind> {
 }
 
 /// File name the application binary has inside a release archive.
-fn app_binary_file_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "ac_pro_engineer.exe"
-    } else {
-        APP_BIN_STEM
-    }
+/// What the binary may be called inside a release asset on this platform,
+/// newest name first.
+fn app_binary_file_names() -> Vec<String> {
+    APP_BIN_STEMS
+        .iter()
+        .map(|stem| {
+            if cfg!(target_os = "windows") {
+                format!("{stem}.exe")
+            } else {
+                (*stem).to_string()
+            }
+        })
+        .collect()
 }
 
 /// Unpack the application binary out of a downloaded release archive.
@@ -191,20 +214,31 @@ fn app_binary_file_name() -> &'static str {
 /// under `cfg(test)` so either can be exercised from any host. Without that,
 /// the Windows path would only ever be compiled by the Windows CI leg and only
 /// ever be tested by nobody.
-#[cfg(not(target_os = "windows"))]
+/// Try each accepted name in turn, newest first.
+///
+/// A release that carries only the new name, only the old one, or both all
+/// work — which is what makes renaming the binary safe rather than a flag day.
+/// The error reported is the *last* attempt's, so a genuinely empty archive
+/// still says something useful rather than "pro_engineer not found" about an
+/// archive that never claimed to have it.
 fn extract_app_binary(
     archive: &std::path::Path,
     dest: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    extract_named_entry_from_tar_gz(archive, app_binary_file_name(), dest)
-}
+    let names = app_binary_file_names();
+    let mut last: Option<Box<dyn std::error::Error>> = None;
+    for name in &names {
+        #[cfg(not(target_os = "windows"))]
+        let attempt = extract_named_entry_from_tar_gz(archive, name, dest);
+        #[cfg(target_os = "windows")]
+        let attempt = extract_named_entry_from_zip(archive, name, dest);
 
-#[cfg(target_os = "windows")]
-fn extract_app_binary(
-    archive: &std::path::Path,
-    dest: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    extract_named_entry_from_zip(archive, app_binary_file_name(), dest)
+        match attempt {
+            Ok(()) => return Ok(()),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| format!("no application binary in {}", archive.display()).into()))
 }
 
 /// Copy the entry called `wanted` out of a gzipped tarball.
@@ -1088,6 +1122,116 @@ mod tests {
     /// Build a gzipped tarball laid out the way dist does: everything under a
     /// directory named after the archive stem, alongside LICENSE, README and a
     /// sibling binary that must not be mistaken for the application.
+    /// The rename has to work in both directions at once, and this is the test
+    /// that says so.
+    ///
+    /// A client can only ever be taught new names *before* the release that
+    /// uses them — an installed copy cannot be changed after the fact. So this
+    /// build accepts either, and the three cases below are the three a release
+    /// can actually be:
+    ///
+    /// * the old name alone — every release up to v0.3.7;
+    /// * both — what a transitional release should ship, so that clients older
+    ///   than this one keep updating too;
+    /// * the new name alone — everything after that.
+    ///
+    /// Getting this wrong strands whoever does not update in time, silently:
+    /// the check runs, a version is offered, and the download fails in the
+    /// decoder every time.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn a_release_is_unpacked_whichever_name_the_binary_carries() {
+        const NEW: &[u8] = b"#!/bin/sh\necho new name\n";
+
+        /// One release shape: what it is called, what is in it, and which
+        /// binary should come out.
+        struct Release {
+            label: &'static str,
+            entries: &'static [(&'static str, &'static [u8])],
+            expected: &'static [u8],
+        }
+
+        let cases = [
+            Release {
+                label: "old only",
+                entries: &[("d/ac_pro_engineer", PAYLOAD)],
+                expected: PAYLOAD,
+            },
+            Release {
+                label: "new only",
+                entries: &[("d/pro_engineer", NEW)],
+                expected: NEW,
+            },
+            // Both present: the new name wins, so a transitional release does
+            // not quietly keep handing out the old binary forever.
+            Release {
+                label: "both",
+                entries: &[("d/ac_pro_engineer", PAYLOAD), ("d/pro_engineer", NEW)],
+                expected: NEW,
+            },
+        ];
+
+        for case in cases {
+            let tmp =
+                std::env::temp_dir().join(format!("acpe-rename-{}", case.label).replace(' ', "-"));
+            let _ = std::fs::create_dir_all(&tmp);
+            let archive = tmp.join("release.tar.gz");
+            write_tar_gz(&archive, case.entries);
+
+            let dest = tmp.join("unpacked");
+            let unpacked = extract_app_binary(&archive, &dest);
+            assert!(unpacked.is_ok(), "{}: {unpacked:?}", case.label);
+            assert_eq!(
+                std::fs::read(&dest).expect("read unpacked"),
+                case.expected,
+                "{}: unpacked the wrong entry",
+                case.label
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+    }
+
+    /// An archive with no application in it still fails, and says so.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn an_archive_without_the_application_is_refused() {
+        let tmp = std::env::temp_dir().join("acpe-rename-empty");
+        let _ = std::fs::create_dir_all(&tmp);
+        let archive = tmp.join("release.tar.gz");
+        write_tar_gz(
+            &archive,
+            &[("d/LICENSE", b"license"), ("d/simulator", b"nope")],
+        );
+
+        assert!(extract_app_binary(&archive, &tmp.join("unpacked")).is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Both names are recognised as a bare binary asset, and the archive
+    /// prefixes cover the new package name — a release named after it would
+    /// otherwise not be offered at all.
+    #[test]
+    fn the_new_name_is_recognised_in_release_asset_names() {
+        assert!(APP_ARCHIVE_PREFIXES.contains(&"pro_engineer-"));
+        assert_eq!(
+            APP_BIN_STEMS[0], "pro_engineer",
+            "the new name is preferred"
+        );
+        assert!(
+            APP_BIN_STEMS.contains(&"ac_pro_engineer"),
+            "the old one still works"
+        );
+
+        let expected = if cfg!(target_os = "linux") {
+            Some(AssetKind::Executable)
+        } else {
+            None
+        };
+        assert_eq!(classify_asset("pro_engineer"), expected);
+        assert_eq!(classify_asset("ac_pro_engineer"), expected);
+    }
+
     fn write_tar_gz(path: &std::path::Path, entries: &[(&str, &[u8])]) {
         use std::io::Write;
 
@@ -1144,12 +1288,12 @@ mod tests {
                 (&format!("{root}/README.md"), b"readme"),
                 // A sibling binary that must not be mistaken for the app.
                 (&format!("{root}/simulator"), b"not the app"),
-                (&format!("{root}/{APP_BIN_STEM}"), PAYLOAD),
+                (&format!("{root}/ac_pro_engineer"), PAYLOAD),
             ],
         );
 
         let dest = tmp.join("ac_pro_engineer_new");
-        extract_named_entry_from_tar_gz(&archive_path, APP_BIN_STEM, &dest)
+        extract_named_entry_from_tar_gz(&archive_path, "ac_pro_engineer", &dest)
             .expect("extraction should succeed");
 
         let got = std::fs::read(&dest).expect("read extracted binary");
@@ -1217,7 +1361,7 @@ mod tests {
         );
 
         let dest = tmp.join("ac_pro_engineer_new");
-        assert!(extract_named_entry_from_tar_gz(&tar_path, APP_BIN_STEM, &dest).is_err());
+        assert!(extract_named_entry_from_tar_gz(&tar_path, "ac_pro_engineer", &dest).is_err());
         assert!(extract_named_entry_from_zip(&zip_path, "ac_pro_engineer.exe", &dest).is_err());
 
         let _ = std::fs::remove_dir_all(&tmp);
