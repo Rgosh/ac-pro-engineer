@@ -231,6 +231,62 @@ nav.tabs a{
 nav.tabs a:hover{color:var(--text);text-decoration:none;border-bottom-color:var(--border)}
 nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
 
+/* ── the games menu ──────────────────────────────────────────────────
+   Two games fit in the strip; six do not, and a strip that scrolls sideways
+   before the reader has done anything is a strip nobody reads to the end. So
+   the games live under one item.
+
+   No script, which forces two decisions. The trigger is a <button> rather than
+   a link, because on a phone a tap has to open the menu instead of navigating
+   somewhere first — and a focused button is what `:focus-within` reacts to.
+
+   And the menu is `position:fixed` with no offsets. The strip is
+   `overflow-x:auto`, which clips an absolutely positioned child; a fixed one
+   escapes that, and with its offsets left alone the browser places it at the
+   position it would have had in flow — directly under the button. */
+/* Block flow, not flex: a flex container puts an out-of-flow child at its own
+   top-left corner regardless of the siblings, which lands the menu on top of
+   the button. In normal flow the menu's static position is after the button,
+   which is where it belongs. */
+nav.tabs .has-menu{display:block}
+nav.tabs .games{
+  appearance:none;background:none;border:0;border-bottom:2px solid transparent;
+  font:inherit;font-size:13px;letter-spacing:.06em;cursor:pointer;
+  padding:11px 13px;white-space:nowrap;
+  /* Slightly forward of the other tabs and well behind the current one: this
+     is a way in, not a destination. */
+  color:var(--text);
+}
+nav.tabs .games::after{content:"▾";font-size:9px;opacity:.65;margin-left:6px}
+nav.tabs .has-menu:hover .games,
+nav.tabs .has-menu:focus-within .games{border-bottom-color:var(--border)}
+nav.tabs .has-menu.on .games{color:var(--highlight);border-bottom-color:var(--highlight)}
+
+nav.tabs .menu{
+  position:fixed;display:none;min-width:210px;
+  background:#0d0d15;border:1px solid var(--border);border-top:0;
+  border-radius:0 0 7px 7px;box-shadow:0 20px 34px -22px #000;
+  padding:5px 0;z-index:30;
+}
+nav.tabs .has-menu:hover .menu,
+nav.tabs .has-menu:focus-within .menu{display:block}
+nav.tabs .menu a{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 14px;border-bottom:0;font-size:13px;letter-spacing:.02em;
+}
+nav.tabs .menu a:hover{color:var(--text);background:#15151f;border-bottom:0}
+nav.tabs .menu a.on{color:var(--highlight)}
+nav.tabs .menu .soon{
+  margin-left:auto;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--border);border-radius:20px;padding:1px 7px;
+}
+
+@media (max-width:640px){
+  /* Wide enough to be tappable, and pinned to the left edge rather than
+     hanging off the side of a strip the reader may have scrolled. */
+  nav.tabs .menu{left:8px;right:8px;min-width:0}
+}
+
 /* ── page head ───────────────────────────────────────────────────────
    A sub-page opens with a breadcrumb and a real H1 rather than with the block
    logo. The logo is the landing's; repeating it on six pages makes six pages
@@ -346,7 +402,8 @@ nav.tabs a:active{opacity:.7}
    indication of focus is the browser's default outline, which several of these
    backgrounds swallow entirely. */
 a:focus-visible,.btn:focus-visible,a.card:focus-visible,
-nav.tabs a:focus-visible,details.fold > summary:focus-visible{
+nav.tabs a:focus-visible,nav.tabs .games:focus-visible,
+details.fold > summary:focus-visible{
   outline:2px solid var(--highlight);outline-offset:3px;border-radius:4px;
 }
 
@@ -795,8 +852,13 @@ footer .cols a:hover{color:var(--highlight)}
   <nav class="tabs">
 <!--NAV-->
     <a href="https://proengineer.app/" class="on">OVERVIEW</a>
-    <a href="https://proengineer.app/ac/">ASSETTO CORSA</a>
-    <a href="https://proengineer.app/acc/">ACC</a>
+    <span class="has-menu">
+      <button class="games" type="button" aria-haspopup="true">GAMES</button>
+      <span class="menu">
+        <a href="https://proengineer.app/ac/">Assetto Corsa</a>
+        <a href="https://proengineer.app/acc/">Assetto Corsa Competizione <span class="soon">not yet</span></a>
+      </span>
+    </span>
     <a href="https://proengineer.app/features/">FEATURES</a>
     <a href="https://proengineer.app/compare/">COMPARE</a>
     <a href="https://proengineer.app/technical/">HOW IT WORKS</a>
