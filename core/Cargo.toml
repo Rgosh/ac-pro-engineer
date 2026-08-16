@@ -74,3 +74,10 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 [[example]]
 name = "capture_pages"
 test = true
+
+# Same reason as capture_pages: an example carrying tests nobody runs reads as
+# coverage. What is tested here is the statistic the whole report rests on —
+# whether a word moved, and over what range.
+[[example]]
+name = "record_pages"
+test = true
