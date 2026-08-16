@@ -26,6 +26,7 @@ changes, change the other.
 | — | A registry: a game is one table entry, and no screen names a simulator | **done** |
 | — | Detection: the game that is read is the one that is running | **done** |
 | — | `capture_pages`, which takes the bytes and says what they cannot prove | **done** |
+| — | `inspect_capture`, which finds the fields in a captured page | **done** |
 | 1 | A capture of ACC's three pages | **blocked** — needs the game |
 | 2 | The structs, pinned against that capture | **owed** |
 | 3 | A discriminator, so the wrong parser cannot attach | **owed** |
@@ -45,8 +46,21 @@ changes, change the other.
 `tests_suite/src/shm_layout_tests.rs`.
 
 ```bash
-cargo run -p ac_core --example capture_pages
+cargo run -p ac_core --example capture_pages > acc-capture.txt
+cargo run -p ac_core --example inspect_capture acc-capture.txt
 ```
+
+The second one is what turns bytes into a layout. It decodes every four-byte
+word, says whether it is plausibly a temperature, a pressure, a lap time or a
+pedal, and finds the runs of four matching floats that are almost always the
+wheels. Run against Assetto Corsa's own capture it locates `wheels_pressure`
+at 88, `tyre_wear` at 120, the brakes at 348 and the tread triplet at
+368/384/400 — which is exactly where the layout tests pin them, and is why it
+can be trusted on a page nobody has mapped yet.
+
+**It suggests; it does not conclude.** Every offset it prints has to be
+confirmed against a number that was visible in the game when the capture was
+taken.
 
 **Why it is first.** Assetto Corsa's offsets are pinned against a capture, and
 that is the only reason the ACC-shaped graphics struct was ever caught. Every
