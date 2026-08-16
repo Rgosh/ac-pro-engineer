@@ -124,19 +124,41 @@ cargo build --release -p ac_core --example record_pages >/dev/null
 # Whatever happens after this point, the bridge is stopped: leaving one running
 # in a prefix means the next session opens mappings somebody else already owns.
 bridge_pid=""
+bridge_log="${OUT%.txt}-bridge.log"
+fifo=""
 cleanup() {
   if [ -n "$bridge_pid" ] && kill -0 "$bridge_pid" 2>/dev/null; then
     printf '\n== stopping the bridge\n'
+    # Its own word for "shut down tidily", which removes the mappings rather
+    # than leaving them for the next session to trip over.
+    echo exit >&9 2>/dev/null || true
+    exec 9>&- 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      kill -0 "$bridge_pid" 2>/dev/null || break
+      sleep 0.3
+    done
     kill "$bridge_pid" 2>/dev/null || true
     wait "$bridge_pid" 2>/dev/null || true
   fi
-  printf '\nThe recording is in:\n  %s\n\n' "$OUT"
+  [ -n "$fifo" ] && rm -f "$fifo"
+  printf '\nThe recording is in:\n  %s\n' "$OUT"
+  printf 'The bridge said:\n  %s\n\n' "$bridge_log"
 }
 trap cleanup EXIT INT TERM
 
 say "Starting the bridge inside $GAME's prefix"
-protontricks-launch --appid "$appid" "$bridge" >/dev/null 2>&1 &
+
+# The bridge waits for "exit" on stdin, so a backgrounded one whose stdin is
+# the terminal — or /dev/null — reads EOF the instant it starts, shuts down and
+# **removes the mappings it just made**. That is not hypothetical: it is how the
+# first real session recorded 0 samples in 386 seconds, with the files existing
+# for a fraction of a second. A FIFO held open by this script is what keeps it
+# alive, and it is also how it gets told to stop properly.
+fifo="$(mktemp -u "${TMPDIR:-/tmp}/acpe-bridge-XXXXXX")"
+mkfifo "$fifo"
+protontricks-launch --appid "$appid" "$bridge" < "$fifo" > "$bridge_log" 2>&1 &
 bridge_pid=$!
+exec 9> "$fifo"
 
 # The bridge has to create the mappings before the game asks for them, so give
 # it a moment and say plainly whether it managed.
@@ -145,11 +167,19 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 
+# Whether it is still *running* matters as much as whether the files appeared:
+# a bridge that made them and died takes them with it.
+if ! kill -0 "$bridge_pid" 2>/dev/null; then
+  die "The bridge started and exited again. What it said:
+
+$(tail -20 "$bridge_log" 2>/dev/null || echo '   (nothing was logged)')"
+fi
+
 if [ -f /dev/shm/acpmf_physics ]; then
-  echo "   mappings are up: $(ls -s --block-size=1 /dev/shm/acpmf_physics | cut -d' ' -f1) bytes"
+  echo "   mappings are up: $(stat -c%s /dev/shm/acpmf_physics) bytes, bridge still running"
 else
-  printf '\n\033[33m??\033[0m The bridge has not created /dev/shm/acpmf_physics yet.\n'
-  printf '   Recording anyway — it will start reading as soon as they appear.\n'
+  printf '\n\033[33m??\033[0m The bridge is running but /dev/shm/acpmf_physics is not there.\n'
+  printf '   Recording anyway. If it stays at 0 samples, read %s\n' "$bridge_log"
 fi
 
 say "Recording. Start $GAME now."
