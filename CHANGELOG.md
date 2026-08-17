@@ -2,7 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.4.0] — unreleased
+
+**The point:** a second simulator, and an engineer that knows what car it is
+looking at.
+
+### At a glance, everything since v0.3.6
+
+- **Assetto Corsa Competizione is read.** Its three shared-memory pages, pinned
+  to a recorded GT3 session at Spa rather than to a header file. Dashboard,
+  tyres, brakes, fuel, strategy and lap analysis all work on it.
+- **Which simulator is a choice on the launcher**, not a guess — `GAME: < … >`,
+  on every platform, with a list of what that game can and cannot measure.
+- **The wrong parser can no longer attach.** Both games publish under the same
+  three names; each reader now refuses pages that declare the other's version.
+- **The engineer judges a car against its class.** GT3, GT4, Formula, touring,
+  road — tyre windows and per-axle brake ceilings from published operating
+  ranges instead of one band meant for road cars.
+- **Brake pad and disc wear**, on the game that measures it, in place of the
+  tyre wear it does not.
+- **Track limits**: a lap the game called invalid is stored as invalid.
+- **The Proton helper no longer blocks the game from starting.** It comes up
+  when you press START and goes away when you return to the launcher, and it
+  mirrors pages the game already owns — so the order you start things in
+  stopped mattering.
+- **Corner-by-corner lap analysis**, confidence beside every line of advice,
+  car-versus-driver over a stint, and a cause/effect/check chain on every rule.
+- **Licence: MIT → AGPL v3** from this release. v0.3.6 and earlier stay MIT.
+
+Everything below is the detail.
+
+### 🏎️ The engineer knows what car it is
+
+- **Tyre and brake thresholds come from the class of car.** One band —
+  70–105 °C tyres, an 800 °C brake ceiling — was doing for a Formula car and a
+  Fiat 500 alike, which is why so little was ever said: a GT3's 520 °C fronts
+  never reached it and a Formula car's cold tyre never fell below it. Classes
+  are read off the car's id and, on Assetto Corsa, the game's own tags; the
+  windows come from published operating ranges, with the sources in
+  `docs/plan-0.4.0-car-classes.md`.
+- **Brake ceilings are per axle.** Fronts do the work; one number for four
+  corners is either too low for the fronts or blind to the rears.
+- **An unrecognised car keeps your own settings**, and so does any threshold
+  you have set yourself. Only untouched defaults are replaced.
+- **Tyre temperature is judged on whatever the game measures** — the tread mean
+  where there is one, the core where there is not — and the verdict says which.
+  Competizione used to get no word about tyre temperature at all.
 
 **The point:** the Analysis tab drew what happened. It says **where** now, and
 how sure it is.
