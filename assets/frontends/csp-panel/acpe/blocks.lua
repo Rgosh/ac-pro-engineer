@@ -407,7 +407,7 @@ local function drawWaitingForApp()
   -- smallest text the panel drew: CSP's own font at a tier that does not
   -- scale, so on a 4K display the panel grew and the message did not.
   if frame.openError() ~= nil then
-    notice(tr('Waiting for AC Pro Engineer'), COLOR.bad, {
+    notice(tr('Waiting for Pro Engineer'), COLOR.bad, {
       { 'body', tr('The shared mapping is not there yet. Start the desktop '
         .. 'application — it creates the mapping, and this panel picks it up '
         .. 'within a couple of seconds.'), COLOR.dim },
@@ -428,7 +428,7 @@ local function drawWaitingForApp()
     and tr('Nothing has been published yet.')
     or string.format(tr('Last frame %.0f s ago.'), frame.secondsSinceChange())
 
-  notice(tr('AC Pro Engineer is not running'), COLOR.warn, {
+  notice(tr('Pro Engineer is not running'), COLOR.warn, {
     { 'body', tr('Start the desktop application to see telemetry.'), COLOR.dim },
     { 'caption', last, COLOR.dim },
   })
@@ -445,7 +445,7 @@ end
 --- that was not there.
 local function drawWaitingForCar()
   notice(tr('Waiting for the car'), COLOR.accent, {
-    { 'body', tr('AC Pro Engineer is running. Telemetry starts when you go on track.'),
+    { 'body', tr('Pro Engineer is running. Telemetry starts when you go on track.'),
       COLOR.dim },
     { 'caption', tr('panel') .. ' v' .. frame.panelVersion()
       .. (shown.app_version ~= '' and ('  ·  ' .. tr('app') .. ' v' .. shown.app_version) or ''),

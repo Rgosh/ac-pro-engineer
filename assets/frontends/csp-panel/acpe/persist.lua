@@ -160,7 +160,7 @@ end
 ---
 --- Returns the path written, or nil and why not.
 function M.save(values, keys)
-  local body = { '-- AC Pro Engineer overlay settings.', '-- Written by the panel; safe to edit or delete.', 'return {' }
+  local body = { '-- Pro Engineer overlay settings.', '-- Written by the panel; safe to edit or delete.', 'return {' }
   for _, key in ipairs(keys) do
     local text = encode(values[key])
     if text ~= nil then

@@ -3,7 +3,7 @@
 //! Three pieces have to agree about a frame — the application, the panel, and
 //! the bridge — and the bridge was the one that could not be inspected. Every
 //! failure that cost an evening looked identical from the driver's seat: the
-//! panel saying "waiting for AC Pro Engineer" with `/dev/shm` holding the file,
+//! panel saying "waiting for Pro Engineer" with `/dev/shm` holding the file,
 //! at the right size, with the application running. A bridge built before the
 //! frame grew maps too few bytes and CSP silently refuses to open the mapping.
 //!
@@ -21,6 +21,6 @@
 //! itself — and this says so rather than reporting a missing component.
 
 fn main() {
-    println!("AC Pro Engineer — bridge probe");
+    println!("Pro Engineer — bridge probe");
     print!("{}", ac_core::overlay::diagnosis::report().to_plain_text());
 }

@@ -1,8 +1,8 @@
-# Changelog - RaceEngineer (AC Pro Engineer)
+# Changelog - RaceEngineer (Pro Engineer)
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.0] — unreleased
+## [v0.4.0] - 2026-08-18
 
 **The point:** a second simulator, and an engineer that knows what car it is
 looking at.
@@ -29,6 +29,11 @@ looking at.
 - **Corner-by-corner lap analysis**, confidence beside every line of advice,
   car-versus-driver over a stint, and a cause/effect/check chain on every rule.
 - **Licence: MIT → AGPL v3** from this release. v0.3.6 and earlier stay MIT.
+- **The name is Pro Engineer.** It read "AC Pro Engineer", which stopped being
+  true the moment it read a second game. Nothing about an install changes: the
+  binary, the panel's folder and the shared-memory names are what the game and
+  Custom Shaders Patch look for, and renaming those would break every existing
+  install for a word.
 
 Everything below is the detail.
 

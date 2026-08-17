@@ -40,7 +40,7 @@ return function(dt)
   -- until it publishes, and saying so here saves a hunt through the checkboxes.
   if not frame.live() then
     pushRole('caption')
-    ui.textColored('Panel hidden: AC Pro Engineer is not running', COLOR.warn)
+    ui.textColored('Panel hidden: Pro Engineer is not running', COLOR.warn)
     ui.popFont()
     ui.separator()
   end

@@ -48,7 +48,7 @@ The application, `shm-bridge.exe` and the panel all encode the same frame. Every
 failure that cost an evening was one of them being older than the others:
 
 - a bridge built before the frame grew maps too few bytes and CSP refuses to
-  open the mapping — the panel says "waiting for AC Pro Engineer" while
+  open the mapping — the panel says "waiting for Pro Engineer" while
   `/dev/shm` has the file, at the right size, with the app running
 - a panel from an older install reads every field after the change at the wrong
   offset — that is where `-1.7e27` in place of a tyre pressure came from
@@ -133,7 +133,7 @@ top of the release. What changed under it:
 - **the panel is reachable outside a session.** `tick` publishes a frame with
   `CONNECTED` clear from the launcher stage and whenever AC has nothing in
   shared memory, so the panel opens in the garage saying "waiting for the car"
-  rather than "AC Pro Engineer is not running".
+  rather than "Pro Engineer is not running".
 - **`LAZY = ON`.** With `FULL`, CSP unloaded the script when the last window
   closed and every setting that had not reached `ac.storage` was gone.
 - **the key map is data.** `tui/src/keys.rs` and a KEYS category in Settings;

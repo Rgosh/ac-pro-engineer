@@ -3,7 +3,7 @@
 
 function love.conf(t)
   t.identity = 'acpe-harness'
-  t.window.title = 'AC Pro Engineer — overlay harness'
+  t.window.title = 'Pro Engineer — overlay harness'
   t.window.width = 1000
   t.window.height = 620
   t.window.minwidth = 720

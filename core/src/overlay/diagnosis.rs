@@ -3,7 +3,7 @@
 //!
 //! Three pieces have to agree about a frame — the application, the panel and
 //! the bridge — and every failure looks identical from the driving seat: the
-//! panel saying *waiting for AC Pro Engineer* with the file sitting in
+//! panel saying *waiting for Pro Engineer* with the file sitting in
 //! `/dev/shm`, at the right size, with the application running.
 //!
 //! That question had exactly one answer, and it was

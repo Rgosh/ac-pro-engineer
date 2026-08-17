@@ -1,4 +1,4 @@
--- AC Pro Engineer overlay — persistent settings.
+-- Pro Engineer overlay — persistent settings.
 --
 -- What the panel shows and in which units. These are read in the draw path, so
 -- they are plain fields on a table that is written only when the settings

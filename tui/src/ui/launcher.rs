@@ -1038,7 +1038,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("AC Pro Engineer Tool"),
+            Line::from("Pro Engineer Tool"),
             Line::from(format!("Version: {}", ac_core::updater::CURRENT_VERSION)),
             Line::from(""),
             Line::from(Span::styled(

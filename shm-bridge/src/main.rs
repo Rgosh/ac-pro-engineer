@@ -70,7 +70,7 @@ const BRIDGE_PROTOCOL: u32 = 1;
 /// channel back. But it can write a file, and `/dev/shm` is the one directory
 /// both sides already agree on. Every failure that cost an evening was a
 /// bridge older than the frame it was mapping, and this is what makes that
-/// visible instead of leaving the panel saying "waiting for AC Pro Engineer"
+/// visible instead of leaving the panel saying "waiting for Pro Engineer"
 /// with the mapping sitting right there.
 ///
 /// Must match `ac_core::overlay::bridge::BRIDGE_INFO_FILE`.

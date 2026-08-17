@@ -81,10 +81,10 @@ Five, all of them declared in the app's manifest:
 
 | Window | `FUNCTION_MAIN` | |
 |---|---|---|
-| AC Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel, session |
-| AC Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
-| AC Pro Engineer — telemetry | `windowTelemetry` | every field in the frame, as it arrived |
-| AC Pro Engineer — status | `windowStatus` | is the mapping open, is anything arriving, do the versions agree |
+| Pro Engineer | `windowMain` | speed, revs, tyres and brakes, timing, fuel, session |
+| Pro Engineer — advice | `windowEngineer` | the engineer's lines, on their own |
+| Pro Engineer — telemetry | `windowTelemetry` | every field in the frame, as it arrived |
+| Pro Engineer — status | `windowStatus` | is the mapping open, is anything arriving, do the versions agree |
 | settings | `windowSettings` | every section on or off, engineer output, text size, VR mode, units |
 
 Each is a separate entry in CSP's sidebar in game, moved and sized separately.

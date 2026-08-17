@@ -54,7 +54,7 @@ fn svg_string(buffer: &ratatui::buffer::Buffer, width: u16, height: u16) -> Stri
 
     // Window Title Text
     svg.push_str(&format!(
-        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">AC Pro Engineer v{} — High-Performance Sim Telemetry Suite</text>"##,
+        r##"  <text x="{}" y="24" fill="#8b949e" font-size="12px" font-weight="bold" text-anchor="middle">Pro Engineer v{} — High-Performance Sim Telemetry Suite</text>"##,
         total_w / 2,
         // Was hardcoded to v0.2.3, so every screenshot in the README claimed
         // a version two releases old.

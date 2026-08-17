@@ -1,6 +1,6 @@
 # RaceEngineer Codebase Context & Agent Reference Guide
 
-Welcome! This document (`AGENTS.md`) provides a concise reference for AI agents and developer tools working on the **RaceEngineer** (AC Pro Engineer) codebase.
+Welcome! This document (`AGENTS.md`) provides a concise reference for AI agents and developer tools working on the **RaceEngineer** (Pro Engineer) codebase.
 
 ---
 

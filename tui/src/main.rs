@@ -1,4 +1,4 @@
-// AC Pro Engineer — telemetry and race engineering for Assetto Corsa.
+// Pro Engineer — telemetry and race engineering for Assetto Corsa.
 // Copyright (c) 2026 Rgosh and contributors.
 //
 // This program is free software under the GNU Affero General Public License,
@@ -82,7 +82,7 @@ fn set_console_icon() {
 #[command(
     name = "ac_pro_engineer",
     version,
-    about = "AC Pro Engineer — telemetry and race engineering for Assetto Corsa and Competizione, with an in-game overlay for Assetto Corsa"
+    about = "Pro Engineer — telemetry and race engineering for Assetto Corsa and Competizione, with an in-game overlay for Assetto Corsa"
 )]
 struct AppArgs {
     /// Do not write a log file at all.
@@ -161,10 +161,10 @@ fn export_overlay(dir: &std::path::Path) -> Result<(), anyhow::Error> {
     }
 
     println!(
-        "\nThis is the panel for AC Pro Engineer v{}. Copy the whole\n\
+        "\nThis is the panel for Pro Engineer v{}. Copy the whole\n\
          {APP_DIR} folder into:\n\n    \
          <Assetto Corsa>/apps/lua/\n\n\
-         then enable \"AC Pro Engineer\" in CSP's app sidebar. The panel reads\n\
+         then enable \"Pro Engineer\" in CSP's app sidebar. The panel reads\n\
          from the running application, so keep that open too.",
         ac_core::updater::CURRENT_VERSION
     );

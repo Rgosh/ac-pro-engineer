@@ -197,7 +197,7 @@ function love.load(args)
   applyAppDeveloperMode(config.appDev)
   enterPortrait(config.portrait)
 
-  love.window.setTitle('AC Pro Engineer — overlay harness')
+  love.window.setTitle('Pro Engineer — overlay harness')
   love.keyboard.setKeyRepeat(true)
 end
 
@@ -300,7 +300,7 @@ local PADDING = 10
 local windows = {
   {
     id = 'main',
-    title = 'AC Pro Engineer',
+    title = 'Pro Engineer',
     fn = 'windowMain',
     gear = true,
     size = function() return S.panelWidth, S.panelHeight end,
@@ -310,7 +310,7 @@ local windows = {
   },
   {
     id = 'debrief',
-    title = 'AC Pro Engineer — lap debrief',
+    title = 'Pro Engineer — lap debrief',
     fn = 'windowDebrief',
     closable = true,
     size = function() return S.debriefWidth, S.debriefHeight end,
@@ -320,7 +320,7 @@ local windows = {
   },
   {
     id = 'engineer',
-    title = 'AC Pro Engineer — advice',
+    title = 'Pro Engineer — advice',
     fn = 'windowEngineer',
     closable = true,
     size = function() return S.engineerWidth, S.engineerHeight end,
@@ -335,7 +335,7 @@ local windows = {
   },
   {
     id = 'telemetry',
-    title = 'AC Pro Engineer — telemetry',
+    title = 'Pro Engineer — telemetry',
     fn = 'windowTelemetry',
     closable = true,
     size = function() return S.telemetryWidth, S.telemetryHeight end,
@@ -350,7 +350,7 @@ local windows = {
   },
   {
     id = 'status',
-    title = 'AC Pro Engineer — status',
+    title = 'Pro Engineer — status',
     fn = 'windowStatus',
     closable = true,
     size = function() return S.statusWidth, S.statusHeight end,
@@ -365,7 +365,7 @@ local windows = {
   },
   {
     id = 'settings',
-    title = 'AC Pro Engineer — settings',
+    title = 'Pro Engineer — settings',
     fn = 'windowSettings',
     closable = true,
     size = function() return S.settingsWidth, S.settingsHeight end,

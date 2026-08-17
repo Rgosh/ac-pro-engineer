@@ -78,7 +78,7 @@ pub fn setup_logging(
         .init();
 
     info!(
-        "AC Pro Engineer v{} Logger Initialized",
+        "Pro Engineer v{} Logger Initialized",
         ac_core::updater::CURRENT_VERSION
     );
     Ok(())
@@ -304,7 +304,7 @@ pub struct AppState {
     /// The third of the three pieces that have to agree about a frame, and the
     /// one that used to be unknowable: a bridge older than the struct maps too
     /// few bytes, CSP silently refuses to open it, and the panel sits saying
-    /// "waiting for AC Pro Engineer" beside a mapping that is right there.
+    /// "waiting for Pro Engineer" beside a mapping that is right there.
     pub bridge_status: ac_core::overlay::bridge::BridgeStatus,
     /// What the last fetch-a-newer-bridge attempt said. Empty until one is
     /// asked for.
@@ -1523,7 +1523,7 @@ impl AppState {
     /// The panel used to go dead in three situations that are not failures:
     /// the application sitting on its launcher screen, AC running with nothing
     /// in shared memory yet, and the driver in the pit garage before a session
-    /// starts. In every one of them the panel showed "AC Pro Engineer is not
+    /// starts. In every one of them the panel showed "Pro Engineer is not
     /// running" — which is both wrong and the exact message that sends someone
     /// hunting through the bridge, the install and the Proton prefix for a
     /// problem that is not there.

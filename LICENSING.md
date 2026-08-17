@@ -1,6 +1,6 @@
 # Licensing
 
-AC Pro Engineer is licensed under the **GNU Affero General Public License,
+Pro Engineer is licensed under the **GNU Affero General Public License,
 version 3** — `LICENSE` holds the text, `NOTICE` the two additional terms
 section 7 permits. This file is the plain-language version of what that means,
 because nobody should have to read a legal document to find out whether they
@@ -39,7 +39,7 @@ talking to each other are not other people.
 
 This is the case the licence is designed for and it needs no permission at all.
 Publish your work under the AGPL v3, keep the copyright notices from `NOTICE`
-intact, and credit AC Pro Engineer where your users can see it — the About
+intact, and credit Pro Engineer where your users can see it — the About
 screen, the README, the credits, whichever your project has.
 
 Two things the AGPL asks that the MIT licence did not:
@@ -61,7 +61,7 @@ processes or shipping the parts apart changes it.
 What is permitted is asking. **Write to rgoshbbb@gmail.com**, say:
 
 - what your project is and where it lives,
-- which parts of AC Pro Engineer you are using,
+- which parts of Pro Engineer you are using,
 - whether you are charging for it.
 
 Each request is decided on its own, and asking is not the same as being granted:
@@ -125,7 +125,7 @@ one.** Asking first is cheaper than being found.
 
 ## The name
 
-The licence covers the code. It grants nothing in the name **AC Pro Engineer**,
+The licence covers the code. It grants nothing in the name **Pro Engineer**,
 the name **RaceEngineer**, or the project's icons and logo — `NOTICE` states
 this under section 7(e). Fork the code freely; ship it under a name of your
 own.

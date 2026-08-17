@@ -67,7 +67,7 @@ function config.load()
 end
 
 function config.save()
-  local out = { '-- Written by the AC Pro Engineer LÖVE harness.', 'return {' }
+  local out = { '-- Written by the Pro Engineer LÖVE harness.', 'return {' }
   for k, v in pairs(config.values) do
     if type(v) == 'string' then
       out[#out + 1] = string.format('  [%q] = %q,', k, v)
@@ -85,7 +85,7 @@ function config.reset()
 end
 
 config.usage = [[
-AC Pro Engineer overlay harness
+Pro Engineer overlay harness
 
   run.sh [options]
 

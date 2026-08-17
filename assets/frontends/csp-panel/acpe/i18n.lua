@@ -54,7 +54,7 @@ local RUSSIAN = {
   ['the debrief is switched off'] = 'разбор круга выключен в приложении',
   ['LAP'] = 'КРУГ',
   ['DEBRIEF'] = 'РАЗБОР КРУГА',
-  ['AC Pro Engineer is not running'] = 'AC Pro Engineer не запущен',
+  ['Pro Engineer is not running'] = 'Pro Engineer не запущен',
   ['Start the desktop application to see telemetry.'] =
     'Запусти приложение, чтобы увидеть телеметрию.',
   ['Last frame %.0f s ago.'] = 'Последний кадр %.0f с назад.',
@@ -69,10 +69,10 @@ local RUSSIAN = {
   ['Nothing has been published yet.'] = 'Данные ещё не публиковались.',
   ['Shared memory unavailable'] = 'Общая память недоступна',
   ['Version mismatch'] = 'Версии не совпадают',
-  ['Waiting for AC Pro Engineer'] = 'Жду AC Pro Engineer',
+  ['Waiting for Pro Engineer'] = 'Жду Pro Engineer',
   ['Waiting for the car'] = 'Жду машину',
-  ['AC Pro Engineer is running. Telemetry starts when you go on track.'] =
-    'AC Pro Engineer работает. Телеметрия появится, когда выедешь на трассу.',
+  ['Pro Engineer is running. Telemetry starts when you go on track.'] =
+    'Pro Engineer работает. Телеметрия появится, когда выедешь на трассу.',
   ['app'] = 'прил.',
   ['car'] = 'машина',
   ['on track'] = 'на трассе',

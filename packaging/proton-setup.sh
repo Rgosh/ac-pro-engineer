@@ -23,7 +23,7 @@ APPID="${ACPE_APPID:-244210}"
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
 
-say "AC Pro Engineer — Proton prefix setup (app id ${APPID})"
+say "Pro Engineer — Proton prefix setup (app id ${APPID})"
 
 if ! command -v protontricks >/dev/null 2>&1; then
     cat <<'EOF'
@@ -88,7 +88,7 @@ Done. In order, every time:
   2. ./ac_pro_engineer                                     (leave it running)
   3. Assetto Corsa
 
-The panel appears in CSP's app sidebar, on the right, as "AC Pro Engineer".
+The panel appears in CSP's app sidebar, on the right, as "Pro Engineer".
 If it says it is waiting for the application while the application is running,
 the bridge is the piece to check:
 

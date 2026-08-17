@@ -1,6 +1,6 @@
 [package]
 name = "ac_core"
-description = "Core telemetry and setup logic for AC Pro Engineer"
+description = "Core telemetry and setup logic for Pro Engineer"
 # Must track the workspace: `updater::CURRENT_VERSION` is this crate's
 # CARGO_PKG_VERSION, and it is what the app reports as its own version and
 # compares release tags against.

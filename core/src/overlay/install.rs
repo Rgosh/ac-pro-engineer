@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn the_readme_announces_this_builds_version() {
         let readme = include_str!("../../../README.txt");
-        let expected = format!("AC PRO ENGINEER v{}", env!("CARGO_PKG_VERSION"));
+        let expected = format!("PRO ENGINEER v{}", env!("CARGO_PKG_VERSION"));
         assert!(
             readme.contains(&expected),
             "README.txt's banner is stale; it should read {expected}"

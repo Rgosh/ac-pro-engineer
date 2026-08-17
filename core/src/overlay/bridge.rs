@@ -10,7 +10,7 @@
 //!
 //! The symptom of a bridge built before the frame grew is not an error. CSP
 //! refuses to open a mapping smaller than the struct the panel declares, so the
-//! panel says "waiting for AC Pro Engineer" while `/dev/shm` holds the file, at
+//! panel says "waiting for Pro Engineer" while `/dev/shm` holds the file, at
 //! the right size, with the application running. Two evenings went to that.
 //!
 //! Two ways to ask, because neither works on its own:

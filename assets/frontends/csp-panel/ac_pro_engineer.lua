@@ -6,7 +6,7 @@
 -- asks in return is in LICENSING.md next to the application. Closed-source use
 -- needs written permission — rgoshbbb@gmail.com.
 --
--- AC Pro Engineer — the in-game panel.
+-- Pro Engineer — the in-game panel.
 --
 -- This script computes nothing. Every value it draws was calculated by the
 -- desktop application and published into shared memory; all that happens here
@@ -61,7 +61,7 @@ local EXPECTED_VERSION = 6
 -- ruling out when something in the game looks wrong. Checked against the crate
 -- by `cargo test -p ac_core the_panel_announces`, so it cannot be left behind
 -- at release time.
-local PANEL_VERSION = '0.3.6'
+local PANEL_VERSION = '0.4.0'
 
 local frame = require('acpe.frame')
 frame.configure(EXPECTED_VERSION, PANEL_VERSION)
@@ -132,7 +132,7 @@ end
 if type(ui) == 'table' and type(ui.addSettings) == 'function' then
   pcall(ui.addSettings, {
     icon = settingsIcon,
-    name = 'AC Pro Engineer',
+    name = 'Pro Engineer',
     id = 'acpe.settings',
     -- Twice the old default: this is read through on a 4K screen, where a
     -- 560-wide window is a column of text in the corner of a wall.

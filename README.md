@@ -1,4 +1,4 @@
-# 🏎️ AC Pro Engineer — Assetto Corsa & Competizione Telemetry, Race Engineer & In-Game Overlay
+# 🏎️ Pro Engineer — Assetto Corsa & Competizione Telemetry, Race Engineer & In-Game Overlay
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/releases)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue)](LICENSE)
@@ -8,7 +8,7 @@
 [![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Release](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml/badge.svg)](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml)
 
-**AC Pro Engineer** is a free, open-source **Assetto Corsa telemetry app** and
+**Pro Engineer** is a free, open-source **Assetto Corsa telemetry app** and
 **virtual race engineer** for sim racing, and it reads **Assetto Corsa
 Competizione** too. It takes the game's shared memory directly, analyses tyre
 temperatures and pressures, brake heat, fuel, lap deltas and driving style, and
@@ -35,7 +35,7 @@ overlay app.
 > overlay, Assetto Corsa Linux, ACC Linux, Assetto Corsa Proton, Steam Deck sim
 > racing, shared memory telemetry, ratatui TUI, Rust sim racing tools.
 
-![AC Pro Engineer launcher, showing the Assetto Corsa install, CSP and bridge it found](screenshots/Launcher.png)
+![Pro Engineer launcher, showing the Assetto Corsa install, CSP and bridge it found](screenshots/Launcher.png)
 
 > ⭐ **If this is useful, star the repo.** It is the only marketing this project
 > has.
@@ -221,7 +221,7 @@ rest is automatic.
 **It installs itself.** Every time the application starts it writes the panel
 into `assettocorsa/assets/frontends/csp-panel/`, and rewrites it whenever it
 differs from what the running build ships. So updating the application updates
-the panel, with no step to forget. Enable **AC Pro Engineer** in CSP's app
+the panel, with no step to forget. Enable **Pro Engineer** in CSP's app
 sidebar once and it stays.
 
 **It is reachable before the race.** The application publishes a frame from its
@@ -442,7 +442,7 @@ printed from your bindings.
 
 ![The in-game CSP overlay panel in Assetto Corsa: speed, gear, rev bar, four corners, delta, fuel and session](screenshots/Overlay_Main.png)
 
-The window CSP opens as **AC Pro Engineer**, and the one that is on screen while
+The window CSP opens as **Pro Engineer**, and the one that is on screen while
 you drive. Top to bottom: speed with the gear beside it, a rev bar that changes
 colour through the power band and marks your shift point rather than the
 limiter, a **LIMITER** badge in the pits, then the four corners — pressure with
@@ -881,9 +881,9 @@ The status bar tells three states apart on purpose:
   prefix. On Windows, try starting the application before the game.
 - **LIVE** — telemetry is arriving.
 
-### The in-game panel says "Waiting for AC Pro Engineer"
+### The in-game panel says "Waiting for Pro Engineer"
 
-![The overlay panel saying AC Pro Engineer is not running, in large centred text](screenshots/Overlay_Waiting.png)
+![The overlay panel saying Pro Engineer is not running, in large centred text](screenshots/Overlay_Waiting.png)
 
 In order, cheapest first:
 
@@ -931,7 +931,7 @@ and copy the folder into `assettocorsa/apps/lua/` yourself.
   whether it found it.
 - The folder has to be `assettocorsa/assets/frontends/csp-panel/` — CSP finds an
   app's entry point by folder name.
-- Enable **AC Pro Engineer** in CSP's app sidebar once.
+- Enable **Pro Engineer** in CSP's app sidebar once.
 
 ### The panel forgets its settings
 

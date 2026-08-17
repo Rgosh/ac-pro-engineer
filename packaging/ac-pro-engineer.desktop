@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=AC Pro Engineer
+Name=Pro Engineer
 GenericName=Telemetry Analyzer
 Comment=Real-time telemetry and race engineering for Assetto Corsa and Competizione
 # Terminal=false deliberately. The application opens its own terminal when it

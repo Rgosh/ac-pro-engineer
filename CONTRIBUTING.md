@@ -25,7 +25,7 @@ contribution **under the AGPL v3 and under a separate commercial licence**.
 This is worth explaining rather than burying, because it asks for something the
 DCO alone does not.
 
-AC Pro Engineer is offered two ways: free under the AGPL for anyone whose own
+Pro Engineer is offered two ways: free under the AGPL for anyone whose own
 work is open, and commercially for anyone who wants to build a closed product on
 it — see [LICENSING.md](LICENSING.md). The second only works if a single party
 holds the rights to relicense the whole thing. If one contribution arrives under

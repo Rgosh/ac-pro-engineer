@@ -57,7 +57,7 @@ end
 
 -- A frame the panel will treat as live, built here rather than read from disk.
 --
--- Without this the harness only ever ran the "waiting for AC Pro Engineer"
+-- Without this the harness only ever ran the "waiting for Pro Engineer"
 -- screen: with no application publishing, `readMemoryMappedFile` threw, the
 -- panel took the branch it takes when there is nothing to draw, and the check
 -- documented as the thing to run after every panel edit exercised none of the
@@ -182,7 +182,7 @@ ac = {
     -- panel was one file, because nothing allocated enough between opening the
     -- mapping and reading it to trigger a collection. Splitting the panel into
     -- a dozen modules did, and the whole harness quietly went back to drawing
-    -- the "waiting for AC Pro Engineer" screen.
+    -- the "waiting for Pro Engineer" screen.
     local held = b
     local raw = held[0]
     return setmetatable({}, { __index = function(_, k)
@@ -410,7 +410,7 @@ local ALLOWED_GLOBALS = {
 -- Every file, not just the entry point. The panel is a dozen modules now, and
 -- checking only `ac_pro_engineer.lua` let `isLive` come through the split as a
 -- global — nil to everything that read it, so every window drew the "waiting
--- for AC Pro Engineer" screen and the load, update and window checks above all
+-- for Pro Engineer" screen and the load, update and window checks above all
 -- still said OK.
 local sources = {}
 local listing = io.popen('find ' .. appDir .. " -name '*.lua' | sort")
@@ -462,7 +462,7 @@ print('globals: OK (' .. #sources .. ' files)')
 local screen = table.concat(drawn, '\n')
 if not screen:find('214', 1, true) then
   print('\nFAILED: the speed never reached the screen. Every window took its '
-    .. '"waiting for AC Pro Engineer" branch, so no drawing was checked.')
+    .. '"waiting for Pro Engineer" branch, so no drawing was checked.')
   print('rendered ' .. #drawn .. ' pieces of text:')
   for i = 1, math.min(#drawn, 24) do print('  ' .. drawn[i]) end
   os.exit(1)
@@ -956,7 +956,7 @@ print('every button in the settings window does what it says: OK')
 --
 -- The application publishes from its launcher screen and while AC has nothing
 -- in shared memory, so the panel is reachable in the garage. It has to say
--- which of the two states it is in: "AC Pro Engineer is not running" sends
+-- which of the two states it is in: "Pro Engineer is not running" sends
 -- someone hunting through the bridge and the Proton prefix, and in the garage
 -- there is nothing there to find.
 -- ---------------------------------------------------------------------------
@@ -980,7 +980,7 @@ if not garage:find('Waiting for the car', 1, true) then
   for i = garageFrom + 1, math.min(#drawn, garageFrom + 12) do print('  ' .. drawn[i]) end
   os.exit(1)
 end
-if garage:find('AC Pro Engineer is not running', 1, true) then
+if garage:find('Pro Engineer is not running', 1, true) then
   print('\nFAILED: the panel says the application is not running while reading')
   print('frames from it.')
   os.exit(1)

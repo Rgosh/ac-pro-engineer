@@ -1,5 +1,5 @@
 ========================================
-       AC PRO ENGINEER v0.3.6
+       PRO ENGINEER v0.4.0
 ========================================
 
 Telemetry and race engineering for Assetto Corsa and Assetto Corsa
@@ -26,7 +26,7 @@ memory, so with no session running it sits on its launcher screen.
 
 The in-game panel installs itself into Assetto Corsa the first time the
 application starts. Then, in game: CSP's app sidebar -> enable
-"AC Pro Engineer". If the automatic install cannot work (a game folder
+"Pro Engineer". If the automatic install cannot work (a game folder
 it may not write to, an install in an unusual place, a second copy of
 AC), the panel is also in the overlay\ folder here — drop the
 ac_pro_engineer folder into:

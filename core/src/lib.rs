@@ -1,4 +1,4 @@
-// AC Pro Engineer — telemetry and race engineering for Assetto Corsa.
+// Pro Engineer — telemetry and race engineering for Assetto Corsa.
 // Copyright (c) 2026 Rgosh and contributors.
 //
 // This program is free software under the GNU Affero General Public License,

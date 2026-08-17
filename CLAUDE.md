@@ -113,7 +113,7 @@ cargo run -p ac_core --example bridge_probe
 
 Says which bridge is on disk, which is running, and whether the overlay can work
 at all. Run this **before** looking anywhere else when the panel says "waiting
-for AC Pro Engineer" with the mapping right there in `/dev/shm`.
+for Pro Engineer" with the mapping right there in `/dev/shm`.
 
 A bridge older than the frame maps too few bytes, CSP silently refuses to open
 the mapping, and nothing reports an error. A bridge older than the overlay maps
@@ -140,7 +140,7 @@ API stubbed. Catches nil calls, arithmetic on strings, and dead draw paths.
 
 It synthesises a live frame when no application is publishing, and **fails if the
 speed never reaches the screen**. Without both it only ever ran the "waiting for
-AC Pro Engineer" branch and reported OK for a panel that drew nothing —
+Pro Engineer" branch and reported OK for a panel that drew nothing —
 27 strings instead of 140. `ACPE_ALL=1` prints every one of them, which is how a
 wrong unit or an untranslated caption is caught without launching the game.
 

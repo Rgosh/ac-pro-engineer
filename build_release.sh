@@ -12,7 +12,7 @@ WIN_DIR="${BUNDLE_DIR}/Windows"
 LIN_DIR="${BUNDLE_DIR}/Linux"
 
 echo "=========================================="
-echo "AC Pro Engineer All-in-One Builder ${VERSION}"
+echo "Pro Engineer All-in-One Builder ${VERSION}"
 echo "=========================================="
 
 echo ""
