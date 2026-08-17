@@ -1304,6 +1304,22 @@ impl AppState {
         let game_just_started = process_active && !self.is_game_running;
         self.is_game_running = process_active;
 
+        // A second piece of evidence, because the process name is evidence and
+        // not proof. Under Proton the command line is a Windows path handed
+        // through a launcher — Competizione's `acc.exe` starts
+        // `AC2-Win64-Shipping.exe` — and a name this build has not been told
+        // about means a driver sitting in the car watching an application that
+        // says the game is not running.
+        //
+        // Telemetry being *reachable* is not the same claim: on Linux the
+        // bridge creates those files whether or not a game ever writes to
+        // them. So this only opens the connection; what decides that a game is
+        // there is a reading with a car in it, below.
+        let telemetry_reachable = self
+            .game
+            .backend()
+            .is_some_and(|backend| (backend.telemetry_is_reachable)());
+
         // Assetto Corsa starting is the one moment worth looking again: it is
         // when a game installed since this application opened has certainly
         // finished unpacking, and it is the last point at which writing the
@@ -1323,12 +1339,16 @@ impl AppState {
             return;
         }
 
-        if !process_active && self.is_connected {
+        if !process_active && !telemetry_reachable && self.is_connected {
             self.disconnect();
-        } else if process_active
+        } else if (process_active || telemetry_reachable)
             && !self.is_connected
             && let Err(error) = self.connect_memory()
         {
+            // Every tick, and deliberately quiet about it in the normal case:
+            // "the pages are not there yet" is what the seconds before a
+            // session look like. The connection refusing because they belong
+            // to the *other* game is the one worth reading, and it says so.
             error!(error = ?error, "Cannot connect to shared memory");
         }
 
@@ -1353,6 +1373,14 @@ impl AppState {
             self.publish_overlay_idle();
             return;
         };
+
+        // A car on track is proof the game is up, whatever the process table
+        // was asked. This is the half that makes the connection above safe to
+        // open on telemetry alone: an empty mapping left by the bridge reads
+        // as `Status::Off`, and nothing here claims a game from that.
+        if reading.session.status.is_on_track() {
+            self.is_game_running = true;
+        }
 
         self.process_tick_logic(reading);
     }
@@ -1939,6 +1967,60 @@ mod tests {
     #[test]
     fn fps_is_zero_before_anything_is_drawn() {
         assert_eq!(PerfStats::default().fps(), 0.0);
+    }
+
+    /// The connection opens on telemetry that is there, even when the process
+    /// table says nothing.
+    ///
+    /// Ignored because it needs a stand-in publishing pages, which no test can
+    /// start for itself. Run it against one:
+    ///
+    /// ```text
+    /// cp target/release/simulator /tmp/notagame && /tmp/notagame acc &
+    /// cargo test -p ac_tui --lib reads_a_game_the_process_table_cannot_see -- --ignored --nocapture
+    /// ```
+    ///
+    /// The name matters: `/tmp/notagame` is deliberately not one of the
+    /// processes the registry watches for, which is the case this guards. Under
+    /// Proton a game arrives as a Windows path through a launcher — ACC's
+    /// `acc.exe` starts `AC2-Win64-Shipping.exe` — and a name this build has
+    /// not been told about used to mean a driver sitting in the car reading
+    /// "the game is not running".
+    #[test]
+    #[ignore = "needs a stand-in publishing shared memory; see the doc comment"]
+    fn reads_a_game_the_process_table_cannot_see() {
+        let mut app = AppState::new();
+        app.apply_game(ac_core::games::registry::chosen(
+            "assetto_corsa_competizione",
+        ));
+        app.stage = AppStage::Running;
+
+        // Three ticks: one to connect, two to read. The watcher caches its
+        // answer, and the point is that its answer is "no".
+        for _ in 0..3 {
+            app.tick();
+        }
+
+        assert!(
+            app.is_connected,
+            "the pages are there and parse as this game, so the connection opens"
+        );
+        let reading = app.reading.as_ref().expect("a reading arrived");
+        assert!(
+            reading.car.speed_kmh > 0.0,
+            "and it is telemetry, not an empty mapping: {} km/h",
+            reading.car.speed_kmh
+        );
+        assert!(
+            app.is_game_running,
+            "a car on track is proof the game is up, whatever the process table said"
+        );
+        println!(
+            "connected: {} km/h, gear {}, {:.0} °C tyres",
+            reading.car.speed_kmh,
+            reading.car.gear,
+            reading.car.avg_tyre_temp_c(0)
+        );
     }
 
     /// The panel is one game's, and the launcher stops offering it on the
