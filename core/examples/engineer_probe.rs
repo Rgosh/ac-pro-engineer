@@ -6,38 +6,29 @@
 //! `analyze_live`, and puts the inputs and the output on screen together.
 //!
 //! ```text
-//! cargo run --bin simulator          # in one terminal
+//! cargo run --bin simulator                 # in one terminal
 //! cargo run -p ac_core --example engineer_probe
+//!
+//! cargo run --bin simulator acc             # or the other game
+//! cargo run -p ac_core --example engineer_probe -- 8 assetto_corsa_competizione
 //! ```
 //!
-//! Linux only: it reads `/dev/shm` directly, which is where Proton and the
-//! simulator both put AC's maps.
+//! **Which game is an argument**, because the advice is the thing being
+//! judged and the advice depends on what the game measures: Competizione
+//! publishes no tyre wear and no tread temperatures, so a probe that read its
+//! pages while claiming Assetto Corsa's capabilities would print exactly the
+//! confident nonsense this whole layer exists to prevent.
+//!
+//! It connects the way the application does — through the registry — so a game
+//! whose pages are not there, or whose pages were written by the *other* game,
+//! is reported rather than read.
 
 use ac_core::config::AppConfig;
 use ac_core::engineer::{Engineer, Severity};
-use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics, AcStatic};
-use ac_core::games::{Car, Session};
+use ac_core::games::registry;
 use ac_core::session_info::SessionInfo;
-use std::mem::size_of;
 use std::thread::sleep;
 use std::time::Duration;
-
-/// Read one of AC's maps out of `/dev/shm`.
-///
-/// The maps are plain files there, written by the game (through Proton) or by
-/// `cargo run --bin simulator`. A short file means the writer has not finished
-/// its first update, which is worth waiting out rather than reporting as an
-/// error.
-fn read_map<T: Copy>(name: &str) -> Option<T> {
-    let bytes = std::fs::read(format!("/dev/shm/{name}")).ok()?;
-    if bytes.len() < size_of::<T>() {
-        return None;
-    }
-    // SAFETY: the file is at least as large as the struct, and AC's maps are
-    // `#[repr(C)]` images of exactly these types. `read_unaligned` because
-    // nothing guarantees the buffer's alignment.
-    Some(unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const T) })
-}
 
 fn severity_label(severity: &Severity) -> &'static str {
     match severity {
@@ -52,48 +43,54 @@ fn main() {
         .nth(1)
         .and_then(|value| value.parse().ok())
         .unwrap_or(8);
+    let wanted = std::env::args().nth(2).unwrap_or_default();
+
+    let game = registry::chosen(&wanted);
+    let Some(backend) = game.backend() else {
+        println!("{} is not a game this build can read", game.name);
+        return;
+    };
 
     let config = AppConfig::default();
     let mut engineer = Engineer::new(&config);
     let info = SessionInfo::default();
 
-    println!("reading /dev/shm/acpmf_* — {samples} samples, one per second\n");
+    println!(
+        "reading {} — {samples} samples, one per second\n",
+        game.name
+    );
+
+    let mut source = match (backend.connect)() {
+        Ok(source) => source,
+        Err(error) => {
+            println!("could not connect: {error}");
+            println!("is the game or the simulator running? (`simulator acc` for Competizione)");
+            return;
+        }
+    };
 
     for sample in 1..=samples {
-        let (Some(phys), Some(gfx)) = (
-            read_map::<AcPhysics>("acpmf_physics"),
-            read_map::<AcGraphics>("acpmf_graphics"),
-        ) else {
-            println!("no telemetry: is the game or the simulator running?");
+        let Some(reading) = source.poll() else {
+            println!("no telemetry this tick");
             sleep(Duration::from_secs(1));
             continue;
         };
-        let stat = read_map::<AcStatic>("acpmf_static");
-
-        // This probe reads AC's pages itself, so that a missing static page
-        // still leaves something to print. Everything past this line works in
-        // the neutral reading, like the application does.
-        let (car, session): (Car, Session) = ((&phys).into(), (&gfx).into());
+        let (car, session) = (reading.car, reading.session);
 
         engineer.update_config(&config);
-        // These are Assetto Corsa's pages, so the engineer is told what
-        // Assetto Corsa measures. Without it every verdict resting on a tyre
-        // measurement is withheld — correctly, since an engineer that has not
-        // been told which game it is reading cannot know a default from a
-        // reading.
-        engineer.update_capabilities(ac_core::games::assetto_corsa::CAPABILITIES);
+        // The engineer is told what *this* game measures, off the same reading
+        // rather than from a constant chosen here. Without it every verdict
+        // resting on a tyre measurement is withheld — correctly, since an
+        // engineer that has not been told which game it is reading cannot know
+        // a default from a reading.
+        engineer.update_capabilities(reading.capabilities);
         engineer.update(&car, &session, &info);
         let recommendations = engineer.analyze_live(&car, &session, None);
 
         println!("── sample {sample} ─────────────────────────────────────────────");
         println!(
-            "speed {:6.1} km/h   gear {}   rpm {}   fuel {:.1} L{}",
-            car.speed_kmh,
-            car.gear,
-            car.rpm,
-            car.fuel_litres,
-            stat.map(|s| format!("   max fuel {:.0} L", s.max_fuel))
-                .unwrap_or_default()
+            "speed {:6.1} km/h   gear {}   rpm {}   fuel {:.1} L   max fuel {:.0} L",
+            car.speed_kmh, car.gear, car.rpm, car.fuel_litres, reading.fixed.max_fuel_litres
         );
         println!(
             "pressure  {:5.1} {:5.1} {:5.1} {:5.1} psi",
@@ -103,20 +100,32 @@ fn main() {
             car.tyre_pressure_psi[3]
         );
         println!(
-            "tyre temp {:5.0} {:5.0} {:5.0} {:5.0} °C  (middle)",
-            car.tyre_temp_middle_c[0],
-            car.tyre_temp_middle_c[1],
-            car.tyre_temp_middle_c[2],
-            car.tyre_temp_middle_c[3]
+            "tyre temp {:5.0} {:5.0} {:5.0} {:5.0} °C  ({})",
+            car.avg_tyre_temp_c(0),
+            car.avg_tyre_temp_c(1),
+            car.avg_tyre_temp_c(2),
+            car.avg_tyre_temp_c(3),
+            if reading.capabilities.tyre_edge_temps {
+                "tread, mean of three"
+            } else {
+                "core — this game measures no tread"
+            }
         );
         println!(
             "brake     {:5.0} {:5.0} {:5.0} {:5.0} °C",
             car.brake_temp_c[0], car.brake_temp_c[1], car.brake_temp_c[2], car.brake_temp_c[3]
         );
-        println!(
-            "wear      {:5.1} {:5.1} {:5.1} {:5.1} %",
-            car.tyre_wear[0], car.tyre_wear[1], car.tyre_wear[2], car.tyre_wear[3]
-        );
+        if reading.capabilities.tyre_wear {
+            println!(
+                "wear      {:5.1} {:5.1} {:5.1} {:5.1} %",
+                car.tyre_wear[0], car.tyre_wear[1], car.tyre_wear[2], car.tyre_wear[3]
+            );
+        } else {
+            println!("wear      not measured by this game");
+        }
+        if !reading.capabilities.tyre_edge_temps {
+            println!("tread     not measured by this game (no camber advice)");
+        }
         println!(
             "fuel/lap {:.2} L   laps left {:.1}   delta {:+.3} s",
             engineer.stats.fuel_consumption_rate,

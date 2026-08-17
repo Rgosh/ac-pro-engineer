@@ -1,6 +1,9 @@
 #![allow(unsafe_code)]
 
 use ac_core::games::assetto_corsa::structs::{AcGraphics, AcPhysics, AcStatic};
+use ac_core::games::assetto_corsa_competizione::structs::{
+    AccGraphics, AccPhysics, AccStatic, CarPositions,
+};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::thread;
@@ -68,35 +71,164 @@ fn create_shared_memory(name: &str, size: usize) -> Result<*mut u8, Box<dyn std:
 /// Lap duration in milliseconds (~30 seconds per lap = one full driving scenario cycle).
 const LAP_DURATION_MS: i32 = 30_000;
 
+/// Which game this run is standing in for.
+///
+/// The simulator writes a game's pages, so it has to be one game or the other:
+/// the two use the same three mapping names with different layouts, and a
+/// reader that attached to the wrong one would get numbers rather than an
+/// error. That is exactly what it is useful for here — the version at the top
+/// of the static page is what the readers refuse on, and this writes it.
+#[derive(Clone, Copy, PartialEq)]
+enum Stand {
+    AssettoCorsa,
+    Competizione,
+}
+
+/// One tick of the scenario, before it is written in either game's shape.
+///
+/// Extracted so the two page layouts are two *writers* of the same drive
+/// rather than two scenarios that have to be kept in step — which they would
+/// not be, and the difference would look like a bug in whichever game was
+/// looked at second.
+struct Frame {
+    gas: f32,
+    brake: f32,
+    steer: f32,
+    gear: i32,
+    rpm: i32,
+    speed: f32,
+    fuel: f32,
+    lat_g: f32,
+    lon_g: f32,
+    wheel_slip: [f32; 4],
+    tyre_core: [f32; 4],
+    tyre_i: [f32; 4],
+    tyre_m: [f32; 4],
+    tyre_o: [f32; 4],
+    pressures: [f32; 4],
+    brake_temp: [f32; 4],
+    camber: [f32; 4],
+    wear: [f32; 4],
+    pad_life: [f32; 4],
+    disc_life: [f32; 4],
+    suspension_travel: [f32; 4],
+    delta: f32,
+    lap_count: i32,
+    lap_ms: i32,
+    last_lap_ms: i32,
+    best_lap_ms: i32,
+    time_left_ms: f32,
+    distance: f32,
+    lap_fraction: f32,
+    position: [f32; 3],
+    fuel_per_lap: f32,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== AC PRO ENGINEER: AUTOMATED TELEMETRY SIMULATOR ===");
+
+    // One flag, and it changes which game's bytes come out. Named after the
+    // ids in `games::registry` so there is nothing to translate.
+    let stand = match std::env::args().nth(1).as_deref() {
+        Some("acc") | Some("assetto_corsa_competizione") => Stand::Competizione,
+        Some(other) if other != "ac" && other != "assetto_corsa" => {
+            eprintln!("Unknown game {other:?}. Use `ac` (the default) or `acc`.");
+            std::process::exit(2);
+        }
+        _ => Stand::AssettoCorsa,
+    };
+    println!(
+        "Standing in for {}",
+        match stand {
+            Stand::AssettoCorsa => "Assetto Corsa",
+            Stand::Competizione => "Assetto Corsa Competizione",
+        }
+    );
+    // Brake wear moves too slowly to see in a demo: a whole stint takes a
+    // couple of millimetres off. This starts the set nearly finished so the
+    // advice that reads it can actually be looked at.
+    let worn_brakes = std::env::var("SIM_WORN_BRAKES").is_ok();
+    let (pad_start, disc_start) = if worn_brakes {
+        (9.0f32, 28.5f32)
+    } else {
+        (29.0f32, 32.0f32)
+    };
+
     println!("Initializing shared memory...");
 
+    // The mappings are sized for the game being stood in for. A reader maps
+    // its own struct's worth and refuses anything shorter, so a Competizione
+    // run writing Assetto Corsa's 596 bytes would be refused by the kernel on
+    // Windows and by `SharedMemory::get` everywhere else.
+    let (physics_bytes, graphics_bytes, static_bytes) = match stand {
+        Stand::AssettoCorsa => (
+            size_of::<AcPhysics>(),
+            size_of::<AcGraphics>(),
+            size_of::<AcStatic>(),
+        ),
+        Stand::Competizione => (
+            size_of::<AccPhysics>(),
+            size_of::<AccGraphics>(),
+            size_of::<AccStatic>(),
+        ),
+    };
+
     #[cfg(target_os = "windows")]
-    let (_h_phys, phys_ptr) = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>())?;
+    let (_h_phys, phys_ptr) = create_shared_memory("Local\\acpmf_physics", physics_bytes)?;
     #[cfg(target_os = "windows")]
-    let (_h_gfx, gfx_ptr) = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>())?;
+    let (_h_gfx, gfx_ptr) = create_shared_memory("Local\\acpmf_graphics", graphics_bytes)?;
     #[cfg(target_os = "windows")]
-    let (_h_stat, stat_ptr) = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>())?;
+    let (_h_stat, stat_ptr) = create_shared_memory("Local\\acpmf_static", static_bytes)?;
 
     #[cfg(not(target_os = "windows"))]
-    let phys_ptr = create_shared_memory("Local\\acpmf_physics", size_of::<AcPhysics>())?;
+    let phys_ptr = create_shared_memory("Local\\acpmf_physics", physics_bytes)?;
     #[cfg(not(target_os = "windows"))]
-    let gfx_ptr = create_shared_memory("Local\\acpmf_graphics", size_of::<AcGraphics>())?;
+    let gfx_ptr = create_shared_memory("Local\\acpmf_graphics", graphics_bytes)?;
     #[cfg(not(target_os = "windows"))]
-    let stat_ptr = create_shared_memory("Local\\acpmf_static", size_of::<AcStatic>())?;
+    let stat_ptr = create_shared_memory("Local\\acpmf_static", static_bytes)?;
 
     let phys = phys_ptr as *mut AcPhysics;
     let gfx = gfx_ptr as *mut AcGraphics;
     let stat = stat_ptr as *mut AcStatic;
 
+    let acc_phys = phys_ptr as *mut AccPhysics;
+    let acc_gfx = gfx_ptr as *mut AccGraphics;
+    let acc_stat = stat_ptr as *mut AccStatic;
+
+    // The static page, written once. Its first field is the shared-memory
+    // version, and it is what tells the two games apart — a simulator that
+    // left it empty would be readable by both, which is the one thing the
+    // real games are not.
     unsafe {
-        (*stat).max_rpm = 9000;
-        (*stat).max_fuel = 120.0;
-        (*stat).track_spline_length = 5793.0;
-        (*stat).car_model = "kunos_ferrari_488_gt3".into();
-        (*stat).track = "monza".into();
-        (*stat).player_nick = "Simulator_User".into();
+        match stand {
+            Stand::AssettoCorsa => {
+                for (slot, unit) in (*stat).sm_version.iter_mut().zip("1.7".encode_utf16()) {
+                    *slot = unit;
+                }
+                (*stat).max_rpm = 9000;
+                (*stat).max_fuel = 120.0;
+                (*stat).track_spline_length = 5793.0;
+                (*stat).car_model = "kunos_ferrari_488_gt3".into();
+                (*stat).track = "monza".into();
+                (*stat).player_nick = "Simulator_User".into();
+            }
+            Stand::Competizione => {
+                for (slot, unit) in (*acc_stat).sm_version.iter_mut().zip("1.9".encode_utf16()) {
+                    *slot = unit;
+                }
+                (*acc_stat).max_rpm = 9000;
+                (*acc_stat).max_fuel = 120.0;
+                // No track length: ACC does not publish one, and a simulator
+                // that invented one would hide every place that has to cope.
+                (*acc_stat).sector_count = 3;
+                (*acc_stat).car_model = "ferrari_488_gt3_evo".into();
+                (*acc_stat).track = "monza".into();
+                (*acc_stat).player_name = "Simulator".into();
+                (*acc_stat).player_surname = "User".into();
+                (*acc_stat).dry_tyres_name = "DHE".into();
+                (*acc_stat).wet_tyres_name = "WH".into();
+            }
+        }
     }
 
     println!(
@@ -246,93 +378,107 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lap_start_time = Instant::now();
         }
 
-        // ── Write to shared memory ──
-        unsafe {
-            (*phys).packet_id = (*phys).packet_id.wrapping_add(1);
-            (*phys).gas = gas;
-            (*phys).brake = brake;
-            (*phys).fuel = fuel;
-            (*phys).gear = gear;
-            (*phys).rpms = rpm;
-            (*phys).steer_angle = steer;
-            (*phys).speed_kmh = speed;
-            (*phys).acc_g = [lat_g, 0.0, lon_g];
-            (*phys).wheel_slip = wheel_slip;
-            (*phys).performance_meter = (total_elapsed * 1.3).sin() * 0.5;
-            (*phys).air_temp = 23.0;
-            (*phys).road_temp = 35.0;
+        // ── One tick, in whichever game's shape ──
+        let temp_base = 82.0 + (speed / 280.0) * 14.0;
+        let laps_done = total_elapsed / (LAP_DURATION_MS as f32 / 1000.0);
+        // Trace a closed loop so the track map has something to plot. x/z are
+        // the ground plane and y the altitude; the shape matches the one the
+        // TUI draws for demo mode so the two look alike side by side.
+        let angle = scenario_phase * std::f32::consts::TAU;
 
-            let temp_base = 82.0 + (speed / 280.0) * 14.0;
-            (*phys).tyre_temp_i = [
+        let frame = Frame {
+            gas,
+            brake,
+            steer,
+            gear,
+            rpm,
+            speed,
+            fuel,
+            lat_g,
+            lon_g,
+            wheel_slip,
+            tyre_core: [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base],
+            tyre_i: [
                 temp_base + 4.0,
                 temp_base + 3.0,
                 temp_base + 2.0,
                 temp_base + 2.0,
-            ];
-            (*phys).tyre_temp_m = [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base];
-            (*phys).tyre_temp_o = [
+            ],
+            tyre_m: [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base],
+            tyre_o: [
                 temp_base - 3.0,
                 temp_base - 2.0,
                 temp_base - 4.0,
                 temp_base - 3.0,
-            ];
-            (*phys).wheels_pressure = [27.4, 27.6, 27.2, 27.4];
-
+            ],
+            pressures: [27.4, 27.6, 27.2, 27.4],
+            brake_temp: [480.0, 490.0, 390.0, 400.0],
             // AC reports camber per wheel, in the wheel's own frame, so the
             // two sides mirror: the same negative camber reads negative on the
             // left and positive on the right. Left at zero, everything that
             // reads this field showed a car with no camber at all.
-            (*phys).camber_rad = [
+            camber: [
                 (-1.3f32).to_radians(),
                 1.3f32.to_radians(),
                 (-2.0f32).to_radians(),
                 2.0f32.to_radians(),
-            ];
-            (*phys).brake_temp = [480.0, 490.0, 390.0, 400.0];
-
+            ],
             // Wear counts down from 100 the way AC publishes it, rears faster
             // than fronts. Leaving it at zero made every consumer read four
             // destroyed tyres — the numbers a simulator does not write are the
             // ones its users end up debugging.
-            let laps_done = total_elapsed / (LAP_DURATION_MS as f32 / 1000.0);
-            (*phys).tyre_wear = [
+            wear: [
                 (100.0 - laps_done * 0.9).max(0.0),
                 (100.0 - laps_done * 0.9).max(0.0),
                 (100.0 - laps_done * 1.2).max(0.0),
                 (100.0 - laps_done * 1.2).max(0.0),
-            ];
-            // Metres, which is what AC publishes — the UI multiplies by
-            // 1000 to show millimetres. Writing 25.0 here meant the demo
-            // displayed a 25000mm ride height.
-            (*phys).ride_height = [0.025, 0.055];
-
-            (*gfx).packet_id = (*gfx).packet_id.wrapping_add(1);
-            (*gfx).status = 2; // AC_LIVE
-            (*gfx).completed_laps = lap_count;
-            (*gfx).position = 1;
-            (*gfx).i_current_time = lap_elapsed_ms;
-            (*gfx).i_last_time = last_completed_lap_time_ms;
-            (*gfx).i_best_time = best_lap_time_ms;
-            (*gfx).session_time_left = ((3600.0 - total_elapsed) * 1000.0).max(0.0);
-            (*gfx).distance_traveled = dist;
-            (*gfx).normalized_car_position = scenario_phase;
-            (*gfx).surface_grip = 0.98;
-
-            // Trace a closed loop so the track map has something to plot. AC
-            // publishes the player's world position here, x/z being the ground
-            // plane and y the altitude; the shape matches the one the TUI draws
-            // for demo mode so the two look alike side by side.
-            let angle = scenario_phase * std::f32::consts::TAU;
-            (*gfx).car_coordinates = [
+            ],
+            // Millimetres of pad and disc left, which is what Competizione
+            // publishes in place of tyre wear.
+            // A GT3 stint takes a millimetre or two off the pads, so the rate
+            // here is the real one — which means a demo run never reaches the
+            // warning. `SIM_WORN_BRAKES=1` starts the set most of the way
+            // through instead, which is the only way to see that advice
+            // without driving for an hour.
+            pad_life: [(pad_start - laps_done * 0.04).max(0.0); 4],
+            disc_life: [(disc_start - laps_done * 0.02).max(0.0); 4],
+            // Metres of travel left, which both games publish and neither
+            // writer used to. Zero is not "no reading" to the engineer — it is
+            // a car on its bump stops, and thirty frames of it is a CRITICAL
+            // "chassis bottoming out". The demo raised it on every lap, which
+            // is the kind of false alarm that teaches a driver to ignore the
+            // panel. It squats a little under load, the way a real one does.
+            suspension_travel: [
+                (0.030 - lon_g.abs() * 0.004).max(0.001),
+                (0.030 - lon_g.abs() * 0.004).max(0.001),
+                (0.034 - lon_g.abs() * 0.005).max(0.001),
+                (0.034 - lon_g.abs() * 0.005).max(0.001),
+            ],
+            delta: (total_elapsed * 1.3).sin() * 0.5,
+            lap_count,
+            lap_ms: lap_elapsed_ms,
+            last_lap_ms: last_completed_lap_time_ms,
+            best_lap_ms: best_lap_time_ms,
+            time_left_ms: ((3600.0 - total_elapsed) * 1000.0).max(0.0),
+            distance: dist,
+            lap_fraction: scenario_phase,
+            position: [
                 400.0 * angle.cos() + 50.0 * (2.0 * angle).cos(),
                 0.0,
                 250.0 * angle.sin() + 30.0 * (3.0 * angle).sin(),
-            ];
-            (*gfx).fuel_x_lap = if fuel_per_lap > 0.0 {
+            ],
+            fuel_per_lap: if fuel_per_lap > 0.0 {
                 fuel_per_lap
             } else {
                 1.8
-            };
+            },
+        };
+
+        unsafe {
+            match stand {
+                Stand::AssettoCorsa => write_assetto_corsa(phys, gfx, &frame),
+                Stand::Competizione => write_competizione(acc_phys, acc_gfx, &frame),
+            }
         }
 
         print!(
@@ -350,5 +496,142 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         io::stdout().flush().ok();
 
         thread::sleep(Duration::from_millis(16));
+    }
+}
+
+/// Assetto Corsa's two live pages.
+///
+/// # Safety
+///
+/// `phys` and `gfx` must point at mappings at least as large as the structs.
+unsafe fn write_assetto_corsa(phys: *mut AcPhysics, gfx: *mut AcGraphics, f: &Frame) {
+    unsafe {
+        (*phys).packet_id = (*phys).packet_id.wrapping_add(1);
+        (*phys).gas = f.gas;
+        (*phys).brake = f.brake;
+        (*phys).fuel = f.fuel;
+        // AC counts reverse as 0 and neutral as 1, so a scenario gear of 4 is
+        // written as 5. The reader subtracts it again.
+        (*phys).gear = f.gear + 1;
+        (*phys).rpms = f.rpm;
+        (*phys).steer_angle = f.steer;
+        (*phys).speed_kmh = f.speed;
+        (*phys).acc_g = [f.lat_g, 0.0, f.lon_g];
+        (*phys).wheel_slip = f.wheel_slip;
+        (*phys).performance_meter = f.delta;
+        (*phys).air_temp = 23.0;
+        (*phys).road_temp = 35.0;
+        (*phys).tyre_core_temp = f.tyre_core;
+        (*phys).tyre_temp_i = f.tyre_i;
+        (*phys).tyre_temp_m = f.tyre_m;
+        (*phys).tyre_temp_o = f.tyre_o;
+        (*phys).wheels_pressure = f.pressures;
+        (*phys).camber_rad = f.camber;
+        (*phys).brake_temp = f.brake_temp;
+        (*phys).tyre_wear = f.wear;
+        (*phys).suspension_travel = f.suspension_travel;
+        // Metres, which is what AC publishes — the UI multiplies by 1000 to
+        // show millimetres. Writing 25.0 here meant the demo displayed a
+        // 25000mm ride height.
+        (*phys).ride_height = [0.025, 0.055];
+
+        (*gfx).packet_id = (*gfx).packet_id.wrapping_add(1);
+        (*gfx).status = 2; // AC_LIVE
+        (*gfx).completed_laps = f.lap_count;
+        (*gfx).position = 1;
+        (*gfx).i_current_time = f.lap_ms;
+        (*gfx).i_last_time = f.last_lap_ms;
+        (*gfx).i_best_time = f.best_lap_ms;
+        (*gfx).session_time_left = f.time_left_ms;
+        (*gfx).distance_traveled = f.distance;
+        (*gfx).normalized_car_position = f.lap_fraction;
+        (*gfx).surface_grip = 0.98;
+        (*gfx).car_coordinates = f.position;
+        (*gfx).fuel_x_lap = f.fuel_per_lap;
+    }
+}
+
+/// Competizione's two live pages: the same drive, in the layout that game
+/// publishes.
+///
+/// Three differences are the point of having this at all, and each is a place
+/// the reader has to do something Assetto Corsa's does not:
+///
+/// * the player's world position is one slot of a sixty-car array;
+/// * the aids are split — the level on the graphics page, the intervention on
+///   the physics page;
+/// * the arrays ACC does not publish are **left at zero**, because that is
+///   what the game does, and the capability flags are what stop them being
+///   read as measurements.
+///
+/// # Safety
+///
+/// `phys` and `gfx` must point at mappings at least as large as the structs.
+unsafe fn write_competizione(phys: *mut AccPhysics, gfx: *mut AccGraphics, f: &Frame) {
+    unsafe {
+        (*phys).packet_id = (*phys).packet_id.wrapping_add(1);
+        (*phys).gas = f.gas;
+        (*phys).brake = f.brake;
+        (*phys).fuel = f.fuel;
+        (*phys).gear = f.gear + 1;
+        (*phys).rpm = f.rpm;
+        (*phys).steer_angle = f.steer;
+        (*phys).speed_kmh = f.speed;
+        (*phys).acc_g = [f.lat_g, 0.0, f.lon_g];
+        (*phys).wheel_slip = f.wheel_slip;
+        (*phys).air_temp = 23.0;
+        (*phys).road_temp = 35.0;
+        (*phys).tyre_core_temp = f.tyre_core;
+        (*phys).tyre_temp = f.tyre_core;
+        (*phys).wheel_pressure = f.pressures;
+        (*phys).brake_temp = f.brake_temp;
+        (*phys).suspension_travel = f.suspension_travel;
+        (*phys).brake_bias = 0.66;
+        (*phys).water_temp = 88.0;
+        (*phys).pad_life = f.pad_life;
+        (*phys).disc_life = f.disc_life;
+        (*phys).current_max_rpm = 9000;
+        (*phys).is_engine_running = 1;
+        // Deliberately untouched: `tyre_wear`, `camber_rad`, `wheel_load` and
+        // the tread triplet. The game leaves them zero and so does this.
+
+        (*gfx).packet_id = (*gfx).packet_id.wrapping_add(1);
+        (*gfx).status = 2; // AC_LIVE
+        (*gfx).session = 2; // ACC numbers the race 2
+        (*gfx).completed_laps = f.lap_count;
+        (*gfx).position = 1;
+        (*gfx).i_current_time = f.lap_ms;
+        (*gfx).i_last_time = f.last_lap_ms;
+        (*gfx).i_best_time = f.best_lap_ms;
+        (*gfx).session_time_left = f.time_left_ms;
+        (*gfx).distance_traveled = f.distance;
+        (*gfx).normalized_car_position = f.lap_fraction;
+        (*gfx).active_cars = 1;
+        (*gfx).player_car_id = 0;
+        // Written whole rather than by index: indexing through a raw
+        // pointer would take a reference to the array first, which is not
+        // allowed here and is not needed.
+        let mut cars = CarPositions::default();
+        cars[0] = f.position;
+        (*gfx).car_coordinates = cars;
+        (*gfx).fuel_x_lap = f.fuel_per_lap;
+        (*gfx).fuel_estimated_laps = if f.fuel_per_lap > 0.0 {
+            f.fuel / f.fuel_per_lap
+        } else {
+            0.0
+        };
+        (*gfx).tyre_compound = "dry_compound".into();
+        (*gfx).tc = 3;
+        (*gfx).abs = 4;
+        (*gfx).is_valid_lap = 1;
+        (*gfx).track_grip_status = 1;
+        (*gfx).current_tyre_set = 2;
+        (*gfx).mfd_tyre_pressure_lf = 27.5;
+        (*gfx).mfd_tyre_pressure_rf = 27.5;
+        (*gfx).mfd_tyre_pressure_lr = 27.0;
+        (*gfx).mfd_tyre_pressure_rr = 27.0;
+        // Not published by the game: `surface_grip`, wind, and the tread
+        // temperatures. See `track_grip_status` above, which is what ACC says
+        // instead.
     }
 }
