@@ -534,8 +534,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 //
                 // It takes ten to twenty seconds of container setup, and the
                 // screen is frozen for it, so say what is happening first.
+                // Demo mode reads no game at all — it invents the telemetry
+                // — so it has no use for a Wine process in somebody's Proton
+                // prefix, and fifteen seconds of container setup before a
+                // screenshot run is fifteen seconds of nothing.
                 #[cfg(target_os = "linux")]
-                {
+                if !args.demo {
                     let prefix = platform::linux::prefix_of(app.game);
                     terminal.draw(|f| renderer.render(f, &app))?;
                     _mem_bridge = match platform::linux::SharedMemoryBridge::start(prefix).await {
