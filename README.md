@@ -8,6 +8,20 @@
 [![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Release](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml/badge.svg)](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml)
 
+> ### 🆕 Assetto Corsa Competizione is supported, from v0.4.0
+>
+> ACC's telemetry is read the same way Assetto Corsa's is — dashboard, tyres,
+> brakes, fuel, strategy and lap analysis all work on it, and the engineer
+> judges a GT3 against a GT3's numbers. Its layout was measured off a recorded
+> session rather than copied from a header file. Pick the game on the launcher:
+> `GAME: < … >`.
+>
+> Two things to know before downloading for it: **there is no in-game panel on
+> ACC** (it is a Custom Shaders Patch app, and CSP is an Assetto Corsa mod), and
+> **ACC publishes no tyre wear or tread temperatures**, so that advice stays
+> silent and brake pad life takes its place. [What each game
+> reports](#which-simulator-and-what-it-reports) is the table below.
+
 **Pro Engineer** is a free, open-source **Assetto Corsa telemetry app** and
 **virtual race engineer** for sim racing, and it reads **Assetto Corsa
 Competizione** too. It takes the game's shared memory directly, analyses tyre
