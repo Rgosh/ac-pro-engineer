@@ -138,6 +138,16 @@ pub struct Engineer {
     /// on the way in; until it does, the engineer withholds rather than reads
     /// a default as a reading.
     capabilities: Capabilities,
+    /// What kind of car this is, and therefore what its numbers mean.
+    ///
+    /// Beside the capabilities because it answers the neighbouring question:
+    /// those say *whether* a thing is measured, this says what a measurement
+    /// of it is supposed to look like. A GT3 front brake at 520 °C is working;
+    /// a road car's at 520 °C has boiled.
+    ///
+    /// `Unknown` — the default — means the driver's own thresholds are used
+    /// unchanged, which is what a mod nobody has classified deserves.
+    car_class: crate::games::CarClass,
     history_size: usize,
     pub stats: EngineerStats,
     pub driving_style: DrivingStyle,
@@ -272,6 +282,7 @@ impl Engineer {
         Self {
             config: config.clone(),
             capabilities: Capabilities::default(),
+            car_class: crate::games::CarClass::default(),
             history_size: 600,
             stats: EngineerStats::new(),
             driving_style: DrivingStyle::new(),
@@ -293,6 +304,73 @@ impl Engineer {
     /// second game arrives with a different answer.
     pub fn update_capabilities(&mut self, capabilities: Capabilities) {
         self.capabilities = capabilities;
+    }
+
+    /// Tell the engineer what it is looking at.
+    ///
+    /// From the car's id, which every game publishes — see
+    /// [`CarClass::identify`](crate::games::CarClass::identify). Set on every
+    /// tick like the capabilities, because a driver can change car without
+    /// closing anything.
+    pub fn update_car_class(&mut self, car_class: crate::games::CarClass) {
+        self.car_class = car_class;
+    }
+
+    /// What kind of car the numbers are being read against.
+    pub fn car_class(&self) -> crate::games::CarClass {
+        self.car_class
+    }
+
+    /// The tyre temperature window to judge against, and where it came from.
+    ///
+    /// The class's window when the class is known **and** the driver has left
+    /// the setting at its default; the driver's own numbers the moment they
+    /// change one. A setting somebody has deliberately typed outranks a table,
+    /// and one they have never touched is not a preference — it is the
+    /// application's old one-size band, which was 70–105 °C for a Formula car
+    /// and a Fiat 500 alike.
+    fn tyre_window(&self) -> (f32, f32) {
+        let defaults = crate::config::AlertsConfig::default();
+        let untouched = (self.config.alerts.tyre_temp_min - defaults.tyre_temp_min).abs() < 0.01
+            && (self.config.alerts.tyre_temp_max - defaults.tyre_temp_max).abs() < 0.01;
+
+        if self.car_class.is_known() && untouched {
+            self.car_class.window().tyre_c
+        } else {
+            let low = self
+                .config
+                .alerts
+                .tyre_temp_min
+                .min(self.config.alerts.tyre_temp_max);
+            let high = self
+                .config
+                .alerts
+                .tyre_temp_min
+                .max(self.config.alerts.tyre_temp_max);
+            (low, high)
+        }
+    }
+
+    /// The brake ceiling for one corner, front or rear.
+    ///
+    /// Per axle, because that is how brakes work: the recording this project
+    /// pins Competizione to shows 520 °C at the front against 257 °C at the
+    /// rear, and one number for all four is either too low for the fronts or
+    /// blind to the rears. Same rule about the driver's own setting as above.
+    fn brake_ceiling(&self, wheel: usize) -> f32 {
+        let defaults = crate::config::AlertsConfig::default();
+        let untouched = (self.config.alerts.brake_temp_max - defaults.brake_temp_max).abs() < 0.01;
+
+        if self.car_class.is_known() && untouched {
+            let window = self.car_class.window();
+            if wheel < 2 {
+                window.brake_front_max_c
+            } else {
+                window.brake_rear_max_c
+            }
+        } else {
+            self.config.alerts.brake_temp_max
+        }
     }
 
     /// What the engineer is currently willing to speak about.
@@ -1451,16 +1529,10 @@ impl Engineer {
             return;
         }
 
-        let min_temp = self
-            .config
-            .alerts
-            .tyre_temp_min
-            .min(self.config.alerts.tyre_temp_max);
-        let max_temp = self
-            .config
-            .alerts
-            .tyre_temp_min
-            .max(self.config.alerts.tyre_temp_max);
+        // The window this class of car actually works in — see
+        // `Engineer::tyre_window`, which falls back to the driver's own
+        // numbers the moment they set any.
+        let (min_temp, max_temp) = self.tyre_window();
         let ru = self.is_ru();
 
         if car.speed_kmh <= 100.0 {
@@ -1597,8 +1669,18 @@ impl Engineer {
     }
 
     fn analyze_brakes(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
-        let max_temp = self.config.alerts.brake_temp_max;
         let ru = self.is_ru();
+        // Reported against whichever axle's ceiling was actually exceeded, so
+        // the sentence names a number that applies to the corner it is about.
+        let max_temp = (0..4)
+            .filter(|i| car.brake_temp_c[*i] > self.brake_ceiling(*i))
+            .map(|i| self.brake_ceiling(i))
+            .fold(f32::MAX, f32::min);
+        let max_temp = if max_temp.is_finite() {
+            max_temp
+        } else {
+            self.brake_ceiling(0)
+        };
 
         let mut cooking: Vec<usize> = Vec::new();
         for i in 0..4 {
@@ -1606,7 +1688,7 @@ impl Engineer {
             // it this pushed a fresh recommendation on every single frame the
             // brake was over temperature — dozens a second, burying every
             // other message in the list.
-            let too_hot = car.brake_temp_c[i] > max_temp;
+            let too_hot = car.brake_temp_c[i] > self.brake_ceiling(i);
             if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
                 cooking.push(i);
             }
@@ -2429,6 +2511,98 @@ mod tests {
             assert!(
                 said.iter().any(|c| c == "Brakes/Overheat"),
                 "the brakes are measured and still cooking: {said:?}"
+            );
+        }
+
+        /// The same telemetry, two classes of car, two different verdicts.
+        ///
+        /// This is the whole point of knowing what is being driven. 520 °C at
+        /// the front is a GT3 working properly and a road car with boiled
+        /// fluid; 78 °C is a warm GT3 tyre and a cold Formula one. One band
+        /// for both — which is what this application had — is wrong for almost
+        /// every car and merely quiet for the rest.
+        #[test]
+        fn the_same_numbers_mean_different_things_to_different_cars() {
+            let config = AppConfig::default();
+            let car = Car {
+                speed_kmh: 180.0,
+                // Inside a GT3's window (75–100) and under a Formula car's
+                // (85–110): the same number, two answers.
+                tyre_core_temp_c: [78.0; 4],
+                brake_temp_c: [520.0, 520.0, 260.0, 260.0],
+                ..Default::default()
+            };
+            let capabilities = Capabilities {
+                tyre_edge_temps: false,
+                ..Capabilities::all()
+            };
+
+            let verdicts = |class: crate::games::CarClass| {
+                let mut engineer = Engineer::new(&config);
+                engineer.update_capabilities(capabilities);
+                engineer.update_car_class(class);
+                age_the_alerts(&mut engineer);
+                drive(&mut engineer, &car, 120);
+                age_the_alerts(&mut engineer);
+                engineer
+                    .analyze_live(&car, &Session::default(), None)
+                    .into_iter()
+                    .map(|rec| format!("{}/{}", rec.component, rec.category))
+                    .collect::<Vec<_>>()
+            };
+
+            // A GT3 at 78 °C on 520 °C fronts is a car doing its job.
+            let gt3 = verdicts(crate::games::CarClass::Gt3);
+            assert!(
+                !gt3.iter()
+                    .any(|v| v == "Tyres/Overheat" || v == "Brakes/Overheat"),
+                "nothing here is wrong with a GT3: {gt3:?}"
+            );
+
+            // The same readings on a road car are brakes a long way past
+            // their ceiling.
+            let road = verdicts(crate::games::CarClass::Road);
+            assert!(
+                road.iter().any(|v| v == "Brakes/Overheat"),
+                "520 C is not a road car's brakes: {road:?}"
+            );
+
+            // And a Formula car wants its tyres hotter than this, so the same
+            // reading is cold rather than fine.
+            let formula = verdicts(crate::games::CarClass::Formula);
+            assert!(
+                formula.iter().any(|v| v == "Tyres/Temperature"),
+                "78 C is under a Formula tyre's window: {formula:?}"
+            );
+        }
+
+        /// A car nobody recognised keeps the driver's own numbers.
+        ///
+        /// The same distinction the capability flags draw: not knowing and
+        /// knowing a default are different answers, and a mod pressed into a
+        /// class it may not be in is a wrong verdict rather than a missing one.
+        #[test]
+        fn an_unknown_car_is_judged_by_the_drivers_own_settings() {
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            engineer.update_car_class(crate::games::CarClass::Unknown);
+            assert_eq!(
+                engineer.tyre_window(),
+                (config.alerts.tyre_temp_min, config.alerts.tyre_temp_max),
+                "an unclassified car is judged by whatever the driver has set"
+            );
+
+            // ...and a driver who has set their own numbers keeps them even on
+            // a car the table knows.
+            let mut mine = AppConfig::default();
+            mine.alerts.tyre_temp_min = 88.0;
+            mine.alerts.tyre_temp_max = 104.0;
+            let mut engineer = Engineer::new(&mine);
+            engineer.update_car_class(crate::games::CarClass::Gt3);
+            assert_eq!(
+                engineer.tyre_window(),
+                (88.0, 104.0),
+                "a number somebody typed outranks a table"
             );
         }
 

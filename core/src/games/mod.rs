@@ -22,10 +22,12 @@
 
 pub mod assetto_corsa;
 pub mod assetto_corsa_competizione;
+pub mod car_class;
 pub mod catalogue;
 pub mod reading;
 pub mod registry;
 
+pub use car_class::{CarClass, ClassWindow};
 pub use catalogue::CarSpecs;
 pub use reading::{Car, Fixed, Reading, Session, SessionKind, Status};
 pub use registry::{Backend, Game, Support};

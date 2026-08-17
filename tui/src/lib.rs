@@ -564,6 +564,27 @@ impl AppState {
         state
     }
 
+    /// What kind of car is being driven, for the thresholds that depend on it.
+    ///
+    /// The catalogue's tags first — Assetto Corsa publishes them per car and
+    /// they are the game's own answer — then the car id, which Competizione
+    /// names exhaustively and Assetto Corsa names well enough. An unrecognised
+    /// car comes back `Unknown`, and the engineer then keeps the driver's own
+    /// thresholds rather than pressing a mod into a class it may not be in.
+    pub fn car_class(&self) -> ac_core::games::CarClass {
+        let id = self
+            .reading
+            .as_ref()
+            .map(|reading| reading.fixed.car_model.clone())
+            .unwrap_or_default();
+        let tags = self
+            .content_manager
+            .get_car_specs(&id)
+            .map(|specs| vec![specs.class.clone()])
+            .unwrap_or_default();
+        ac_core::games::CarClass::identify(&id, &tags)
+    }
+
     /// Whether the chosen game can run the in-game panel at all.
     ///
     /// It is a Custom Shaders Patch app and CSP is an Assetto Corsa mod, so on
@@ -1139,6 +1160,11 @@ impl AppState {
         // with nothing to say, which is loud — the alternative default is a
         // wrong verdict, which is not.
         self.engineer.update_capabilities(capabilities);
+        // And what kind of car it is, which decides what those measurements
+        // are supposed to look like. The game's own tags where there are any —
+        // Assetto Corsa ships them beside each car — and the car's id
+        // otherwise, which is descriptive in both games.
+        self.engineer.update_car_class(self.car_class());
         self.engineer.update(&car, &session, &self.session_info);
 
         // The engineer sets `current_delta` from AC's own performance meter,

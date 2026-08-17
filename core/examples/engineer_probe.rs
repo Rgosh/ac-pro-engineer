@@ -84,10 +84,27 @@ fn main() {
         // engineer that has not been told which game it is reading cannot know
         // a default from a reading.
         engineer.update_capabilities(reading.capabilities);
+        // And what kind of car it is, which is what decides whether 520 °C at
+        // the front is a working GT3 or a road car with boiled fluid.
+        let class = ac_core::games::CarClass::identify(&reading.fixed.car_model, &[]);
+        engineer.update_car_class(class);
         engineer.update(&car, &session, &info);
         let recommendations = engineer.analyze_live(&car, &session, None);
 
         println!("── sample {sample} ─────────────────────────────────────────────");
+        println!(
+            "{} — read as {} (tyres {:.0}–{:.0} °C, brakes {:.0}/{:.0} °C)",
+            if reading.fixed.car_model.is_empty() {
+                "no car"
+            } else {
+                &reading.fixed.car_model
+            },
+            class.label(),
+            class.window().tyre_c.0,
+            class.window().tyre_c.1,
+            class.window().brake_front_max_c,
+            class.window().brake_rear_max_c,
+        );
         println!(
             "speed {:6.1} km/h   gear {}   rpm {}   fuel {:.1} L   max fuel {:.0} L",
             car.speed_kmh, car.gear, car.rpm, car.fuel_litres, reading.fixed.max_fuel_litres
