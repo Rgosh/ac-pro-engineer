@@ -665,7 +665,7 @@ fn a_wrong_sized_page_does_not_parse() {
 /// accepted.
 ///
 /// The other direction — Assetto Corsa's captured bytes refused by this
-/// reader — is in `shm_layout_tests.rs`, where AC's capture lives.
+/// reader — is in `assetto_corsa_tests.rs`, where AC's capture lives.
 #[test]
 fn competiziones_own_pages_are_recognised() {
     assert!(page_is_ours(&parse_static()).is_ok());
@@ -687,7 +687,7 @@ fn competiziones_own_pages_are_recognised() {
 /// Windows the game creates a 688-byte mapping and the request for 820 fails
 /// in the kernel, which is a second gate this one does not need.)
 fn assetto_corsas_static_page_padded_to_ours() -> Vec<u8> {
-    let mut bytes = decode_hex(crate::shm_layout_tests::STATIC_PAGE_HEX);
+    let mut bytes = decode_hex(crate::assetto_corsa_tests::STATIC_PAGE_HEX);
     assert!(
         bytes.len() < size_of::<AccStatic>(),
         "Assetto Corsa's static page used to be shorter than Competizione's"

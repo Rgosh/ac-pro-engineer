@@ -149,6 +149,11 @@ pub enum SessionKind {
     TimeAttack,
     Drift,
     Drag,
+    /// A stint driven to a clock, which Competizione has and Assetto Corsa
+    /// does not.
+    HotStint,
+    /// Competizione's one-car qualifying shootout.
+    Superpole,
 }
 
 impl SessionKind {
@@ -164,6 +169,8 @@ impl SessionKind {
             SessionKind::TimeAttack => "Time Attack",
             SessionKind::Drift => "Drift",
             SessionKind::Drag => "Drag",
+            SessionKind::HotStint => "Hot Stint",
+            SessionKind::Superpole => "Superpole",
         }
     }
 
@@ -171,7 +178,9 @@ impl SessionKind {
     ///
     /// The fuel calculator invents a five-lap run for these, because a
     /// practice session has no lap count and its clock says nothing about how
-    /// long the driver intends to stay out.
+    /// long the driver intends to stay out. Competizione's superpole is a
+    /// qualifying format and belongs with them; its hot stint runs to a clock
+    /// and does not.
     pub fn has_no_finish(self) -> bool {
         matches!(
             self,
@@ -179,6 +188,7 @@ impl SessionKind {
                 | SessionKind::Booking
                 | SessionKind::Practice
                 | SessionKind::Qualifying
+                | SessionKind::Superpole
         )
     }
 }
@@ -226,6 +236,15 @@ pub struct Car {
     pub tyre_temp_middle_c: [f32; 4],
     pub tyre_temp_outer_c: [f32; 4],
     pub brake_temp_c: [f32; 4],
+    /// Brake pad thickness left, in millimetres, per wheel.
+    ///
+    /// Gated on
+    /// [`Capabilities::brake_wear`](super::Capabilities::brake_wear): a game
+    /// that does not publish it leaves zero here, and zero millimetres of pad
+    /// is not "unknown", it is "you are braking on the backing plate".
+    pub brake_pad_mm: [f32; 4],
+    /// Brake disc thickness left, in millimetres, per wheel. Same gate.
+    pub brake_disc_mm: [f32; 4],
     pub camber_rad: [f32; 4],
     pub suspension_travel: [f32; 4],
     /// Front and rear, in metres.
@@ -252,19 +271,39 @@ pub struct Car {
 }
 
 impl Car {
-    /// Mean of the three tread temperatures for one wheel.
+    /// The temperature of one tyre, to put on a screen.
+    ///
+    /// The mean of the three tread readings where a game measures the tread,
+    /// and **the core temperature where it does not** — which is the whole
+    /// difference between the two games this build reads. Competizione
+    /// publishes only the core, so every screen that averaged the tread showed
+    /// four tyres at 0 °C: a number that is not merely missing but wrong, and
+    /// wrong in the direction of "your tyres are stone cold".
+    ///
+    /// The two are not the same quantity and the fallback does not pretend
+    /// they are — it is a reading of the same tyre, taken a few millimetres
+    /// further in. That is why this is for *drawing* only. Every rule that
+    /// rests on tread temperature is gated on
+    /// [`Capabilities::tyre_edge_temps`](super::Capabilities::tyre_edge_temps)
+    /// and stays silent, because inner minus outer has no substitute at all.
     ///
     /// Zero for an index past the fourth wheel rather than a panic: this is
     /// called from draw code, and a wrong number on a screen beats taking the
     /// application down mid-session.
     pub fn avg_tyre_temp_c(&self, wheel: usize) -> f32 {
-        if wheel < 4 {
-            (self.tyre_temp_inner_c[wheel]
-                + self.tyre_temp_middle_c[wheel]
-                + self.tyre_temp_outer_c[wheel])
-                / 3.0
+        if wheel >= 4 {
+            return 0.0;
+        }
+        let tread = self.tyre_temp_inner_c[wheel]
+            + self.tyre_temp_middle_c[wheel]
+            + self.tyre_temp_outer_c[wheel];
+        if tread == 0.0 {
+            // Three readings of exactly zero is a game that does not publish
+            // them: a tyre at absolute freezing on all three points across the
+            // tread, to the last bit of a float, does not otherwise happen.
+            self.tyre_core_temp_c[wheel]
         } else {
-            0.0
+            tread / 3.0
         }
     }
 
@@ -287,7 +326,9 @@ impl Car {
 ///
 /// Copied into a per-lap buffer once a tick, so everything here is by value —
 /// see [`Name`] for why the tyre compound is not a `String`.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+// `Default` by hand rather than derived: one field's default is not zero, and
+// a derive cannot say so. See `lap_is_valid`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Session {
     pub status: Status,
     pub kind: SessionKind,
@@ -327,6 +368,49 @@ pub struct Session {
     /// The car's dash settings, where the game publishes them.
     pub tc_cut: i32,
     pub engine_map: i32,
+
+    /// Whether the lap being driven still counts.
+    ///
+    /// **True by default, and that is a statement about this program rather
+    /// than about the lap**: Assetto Corsa never says, so nothing there
+    /// contradicts a lap being valid. Gated on
+    /// [`Capabilities::lap_validity`](super::Capabilities::lap_validity),
+    /// which is what tells the difference between "the game says it counts"
+    /// and "no game said otherwise".
+    pub lap_is_valid: bool,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Self {
+            status: Status::default(),
+            kind: SessionKind::default(),
+            completed_laps: 0,
+            total_laps: 0,
+            position: 0,
+            current_lap_ms: 0,
+            last_lap_ms: 0,
+            best_lap_ms: 0,
+            session_time_left_ms: 0.0,
+            current_sector: 0,
+            last_sector_ms: 0,
+            track_position: 0.0,
+            distance_travelled_m: 0.0,
+            car_position_m: [0.0; 3],
+            surface_grip: 0.0,
+            wind_speed_kmh: 0.0,
+            wind_direction_deg: 0.0,
+            fuel_per_lap: 0.0,
+            compound: Name::default(),
+            in_pit_lane: false,
+            tc_cut: 0,
+            engine_map: 0,
+            // The one field whose default is not zero. A lap nobody has
+            // called invalid is valid, which is how every lap this program
+            // has ever recorded was treated.
+            lap_is_valid: true,
+        }
+    }
 }
 
 /// What does not change while the session runs.
@@ -398,10 +482,32 @@ mod tests {
             tyre_temp_inner_c: [90.0; 4],
             tyre_temp_middle_c: [80.0; 4],
             tyre_temp_outer_c: [70.0; 4],
+            // Present, and ignored while the tread is measured.
+            tyre_core_temp_c: [42.0; 4],
             ..Default::default()
         };
         assert_eq!(car.avg_tyre_temp_c(FL), 80.0);
         assert_eq!(car.avg_tyre_temp_c(9), 0.0);
+    }
+
+    /// A game that publishes no tread temperature has a core temperature, and
+    /// the screens show that rather than four tyres at 0 °C.
+    ///
+    /// This is the difference between Competizione and Assetto Corsa on every
+    /// screen with a tyre on it, and the failure it replaces was not a gap: a
+    /// zero reads as a stone-cold tyre, which is a confident wrong answer.
+    #[test]
+    fn a_game_with_no_tread_temperature_shows_the_core() {
+        let car = Car {
+            tyre_core_temp_c: [88.0, 87.0, 90.0, 89.0],
+            ..Default::default()
+        };
+        assert_eq!(car.avg_tyre_temp_c(FL), 88.0);
+        assert_eq!(car.avg_tyre_temp_c(RR), 89.0);
+
+        // And a game that measures neither still reads zero, because there is
+        // nothing to show.
+        assert_eq!(Car::default().avg_tyre_temp_c(FL), 0.0);
     }
 
     /// Load share is a fraction of the total, and an unloaded car — every lap

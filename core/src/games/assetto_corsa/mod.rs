@@ -66,6 +66,16 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     sectors: true,
     setups: true,
     tyre_wear: true,
+    // 0.94 on a green track in the capture, so it is a measurement and the
+    // cold-pressure calculator may lean on it.
+    track_grip: true,
+    // AC publishes neither pad nor disc thickness — its cars mostly have no
+    // model for it — and it says how much tyre is left instead, which is the
+    // opposite of Competizione.
+    brake_wear: false,
+    // AC never says whether a lap counted. Every lap is treated as valid
+    // because nothing contradicts it, which is not the same as being told.
+    lap_validity: false,
 };
 
 /// A connection to a running Assetto Corsa.

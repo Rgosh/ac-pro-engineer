@@ -16,22 +16,42 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// AC's three shared-memory pages. Nothing outside the game folder may name one.
-const AC_STRUCTS: &[&str] = &["AcPhysics", "AcGraphics", "AcStatic"];
+/// The shared-memory pages of both readable games. Nothing outside the game
+/// folder may name one.
+///
+/// Competizione's are on this list from the day they were written rather than
+/// after the fact, which is the whole value of having the test: `AcPhysics`
+/// spread to 109 references across ten files before anybody noticed, and it
+/// spread because reaching for it compiles and looks exactly like the code
+/// beside it.
+const GAME_STRUCTS: &[&str] = &[
+    "AcPhysics",
+    "AcGraphics",
+    "AcStatic",
+    "AccPhysics",
+    "AccGraphics",
+    "AccStatic",
+];
 
-/// How Assetto Corsa is laid out on disk and in the process table.
+/// How each game is laid out on disk and in the process table.
 ///
 /// The structs were only half of it. A neutral module that knows setups are
 /// INI under `Documents/Assetto Corsa/setups`, that cars are JSON under
 /// `content/cars`, that the process is `acs.exe` or that Steam calls this game
 /// 244210 is a module a second simulator cannot reuse — and none of that
 /// announces itself in a type name.
-const AC_LAYOUT: &[&str] = &[
+const GAME_LAYOUT: &[&str] = &[
     "\"Assetto Corsa\"",
     "acs.exe",
     "ui_car.json",
     "acpmf_",
     "244210",
+    // And Competizione's, which is the same rule and a sharper case: it shares
+    // `acpmf_` with Assetto Corsa, so the only things that tell the two apart
+    // outside the pages themselves are the process name and the appid.
+    "\"Assetto Corsa Competizione\"",
+    "AC2-Win64-Shipping.exe",
+    "805550",
 ];
 
 /// Files outside `games/` that legitimately speak Assetto Corsa, and why.
@@ -55,12 +75,14 @@ const SPEAKS_AC: &[&str] = &[
 /// Assetto Corsa mod and ACC has none, so this is not a boundary a second game
 /// crosses — it is a feature one game has. See §8 of `docs/roadmap.md`, which
 /// is where that decision is written down.
-const SPEAKS_AC_FOLDERS: &[&str] = &[
-    "core/src/overlay/",
-    // Launches `shm-bridge.exe` inside Assetto Corsa's own Proton prefix. Same
-    // reason as the overlay: it is a thing one game needs, not a boundary.
-    "tui/src/platform/",
-];
+///
+/// `tui/src/platform/` is deliberately **not** on this list any more. It
+/// launches `shm-bridge.exe` inside a Proton prefix, and it used to be given
+/// Assetto Corsa's appid as a constant — which is the same as saying this
+/// program reads one game. It asks the registry which prefix now, so it has
+/// stopped knowing what a simulator is, and the test is what keeps it that
+/// way.
+const SPEAKS_AC_FOLDERS: &[&str] = &["core/src/overlay/"];
 
 /// The terminal must not name a simulator.
 ///
@@ -91,14 +113,14 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Lines naming an AC struct in code — a comment may still discuss one.
-fn ac_struct_lines(source: &str) -> Vec<(usize, String)> {
+/// Lines naming a game's page struct in code — a comment may still discuss one.
+fn game_struct_lines(source: &str) -> Vec<(usize, String)> {
     source
         .lines()
         .enumerate()
         .filter(|(_, line)| {
             let trimmed = line.trim_start();
-            !trimmed.starts_with("//") && AC_STRUCTS.iter().any(|name| line.contains(name))
+            !trimmed.starts_with("//") && GAME_STRUCTS.iter().any(|name| line.contains(name))
         })
         .map(|(index, line)| (index + 1, line.trim().to_string()))
         .collect()
@@ -155,10 +177,10 @@ fn the_interface_does_not_name_a_game() {
     );
 }
 
-/// Assetto Corsa's file layout, its process and its Steam appid stay in its
-/// own folder, so that a second game is a folder beside it.
+/// A game's file layout, its process and its Steam appid stay in its own
+/// folder, so that a second game is a folder beside it — which it now is.
 #[test]
-fn no_file_outside_the_game_folder_knows_where_assetto_corsa_keeps_things() {
+fn no_file_outside_the_game_folder_knows_where_a_game_keeps_things() {
     let root = workspace_root();
 
     let mut files = Vec::new();
@@ -190,7 +212,7 @@ fn no_file_outside_the_game_folder_knows_where_assetto_corsa_keeps_things() {
             if trimmed.starts_with("//") {
                 continue;
             }
-            if let Some(marker) = AC_LAYOUT.iter().find(|marker| line.contains(**marker)) {
+            if let Some(marker) = GAME_LAYOUT.iter().find(|marker| line.contains(**marker)) {
                 problems.push(format!(
                     "{relative}:{}: {marker} in {}",
                     number + 1,
@@ -213,7 +235,7 @@ fn no_file_outside_the_game_folder_knows_where_assetto_corsa_keeps_things() {
 /// The reason §4 of the roadmap existed: the trait describing the boundary was
 /// bypassed by everything that mattered.
 #[test]
-fn no_file_outside_the_game_folder_reads_assetto_corsas_layout() {
+fn no_file_outside_the_game_folder_reads_a_games_layout() {
     let root = workspace_root();
 
     let mut files = Vec::new();
@@ -235,7 +257,7 @@ fn no_file_outside_the_game_folder_reads_assetto_corsas_layout() {
         let Ok(source) = fs::read_to_string(file) else {
             continue;
         };
-        for (line_number, text) in ac_struct_lines(&source) {
+        for (line_number, text) in game_struct_lines(&source) {
             problems.push(format!("{relative}:{line_number}: {text}"));
         }
     }
@@ -258,16 +280,22 @@ fn no_file_outside_the_game_folder_reads_assetto_corsas_layout() {
 /// an `AssettoCorsa` in a field and five direct calls into it.
 #[test]
 fn the_only_way_out_of_a_game_is_the_trait() {
-    let source = fs::read_to_string(workspace_root().join("core/src/games/assetto_corsa/mod.rs"))
-        .expect("the Assetto Corsa module is in the tree");
+    // Every game, not only the one it happened to: the rule is about the
+    // shape of a `Source`, and a second game is exactly where a shortcut back
+    // to the raw pages would be reintroduced.
+    for game in ["assetto_corsa", "assetto_corsa_competizione"] {
+        let module = workspace_root().join(format!("core/src/games/{game}/mod.rs"));
+        let source = fs::read_to_string(&module).expect("the game's module is in the tree");
 
-    for accessor in ["fn physics(", "fn graphics(", "fn stat("] {
-        assert!(
-            !source.contains(accessor),
-            "`{accessor})` is back on `AssettoCorsa`. Telemetry leaves a game \
-             through `Source::poll`, which returns a `Reading`; an accessor \
-             beside it is a way to read AC's own structs without the trait \
-             noticing, which is how the boundary stopped carrying data."
-        );
+        for accessor in ["fn physics(", "fn graphics(", "fn stat("] {
+            assert!(
+                !source.contains(accessor),
+                "`{accessor})` is back on {game}'s source. Telemetry leaves a \
+                 game through `Source::poll`, which returns a `Reading`; an \
+                 accessor beside it is a way to read the game's own structs \
+                 without the trait noticing, which is how the boundary stopped \
+                 carrying data."
+            );
+        }
     }
 }

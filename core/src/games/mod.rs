@@ -21,6 +21,7 @@
 //!   `if` statements through the middle of the engineer.
 
 pub mod assetto_corsa;
+pub mod assetto_corsa_competizione;
 pub mod catalogue;
 pub mod reading;
 pub mod registry;
@@ -61,6 +62,26 @@ pub struct Capabilities {
     pub setups: bool,
     /// Tyre wear is published.
     pub tyre_wear: bool,
+    /// How much grip the track has, as a fraction.
+    ///
+    /// Assetto Corsa publishes it and Competizione does not — ACC says how the
+    /// track *is* instead, as one of a handful of named states, and turning
+    /// that into a number would be inventing a measurement. Without this flag
+    /// the missing value reads as a green track: the cold-pressure calculator
+    /// clamps it to 0.80 and adds 0.3 psi to the target, on every lap, for a
+    /// condition nobody measured.
+    pub track_grip: bool,
+    /// Brake pad and disc thickness are published.
+    ///
+    /// Competizione's answer to tyre wear, which it does not publish: over a
+    /// GT3 stint the pads are the consumable that decides the race.
+    pub brake_wear: bool,
+    /// The game says whether the lap being driven still counts.
+    ///
+    /// Assetto Corsa never does, so every lap is treated as valid there —
+    /// which is not a claim that it *is* valid, only that nothing said
+    /// otherwise. ACC says.
+    pub lap_validity: bool,
 }
 
 impl Capabilities {
@@ -76,6 +97,9 @@ impl Capabilities {
             sectors: true,
             setups: true,
             tyre_wear: true,
+            track_grip: true,
+            brake_wear: true,
+            lap_validity: true,
         }
     }
 }

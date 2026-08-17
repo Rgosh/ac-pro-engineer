@@ -64,6 +64,9 @@ impl From<&AcPhysics> for Car {
             tyre_temp_middle_c: p.tyre_temp_m,
             tyre_temp_outer_c: p.tyre_temp_o,
             brake_temp_c: p.brake_temp,
+            // Not published by this game; `brake_wear` says so.
+            brake_pad_mm: [0.0; 4],
+            brake_disc_mm: [0.0; 4],
             camber_rad: p.camber_rad,
             suspension_travel: p.suspension_travel,
             ride_height_m: p.ride_height,
@@ -118,6 +121,10 @@ impl From<&AcGraphics> for Session {
             in_pit_lane: g.is_in_pit_lane != 0,
             tc_cut: g.tccut,
             engine_map: g.engine_map,
+            // AC has no field for it, and the default is what that means:
+            // valid because nothing said otherwise. `lap_validity: false` is
+            // what stops that reading as a verdict.
+            lap_is_valid: true,
         }
     }
 }

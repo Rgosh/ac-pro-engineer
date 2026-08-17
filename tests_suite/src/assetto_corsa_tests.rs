@@ -33,7 +33,7 @@ use ac_core::games::reading::{COORD_X, COORD_Y, COORD_Z};
 use zerocopy::TryFromBytes;
 
 /// First 360 bytes of `/dev/shm/acpmf_graphics`, mid-lap at Imola.
-const GRAPHICS_PAGE_HEX: &str = concat!(
+pub const GRAPHICS_PAGE_HEX: &str = concat!(
     "e9b70100020000000200000031003a00340033003a0033003900380000000000",
     "000000000000000000002d003a002d002d003a002d002d002d00000000000000",
     "00000000000000002d003a002d002d003a002d002d002d000000000000000000",
@@ -49,7 +49,7 @@ const GRAPHICS_PAGE_HEX: &str = concat!(
 );
 
 /// All 596 bytes of `/dev/shm/acpmf_physics`, car stopped in the pits.
-const PHYSICS_PAGE_HEX: &str = concat!(
+pub const PHYSICS_PAGE_HEX: &str = concat!(
     "d4e0000000000000000000007322ec410100000052030000000000007691e439",
     "0000000000000000000000000000000000000000000000004f00b13c48fba63c",
     "f30f0b3d9156033d3fef5145947f5045694211456dba11456387e1418a99e041",
@@ -75,7 +75,7 @@ const PHYSICS_PAGE_HEX: &str = concat!(
 ///
 /// The player-name fields are AC's out-of-the-box `Player`, so there is
 /// nothing personal in here to leak into the repository.
-const STATIC_PAGE_HEX: &str = concat!(
+pub const STATIC_PAGE_HEX: &str = concat!(
     "31002e0037000000000000000000000000000000000000000000000000003100",
     "2e00310036002e00340000000000000000000000000000000000000001000000",
     "0800000061006200610072007400680035003000300000000000000000000000",
@@ -429,4 +429,26 @@ fn a_wrong_sized_page_does_not_parse() {
     let mut long = good;
     long.extend_from_slice(&[0u8; 4]);
     assert!(AcGraphics::try_read_from_bytes(&long).is_err());
+}
+
+/// Formatting one of AC's fixed-width UTF-16 fields must not consume it.
+///
+/// It reads through a raw array and stops at the first NUL, and the bug this
+/// guards against is a `Display` that advances something: the second read
+/// would come back short, and the car would lose its name on the second frame.
+///
+/// Lived in the neutral core tests until the second game arrived, which is
+/// where the rule came from: a test that names `AcStatic` is a test about
+/// Assetto Corsa.
+#[test]
+fn formatting_a_fixed_width_name_has_no_side_effects() {
+    use ac_core::games::assetto_corsa::structs::StringU16_33;
+
+    let name = StringU16_33::from("ks_ferrari_488_gt3");
+    assert_eq!(format!("{name}"), "ks_ferrari_488_gt3");
+    assert_eq!(
+        format!("{name}"),
+        "ks_ferrari_488_gt3",
+        "reading it once must not change it"
+    );
 }

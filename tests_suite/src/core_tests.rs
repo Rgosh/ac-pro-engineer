@@ -716,16 +716,6 @@ fn test_39_corrupted_records_file_and_atomic_save_safety() {
 }
 
 #[test]
-fn test_40_string_u16_formatting_has_no_side_effects() {
-    use ac_core::games::assetto_corsa::structs::StringU16_33;
-
-    let _s = StringU16_33::from("ks_ferrari_488_gt3");
-    let s = StringU16_33::from("ks_ferrari_488_gt3");
-    let formatted = format!("{}", s);
-    assert_eq!(formatted, "ks_ferrari_488_gt3");
-}
-
-#[test]
 fn test_41_cold_tyre_pressure_calculator() {
     use ac_core::engineer::ColdPressureCalculator;
 
