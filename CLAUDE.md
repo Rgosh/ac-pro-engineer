@@ -6,9 +6,11 @@ overlay work stands right now.
 
 ## What this project is
 
-A telemetry and race-engineering suite for Assetto Corsa, in Rust, with two
-faces so far: a terminal application (`ac_tui`, the binary `ac_pro_engineer`)
-and an in-game panel written in Lua for CSP (`assets/frontends/csp-panel/`).
+A telemetry and race-engineering suite for Assetto Corsa and Assetto Corsa
+Competizione, in Rust, with two faces so far: a terminal application (`ac_tui`,
+the binary `ac_pro_engineer`) and an in-game panel written in Lua for CSP
+(`assets/frontends/csp-panel/`). **The panel is Assetto Corsa's only** — CSP is
+an AC mod and ACC is Unreal Engine.
 
 "So far" is doing work in that sentence. `docs/ARCHITECTURE.md` is the plan:
 one folder per game under `core/src/games/`, one `Sink` per place the computed
@@ -16,10 +18,12 @@ frame goes, and any number of front ends. **Read it before adding anything that
 knows what game is running or where the data comes out.** Two parts of it are
 already built:
 
-- `core/src/games/assetto_corsa/` — the structs, the paths and the shared-memory
-  reader. The reader used to live in `tui/src/lib.rs`, which meant a user
-  interface owned the connection to the simulator. It does not now: the core
-  reads the game and the interfaces read the core.
+- `core/src/games/assetto_corsa/` and `assetto_corsa_competizione/` — the
+  structs, the paths and the shared-memory readers. The reader used to live in
+  `tui/src/lib.rs`, which meant a user interface owned the connection to the
+  simulator. It does not now: the core reads the game and the interfaces read
+  the core. Which of the two is read is `config.game`, chosen on the launcher —
+  see *Adding a sink, or a game* for why it is not detected.
 - `core/src/broadcast/` — the computed frame goes to a list of sinks. Shared
   memory for the in-game panel, UDP as JSON for anything else: a second front
   end, a friend watching from another machine, a relay for a championship.
@@ -195,6 +199,26 @@ cargo run -p ac_core --example engineer_probe
 Fake AC telemetry into `/dev/shm`, then the engineer's advice printed next to
 the numbers that produced it. This is how false "four tyres WORN OUT" was found.
 
+```bash
+cargo run -p ac_core --example capability_matrix
+```
+
+What every game measures, read out of the registry — the fastest answer to
+"why has this advice gone quiet on this game", and the copy to check the site's
+published table at `/games/` against.
+
+While working on one game, its own tests and the core are the two questions
+worth asking after every change, and the rest is noise you have already read:
+
+```bash
+./tools/test-game.sh acc
+```
+
+One game's folder plus its layout tests, then everything in the core that does
+not name a simulator, then the boundary tests. `ac`, `acc`, `core` and `all`.
+**It is not the full run** and says so — the other game, the terminal, the
+translations and the screenshots are not in it.
+
 And the whole suite, on both targets, before pushing:
 
 ```bash
@@ -256,9 +280,30 @@ Both have a shape now, and both are meant to be additive:
   reported as four destroyed tyres, a camber verdict about a lap that published
   no temperatures.
 
-Do not add a second game until the first one is finished. An abstraction with
-one implementation is a guess, and the guesses are cheaper to fix while there is
-one consumer.
+There are two now — Assetto Corsa and Competizione — and the second one is what
+made the abstraction real. Three things it taught, which apply to the third:
+
+- **Pin the layout to a recording, never to a header.** `tools/record-session.sh`
+  runs the bridge in the game's prefix and watches every four-byte word for a
+  whole session; what a word *did* over two laps identifies it, where one
+  snapshot does not. `tests_suite/src/acc_layout_tests.rs` keeps the whole
+  2048-byte mapping rather than the struct's worth, so it can also assert that
+  nothing is written past the end — the check that says the struct is not too
+  *short*.
+- **Two games can publish under the same names.** ACC inherited AC's three
+  `acpmf_*` pages and changed the layout, and on Linux both mirror into the same
+  `/dev/shm` files. Each reader refuses a page declaring the other's
+  shared-memory version — AC 1.7, ACC 1.9 — because the alternative is not an
+  error but plausible numbers.
+- **Which game is a choice, not a detection.** `config.game`, set on the
+  launcher, and `registry::chosen` is the only thing that answers it. The bridge
+  has to be in one game's Proton prefix before that game starts, so there is
+  nothing to detect at the moment it matters. `detect_running` still says
+  whether the chosen game is up, and that is all it decides.
+
+What has *not* been done for ACC is the part that is not plumbing: its
+thresholds are still Assetto Corsa's. See `docs/plan-acc.md` §10 before
+trusting a line of advice on that game.
 
 ## The terminal's key map
 

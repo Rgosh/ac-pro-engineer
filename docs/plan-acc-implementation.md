@@ -1,7 +1,13 @@
 # ACC — implementation brief
 
-Written 2026-08-16. Self-contained: everything needed to build Assetto Corsa
-Competizione support without the session that produced it.
+Written 2026-08-16, and **built**. Kept because it is the evidence: this is
+what the recording said, field by field, before any of it was code. Where the
+implementation found something this brief got wrong, the correction is marked
+*corrected* and the wrong version is left visible — a brief that quietly agrees
+with the code afterwards is worth nothing as evidence.
+
+`core/src/games/assetto_corsa_competizione/` is the result;
+`tests_suite/src/acc_layout_tests.rs` is the same recording as assertions.
 
 `docs/plan-acc.md` is the *why* and the order. This is the *what*, field by
 field, with every number that has been measured marked as such.
@@ -102,11 +108,27 @@ Where a range is given, that is what the field actually did during the session.
 | 696–708 | tyre temperature, repeated | f32 | identical to 152–164 |
 | 716–728 | per-corner constant | f32 | 0.76 / 0.76 / 0.24 / 0.24 |
 
-**Not yet identified in the tail** (offsets 580–636, 672–692, 732+): the
-documented inventory puts `brake_pressure[4]`, `pad_life[4]`, `disc_life[4]`,
-`suspension_damage[4]`, `water_temp` and the vibration channels there. Confirm
-each against the recording before declaring it — a session with cold brakes and
-no damage leaves several of them at zero, which pins nothing.
+**The tail, identified** (*corrected* — this section used to end with a list of
+offsets nobody had settled). The page is **800 bytes**, and its last written
+byte in the recording is 795:
+
+| Offset | Field | Measured |
+|---|---|---|
+| 580, 584 | `p2p_activations`, `p2p_status` | zero — no GT3 has push-to-pass |
+| 592–636 | `mz[4]`, `fx[4]`, `fy[4]` | **all zero — not published** |
+| 672, 676 | `tc_in_action`, `abs_in_action` | zero; `int` per ACC's header, unproven |
+| 680–692 | `suspension_damage[4]` | zero — nothing was damaged |
+| 712 | `water_temp` | **84 °C** |
+| 716–728 | `brake_pressure[4]` | 0.63/0.63/0.20/0.20 braking, peaking at the bias |
+| 732, 736 | `front/rear_brake_compound` | 1, 1 |
+| 740–752 | `pad_life[4]` | **29 mm** |
+| 756–768 | `disc_life[4]` | **32 mm** |
+| 772–780 | ignition, starter, engine running | 0, 0, 1 |
+| 784–796 | kerb / slip / g / ABS vibration | ±1.0 |
+
+`brake_pressure` is the one worth reading twice: it is per-corner and it lands
+on exactly `brake_bias` front to rear, 152 bytes away, which is why both are
+pinned.
 
 ## 3. Measured offsets — graphics page
 
@@ -158,9 +180,24 @@ bytes say otherwise — 4.24 litres per lap, which is a GT3 figure.
 | 412 | `max_rpm` | i32 | 8650 |
 | 416 | `max_fuel` | f32 | 120.0 |
 
-**Everything after 416 read zero in this session**, including whatever occupies
-AC's `max_suspension_travel`, `tyre_radius` and `track_spline_length`. Two
-consequences:
+*Corrected.* This section used to say everything after 416 read zero. It does
+not: the **numbers** after 416 do, and the **strings** do not. The static page
+is 820 bytes and its last written byte is 754.
+
+| Offset | Field | Measured |
+|---|---|---|
+| 0 | `sm_version` | **"1.9"** — Assetto Corsa writes "1.7", and this is what tells the two apart |
+| 68 | `car_model` | `lamborghini_huracan_gt3_evo` |
+| 134 | `track` | `Spa` |
+| 200, 266 | `player_name`, `player_surname` | `Andrea`, `Caldarelli` — the nickname is empty |
+| 420–460 | suspension travel, tyre radius, turbo | zero |
+| 524 | `track_configuration` | the literal placeholder `track config` |
+| 604 | `car_skin` | the literal placeholder `skin` |
+| 680 | `pit_window_end` | −1000 |
+| 688 | `dry_tyres_name` | **`DHD2`** |
+| **754** | `wet_tyres_name` | **`WH`** — two-byte aligned, so 754 and not 756 |
+
+The zeros still matter, and the two consequences below are unchanged:
 
 * the disagreement between sources over whether `tyre_radius` is a scalar or
   `[f32; 4]` **cannot be settled from this capture** and does not matter for
@@ -181,20 +218,29 @@ consequences:
 | `setups` | **false** at first | See §7. |
 
 `tyre_wear: false` contradicts what `docs/plan-acc.md` predicted. The capture
-is right and the plan was wrong; fix the plan when this lands.
+is right and the plan was wrong; the plan says so now.
 
-### New flags to add
+### New flags — three landed, two still owed
 
-Each needs a field on `Capabilities`, a rule that consults it, and a test that
-takes it away and asserts the verdict disappears — the shape already in
-`engineer.rs`'s `mod capabilities`.
+Each needs a field on `Capabilities`, **a rule that consults it**, and a test
+that takes it away and asserts the verdict disappears — the shape already in
+`engineer.rs`'s `mod capabilities`. A flag with no rule behind it is a guess
+with a name, which is why the two without a rule are still not there.
 
-| Flag | Means | AC | ACC |
-|---|---|---|---|
-| `brake_wear` | pad and disc life are published | false | true (confirm offsets first) |
-| `rain_forecast` | rain now, in 10 and in 30 minutes | false | true |
-| `lap_validity` | the game says whether a lap counted | false | true |
-| `mfd_state` | what the driver dialled into the MFD | false | true |
+| Flag | Means | AC | ACC | State |
+|---|---|---|---|---|
+| `brake_wear` | pad and disc life are published | false | true | **landed** — offsets 740 and 756, and a rule that reads them |
+| `lap_validity` | the game says whether a lap counted | false | true | **landed** — offset 1408; an invalid lap sets no best sector |
+| `track_grip` | `surface_grip` is a real fraction | true | false | **landed** — see below |
+| `rain_forecast` | rain now, in 10 and in 30 minutes | false | true | owed — offsets 1560/1564/1568 pinned, no rule yet |
+| `mfd_state` | what the driver dialled into the MFD | false | true | owed — offsets 1532–1552 pinned, no rule yet |
+
+`track_grip` was not on the original list, and it is the one the recording
+added: ACC leaves offset 1240 zero and says `track_grip_status` instead. Left
+ungated, the cold-pressure calculator clamps the missing figure to 0.80 and
+adds 0.3 psi for a green track — on every lap of every session, for a condition
+nobody measured. That is a rule that was *wrong* rather than one that was
+missing, which is why it landed with the first three.
 
 ## 6. What ACC gives that Assetto Corsa cannot
 
@@ -238,9 +284,10 @@ That is a second `registry::SetupStore` — `scan`, `root`, `file_name`,
 false`, no store, and the tab already says the game keeps none this program can
 read.
 
-## 8. Order of work
+## 8. Order of work — done, except the last
 
-Each step leaves the tree green.
+Each step leaves the tree green. All nine landed; §9's thresholds are the one
+that needs a stint rather than a compiler.
 
 1. **`structs.rs`** from §2–§4. `#[repr(C)]`, `TryFromBytes`, a compile-time
    size assertion per page, and `offset_of!` assertions for **every field the
@@ -270,9 +317,15 @@ Each step leaves the tree green.
    `Support::Playable(Backend { … })`. `registry::playable().count()` becomes 2
    and `detect_running` starts doing real work.
 8. **Linux: the bridge.** No change to `shm-bridge` itself — it maps 2048 bytes
-   per page and ACC's largest page fits. What changes is which prefix it is
-   launched into: `tui/src/platform/linux.rs` uses AC's appid from a constant,
-   and it should come from the registry entry instead.
+   per page and ACC's largest page fits (1588). What changed is which prefix it
+   is launched into: the appid comes from the registry entry now.
+
+   *Which* entry turned out to be the interesting part. Not the running game:
+   the bridge has to be up before the game asks for the mappings, so there is
+   no process to detect yet, and both games mirror into the same `/dev/shm`
+   files so the telemetry test would answer with whichever published last. It
+   is the game the driver chose on the launcher — `config.game` — and choosing
+   another one stops the bridge and starts a new one in the other prefix.
 9. **Thresholds.** See §9.
 
 ## 9. The thresholds will lie before anything else does

@@ -31,6 +31,78 @@ source.
 and what happens to a closed product found shipping this code without asking.
 `CONTRIBUTING.md` covers the sign-off patches now need, and why.
 
+### 🏁 A second simulator: Assetto Corsa Competizione
+
+**Telemetry from ACC arrives.** Its three shared-memory pages are read, turned
+into the same neutral reading Assetto Corsa produces, and every screen, the
+analyser and the engineer work on it unchanged — none of them knows which game
+it is looking at.
+
+- **The layout was measured, not transcribed.** 337 seconds and 8376 samples of
+  a Huracán GT3 EVO at Spa, recorded off a running game under Proton, with what
+  every four-byte word did over the session. That recording is in the
+  repository and it is what the tests assert against: 4.24 litres a lap that
+  the tank divides by to give the 14.6 laps the next field holds, 520 °C front
+  brakes against 257 °C rear, pad and disc thickness in millimetres.
+- **The wrong parser can no longer attach.** Both games publish under the same
+  three names — `acpmf_physics` and the rest — and on Linux they mirror into
+  the same `/dev/shm` files, so a reader on the wrong pages gets numbers rather
+  than an error. Each now refuses a page that declares the other's
+  shared-memory version, on connecting and on every tick.
+- **What ACC does not measure, it says so.** No tyre wear and no tread
+  temperatures across the tyre, so the wear advice and the camber advice stay
+  silent on this game instead of reporting four unworn tyres as four destroyed
+  ones. The launcher lists what the chosen game reports before you start, so
+  advice going quiet reads as a property of the game.
+- **Tyre temperature falls back to the core where a game measures no tread.**
+  Every screen averaged the three tread readings, which on ACC are zero — so
+  four tyres read 0 °C, which is not a gap but a confident wrong answer in the
+  direction of "stone cold". The core temperature is a real reading of the same
+  tyre and is what is drawn now. The advice that rests on the tread stays
+  silent, because inner minus outer has no substitute.
+- **Brake wear advice, on the game that measures it.** ACC publishes what is
+  left of the pads and discs in millimetres, per corner, and the engineer reads
+  it: pads low, pads done, disc thin — with the same chain every other rule
+  carries, and a check a driver can take off this screen two laps later. It is
+  the trade the two games make, and neither gets the other's rule.
+- **A lap the game called invalid is stored as invalid.** ACC reports track
+  limits; Assetto Corsa never has, so every lap there was treated as clean —
+  which was the absence of a verdict, not one. An invalid lap now sets no best
+  sector.
+- **Track grip stopped being invented.** ACC does not publish a grip figure, and
+  the missing zero was read as the greenest track there is: the cold-pressure
+  target quietly gained 0.3 psi on every lap of every session. The Strategy tab
+  says "not measured" now, and the calculator adds nothing.
+- **No setups on ACC yet, and no in-game panel ever.** Its setups are JSON whose
+  numbers are clicks rather than units, and the click-to-value mapping differs
+  per car — writing that reader from memory of the format is the mistake the
+  recording exists to prevent, and there is no ACC setup file to pin it against
+  until one is saved in the game. The panel is a Custom Shaders Patch app, and
+  CSP is an Assetto Corsa mod.
+- **The simulator stands in for either game.** `simulator acc` publishes
+  Competizione's pages — the same drive, in that game's layout, with the arrays
+  it does not publish left at zero. `engineer_probe` takes a game as an
+  argument and reads it through the registry, so the advice can be read against
+  the numbers that produced it on both.
+
+**Which simulator is a choice now, on the launcher** — `GAME: < … >`, on every
+platform. It used to be detected, and detection is the wrong tool for this
+pair: the Linux bridge has to be running inside one game's Proton prefix
+*before* that game starts, so there is no process to detect yet, and both games
+publish under the same names. A wrong answer costs a bridge in the wrong
+prefix and an engineer running the other game's thresholds. The row also says
+what the chosen game can and cannot measure, so advice going quiet reads as a
+property of the game rather than as a broken feature. Choosing another game
+restarts the bridge in its prefix.
+
+**One thing is still owed, and it is named here rather than left to be found.**
+The engineer's temperature thresholds were chosen against Assetto Corsa's cars
+and have not been read against a stint on a GT3 — the brake alert sits at
+800 °C where ACC's carbon runs at 520, so it is likelier to stay quiet than to
+cry wolf, and the brake-wear thresholds are millimetres that want the same
+check. `docs/plan-acc.md` §10 is the list, and `engineer_probe` is how it gets
+done: every line of advice printed next to the numbers that produced it.
+
 ### ✨ Added
 
 - **A CORNERS sub-tab: where the lap actually went.** Corners are found in the

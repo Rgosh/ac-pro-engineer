@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pro Engineer — Sim Racing Telemetry &amp; a Virtual Race Engineer</title>
-<meta name="description" content="Free, open-source sim racing telemetry that tells you what to change. It reads the game sixty times a second and answers in sentences — tyre pressures, camber, brakes, fuel, corner-by-corner lap analysis — in a terminal and in the game. Assetto Corsa today; Competizione next, with the plan published. Windows, Linux, Steam Deck.">
+<meta name="description" content="Free, open-source sim racing telemetry that tells you what to change. It reads the game sixty times a second and answers in sentences — tyre pressures, camber, brakes, fuel, corner-by-corner lap analysis — in a terminal and in the game. Assetto Corsa and Competizione, with what each game can and cannot measure written down. Windows, Linux, Steam Deck.">
 <meta property="og:title" content="Pro Engineer — Sim Racing Telemetry &amp; Race Engineer">
-<meta property="og:description" content="A race engineer that reads your telemetry and tells you what to change. Assetto Corsa today, more simulators planned in the open. Free, open source, Windows and Linux.">
+<meta property="og:description" content="A race engineer that reads your telemetry and tells you what to change. Assetto Corsa and Assetto Corsa Competizione, with more planned in the open. Free, open source, Windows and Linux.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0a0a0f">
 <meta name="keywords" content="sim racing telemetry, Assetto Corsa telemetry, race engineer app, virtual race engineer, tyre pressure calculator, cold pressure calculator, fuel strategy calculator, stint planner, FFB clipping meter, MoTeC CSV export, ghost lap comparison, corner analysis, lap decomposition, Custom Shaders Patch app, CSP Lua overlay, Assetto Corsa Linux, Assetto Corsa Proton, Steam Deck sim racing, shared memory telemetry, free open source telemetry">
@@ -211,9 +211,11 @@ a:hover{text-decoration:underline}
    The application's own tab bar, carrying the site's pages instead of the
    program's screens. Which one is lit is decided in the markup, per page. */
 nav.tabs{
-  display:flex;gap:2px;padding:0 14px;background:#0d0d15;
+  /* Wraps rather than scrolls. It used to be `overflow-x:auto`, which is a
+     nicer strip on a phone and is also a clipping box — and a clipping box
+     cannot hold a dropdown. See the menu below for what that cost. */
+  display:flex;flex-wrap:wrap;gap:2px;padding:0 14px;background:#0d0d15;
   border-bottom:1px solid var(--border);
-  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   position:sticky;top:0;z-index:20;
   border-left:1px solid var(--border);border-right:1px solid var(--border);
   box-shadow:0 10px 24px -18px #000;
@@ -244,15 +246,23 @@ nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
    a link, because on a phone a tap has to open the menu instead of navigating
    somewhere first — and a focused button is what `:focus-within` reacts to.
 
-   And the menu is `position:fixed` with no offsets. The strip is
-   `overflow-x:auto`, which clips an absolutely positioned child; a fixed one
-   escapes that, and with its offsets left alone the browser places it at the
-   position it would have had in flow — directly under the button. */
-/* Block flow, not flex: a flex container puts an out-of-flow child at its own
-   top-left corner regardless of the siblings, which lands the menu on top of
-   the button. In normal flow the menu's static position is after the button,
-   which is where it belongs. */
-nav.tabs .has-menu{display:block}
+   The menu used to be `position:fixed` with no offsets, to escape the strip's
+   `overflow-x:auto` clipping: with its offsets left alone the browser places a
+   fixed box at the position it would have had in flow. **That is the position
+   it would have had in flow, and the strip is `position:sticky`** — so the
+   moment a reader scrolled, the nav travelled with the viewport and the menu
+   stayed behind at the top of the document. On a long page it opened
+   somewhere far below the screen, which is exactly what it looked like: the
+   games appearing at the bottom of the page.
+
+   So the clipping went instead. The strip wraps rather than scrolls, nothing
+   clips, and the menu is absolutely positioned against its own item — which
+   moves *with* the sticky strip because it is inside it. */
+/* Positioned, so the menu below has something of its own to hang from, and
+   block flow rather than flex: a flex container puts an out-of-flow child at
+   its own top-left corner regardless of the siblings, which lands the menu on
+   top of the button. */
+nav.tabs .has-menu{display:block;position:relative}
 nav.tabs .games{
   appearance:none;background:none;border:0;border-bottom:2px solid transparent;
   font:inherit;font-size:13px;letter-spacing:.06em;cursor:pointer;
@@ -267,7 +277,9 @@ nav.tabs .has-menu:focus-within .games{border-bottom-color:var(--border)}
 nav.tabs .has-menu.on .games{color:var(--highlight);border-bottom-color:var(--highlight)}
 
 nav.tabs .menu{
-  position:fixed;display:none;min-width:210px;
+  /* Against the item, and directly under it. Absolute rather than fixed so it
+     follows the sticky strip; see the note above for what fixed did. */
+  position:absolute;top:100%;left:0;display:none;min-width:210px;
   background:#0d0d15;border:1px solid var(--border);border-top:0;
   border-radius:0 0 7px 7px;box-shadow:0 20px 34px -22px #000;
   padding:5px 0;z-index:30;
@@ -294,10 +306,23 @@ nav.tabs .menu .tag{
 }
 nav.tabs .menu .tag.full{color:var(--good);border-color:rgba(63,208,127,.4)}
 nav.tabs .menu .tag.soon{color:var(--dim)}
+/* The comparison at the foot of the menu is not a game, and should not read as
+   one. */
+nav.tabs .menu a.all{
+  border-top:1px solid var(--border);margin-top:4px;padding-top:11px;
+  color:var(--dim);font-size:12.5px;
+}
+nav.tabs .menu a.all:hover{color:var(--text)}
 
 @media (max-width:640px){
-  /* Wide enough to be tappable, and pinned to the left edge rather than
-     hanging off the side of a strip the reader may have scrolled. */
+  /* On a narrow screen the menu hangs from the *strip* rather than from the
+     item, and spans it. Against the item it would run off whichever edge the
+     item happens to be near — off the left when GAMES sits near the left, off
+     the right when the strip has wrapped and put it near the right — and a
+     dropdown that is half off the screen is worse than one that is plain.
+     `position:static` here hands the job to `nav.tabs`, which is sticky and
+     therefore a containing block, so `top:100%` is under the whole strip. */
+  nav.tabs .has-menu{position:static}
   nav.tabs .menu{left:8px;right:8px;min-width:0}
 }
 
@@ -614,6 +639,49 @@ table.status td.what{color:var(--text);font-weight:600}
 table.status td.note{color:var(--dim);font-size:13.5px}
 table.status tr.is-no td.what{color:var(--dim);font-weight:500}
 
+/* The capability matrix: one column per simulator, one row per thing the
+   program does something with.
+
+   A grid rather than a page of prose per game, because the question a reader
+   arrives with is comparative — "does it do X on mine" — and prose makes that
+   a search. The row label carries its own sentence underneath, so a cross is
+   never just a cross: what is withheld and why is the whole point of the
+   table, and a bare ✗ reads as a missing feature rather than as a measurement
+   the game does not publish. */
+table.matrix{width:100%;border-collapse:collapse}
+table.matrix th,table.matrix td{
+  border-bottom:1px solid var(--border);padding:11px 10px;vertical-align:top;
+}
+table.matrix thead th{
+  color:var(--dim);font-size:12px;letter-spacing:.07em;text-transform:uppercase;
+  font-weight:600;text-align:center;border-bottom:1px solid var(--border);
+  position:sticky;top:44px;background:var(--bg);z-index:1;
+}
+table.matrix thead th:first-child{text-align:left}
+table.matrix thead th a{border-bottom:0;color:var(--text)}
+table.matrix thead th a:hover{color:var(--highlight)}
+table.matrix tbody th{
+  text-align:left;font-weight:600;color:var(--text);font-size:14.5px;
+  /* Wide enough for the sentence under the label to be a paragraph rather
+     than a column of single words. */
+  width:46%;
+}
+table.matrix .why{display:block;font-weight:400;color:var(--dim);font-size:13px;margin-top:3px}
+table.matrix td.mark{text-align:center;font-size:16px;font-weight:700;width:1%;white-space:nowrap}
+table.matrix td.mark.yes{color:var(--good)}
+table.matrix td.mark.no{color:var(--bad)}
+table.matrix td.mark.wip{color:var(--warn)}
+table.matrix tbody tr:hover{background:#12121b}
+
+@media (max-width:720px){
+  /* The label's sentence is what goes, not the comparison: a reader on a
+     phone is here for the grid. The full sentence is on each game's own page. */
+  table.matrix .why{display:none}
+  table.matrix tbody th{width:auto;font-size:13.5px}
+  table.matrix th,table.matrix td{padding:9px 6px}
+  table.matrix thead th{font-size:10.5px;letter-spacing:.04em}
+}
+
 /* The key above such a table. */
 .legend{
   display:flex;flex-wrap:wrap;gap:16px;margin:0 0 14px;
@@ -880,7 +948,8 @@ footer .cols a:hover{color:var(--highlight)}
       <button class="games" type="button" aria-haspopup="true">GAMES</button>
       <span class="menu">
         <a href="https://proengineer.app/ac/">Assetto Corsa <span class="tag full">full support</span></a>
-        <a href="https://proengineer.app/acc/">Assetto Corsa Competizione <span class="tag soon">not yet</span></a>
+        <a href="https://proengineer.app/acc/">Assetto Corsa Competizione <span class="tag full">telemetry</span></a>
+        <a href="https://proengineer.app/games/" class="all">What each game reports</a>
       </span>
     </span>
     <a href="https://proengineer.app/features/">FEATURES</a>
@@ -957,8 +1026,9 @@ footer .cols a:hover{color:var(--highlight)}
     <p class="lede">
       A simulator is a folder under <code>core/src/games/</code> rather than conditionals
       through the middle of the engineer, so a second one is an addition and not a
-      rewrite. One is written. It is said that way on purpose: <b>not yet</b> rather than
-      <i>coming soon</i>.
+      rewrite. <b>Two are written.</b> Each says what it can and cannot measure, and the
+      program withholds the advice that rests on what it cannot — which is why the badges
+      here are three states and not two.
     </p>
     <div class="sims">
 <!--SIMS-->
@@ -967,10 +1037,10 @@ footer .cols a:hover{color:var(--highlight)}
         <p>Terminal dashboard, the race engineer, corner-by-corner analysis and a five-window panel inside the game through Custom Shaders Patch. Windows, Linux and Steam Deck.</p>
         <span class="go">Everything for AC</span>
       </a>
-      <a class="card pending" href="https://proengineer.app/acc/">
-        <h3><span class="k">▸</span> Assetto Corsa Competizione <span class="sim-badge soon">NOT YET</span></h3>
-        <p>The next one, and the groundwork for it is already in the program. What is finished, what is not, and what ACC will not have — CSP is an Assetto Corsa mod, so there is no in-game panel — is written down.</p>
-        <span class="go">The plan for ACC</span>
+      <a class="card" href="https://proengineer.app/acc/">
+        <h3><span class="k">▸</span> Assetto Corsa Competizione <span class="sim-badge live">TELEMETRY WORKS</span></h3>
+        <p>The terminal reads ACC: dashboard, tyres, brakes, fuel and lap analysis, measured off a real session rather than transcribed. No in-game panel — CSP is an Assetto Corsa mod — and the advice is still being checked against a stint. What works and what does not is written down.</p>
+        <span class="go">Where ACC stands</span>
       </a>
       <a class="card pending" href="https://proengineer.app/technical/#games">
         <h3><span class="k">▸</span> Your simulator <span class="sim-badge soon">NOT YET</span></h3>
