@@ -7,6 +7,26 @@ use std::sync::atomic::AtomicBool;
 
 pub static SHOW_REVIEW_BANNER: AtomicBool = AtomicBool::new(true);
 
+/// The launcher's rows, in the order they are drawn.
+///
+/// Named because they were numbers, in six places across two files: the menu
+/// itself, the two `match`es behind the information panel, the arrow keys, the
+/// Enter handler and the update recheck. Inserting a row meant renumbering all
+/// of them and being right every time, and being wrong meant Enter opening the
+/// documentation from the credits — which is not a compile error anywhere.
+pub const ROW_START: usize = 0;
+pub const ROW_SETTINGS: usize = 1;
+/// Which simulator this program is working with. See [`ROW_LAST`] for why the
+/// list is addressed this way at all.
+pub const ROW_GAME: usize = 2;
+pub const ROW_LANGUAGE: usize = 3;
+pub const ROW_DOCUMENTATION: usize = 4;
+pub const ROW_CREDITS: usize = 5;
+pub const ROW_UPDATES: usize = 6;
+pub const ROW_EXIT: usize = 7;
+/// The last row the selection can reach.
+pub const ROW_LAST: usize = ROW_EXIT;
+
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let block =
@@ -696,6 +716,10 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let menu_items = [
         format!("🖥️  {}", "START (TERMINAL TUI)".tr(is_ru)),
         format!("⚙️   {}", "SETTINGS".tr_lang(lang)),
+        // The game's own name, untranslated: it is what it calls itself. The
+        // short one, because this column is 36 cells wide — the panel beside
+        // it has the room to say it in full.
+        format!("🏁  {}: < {} >", "GAME".tr_lang(lang), app.game.short_name),
         match app.config.language {
             Language::English => "LANGUAGE: < ENGLISH >",
             Language::Russian => "ЯЗЫК: < РУССКИЙ >",
@@ -722,7 +746,7 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 Style::default().fg(Color::Gray)
             };
 
-            if i == 5
+            if i == ROW_UPDATES
                 && let UpdateStatus::UpdateAvailable = *update_status
             {
                 if is_selected {
@@ -758,6 +782,101 @@ fn render_menu(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     f.render_widget(list, area);
 }
 
+/// What choosing a game means, said before it is chosen rather than after.
+///
+/// Three things a driver has to be able to see here, because none of them is
+/// discoverable from anywhere else:
+///
+/// * **whether the game is up.** The row above is a choice, not a detection,
+///   so this is where detection still gets to speak.
+/// * **what this game can and cannot measure.** Competizione publishes no tyre
+///   wear and no tread temperatures, so the wear and camber advice go quiet —
+///   and advice going quiet with no explanation reads exactly like a broken
+///   feature.
+/// * **that setups may not exist here.** One game keeps them where this
+///   program can read them and the other does not.
+fn game_panel(app: &AppState) -> Vec<Line<'static>> {
+    let lang = &app.config.language;
+    let is_ru = *lang == Language::Russian;
+    let dim = Style::default().fg(Color::DarkGray);
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            app.game.name.to_string(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw(format!("{} ", "Connection Status:".tr_lang(lang))),
+            if app.is_game_running {
+                Span::styled(
+                    "DETECTED (READY TO START)".tr(is_ru),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled(
+                    "WAITING FOR SIMULATOR...".tr(is_ru),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::ITALIC),
+                )
+            },
+        ]),
+        Line::from(""),
+    ];
+
+    // What the advice will and will not be able to say, from the game's own
+    // capabilities rather than from a list written out by hand here — the
+    // whole point of the flags is that one place knows.
+    if let Some(backend) = app.game.backend() {
+        let measured = |yes: bool, what: &str| {
+            Line::from(vec![
+                Span::styled(
+                    if yes { "  ✔  " } else { "  —  " },
+                    Style::default().fg(if yes { Color::Green } else { Color::DarkGray }),
+                ),
+                Span::styled(
+                    what.tr_lang(lang).to_string(),
+                    if yes {
+                        Style::default().fg(Color::Gray)
+                    } else {
+                        dim
+                    },
+                ),
+            ])
+        };
+        lines.push(Line::from(Span::styled(
+            "This game reports:".tr_lang(lang).to_string(),
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        )));
+        lines.push(measured(backend.capabilities.tyre_wear, "Tyre wear"));
+        lines.push(measured(
+            backend.capabilities.tyre_edge_temps,
+            "Tread temperatures (camber advice)",
+        ));
+        // Where one game is blind the other is not, and this is the pair that
+        // shows it: Competizione trades tyre wear for brake wear.
+        lines.push(measured(backend.capabilities.brake_wear, "Brake pad wear"));
+        lines.push(measured(backend.capabilities.track_grip, "Track grip"));
+        lines.push(measured(backend.capabilities.lap_validity, "Track limits"));
+        lines.push(measured(backend.capabilities.sectors, "Sector times"));
+        lines.push(measured(backend.capabilities.setups, "Setups on disk"));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "Use LEFT / RIGHT arrows to choose the simulator."
+            .tr_lang(lang)
+            .to_string(),
+        dim,
+    )));
+    lines
+}
+
 fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = &app.ui_state.theme;
     let lang = &app.config.language;
@@ -765,13 +884,14 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let update_status = app.updater.status.lock().unwrap_or_else(|e| e.into_inner());
 
     let title = match app.launcher_selection {
-        0 => " INFORMATION ".tr_lang(lang).to_string(),
-        1 => "APP CONFIGURATION".tr_lang(lang).to_string(),
-        2 => "INTERFACE LANGUAGE".tr_lang(lang).to_string(),
-        3 => "USER MANUAL".tr_lang(lang).to_string(),
-        4 => "CREDITS & AUTHOR".tr_lang(lang).to_string(),
-        5 => "SYSTEM UPDATE".tr_lang(lang).to_string(),
-        6 => "SHUTDOWN".tr_lang(lang).to_string(),
+        ROW_START => " INFORMATION ".tr_lang(lang).to_string(),
+        ROW_SETTINGS => "APP CONFIGURATION".tr_lang(lang).to_string(),
+        ROW_GAME => "SIMULATOR".tr_lang(lang).to_string(),
+        ROW_LANGUAGE => "INTERFACE LANGUAGE".tr_lang(lang).to_string(),
+        ROW_DOCUMENTATION => "USER MANUAL".tr_lang(lang).to_string(),
+        ROW_CREDITS => "CREDITS & AUTHOR".tr_lang(lang).to_string(),
+        ROW_UPDATES => "SYSTEM UPDATE".tr_lang(lang).to_string(),
+        ROW_EXIT => "SHUTDOWN".tr_lang(lang).to_string(),
         _ => " INFORMATION ".tr_lang(lang).to_string(),
     };
 
@@ -789,7 +909,7 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let actual_running = app.is_game_running;
 
     let content = match app.launcher_selection {
-        0 => vec![
+        ROW_START => vec![
             Line::from(Span::styled(
                 "TERMINAL MODE (TUI)",
                 Style::default()
@@ -829,7 +949,7 @@ Make sure the game is running."
                 },
             ]),
         ],
-        1 => vec![
+        ROW_SETTINGS => vec![
             Line::from(Span::styled(
                 "APP CONFIGURATION".tr_lang(lang).to_string(),
                 Style::default()
@@ -839,7 +959,8 @@ Make sure the game is running."
             Line::from(""),
             Line::from("Press ENTER to open settings.".tr_lang(lang).to_string()),
         ],
-        2 => vec![
+        ROW_GAME => game_panel(app),
+        ROW_LANGUAGE => vec![
             Line::from(Span::styled(
                 "INTERFACE LANGUAGE".tr_lang(lang).to_string(),
                 Style::default()
@@ -853,7 +974,7 @@ Make sure the game is running."
                     .to_string(),
             ),
         ],
-        3 => vec![
+        ROW_DOCUMENTATION => vec![
             Line::from(Span::styled(
                 "USER MANUAL".tr_lang(lang).to_string(),
                 Style::default()
@@ -885,7 +1006,7 @@ Make sure the game is running."
                     .to_string(),
             ),
         ],
-        4 => vec![
+        ROW_CREDITS => vec![
             Line::from(Span::styled(
                 "CREDITS & AUTHOR".tr_lang(lang).to_string(),
                 Style::default()
@@ -913,7 +1034,7 @@ Make sure the game is running."
             Line::from(""),
             Line::from("© 2026 All Rights Reserved."),
         ],
-        5 => {
+        ROW_UPDATES => {
             let mut lines = vec![];
             if let UpdateStatus::Downloading(pct) = *update_status {
                 lines.push(Line::from(Span::styled(
@@ -1001,7 +1122,7 @@ Make sure the game is running."
             }
             lines
         }
-        6 => vec![
+        ROW_EXIT => vec![
             Line::from(Span::styled(
                 "SHUTDOWN".tr_lang(lang).to_string(),
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),

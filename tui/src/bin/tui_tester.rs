@@ -353,6 +353,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Launcher")?;
 
+    // 1b. The game selector, which is the one launcher row with something to
+    // say: what the chosen simulator reports and what it does not. Captured
+    // because it is also the only place a driver is told *why* the wear and
+    // camber advice go quiet on Competizione, and a picture of it is how that
+    // gets reviewed without a game.
+    app.launcher_selection = ac_tui::ui::launcher::ROW_GAME;
+    app.show_overlay_card = false;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Launcher_Game")?;
+    app.launcher_selection = ac_tui::ui::launcher::ROW_START;
+
     // 2. Main Running Stage (Live Populated Telemetry)
     app.stage = AppStage::Running;
 
@@ -372,6 +383,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.active_tab = *tab;
         terminal.draw(|f| renderer.render(f, &app))?;
         capture(&terminal, width, height, screenshot_dir, name)?;
+    }
+
+    // 2b. The same dashboard, on a game that measures a different set.
+    //
+    // Every screenshot above stands in for Assetto Corsa, which publishes
+    // everything — so none of them shows what the screens do when a game does
+    // not. Competizione publishes no tread temperature and no tyre wear and
+    // does publish what is left of the brakes, and each of those changes what
+    // a tyre reads on the dashboard. This is the picture that gets reviewed
+    // when somebody asks "what does it look like on ACC".
+    if let Some(reading) = app.reading.as_mut() {
+        reading.capabilities = ac_core::games::assetto_corsa_competizione::CAPABILITIES;
+        // What that game actually publishes, in place of what it does not:
+        // the core temperature and the pad thickness.
+        reading.car.tyre_core_temp_c = [88.0, 87.0, 91.0, 90.0];
+        reading.car.tyre_temp_inner_c = [0.0; 4];
+        reading.car.tyre_temp_middle_c = [0.0; 4];
+        reading.car.tyre_temp_outer_c = [0.0; 4];
+        reading.car.tyre_wear = [0.0; 4];
+        reading.car.camber_rad = [0.0; 4];
+        reading.car.brake_pad_mm = [21.4, 21.2, 23.8, 23.6];
+        reading.car.brake_disc_mm = [31.2, 31.1, 31.6, 31.5];
+        reading.session.surface_grip = 0.0;
+        reading.fixed.car_model = "lamborghini_huracan_gt3_evo".to_string();
+        reading.fixed.track = "Spa".to_string();
+    }
+    app.active_tab = AppTab::Dashboard;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Dashboard_ACC")?;
+    app.active_tab = AppTab::Strategy;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Strategy_ACC")?;
+
+    // Back to a game that measures everything, so the screenshots after this
+    // are Assetto Corsa's the way the ones before it are.
+    if let Some(reading) = app.reading.as_mut() {
+        reading.capabilities = Capabilities::all();
+        reading.car.tyre_temp_inner_c = [90.0, 88.0, 93.0, 91.0];
+        reading.car.tyre_temp_middle_c = [86.4, 85.2, 89.0, 87.8];
+        reading.car.tyre_temp_outer_c = [82.0, 81.0, 85.0, 84.0];
+        reading.car.tyre_wear = [96.5, 96.1, 94.8, 94.2];
+        reading.car.brake_pad_mm = [0.0; 4];
+        reading.car.brake_disc_mm = [0.0; 4];
+        reading.session.surface_grip = 0.98;
+        reading.fixed.car_model = "ks_ferrari_sf70h".to_string();
+        reading.fixed.track = "monza".to_string();
     }
 
     // 3. Setup_cloud

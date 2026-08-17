@@ -11,7 +11,24 @@ use tracing::{error, info};
 /// that quitting the app never feels hung.
 const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-use ac_core::games::assetto_corsa::paths::AC_APP_ID_NUMBER as GAME_ID;
+/// Which Proton prefix the bridge is started in.
+///
+/// It used to be Assetto Corsa's appid, written down here as a constant, which
+/// is the same as saying this program reads one game. A bridge started in the
+/// wrong prefix creates the mappings and the game never writes into them, and
+/// every symptom of that — no telemetry, a panel waiting forever, a launcher
+/// stuck on "waiting for the simulator" — looks like something else entirely.
+///
+/// It cannot be worked out from what is running, either: the bridge is what
+/// *makes* telemetry reachable, so waiting for telemetry would be a circle,
+/// and the bridge has to exist before the game asks for the mappings — which
+/// is before there is a process to detect. So it is the game the driver chose
+/// on the launcher, and choosing another one restarts the bridge.
+pub fn prefix_of(game: &ac_core::games::Game) -> u32 {
+    game.backend()
+        .map(|backend| backend.app_id)
+        .unwrap_or_default()
+}
 
 /// This is a helper struct to start a `Shared Memory Bridge` (`shm-bridge.exe`) process in Proton.
 ///
@@ -43,8 +60,14 @@ fn bridge_path() -> std::path::PathBuf {
 }
 
 impl SharedMemoryBridge {
-    pub async fn start() -> Result<Self, std::io::Error> {
-        info!("[shm-bridge] Starting memory bridge process...");
+    /// Start the bridge inside one game's Proton prefix.
+    ///
+    /// `app_id` is Steam's number for the game the driver chose — see
+    /// [`prefix_of`]. It is an argument rather than a constant because the two
+    /// games this build reads publish into two different prefixes, and the
+    /// bridge can only be in one of them.
+    pub async fn start(app_id: u32) -> Result<Self, std::io::Error> {
+        info!("[shm-bridge] Starting memory bridge process in prefix {app_id}...");
         let (tx, rx) = tokio::sync::oneshot::channel();
         let pwd = match bridge_path().to_str() {
             Some(pwd) => pwd.to_string(),
@@ -67,7 +90,7 @@ impl SharedMemoryBridge {
             }
         } else {
             let mut c = Command::new(proton_cmd);
-            c.args(["--appid", &GAME_ID.to_string(), &pwd]);
+            c.args(["--appid", &app_id.to_string(), &pwd]);
             c
         };
 

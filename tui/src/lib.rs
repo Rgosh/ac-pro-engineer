@@ -224,9 +224,12 @@ fn scan_installed_cars(game: &Game, configured: Option<&std::path::Path>) -> Con
 pub struct AppState {
     /// Which game this run is reading, out of the registry.
     ///
-    /// One playable entry today. It is a field rather than a call so that the
-    /// day there are two, the choice is made once at startup instead of being
-    /// re-decided by every screen that needs to know.
+    /// The driver's choice, made on the launcher and kept in the
+    /// configuration — not a guess from what is running. A field rather than
+    /// a call so that it is decided in one place instead of being re-decided
+    /// by every screen that needs to know, and changed only through
+    /// [`select_game`](Self::select_game), which rebuilds everything hanging
+    /// off it.
     pub game: &'static Game,
     /// The live connection to it, behind the trait rather than in front of it.
     ///
@@ -377,11 +380,13 @@ impl AppState {
             let _res = config.save();
         }
 
-        // Which game this build reads, decided once. Everything below asks the
-        // entry rather than naming a simulator. With one playable game this is
-        // that game whether or not it is running; with two it is whichever is
-        // up, and nothing else changes.
-        let game = ac_core::games::registry::game_to_read();
+        // Which game this build reads: the one the driver chose, out of the
+        // registry, so everything below asks the entry rather than naming a
+        // simulator. Not "whichever is running" — two games publish under the
+        // same three page names, and a confident wrong answer there costs a
+        // bridge in the wrong Proton prefix and an engineer running the other
+        // game's thresholds.
+        let game = ac_core::games::registry::chosen(&config.game);
 
         let setup_manager = SetupManager::new(game.backend().and_then(|b| b.setups.as_ref()));
         setup_manager.set_documents_override(&config.ac_documents_path);
@@ -834,6 +839,43 @@ impl AppState {
             Err(error) => format!("failed: {error}"),
         };
         self.refresh_overlay_report();
+    }
+
+    /// Work with another game from now on.
+    ///
+    /// Everything that was built from the old entry is rebuilt or dropped:
+    /// the live connection, because it is attached to the other game's pages
+    /// and would keep reading them; the process watcher, because it is
+    /// looking for the other game's executable; the setup store, because the
+    /// two games keep setups in different places and one of them keeps none
+    /// this program can read.
+    ///
+    /// The reading goes too. It is the last frame of a car in another
+    /// simulator, and leaving it on screen under a new game's name is exactly
+    /// the kind of quietly wrong that this project spends its tests on.
+    pub fn select_game(&mut self, game: &'static Game) {
+        if game.id == self.game.id {
+            return;
+        }
+        info!("Working with {} from now on", game.name);
+
+        self.game = game;
+        self.config.game = game.id.to_string();
+        let _res = self.config.save();
+
+        self.source = None;
+        self.reading = None;
+        self.is_connected = false;
+        self.is_game_running = false;
+        self.game_watcher = match game.backend() {
+            Some(backend) => ProcessWatcher::new(backend.processes)
+                .corroborated_by(backend.telemetry_is_reachable),
+            None => ProcessWatcher::new(&[]),
+        };
+
+        self.setup_manager = SetupManager::new(game.backend().and_then(|b| b.setups.as_ref()));
+        self.setup_manager
+            .set_documents_override(&self.config.ac_documents_path);
     }
 
     pub fn enable_demo_simulation(&mut self) {
@@ -1439,9 +1481,7 @@ impl AppState {
         frame.tyre_wear_percent = car.tyre_wear;
         frame.brake_temp_c = car.brake_temp_c;
         for i in 0..4 {
-            frame.tyre_temp_c[i] =
-                (car.tyre_temp_inner_c[i] + car.tyre_temp_middle_c[i] + car.tyre_temp_outer_c[i])
-                    / 3.0;
+            frame.tyre_temp_c[i] = car.avg_tyre_temp_c(i);
         }
 
         frame.last_lap_ms = session.last_lap_ms;

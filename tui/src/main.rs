@@ -13,6 +13,7 @@ use ac_tui::keys;
 #[cfg(target_os = "linux")]
 use ac_tui::platform;
 use ac_tui::ui::UIRenderer;
+use ac_tui::ui::launcher;
 use ac_tui::{AppLogLevel, AppStage, AppState, AppTab, SafeLock, setup_logging};
 use clap::Parser;
 use crossterm::{
@@ -236,8 +237,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // wanting to review saved laps offline could not start it at all. The
     // launcher already has a "WAITING FOR SIMULATOR..." state for exactly
     // this situation.
+    // Which prefix, and therefore which game: the one that was chosen, read
+    // from the configuration before the application state exists, because the
+    // bridge has to be up before the game asks for the mappings.
     #[cfg(target_os = "linux")]
-    let _mem_bridge = match platform::linux::SharedMemoryBridge::start().await {
+    let mut bridge_prefix = platform::linux::prefix_of(ac_core::games::registry::chosen(
+        &ac_core::config::AppConfig::load().unwrap_or_default().game,
+    ));
+    #[cfg(target_os = "linux")]
+    let mut _mem_bridge = match platform::linux::SharedMemoryBridge::start(bridge_prefix).await {
         Ok(bridge) => Some(bridge),
         Err(error) => {
             eprintln!(
@@ -315,8 +323,30 @@ async fn main() -> Result<(), anyhow::Error> {
             // matters, so it is where a check that failed at startup gets
             // another go. Debounced inside the updater, so holding the
             // selection here does not hammer the API.
-            if app.launcher_selection == 5 {
+            if app.launcher_selection == launcher::ROW_UPDATES {
                 app.updater.recheck_if_stale();
+            }
+
+            // A bridge lives inside one game's Proton prefix and cannot be
+            // told to move, so choosing another game means stopping it and
+            // starting a new one. The old one is dropped first, deliberately:
+            // both games mirror into the same `/dev/shm` files, and two
+            // bridges owning those names at once is the state nothing else
+            // here can diagnose.
+            #[cfg(target_os = "linux")]
+            {
+                let wanted = platform::linux::prefix_of(app.game);
+                if wanted != bridge_prefix {
+                    _mem_bridge = None;
+                    bridge_prefix = wanted;
+                    _mem_bridge = match platform::linux::SharedMemoryBridge::start(wanted).await {
+                        Ok(bridge) => Some(bridge),
+                        Err(error) => {
+                            error!(error = ?error, "Could not restart the bridge for the chosen game");
+                            None
+                        }
+                    };
+                }
             }
 
             terminal.draw(|f| renderer.render(f, &app))?;
@@ -414,30 +444,38 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
                     }
                     KeyCode::Down => {
-                        if app.launcher_selection < 6 {
+                        if app.launcher_selection < launcher::ROW_LAST {
                             app.launcher_selection += 1;
                         }
                     }
-                    KeyCode::Left => {
-                        if app.launcher_selection == 2 {
-                            app.config.language = match app.config.language {
-                                Language::English => Language::Russian,
-                                Language::Russian => Language::English,
-                            };
-                            let _res = app.config.save();
-                        } else if app.launcher_selection == 5 {
-                            app.updater.prev_version();
-                        }
-                    }
-                    KeyCode::Right => {
-                        if app.launcher_selection == 2 {
-                            app.config.language = match app.config.language {
-                                Language::English => Language::Russian,
-                                Language::Russian => Language::English,
-                            };
-                            let _res = app.config.save();
-                        } else if app.launcher_selection == 5 {
-                            app.updater.next_version();
+                    KeyCode::Left | KeyCode::Right => {
+                        let forwards = key.code == KeyCode::Right;
+                        match app.launcher_selection {
+                            // Which simulator this program is working with.
+                            // Chosen here and nowhere else, and it decides
+                            // more than the reading: on Linux the bridge has
+                            // to run inside *this* game's Proton prefix, which
+                            // is why the loop below watches for it changing.
+                            launcher::ROW_GAME => {
+                                let game =
+                                    ac_core::games::registry::next_to(&app.config.game, forwards);
+                                app.select_game(game);
+                            }
+                            launcher::ROW_LANGUAGE => {
+                                app.config.language = match app.config.language {
+                                    Language::English => Language::Russian,
+                                    Language::Russian => Language::English,
+                                };
+                                let _res = app.config.save();
+                            }
+                            launcher::ROW_UPDATES => {
+                                if forwards {
+                                    app.updater.next_version();
+                                } else {
+                                    app.updater.prev_version();
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     KeyCode::Char('o') | KeyCode::Char('O') => {
@@ -463,21 +501,28 @@ async fn main() -> Result<(), anyhow::Error> {
                         let _res = app.config.save();
                     }
                     KeyCode::Enter => match app.launcher_selection {
-                        0 => {
+                        launcher::ROW_START => {
                             app.stage = AppStage::Running;
                         }
-                        1 => {
+                        launcher::ROW_SETTINGS => {
                             app.stage = AppStage::Running;
                             app.active_tab = AppTab::Settings;
                         }
-                        2 => {
+                        // Enter is the same as Right on the two rows that are
+                        // a choice rather than a destination: a driver who
+                        // presses it on one of them means "change this".
+                        launcher::ROW_GAME => {
+                            let game = ac_core::games::registry::next_to(&app.config.game, true);
+                            app.select_game(game);
+                        }
+                        launcher::ROW_LANGUAGE => {
                             app.config.language = match app.config.language {
                                 Language::English => Language::Russian,
                                 Language::Russian => Language::English,
                             };
                             let _res = app.config.save();
                         }
-                        5 => {
+                        launcher::ROW_UPDATES => {
                             let current_status = app.updater.status.safe_lock().clone();
                             match current_status {
                                 UpdateStatus::Downloaded(new_file) => {
@@ -495,7 +540,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
                         }
-                        6 => break 'outer,
+                        launcher::ROW_EXIT => break 'outer,
                         _ => {}
                     },
                     KeyCode::Char('q')

@@ -106,6 +106,25 @@ pub struct AppConfig {
     /// Under Proton this is inside the prefix, not the host's ~/Documents.
     #[serde(default)]
     pub ac_documents_path: PathBuf,
+
+    /// Which simulator this program is working with, as a
+    /// [`games::GameId`](crate::games::GameId).
+    ///
+    /// **Chosen, not detected.** Two games publish under the same three
+    /// shared-memory names and mirror into the same `/dev/shm` files on
+    /// Linux, so "which game is running" is a question with a confident wrong
+    /// answer — and every consequence of getting it wrong lands somewhere
+    /// expensive: the bridge started in the other game's Proton prefix, the
+    /// engineer's thresholds tuned for the other tyre model, a stint analysed
+    /// against capabilities the running game does not have.
+    ///
+    /// So it is a setting on the launcher, and it is the setting that decides
+    /// which prefix the bridge runs in as well. Empty, or naming a game this
+    /// build cannot read, means the default entry in `games::registry` —
+    /// which is what every configuration written before this field existed
+    /// says.
+    #[serde(default)]
+    pub game: String,
 }
 
 // Serde default helpers
@@ -584,6 +603,10 @@ impl Default for AppConfig {
             data_path: PathBuf::from("./data"),
             ac_install_path: PathBuf::new(),
             ac_documents_path: PathBuf::new(),
+            // Empty rather than the default game's id: it means "whatever
+            // this build calls the default", which survives the default
+            // changing and is what an old configuration already says.
+            game: String::new(),
             overlay: OverlayConfig::default(),
         }
     }
