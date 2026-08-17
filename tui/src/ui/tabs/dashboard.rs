@@ -418,17 +418,65 @@ fn render_quick_info_vertical(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     render_central_panel(f, area, app);
 }
 
+/// Brake pad thickness on the same scale the tyre-wear colours speak.
+///
+/// They run from the driver's own critical threshold to a fresh tyre, not from
+/// zero — 85 % is "change it" by default — so millimetres mapped onto a plain
+/// percentage would show a pad with two thirds of its life left as spent.
+pub fn pad_on_the_wear_scale(app: &AppState, pad_mm: f32) -> f32 {
+    /// A GT3 pad starts around here.
+    const NEW_MM: f32 = 29.0;
+    /// ...and this is a stop rather than a plan. Same numbers the engineer's
+    /// brake-wear rule uses.
+    const SPENT_MM: f32 = 8.0;
+
+    let critical = app.config.alerts.wear_critical.clamp(0.0, 99.0);
+    let left = ((pad_mm - SPENT_MM) / (NEW_MM - SPENT_MM)).clamp(0.0, 1.0);
+    critical + left * (100.0 - critical)
+}
+
 fn render_tyre_widget(f: &mut Frame<'_>, area: Rect, idx: usize, app: &AppState, label: &str) {
     if let Some(data) = app.car() {
         let temp = data.avg_tyre_temp_c(idx);
         let press = data.tyre_pressure_psi[idx];
-        let wear = data.tyre_wear[idx];
 
         let block = Block::default().borders(Borders::ALL).title(label);
         let inner = block.inner(area);
         f.render_widget(block, area);
 
         let fmt = app.config.formatter();
+        // The third line is whichever consumable the game measures. It was
+        // always tyre wear, which Competizione does not publish — so all four
+        // corners drew "0%" in red, a set with nothing left, on a car that had
+        // just gone out. That game measures what is left of the brake pad
+        // instead, and for a GT3 stint that is the number that decides the
+        // race.
+        let measures = app
+            .reading
+            .as_ref()
+            .map(|reading| reading.capabilities)
+            .unwrap_or_else(ac_core::games::Capabilities::all);
+        let third_line = if measures.tyre_wear {
+            let wear = data.tyre_wear[idx];
+            Span::styled(
+                format!("{wear:.0}%"),
+                Style::default().fg(get_wear_color(wear)),
+            )
+        } else if measures.brake_wear {
+            let pad = data.brake_pad_mm[idx];
+            Span::styled(
+                format!("{pad:.1}mm"),
+                // Onto the tyre scale's *usable band* rather than onto 0..100:
+                // the wear colours run from the driver's critical threshold to
+                // a fresh tyre, so a raw percentage would paint a healthy set
+                // of pads red at 20 mm. A GT3 pad starts near 29 mm and is a
+                // stop below 8.
+                Style::default().fg(get_wear_color(pad_on_the_wear_scale(app, pad))),
+            )
+        } else {
+            Span::styled("—", Style::default().fg(Color::DarkGray))
+        };
+
         let text = vec![
             Line::from(Span::styled(
                 fmt.format_temp(temp),
@@ -438,10 +486,7 @@ fn render_tyre_widget(f: &mut Frame<'_>, area: Rect, idx: usize, app: &AppState,
                 fmt.format_pressure(press),
                 Style::default().fg(get_pressure_color(press)),
             )),
-            Line::from(Span::styled(
-                format!("{:.0}%", wear),
-                Style::default().fg(get_wear_color(wear)),
-            )),
+            Line::from(third_line),
         ];
         f.render_widget(Paragraph::new(text).alignment(Alignment::Center), inner);
     }

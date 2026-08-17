@@ -503,9 +503,7 @@ impl TelemetryAnalyzer {
                 if p.brake_temp_c[i] > max_brake_temp[i] {
                     max_brake_temp[i] = p.brake_temp_c[i];
                 }
-                let t_avg =
-                    (p.tyre_temp_inner_c[i] + p.tyre_temp_middle_c[i] + p.tyre_temp_outer_c[i])
-                        / 3.0;
+                let t_avg = p.avg_tyre_temp_c(i);
                 sum_tyre_temp[i] += t_avg;
                 sum_susp_travel[i] += p.suspension_travel[i];
 
@@ -778,7 +776,17 @@ impl TelemetryAnalyzer {
             lap_number,
             lap_time_ms,
             sectors,
-            valid: true,
+            // A lap is invalid if the game said so at any point during it, not
+            // only at the flag: a game that reports track limits clears the
+            // flag when they are exceeded and leaves it clear for the rest of
+            // the lap, and a reading taken after the line would miss it.
+            //
+            // A game that never says — Assetto Corsa — leaves `lap_is_valid`
+            // true on every sample, so this is `true` there exactly as it was
+            // before. That is not a claim the lap was clean; it is the absence
+            // of anything saying it was not, which is what
+            // `Capabilities::lap_validity` distinguishes.
+            valid: session_log.iter().all(|s| s.lap_is_valid),
             car_model: car_name,
             track_name,
             track_length_m: self.track_length_m,

@@ -606,6 +606,12 @@ impl Engineer {
         if self.capabilities.tyre_wear {
             self.analyze_tyre_wear(car, &mut recommendations);
         }
+        // The other half of the same trade. Competizione publishes no tyre
+        // wear and does publish what is left of the brakes; Assetto Corsa is
+        // the other way round. Neither game gets the other's rule.
+        if self.capabilities.brake_wear {
+            self.analyze_brake_wear(car, &mut recommendations);
+        }
         self.analyze_suspension(car, &mut recommendations);
         self.analyze_brakes(car, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
@@ -984,7 +990,17 @@ impl Engineer {
             (pressure_min + pressure_max) / 2.0
         };
 
-        let grip_compensation = (1.0 - session.surface_grip.clamp(0.80, 1.0)) * 1.5;
+        // A green track needs a little more pressure to reach the same
+        // working range, and this is where that is added. It is gated,
+        // because a game that publishes no grip figure leaves zero — which
+        // clamps to 0.80 and adds the full 0.3 psi to the target on every lap
+        // of every session, for a condition nobody measured. Competizione is
+        // that game: it says how the track *is* by name instead.
+        let grip_compensation = if self.capabilities.track_grip {
+            (1.0 - session.surface_grip.clamp(0.80, 1.0)) * 1.5
+        } else {
+            0.0
+        };
         let optimal_pressure = base_optimal + grip_compensation;
 
         let mut low: Vec<usize> = Vec::new();
@@ -1593,6 +1609,148 @@ impl Engineer {
         });
     }
 
+    /// How much brake is left, on a game that measures it.
+    ///
+    /// This is Competizione's answer to tyre wear, which it does not publish:
+    /// over a GT3 stint the pads are the consumable that decides the race, and
+    /// a driver who has to stop for pads and does not know it loses far more
+    /// than a set of tyres.
+    ///
+    /// **The thresholds are millimetres and they are the honest kind of
+    /// approximate.** A GT3 pad in ACC starts around 29 mm and a disc around
+    /// 32; teams change pads long before there is nothing left, and the disc
+    /// has a minimum well above zero. So the warning is set where a stop
+    /// becomes worth planning rather than where the part fails, and the
+    /// critical one where it stops being a plan. Both are the first thing to
+    /// check against a real stint — see `docs/plan-acc.md` §10 — and neither
+    /// is invented from nothing: they are the numbers the game's own dash
+    /// treats as low.
+    fn analyze_brake_wear(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
+        /// Pad thickness, in mm, at which a stop is worth planning.
+        const PAD_WARNING_MM: f32 = 12.0;
+        /// ...and at which it stops being a plan.
+        const PAD_CRITICAL_MM: f32 = 8.0;
+        /// Discs wear far more slowly and from a much narrower range.
+        const DISC_WARNING_MM: f32 = 29.0;
+        const DISC_CRITICAL_MM: f32 = 27.5;
+
+        let ru = self.is_ru();
+
+        // The same guard the tyre-wear rule needs, for the same reason: a
+        // session that has not published yet reads as four corners with no
+        // brakes left, which is a CRITICAL line at the moment a driver leaves
+        // the pits and the fastest way to be ignored for the rest of the race.
+        if car.brake_pad_mm.iter().all(|mm| *mm <= 0.0) {
+            return;
+        }
+
+        let mut low: Vec<usize> = Vec::new();
+        let mut critical: Vec<usize> = Vec::new();
+        for (i, pad) in car.brake_pad_mm.iter().copied().enumerate() {
+            let is_low = pad < PAD_WARNING_MM;
+            if !self.check_hysteresis(&format!("pad_{i}"), is_low) || !is_low {
+                continue;
+            }
+            if pad < PAD_CRITICAL_MM {
+                critical.push(i);
+            } else {
+                low.push(i);
+            }
+        }
+
+        // The disc is a separate part with a separate life, and a car can
+        // easily be fine on one and not the other.
+        let thin_discs: Vec<usize> = (0..4)
+            .filter(|i| {
+                let thin = car.brake_disc_mm[*i] > 0.0 && car.brake_disc_mm[*i] < DISC_WARNING_MM;
+                self.check_hysteresis(&format!("disc_{i}"), thin) && thin
+            })
+            .collect();
+
+        let mut push = |corners: &[usize], severity: Severity, disc: bool| {
+            if corners.is_empty() {
+                return;
+            }
+            let measure = |i: &usize| {
+                if disc {
+                    car.brake_disc_mm[*i]
+                } else {
+                    car.brake_pad_mm[*i]
+                }
+            };
+            let lowest = corners.iter().map(measure).fold(f32::MAX, f32::min);
+            let floor = if disc {
+                DISC_CRITICAL_MM
+            } else {
+                PAD_CRITICAL_MM
+            };
+            let where_ = Self::corner_phrase(corners, ru);
+            let where_low = Self::corner_phrase_mid(corners, ru);
+            let is_critical = severity == Severity::Critical;
+            let what = if disc {
+                "disc thin".tr(ru)
+            } else if is_critical {
+                "PADS DONE".tr(ru)
+            } else {
+                "pads low".tr(ru)
+            };
+
+            recs.push(Recommendation {
+                component: "Brakes".tr(ru).to_string(),
+                category: "Wear".tr(ru).to_string(),
+                severity,
+                message: format!("{where_} {what}: {lowest:.1} mm"),
+                action: if is_critical {
+                    "Box".tr(ru).to_string()
+                } else {
+                    "Plan a stop".tr(ru).to_string()
+                },
+                parameters: corners
+                    .iter()
+                    .map(|i| Parameter {
+                        name: format!("{} {}", CORNER_NAMES[*i], if disc { "disc" } else { "pad" }),
+                        current: measure(i),
+                        target: floor,
+                        unit: "mm".to_string(),
+                    })
+                    .collect(),
+                confidence: 0.9,
+                chain: Some(Chain {
+                    cause: "braking energy is worn off the friction material, and there \
+                            is a finite amount of it"
+                        .tr(ru)
+                        .to_string(),
+                    effect: format!("{where_} {lowest:.1} mm"),
+                    // Millimetres mean nothing to a driver deciding whether to
+                    // stop; how fast they are going does. Two laps apart is
+                    // the measurement that answers it, and it is one the
+                    // driver can take without any tool but this screen.
+                    confirm: tr_fmt(
+                        "the same figure on {0} two laps from now: below {1} mm it is a stop \
+                         rather than a plan",
+                        ru,
+                        &[&where_low, &format!("{floor:.0}")],
+                    ),
+                    // How far below the warning each corner is, rather than
+                    // the thickness itself: four pads at 11 mm agree trivially
+                    // on the raw number and say nothing about spread.
+                    evidence: crate::confidence::Evidence::from_values(corners.iter().map(|i| {
+                        measure(i)
+                            - if disc {
+                                DISC_WARNING_MM
+                            } else {
+                                PAD_WARNING_MM
+                            }
+                    })),
+                }),
+            });
+        };
+
+        push(&critical, Severity::Critical, false);
+        push(&low, Severity::Warning, false);
+        push(&thin_discs, Severity::Warning, true);
+    }
+
     fn analyze_brake_bias(&self, setup: Option<&CarSetup>, recs: &mut Vec<Recommendation>) {
         let ru = self.is_ru();
         let total_lockups = self.stats.lockup_frames_front + self.stats.lockup_frames_rear;
@@ -1951,6 +2109,14 @@ mod tests {
             "brake_temp_1",
             "brake_temp_2",
             "brake_temp_3",
+            "pad_0",
+            "pad_1",
+            "pad_2",
+            "pad_3",
+            "disc_0",
+            "disc_1",
+            "disc_2",
+            "disc_3",
         ] {
             engineer.alert_timers.insert(key.to_string(), (aged, now));
         }
@@ -2203,6 +2369,102 @@ mod tests {
             assert!(
                 said.iter().any(|c| c == "Brakes/Overheat"),
                 "the brakes are measured and still cooking: {said:?}"
+            );
+        }
+
+        /// Brake wear is the trade Competizione makes: no tyre wear, and what
+        /// is left of the pads instead. Neither game gets the other's rule.
+        #[test]
+        fn brake_wear_is_reported_only_by_a_game_that_measures_it() {
+            let config = AppConfig::default();
+            let mut car = a_car_in_trouble();
+            car.brake_pad_mm = [7.0; 4];
+            car.brake_disc_mm = [31.0; 4];
+
+            let mut measures_it = Engineer::new(&config);
+            measures_it.update_capabilities(Capabilities::all());
+            let said = advice_about(&mut measures_it, &car);
+            assert!(
+                said.iter().any(|c| c == "Brakes/Wear"),
+                "seven millimetres of pad is a stop: {said:?}"
+            );
+
+            let mut does_not = Engineer::new(&config);
+            does_not.update_capabilities(Capabilities {
+                brake_wear: false,
+                ..Capabilities::all()
+            });
+            let said = advice_about(&mut does_not, &car);
+            assert!(!said.iter().any(|c| c == "Brakes/Wear"), "{said:?}");
+            assert!(
+                said.iter().any(|c| c == "Brakes/Overheat"),
+                "only the wear flag was taken away: {said:?}"
+            );
+        }
+
+        /// The same guard tyre wear needs, for the same reason: a session that
+        /// has not published yet reads as a car with no brakes left, and four
+        /// CRITICAL lines at the moment somebody leaves the pits is how an
+        /// engineer gets ignored for the rest of the race.
+        #[test]
+        fn brakes_nobody_has_measured_are_not_worn_out() {
+            let config = AppConfig::default();
+            let car = a_car_in_trouble();
+            assert_eq!(car.brake_pad_mm, [0.0; 4], "nothing published");
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities::all());
+            let said = advice_about(&mut engineer, &car);
+            assert!(!said.iter().any(|c| c == "Brakes/Wear"), "{said:?}");
+        }
+
+        /// A game that publishes no track grip must not have one invented for
+        /// it. The pressure target picks up a green-track allowance from
+        /// `surface_grip`, and an unpublished zero clamps to the greenest
+        /// track there is — so the allowance is added on every lap of every
+        /// session, and the driver is told to run pressures nobody asked for.
+        #[test]
+        fn an_unmeasured_track_grip_adds_nothing_to_the_pressure_target() {
+            let config = AppConfig::default();
+            // Under the target either way, so the rule fires in both runs and
+            // the difference is in the number it names.
+            let car = Car {
+                speed_kmh: 180.0,
+                tyre_pressure_psi: [20.0; 4],
+                ..Default::default()
+            };
+            // Nothing published: zero, which is what a game that does not
+            // measure it leaves behind.
+            let session = Session::default();
+
+            let target_of = |capabilities: Capabilities| {
+                let mut engineer = Engineer::new(&config);
+                engineer.update_capabilities(capabilities);
+                age_the_alerts(&mut engineer);
+                drive(&mut engineer, &car, 120);
+                age_the_alerts(&mut engineer);
+                engineer
+                    .analyze_live(&car, &session, None)
+                    .into_iter()
+                    .find(|rec| rec.category.ends_with("Pressure"))
+                    .and_then(|rec| rec.parameters.first().map(|p| p.target))
+            };
+
+            let believed = target_of(Capabilities::all()).expect("a pressure verdict");
+            let honest = target_of(Capabilities {
+                track_grip: false,
+                ..Capabilities::all()
+            })
+            .expect("a pressure verdict");
+
+            assert!(
+                believed > honest,
+                "the green-track allowance was added for a grip figure nobody \
+                 published: {believed} against {honest}"
+            );
+            assert!(
+                (honest - config.target_tyre_pressure).abs() < 0.01,
+                "with no grip measured the target is the driver's own: {honest}"
             );
         }
 

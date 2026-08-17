@@ -263,13 +263,40 @@ fn render_tyres_strategy(
     let lang = &app.config.language;
     let is_ru = *lang == ac_core::config::Language::Russian;
 
+    // What this panel projects depends on what the game measures. Competizione
+    // publishes no tyre wear, so all four rows read "0.0%" in red and the bars
+    // drew empty — a set with nothing left, for a game that never said. It
+    // publishes what is left of the brake pads instead, which over a GT3 stint
+    // is the consumable that actually decides the race.
+    let measures = app
+        .reading
+        .as_ref()
+        .map(|reading| reading.capabilities)
+        .unwrap_or_else(ac_core::games::Capabilities::all);
+    let brakes_instead = !measures.tyre_wear && measures.brake_wear;
+
     let block = Block::default()
-        .title("Tyre Life Predictor".tr(is_ru))
+        .title(if brakes_instead {
+            "Brake Life".tr(is_ru)
+        } else {
+            "Tyre Life Predictor".tr(is_ru)
+        })
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
+
+    // Neither measured: say so once rather than drawing four zeros.
+    if !measures.tyre_wear && !measures.brake_wear {
+        f.render_widget(
+            Paragraph::new("This game does not report wear".tr(is_ru).to_string())
+                .style(Style::default().fg(Color::DarkGray))
+                .block(Block::default().padding(Padding::new(1, 1, 1, 0))),
+            inner,
+        );
+        return;
+    }
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -291,8 +318,25 @@ fn render_tyres_strategy(
             break;
         };
 
-        let wear = phys.tyre_wear[i];
-        let laps_rem = app.engineer.stats.tyre_laps_remaining[i];
+        // On a game that measures the pads and not the tyres, the same four
+        // rows carry the same shape of number: how much of the consumable is
+        // left, scaled between "finished" and "new".
+        //
+        // Onto the *driver's own* scale rather than a raw percentage — the
+        // tyre band runs from their critical threshold (85 % by default) to a
+        // fresh tyre, so a pad mapped onto 0..100 would land under the
+        // threshold at 20 mm and draw a healthy set of pads in red with an
+        // empty bar.
+        let (wear, laps_rem) = if brakes_instead {
+            // A GT3 pad starts near 29 mm and is a stop below 8. The
+            // laps-remaining projection belongs to the tyre model and has no
+            // counterpart here, so it stays "—" rather than being invented.
+            let pad = phys.brake_pad_mm[i];
+            let left = ((pad - 8.0) / 21.0).clamp(0.0, 1.0);
+            (critical + left * (100.0 - critical), -1.0)
+        } else {
+            (phys.tyre_wear[i], app.engineer.stats.tyre_laps_remaining[i])
+        };
 
         // "Calc..." was a sentence cut in half, and it appeared for a whole
         // stint — the projection needs a completed lap before it means
@@ -343,7 +387,17 @@ fn render_tyres_strategy(
                     format!("{name} "),
                     Style::default().fg(app.ui_state.get_color(&theme.text)),
                 ),
-                Span::styled(format!("{wear:.1}%"), Style::default().fg(color)),
+                // Millimetres where the game measures a pad, per cent where it
+                // measures a tyre: the same row, and never the wrong unit on
+                // the wrong quantity.
+                Span::styled(
+                    if brakes_instead {
+                        format!("{:.1}mm", phys.brake_pad_mm[i])
+                    } else {
+                        format!("{wear:.1}%")
+                    },
+                    Style::default().fg(color),
+                ),
             ])),
             columns[0],
         );
@@ -388,16 +442,33 @@ fn render_environment(
     f.render_widget(block, area);
 
     let fmt = app.config.formatter();
+
+    // A game that does not publish grip leaves zero here, and "0.0%" in red is
+    // not a missing number — it reads as an ice rink. Competizione is that
+    // game: it reports how the track *is* by name instead, and turning that
+    // into a percentage would be inventing the measurement this row exists to
+    // show.
+    let grip_measured = app
+        .reading
+        .as_ref()
+        .is_none_or(|reading| reading.capabilities.track_grip);
+    let grip_cell = if grip_measured {
+        Cell::from(format!("{:.1}%", gfx.surface_grip * 100.0)).style(Style::default().fg(
+            if gfx.surface_grip > 0.95 {
+                Color::Green
+            } else {
+                Color::Red
+            },
+        ))
+    } else {
+        Cell::from("not measured".tr_lang(lang).to_string())
+            .style(Style::default().fg(Color::DarkGray))
+    };
+
     let rows = vec![
         Row::new(vec![
             Cell::from("Track Grip".tr_lang(lang).to_string()),
-            Cell::from(format!("{:.1}%", gfx.surface_grip * 100.0)).style(Style::default().fg(
-                if gfx.surface_grip > 0.95 {
-                    Color::Green
-                } else {
-                    Color::Red
-                },
-            )),
+            grip_cell,
         ]),
         Row::new(vec![
             Cell::from("Air Temp".tr_lang(lang).to_string()),

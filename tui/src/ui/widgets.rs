@@ -131,24 +131,53 @@ pub fn render_tyre_widget(
             .style(Style::default().fg(get_pressure_color(pressure)))
             .alignment(Alignment::Center);
 
-        let temp_i = data.tyre_temp_inner_c[index];
-        let temp_m = data.tyre_temp_middle_c[index];
-        let temp_o = data.tyre_temp_outer_c[index];
-        let avg_temp = (temp_i + temp_m + temp_o) / 3.0;
-        let temp_text = format!(
-            "I{:.0} M{:.0} O{:.0}",
-            fmt.temp_val(temp_i),
-            fmt.temp_val(temp_m),
-            fmt.temp_val(temp_o)
-        );
+        // What the game measures decides what these two rows say. Every
+        // number here used to be printed whatever the game published, which on
+        // Competizione drew `I0 M0 O0` and `0.0%` in red — a tyre with no
+        // tread left and no heat in it, on a car that was fine.
+        let measures = app
+            .reading
+            .as_ref()
+            .map(|reading| reading.capabilities)
+            .unwrap_or_else(ac_core::games::Capabilities::all);
+
+        let avg_temp = data.avg_tyre_temp_c(index);
+        let temp_text = if measures.tyre_edge_temps {
+            format!(
+                "I{:.0} M{:.0} O{:.0}",
+                fmt.temp_val(data.tyre_temp_inner_c[index]),
+                fmt.temp_val(data.tyre_temp_middle_c[index]),
+                fmt.temp_val(data.tyre_temp_outer_c[index])
+            )
+        } else {
+            // The core, and labelled as the core: it is a real reading of the
+            // same tyre taken further in, not a third of the tread.
+            format!("core {:.0}", fmt.temp_val(avg_temp))
+        };
         let temp_widget = Paragraph::new(temp_text)
             .style(Style::default().fg(get_tyre_color(avg_temp)))
             .alignment(Alignment::Center);
 
+        // Tyre wear where a game reports it, and what is left of the brake pad
+        // where it reports that instead — which is the trade Competizione
+        // makes, and the one number a GT3 stint is actually decided by.
         let wear = data.tyre_wear[index];
-        let wear_text = format!("{:.1}%", wear);
+        let (wear_text, wear_colour) = if measures.tyre_wear {
+            (format!("{wear:.1}%"), get_wear_color(wear))
+        } else if measures.brake_wear {
+            let pad = data.brake_pad_mm[index];
+            (
+                format!("pad {pad:.1}mm"),
+                // Onto the wear colours' usable band — see
+                // `dashboard::pad_on_the_wear_scale`, which is where the two
+                // numbers live so the two screens cannot disagree.
+                get_wear_color(crate::ui::tabs::dashboard::pad_on_the_wear_scale(app, pad)),
+            )
+        } else {
+            ("—".to_string(), Color::DarkGray)
+        };
         let wear_widget = Paragraph::new(wear_text)
-            .style(Style::default().fg(get_wear_color(wear)))
+            .style(Style::default().fg(wear_colour))
             .alignment(Alignment::Center);
 
         let brake_temp = data.brake_temp_c[index];
