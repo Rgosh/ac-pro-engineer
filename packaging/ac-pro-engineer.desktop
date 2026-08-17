@@ -3,7 +3,7 @@ Type=Application
 Version=1.0
 Name=AC Pro Engineer
 GenericName=Telemetry Analyzer
-Comment=Real-time telemetry and race engineering for Assetto Corsa
+Comment=Real-time telemetry and race engineering for Assetto Corsa and Competizione
 # Terminal=false deliberately. The application opens its own terminal when it
 # has none, at the size its layout needs — letting the desktop environment
 # pick one gives whatever geometry that terminal defaults to, which is
@@ -12,5 +12,5 @@ Terminal=false
 Exec=ac_pro_engineer
 Icon=ac-pro-engineer
 Categories=Game;
-Keywords=assetto;corsa;telemetry;sim;racing;
+Keywords=assetto;corsa;competizione;acc;telemetry;sim;racing;
 StartupNotify=false

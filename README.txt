@@ -2,8 +2,12 @@
        AC PRO ENGINEER v0.3.6
 ========================================
 
-Telemetry, race engineering and an in-game overlay for Assetto Corsa.
-Full documentation is in README.md next to this file.
+Telemetry and race engineering for Assetto Corsa and Assetto Corsa
+Competizione, with an in-game overlay for Assetto Corsa — the panel is a
+Custom Shaders Patch app, and CSP is an AC mod.
+
+Pick the game on the launcher: GAME: < ... >. What each one can and
+cannot measure is listed there, and in README.md next to this file.
 
 This archive holds both builds:
 
