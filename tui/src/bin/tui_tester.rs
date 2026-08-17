@@ -394,7 +394,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a tyre reads on the dashboard. This is the picture that gets reviewed
     // when somebody asks "what does it look like on ACC".
     if let Some(reading) = app.reading.as_mut() {
-        reading.capabilities = ac_core::games::assetto_corsa_competizione::CAPABILITIES;
+        // Through the registry rather than by naming the module: this is a
+        // front end, and a front end that reaches for a game's own constants
+        // is one that has to be edited again for the third simulator. The
+        // boundary test says so, and caught this.
+        reading.capabilities = ac_core::games::registry::chosen("assetto_corsa_competizione")
+            .backend()
+            .map(|backend| backend.capabilities)
+            .unwrap_or_default();
         // What that game actually publishes, in place of what it does not:
         // the core temperature and the pad thickness.
         reading.car.tyre_core_temp_c = [88.0, 87.0, 91.0, 90.0];

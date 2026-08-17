@@ -237,23 +237,19 @@ async fn main() -> Result<(), anyhow::Error> {
     // wanting to review saved laps offline could not start it at all. The
     // launcher already has a "WAITING FOR SIMULATOR..." state for exactly
     // this situation.
-    // Which prefix, and therefore which game: the one that was chosen, read
-    // from the configuration before the application state exists, because the
-    // bridge has to be up before the game asks for the mappings.
+    // **The bridge is not started here.** It comes up when the driver leaves
+    // the launcher, and goes away when they come back — see the loop below.
+    //
+    // It used to start with the application and stay up for the whole run,
+    // which cost two things that looked like separate bugs. A bridge is a Wine
+    // process inside the game's Proton prefix, and while one is there **Steam
+    // cannot launch the game into that prefix** — it sits at "preparing to
+    // launch" until the application is killed, which is what everybody
+    // eventually did. And starting one takes ten to twenty seconds of
+    // container setup, which the launcher spent frozen the moment the chosen
+    // game changed.
     #[cfg(target_os = "linux")]
-    let mut bridge_prefix = platform::linux::prefix_of(ac_core::games::registry::chosen(
-        &ac_core::config::AppConfig::load().unwrap_or_default().game,
-    ));
-    #[cfg(target_os = "linux")]
-    let mut _mem_bridge = match platform::linux::SharedMemoryBridge::start(bridge_prefix).await {
-        Ok(bridge) => Some(bridge),
-        Err(error) => {
-            eprintln!(
-                "Could not start the shared-memory bridge: {error}\n                 Live telemetry will be unavailable; everything else still works."
-            );
-            None
-        }
-    };
+    let mut _mem_bridge: Option<platform::linux::SharedMemoryBridge> = None;
 
     #[cfg(target_os = "windows")]
     set_console_icon();
@@ -325,28 +321,6 @@ async fn main() -> Result<(), anyhow::Error> {
             // selection here does not hammer the API.
             if app.launcher_selection == launcher::ROW_UPDATES {
                 app.updater.recheck_if_stale();
-            }
-
-            // A bridge lives inside one game's Proton prefix and cannot be
-            // told to move, so choosing another game means stopping it and
-            // starting a new one. The old one is dropped first, deliberately:
-            // both games mirror into the same `/dev/shm` files, and two
-            // bridges owning those names at once is the state nothing else
-            // here can diagnose.
-            #[cfg(target_os = "linux")]
-            {
-                let wanted = platform::linux::prefix_of(app.game);
-                if wanted != bridge_prefix {
-                    _mem_bridge = None;
-                    bridge_prefix = wanted;
-                    _mem_bridge = match platform::linux::SharedMemoryBridge::start(wanted).await {
-                        Ok(bridge) => Some(bridge),
-                        Err(error) => {
-                            error!(error = ?error, "Could not restart the bridge for the chosen game");
-                            None
-                        }
-                    };
-                }
             }
 
             terminal.draw(|f| renderer.render(f, &app))?;
@@ -553,6 +527,35 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             if app.stage == AppStage::Running {
+                // Leaving the launcher is when telemetry starts mattering, so
+                // it is when the bridge goes into the chosen game's prefix —
+                // and the launcher is where somebody sits while they start
+                // the game, which is why nothing holds the prefix until now.
+                //
+                // It takes ten to twenty seconds of container setup, and the
+                // screen is frozen for it, so say what is happening first.
+                #[cfg(target_os = "linux")]
+                {
+                    let prefix = platform::linux::prefix_of(app.game);
+                    terminal.draw(|f| renderer.render(f, &app))?;
+                    _mem_bridge = match platform::linux::SharedMemoryBridge::start(prefix).await {
+                        Ok(bridge) => Some(bridge),
+                        Err(error) => {
+                            error!(error = ?error, "Could not start the bridge");
+                            None
+                        }
+                    };
+                    // Whatever was typed or held down while the terminal could
+                    // not respond is not an instruction about the screen now
+                    // in front of them. Autorepeat during those seconds used
+                    // to arrive as a burst of arrow presses, and on a
+                    // two-game list an even number of them put the selection
+                    // back where it started — which read as "choosing
+                    // Competizione turns itself off after two seconds".
+                    while event::poll(Duration::from_millis(0))? {
+                        let _ = event::read()?;
+                    }
+                }
                 break;
             }
         }
@@ -990,6 +993,15 @@ async fn main() -> Result<(), anyhow::Error> {
             Ok(mutex) => mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
             Err(_) => return Err(anyhow::anyhow!("Failed to unwrap AppState Arc")),
         };
+
+        // Back on the launcher, and the prefix goes with it. Somebody who came
+        // back here to change something, or to start the other game, must not
+        // find Steam refusing to launch because this application still has a
+        // Wine process sitting in the prefix.
+        #[cfg(target_os = "linux")]
+        {
+            _mem_bridge = None;
+        }
     }
 
     // Before anything else on the way out: the in-game overlay watches for

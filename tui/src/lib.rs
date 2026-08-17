@@ -1718,6 +1718,11 @@ mod tests {
 
         let mut app = AppState::new();
         app.config.ac_install_path = game.clone();
+        // The panel is one game's, so this test is about that game — said
+        // here rather than inherited from whatever this machine's
+        // configuration happens to select, which is a state a test must not
+        // depend on.
+        app.game = ac_core::games::registry::chosen("assetto_corsa");
 
         // Nothing there yet, which is what the first attempt saw.
         app.refresh_overlay_report();

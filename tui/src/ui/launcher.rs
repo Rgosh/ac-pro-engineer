@@ -477,10 +477,12 @@ fn bridge_span<'a>(
 
     match status {
         BridgeStatus::NotRequired => Span::styled("not needed — Windows maps this directly", dim),
-        BridgeStatus::NotRunning => Span::styled(
-            "not running — start shm-bridge.exe in the Proton prefix",
-            warn,
-        ),
+        // Not an error on this screen, and it used to read as one. The bridge
+        // is a Wine process inside the game's Proton prefix and Steam cannot
+        // launch the game while one is there, so this application deliberately
+        // does not start it until the launcher is left. "Not running" here is
+        // the state that lets the game start.
+        BridgeStatus::NotRunning => Span::styled("starts when you press START", dim),
         // Red, not yellow: this one is running and the overlay still cannot
         // work, and telling the driver to start it sends them to start the
         // same broken bridge again.
@@ -927,6 +929,29 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 "Reads {0}'s shared memory. Make sure the game is running.",
                 is_ru,
                 &[app.game.name],
+            )),
+            // The one thing about the Linux path nobody could work out for
+            // themselves. The helper that carries the telemetry is a Wine
+            // process inside the game's Proton prefix, and Steam will not
+            // launch the game while one is there — so it is started when this
+            // screen is left, and stopped when it is returned to. Which makes
+            // the order matter, and an order that matters has to be written
+            // down where it is followed.
+            #[cfg(target_os = "linux")]
+            Line::from(""),
+            #[cfg(target_os = "linux")]
+            Line::from(Span::styled(
+                "Start the game first, then press ENTER here."
+                    .tr_lang(lang)
+                    .to_string(),
+                Style::default().fg(Color::DarkGray),
+            )),
+            #[cfg(target_os = "linux")]
+            Line::from(Span::styled(
+                "The Proton helper holds the game's prefix, so Steam cannot launch it while this is running."
+                    .tr_lang(lang)
+                    .to_string(),
+                Style::default().fg(Color::DarkGray),
             )),
             Line::from(""),
             Line::from(vec![
