@@ -599,8 +599,18 @@ impl Engineer {
         // inner minus outer, and the temperature band is written against the
         // mean of the three. Neither has anything to fall back on that is the
         // same physical quantity, so neither runs.
+        // The temperature band runs on whatever the game measures a tyre with:
+        // the mean of the tread where there is one, the core where there is
+        // not. It used to be gated with the camber rule, which cost
+        // Competizione every word about tyre temperature — on a game that
+        // publishes a perfectly good core reading, and a driver on cold tyres
+        // was told nothing at all. The rule says which quantity it judged, so
+        // a core reading is never mistaken for a surface one.
+        //
+        // The camber rule stays behind the gate. It *is* inner minus outer,
+        // and there is nothing to fall back on.
+        self.analyze_tyre_temperature(car, &mut recommendations);
         if self.capabilities.tyre_edge_temps {
-            self.analyze_tyre_temperature(car, &mut recommendations);
             self.analyze_camber(car, &mut recommendations);
         }
         if self.capabilities.tyre_wear {
@@ -1411,7 +1421,36 @@ impl Engineer {
         push(&too_little, true);
     }
 
+    /// The tyre temperature this game actually measures, per wheel.
+    ///
+    /// The mean of the tread where the game publishes the tread, and the core
+    /// where it does not. **Off the capabilities rather than off the numbers**:
+    /// `Car::avg_tyre_temp_c` falls back when the tread reads zero, which is
+    /// the right rule for drawing a screen and the wrong one for a verdict —
+    /// a game that says it measures no tread must not have its tread fields
+    /// judged, whatever happens to be in them.
+    fn judged_tyre_temp(&self, car: &Car, wheel: usize) -> f32 {
+        if wheel >= 4 {
+            return 0.0;
+        }
+        if self.capabilities.tyre_edge_temps {
+            (car.tyre_temp_inner_c[wheel]
+                + car.tyre_temp_middle_c[wheel]
+                + car.tyre_temp_outer_c[wheel])
+                / 3.0
+        } else {
+            car.tyre_core_temp_c[wheel]
+        }
+    }
+
     fn analyze_tyre_temperature(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
+        // Nothing measured at all — a session that has not published yet, or a
+        // game that reports no tyre temperature of any kind. Four zeros is not
+        // four frozen tyres, and it is the same guard the wear rule needs.
+        if (0..4).all(|i| self.judged_tyre_temp(car, i) <= 0.0) {
+            return;
+        }
+
         let min_temp = self
             .config
             .alerts
@@ -1432,7 +1471,7 @@ impl Engineer {
         let mut hot: Vec<usize> = Vec::new();
 
         for i in 0..4 {
-            let temp = car.avg_tyre_temp_c(i);
+            let temp = self.judged_tyre_temp(car, i);
             let out_of_band = temp < min_temp || temp > max_temp;
             // Same gate as the pressure and wear alerts. This ran on every
             // frame, so a tyre that stayed cold produced a fresh recommendation
@@ -1448,16 +1487,28 @@ impl Engineer {
         }
 
         let formatter = self.config.formatter();
+        // Which reading this verdict is about. A core temperature runs hotter
+        // than the surface it is under, so a driver comparing it with a number
+        // from a game that publishes the tread has to be told which they are
+        // looking at.
+        let measured = if self.capabilities.tyre_edge_temps {
+            "tread".tr(ru)
+        } else {
+            "core".tr(ru)
+        };
 
         if !cold.is_empty() {
-            let average =
-                cold.iter().map(|i| car.avg_tyre_temp_c(*i)).sum::<f32>() / cold.len() as f32;
+            let average = cold
+                .iter()
+                .map(|i| self.judged_tyre_temp(car, *i))
+                .sum::<f32>()
+                / cold.len() as f32;
             recs.push(Recommendation {
                 component: "Tyres".tr(ru).to_string(),
                 category: "Temperature".tr(ru).to_string(),
                 severity: Severity::Warning,
                 message: format!(
-                    "{} {}: {}",
+                    "{} {}: {} ({measured})",
                     Self::corner_phrase(&cold, ru),
                     "COLD".tr(ru),
                     formatter.format_temp(average)
@@ -1485,21 +1536,25 @@ impl Engineer {
                         ],
                     ),
                     evidence: crate::confidence::Evidence::from_values(
-                        cold.iter().map(|i| min_temp - car.avg_tyre_temp_c(*i)),
+                        cold.iter()
+                            .map(|i| min_temp - self.judged_tyre_temp(car, *i)),
                     ),
                 }),
             });
         }
 
         if !hot.is_empty() {
-            let average =
-                hot.iter().map(|i| car.avg_tyre_temp_c(*i)).sum::<f32>() / hot.len() as f32;
+            let average = hot
+                .iter()
+                .map(|i| self.judged_tyre_temp(car, *i))
+                .sum::<f32>()
+                / hot.len() as f32;
             recs.push(Recommendation {
                 component: "Tyres".tr(ru).to_string(),
                 category: "Overheat".tr(ru).to_string(),
                 severity: Severity::Critical,
                 message: format!(
-                    "{} {}: {}",
+                    "{} {}: {} ({measured})",
                     Self::corner_phrase(&hot, ru),
                     "OVERHEATING".tr(ru),
                     formatter.format_temp(average)
@@ -1533,7 +1588,8 @@ impl Engineer {
                         ],
                     ),
                     evidence: crate::confidence::Evidence::from_values(
-                        hot.iter().map(|i| car.avg_tyre_temp_c(*i) - max_temp),
+                        hot.iter()
+                            .map(|i| self.judged_tyre_temp(car, *i) - max_temp),
                     ),
                 }),
             });
@@ -2346,9 +2402,13 @@ mod tests {
             );
         }
 
-        /// Tread temperature alone, which gates two rules: the camber advice is
-        /// inner minus outer, and the temperature band is the mean of the three.
-        /// ACC publishes core temperature and neither of those.
+        /// Tread temperature gates the camber advice, and only that.
+        ///
+        /// It used to gate the temperature band as well, which is what this
+        /// test was written for — and it was wrong: the band judges a number,
+        /// and a game with no tread has a core reading to judge instead. What
+        /// has no substitute is inner minus outer. The car here has neither,
+        /// so both stay silent.
         #[test]
         fn without_tread_temperatures_there_is_no_camber_or_temperature_verdict() {
             let config = AppConfig::default();
@@ -2369,6 +2429,72 @@ mod tests {
             assert!(
                 said.iter().any(|c| c == "Brakes/Overheat"),
                 "the brakes are measured and still cooking: {said:?}"
+            );
+        }
+
+        /// A game that measures the core and not the tread still gets a
+        /// temperature verdict — on the core, and saying so.
+        ///
+        /// This is what Competizione lost by having the band gated with the
+        /// camber rule: a driver on tyres a long way outside their window was
+        /// told nothing at all, on a game that publishes a perfectly good
+        /// reading of them.
+        #[test]
+        fn a_core_temperature_is_judged_and_named() {
+            let config = AppConfig::default();
+            // Well over the default 105 °C ceiling, and nothing in the tread
+            // fields — which is exactly what ACC's pages look like.
+            let car = Car {
+                speed_kmh: 180.0,
+                tyre_core_temp_c: [128.0; 4],
+                ..Default::default()
+            };
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities {
+                tyre_edge_temps: false,
+                ..Capabilities::all()
+            });
+            age_the_alerts(&mut engineer);
+            drive(&mut engineer, &car, 120);
+            age_the_alerts(&mut engineer);
+            let advice = engineer.analyze_live(&car, &Session::default(), None);
+
+            let overheat = advice
+                .iter()
+                .find(|rec| rec.category == "Overheat" && rec.component == "Tyres")
+                .expect("a tyre overheating on its core reading is still overheating");
+            assert!(
+                overheat.message.contains("core"),
+                "the verdict has to say which measurement it judged: {}",
+                overheat.message
+            );
+            assert!(
+                !advice.iter().any(|rec| rec.category == "Camber"),
+                "and the camber rule stays gone: it is inner minus outer"
+            );
+        }
+
+        /// The other half: a game that publishes neither is still silent.
+        #[test]
+        fn a_game_with_no_tyre_temperature_at_all_says_nothing_about_it() {
+            let config = AppConfig::default();
+            let car = Car {
+                speed_kmh: 180.0,
+                ..Default::default()
+            };
+
+            let mut engineer = Engineer::new(&config);
+            engineer.update_capabilities(Capabilities::all());
+            age_the_alerts(&mut engineer);
+            drive(&mut engineer, &car, 120);
+            age_the_alerts(&mut engineer);
+            let advice = engineer.analyze_live(&car, &Session::default(), None);
+            assert!(
+                !advice
+                    .iter()
+                    .any(|rec| rec.component == "Tyres" && rec.category != "Wear"),
+                "four zeros are not four frozen tyres: {advice:?}"
             );
         }
 
