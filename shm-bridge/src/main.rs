@@ -118,9 +118,131 @@ fn file_size(name: &str) -> usize {
     }
 }
 
+/// A page the game already owns, copied out to the tmpfs file.
+///
+/// **Why this exists at all.** `CreateFileMappingW` with a name that is
+/// already taken hands back the *existing* section and ignores the file it was
+/// given — so a bridge that starts after the game creates nothing: the game
+/// keeps writing into its own anonymous section and the tmpfs file sits there
+/// holding whatever was in it, frozen, for anyone reading it on the Linux
+/// side to mistake for telemetry.
+///
+/// That made the order of startup a rule nobody could keep: the bridge had to
+/// be in the prefix before the game, and while it is there Steam cannot launch
+/// the game into that prefix. Mirroring is what removes the rule. If the
+/// section is already there, open it and copy — the same call CSP makes, at a
+/// rate faster than the reader ticks.
+#[cfg(target_os = "windows")]
+struct Mirror {
+    view: *const u8,
+    handle: windows::Win32::Foundation::HANDLE,
+    file: File,
+    size: usize,
+    name: &'static str,
+}
+
+// SAFETY: the view is a read-only mapping of a section that outlives the
+// thread, and nothing else writes through this pointer. Wine hands out one
+// view per handle and it is not moved.
+#[cfg(target_os = "windows")]
+unsafe impl Send for Mirror {}
+
+#[cfg(target_os = "windows")]
+impl Mirror {
+    /// Open a section somebody else already created, or `None` if nobody has.
+    fn open(name: &'static str, file: File, size: usize) -> Option<Self> {
+        use windows::Win32::System::Memory::{FILE_MAP_READ, MapViewOfFile, OpenFileMappingW};
+        use windows::core::HSTRING;
+
+        let wide = HSTRING::from(name);
+        // SAFETY: the name outlives the call; the handle and the view are
+        // checked before use and released in `Drop`.
+        unsafe {
+            let handle = OpenFileMappingW(FILE_MAP_READ.0, false, &wide).ok()?;
+            let view = MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 0);
+            if view.Value.is_null() {
+                use windows::Win32::Foundation::CloseHandle;
+                let _ = CloseHandle(handle);
+                return None;
+            }
+            Some(Self {
+                view: view.Value as *const u8,
+                handle,
+                file,
+                size,
+                name,
+            })
+        }
+    }
+
+    /// One copy, section to file.
+    fn pump(&mut self) -> std::io::Result<()> {
+        use std::io::{Seek, SeekFrom, Write};
+
+        // SAFETY: the view was mapped for at least `size` bytes — the section
+        // is the game's own page and is never smaller than the size this
+        // build maps — and it is read only.
+        let bytes = unsafe { std::slice::from_raw_parts(self.view, self.size) };
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.write_all(bytes)
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for Mirror {
+    fn drop(&mut self) {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Memory::{MEMORY_MAPPED_VIEW_ADDRESS, UnmapViewOfFile};
+        // SAFETY: both were produced by `open` and are released once.
+        unsafe {
+            let _ = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
+                Value: self.view as *mut _,
+            });
+            let _ = CloseHandle(self.handle);
+        }
+    }
+}
+
+/// How often a mirrored page is copied.
+///
+/// Assetto Corsa rewrites its physics page at 333 Hz and the desktop side
+/// reads at sixty. Four milliseconds is comfortably inside both, and copying
+/// two kilobytes at that rate is not measurable next to a game.
+#[cfg(target_os = "windows")]
+const MIRROR_INTERVAL: std::time::Duration = std::time::Duration::from_millis(4);
+
 fn find_shm_dir() -> PathBuf {
     const TMPFS_PATH: &str = "/dev/shm/";
     PathBuf::from(TMPFS_PATH)
+}
+
+/// The tmpfs file behind a page: opened, and sized to what this build maps.
+///
+/// Split out of `create_file_mapping` because a mirrored page needs the file
+/// and *not* the Win32 section — the section it would create is the one the
+/// game already owns, which is the whole problem being fixed.
+///
+/// Windows only, because mirroring is: on Linux this binary exists to be
+/// cross-compiled and to run under Wine, and its non-Windows build is a stub
+/// that reports it cannot map anything.
+#[cfg(target_os = "windows")]
+fn open_tmpfs_file(dir: &Path, file_name: &str, size: usize) -> Result<File> {
+    let path = dir.join(file_name);
+
+    let mut options = File::options();
+    options.read(true).write(true).create(true);
+    #[cfg(target_os = "windows")]
+    options.attributes(FILE_ATTRIBUTE_TEMPORARY.0);
+
+    let file = options
+        .open(&path)
+        .context(format!("Could not open the tmpfs file: {path:?}"))?;
+
+    // Every time, not only on creation — see the note in `create_file_mapping`
+    // about a 712-byte overlay file surviving into a build that maps 2484.
+    file.set_len(size as u64)
+        .context(format!("Could not size the tmpfs file: {path:?}"))?;
+    Ok(file)
 }
 
 fn create_file_mapping(dir: &Path, file_name: &str, size: usize) -> Result<FileMapping> {
@@ -284,14 +406,58 @@ fn main() -> Result<()> {
     );
     println!("Found a tmpfs filesystem at {}", shm_dir.to_string_lossy());
 
+    // Pages somebody else already owns are copied rather than created; see
+    // `Mirror`. This is what makes the bridge work whichever order the game
+    // and this were started in.
+    #[cfg(target_os = "windows")]
+    let mut mirrors: Vec<Mirror> = Vec::new();
+
     for file_name in ACC_FILES {
         let size = file_size(file_name);
+
+        #[cfg(target_os = "windows")]
+        if let Some(mirror) = open_tmpfs_file(&shm_dir, file_name, size)
+            .ok()
+            .and_then(|file| Mirror::open(file_name, file, size))
+        {
+            println!(
+                "{file_name} already exists in this prefix — mirroring it into the tmpfs \
+                 file ({size} bytes)"
+            );
+            mirrors.push(mirror);
+            continue;
+        }
+
         let mapping = create_file_mapping(&shm_dir, file_name, size)
             .with_context(|| format!("Error creating a file mapping for {file_name}"))?;
 
         println!("Created a tmpfs backed mapping for {file_name} with size {size}");
         mappings.push(mapping);
     }
+
+    // One thread for all of them, because they are copied together and a
+    // thread each would be five wakeups where one does.
+    #[cfg(target_os = "windows")]
+    let mirror_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(target_os = "windows")]
+    let mirror_thread = (!mirrors.is_empty()).then(|| {
+        let stop = std::sync::Arc::clone(&mirror_stop);
+        std::thread::spawn(move || {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                for mirror in mirrors.iter_mut() {
+                    if let Err(error) = mirror.pump() {
+                        // Said once per page and then carried on: a write that
+                        // fails every four milliseconds would fill a log with
+                        // one fault.
+                        eprintln!("Could not mirror {}: {error}", mirror.name);
+                        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                        break;
+                    }
+                }
+                std::thread::sleep(MIRROR_INTERVAL);
+            }
+        })
+    });
 
     match write_bridge_info(&shm_dir) {
         Ok(path) => println!("Announced this bridge in {}", path.display()),
@@ -317,6 +483,17 @@ fn main() -> Result<()> {
     }
 
     println!("\nShutting down.");
+
+    #[cfg(target_os = "windows")]
+    {
+        mirror_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = mirror_thread {
+            // Before the files below are unlinked: a copy landing after the
+            // unlink would recreate one of them, and a page nobody owns is
+            // exactly what this bridge exists to prevent.
+            let _ = handle.join();
+        }
+    }
 
     // Best effort, and deliberately so. `?` here meant one already-removed
     // file — or one owned by another user — returned early and left the rest
