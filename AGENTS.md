@@ -6,14 +6,14 @@ Welcome! This document (`AGENTS.md`) provides a concise reference for AI agents 
 
 ## 1. Project Overview & Sitemap
 
-RaceEngineer is a high-performance, cross-platform telemetry analysis and real-time race engineering suite for **Assetto Corsa** (AC / ACC), written in Rust.
+RaceEngineer is a high-performance, cross-platform telemetry analysis and real-time race engineering suite for **Assetto Corsa** and **Assetto Corsa Competizione**, written in Rust. Both are read; which one is a setting (`config.game`), not a detection, and each game's folder under `core/src/games/` declares what it can measure so the advice that rests on a missing measurement stays silent.
 
 ```
 RaceEngineer/
 ├── Cargo.toml               # Workspace manifest (Edition 2024, resolver = 3, workspace lints)
 ├── core/ (ac_core)          # Telemetry processing, setup manager, engineer rules, telemetry analyzer
 │   └── src/
-│       ├── ac_structs.rs    # Memory layout structs matching Assetto Corsa SHM
+│       ├── games/          # One folder per simulator: its structs, paths and reader
 │       ├── analyzer.rs      # Telemetry analyzer and telemetry recording
 │       ├── config.rs        # AppConfig (JSON configuration, theme, language, paths)
 │       ├── content_manager.rs# Car and track content reader

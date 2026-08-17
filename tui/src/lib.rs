@@ -539,8 +539,11 @@ impl AppState {
         state.check_for_bridge_update();
 
         // A new install gets the offer; everyone else gets the status card, if
-        // they have left it on.
-        if state.config.overlay.onboarding_done {
+        // they have left it on. Neither happens on a game with no panel —
+        // there is nothing to offer and nothing to report on.
+        if !state.game_has_a_panel() {
+            state.onboarding = OverlayOnboarding::Done;
+        } else if state.config.overlay.onboarding_done {
             state.show_overlay_card = state.config.overlay.startup_card;
         } else {
             state.onboarding = OverlayOnboarding::Offer;
@@ -551,13 +554,27 @@ impl AppState {
         // it cannot reasonably mean "stay quiet while the panel is broken", and
         // the alternative is a driver hunting through the game for a fault that
         // is not there.
-        if !state.bridge_status.is_workable()
+        if state.game_has_a_panel()
+            && !state.bridge_status.is_workable()
             && state.overlay_report.current
             && state.onboarding == OverlayOnboarding::Done
         {
             state.show_overlay_card = true;
         }
         state
+    }
+
+    /// Whether the chosen game can run the in-game panel at all.
+    ///
+    /// It is a Custom Shaders Patch app and CSP is an Assetto Corsa mod, so on
+    /// any other game the offer to install it, the status card and the install
+    /// itself are all offering something that cannot work — and the card would
+    /// then report the panel as missing for ever, in a game that has nowhere
+    /// to put it.
+    pub fn game_has_a_panel(&self) -> bool {
+        self.game
+            .backend()
+            .is_some_and(|backend| backend.capabilities.in_game_panel)
     }
 
     /// Look at the game folder again and remember what is there.
@@ -583,6 +600,9 @@ impl AppState {
     pub fn ensure_overlay_installed(&mut self) {
         use ac_core::overlay::install::{InstallOutcome, install};
 
+        if !self.game_has_a_panel() {
+            return;
+        }
         self.refresh_overlay_report();
         if self.overlay_report.game_root.is_none() || self.overlay_report.current {
             return;
@@ -857,11 +877,20 @@ impl AppState {
         if game.id == self.game.id {
             return;
         }
-        info!("Working with {} from now on", game.name);
-
-        self.game = game;
         self.config.game = game.id.to_string();
         let _res = self.config.save();
+        self.apply_game(game);
+    }
+
+    /// The same, without writing the choice down.
+    ///
+    /// Split out because saving is a side effect on the *user's* configuration
+    /// file, and a test that exercised `select_game` wrote a game into it and
+    /// then every other test in the process started up as that game. Tests use
+    /// this; the launcher uses the one above.
+    fn apply_game(&mut self, game: &'static Game) {
+        info!("Working with {} from now on", game.name);
+        self.game = game;
 
         self.source = None;
         self.reading = None;
@@ -876,6 +905,15 @@ impl AppState {
         self.setup_manager = SetupManager::new(game.backend().and_then(|b| b.setups.as_ref()));
         self.setup_manager
             .set_documents_override(&self.config.ac_documents_path);
+
+        // The panel belongs to one game. Switching to a game that cannot run
+        // it takes the card and the offer away rather than leaving a driver
+        // looking at the state of an overlay their simulator has nowhere to
+        // load.
+        if !self.game_has_a_panel() {
+            self.show_overlay_card = false;
+            self.onboarding = OverlayOnboarding::Done;
+        }
     }
 
     pub fn enable_demo_simulation(&mut self) {
@@ -1896,5 +1934,57 @@ mod tests {
     #[test]
     fn fps_is_zero_before_anything_is_drawn() {
         assert_eq!(PerfStats::default().fps(), 0.0);
+    }
+
+    /// The panel is one game's, and the launcher stops offering it on the
+    /// others.
+    ///
+    /// Without this an ACC driver is asked "Assetto Corsa and CSP are both
+    /// here, shall I install it?" about a game that is Unreal Engine and has
+    /// nothing to load a Custom Shaders Patch app with — and then gets a card
+    /// reporting the panel as missing for the rest of the session.
+    #[test]
+    fn a_game_with_no_panel_is_not_offered_one() {
+        let with_panel = ac_core::games::registry::chosen("assetto_corsa");
+        let without = ac_core::games::registry::chosen("assetto_corsa_competizione");
+        assert!(
+            with_panel
+                .backend()
+                .is_some_and(|b| b.capabilities.in_game_panel),
+            "Assetto Corsa is the game the panel is written for"
+        );
+        assert!(
+            without
+                .backend()
+                .is_some_and(|b| !b.capabilities.in_game_panel),
+            "Competizione has no Custom Shaders Patch"
+        );
+
+        let mut app = AppState::new();
+        app.game = without;
+        app.show_overlay_card = true;
+        app.onboarding = OverlayOnboarding::Offer;
+        assert!(!app.game_has_a_panel());
+
+        // Switching to it puts both away; switching back does not force them
+        // on, because that is the driver's setting rather than ours.
+        //
+        // `apply_game` rather than `select_game`: the latter writes the choice
+        // to the configuration file, and a test has no business changing what
+        // game somebody's application starts up as.
+        app.game = with_panel;
+        app.apply_game(without);
+        assert!(!app.show_overlay_card, "the card went with the game");
+        assert_eq!(app.onboarding, OverlayOnboarding::Done);
+
+        // And the install is a no-op rather than a write into a game folder
+        // that cannot use it.
+        app.overlay_install_status.clear();
+        app.ensure_overlay_installed();
+        assert!(
+            app.overlay_install_status.is_empty(),
+            "nothing was installed into a game with no panel: {}",
+            app.overlay_install_status
+        );
     }
 }

@@ -32,6 +32,7 @@ const ROWS: &[Row] = &[
     ("track limits", |c| c.lap_validity),
     ("sector times", |c| c.sectors),
     ("setups on disk", |c| c.setups),
+    ("in-game panel", |c| c.in_game_panel),
 ];
 
 fn main() {

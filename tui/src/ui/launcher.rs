@@ -1,6 +1,6 @@
 use crate::{AppState, OverlayOnboarding};
 use ac_core::config::Language;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ac_core::updater::UpdateStatus;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::atomic::AtomicBool;
@@ -923,12 +923,11 @@ fn render_info_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             )),
-            Line::from(
-                "Connect to Assetto Corsa Shared Memory.
-Make sure the game is running."
-                    .tr_lang(lang)
-                    .to_string(),
-            ),
+            Line::from(tr_fmt(
+                "Reads {0}'s shared memory. Make sure the game is running.",
+                is_ru,
+                &[app.game.name],
+            )),
             Line::from(""),
             Line::from(vec![
                 Span::raw(format!("{} ", "Connection Status:".tr_lang(lang))),

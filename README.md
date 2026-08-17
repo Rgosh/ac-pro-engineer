@@ -1,4 +1,4 @@
-# 🏎️ AC Pro Engineer — Assetto Corsa Telemetry, Race Engineer & In-Game Overlay
+# 🏎️ AC Pro Engineer — Assetto Corsa & Competizione Telemetry, Race Engineer & In-Game Overlay
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Rgosh/ac-pro-engineer)](https://github.com/Rgosh/ac-pro-engineer/releases)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue)](LICENSE)
@@ -9,22 +9,31 @@
 [![Release](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml/badge.svg)](https://github.com/Rgosh/ac-pro-engineer/actions/workflows/release.yml)
 
 **AC Pro Engineer** is a free, open-source **Assetto Corsa telemetry app** and
-**virtual race engineer** for sim racing. It reads the game's shared memory
-directly, analyses tyre temperatures and pressures, brake heat, fuel, lap deltas
-and driving style, and gives you spoken-plain engineering advice while you
-drive — in a fast terminal dashboard on your second screen **and** in an
-**in-game overlay** built as a Custom Shaders Patch (CSP) Lua app.
+**virtual race engineer** for sim racing, and it reads **Assetto Corsa
+Competizione** too. It takes the game's shared memory directly, analyses tyre
+temperatures and pressures, brake heat, fuel, lap deltas and driving style, and
+gives you spoken-plain engineering advice while you drive — in a fast terminal
+dashboard on your second screen **and**, on Assetto Corsa, in an **in-game
+overlay** built as a Custom Shaders Patch (CSP) Lua app.
+
+**Two simulators do not measure the same things**, and the program says which
+is which rather than filling the gaps in: ACC publishes no tyre wear and no
+temperatures across the tread, so the wear and camber advice go quiet on it and
+brake pad life takes their place. [What each game
+reports](#which-simulator-and-what-it-reports) is a table below, and the
+launcher shows the same list for whichever game you pick.
 
 It runs on **Windows** and on **Linux / Steam Deck under Proton**, costs about
 **0.1 % of one CPU core**, and touches nothing in your game folder except its own
 overlay app.
 
-> **Keywords:** Assetto Corsa telemetry, AC telemetry app, sim racing telemetry
-> software, virtual race engineer, tyre pressure calculator, cold pressure
+> **Keywords:** Assetto Corsa telemetry, ACC telemetry, Assetto Corsa
+> Competizione telemetry app, AC telemetry app, sim racing telemetry software,
+> virtual race engineer, GT3 brake wear, tyre pressure calculator, cold pressure
 > calculator, fuel strategy calculator, stint planner, FFB clipping meter,
 > MoTeC CSV export, ghost lap comparison, Custom Shaders Patch app, CSP Lua
-> overlay, Assetto Corsa Linux, Assetto Corsa Proton, Steam Deck sim racing,
-> shared memory telemetry, ratatui TUI, Rust sim racing tools.
+> overlay, Assetto Corsa Linux, ACC Linux, Assetto Corsa Proton, Steam Deck sim
+> racing, shared memory telemetry, ratatui TUI, Rust sim racing tools.
 
 ![AC Pro Engineer launcher, showing the Assetto Corsa install, CSP and bridge it found](screenshots/Launcher.png)
 
@@ -38,6 +47,7 @@ overlay app.
 | | |
 |---|---|
 | [What it does](#what-it-does) | the short version |
+| [Which simulator](#which-simulator-and-what-it-reports) | Assetto Corsa, Competizione, and what each one measures |
 | [Install](#install) | Windows, Linux, from source |
 | [The in-game overlay](#the-in-game-overlay) | the CSP panel window by window, and the Linux bridge |
 | [Every screen](#every-screen) | the terminal's nine tabs and the panel's five windows, with pictures |
@@ -89,6 +99,53 @@ overlay app.
 - **Everything in the overlay can be switched off**, block by block.
 - **Every keyboard shortcut can be rebound**, and every on-screen hint is printed
   from the binding, so it cannot tell you the wrong key.
+
+---
+
+## Which simulator, and what it reports
+
+Pick the game on the launcher — `GAME: < … >`, on every platform. It is a
+choice rather than a guess, because both games publish their telemetry under
+*the same three names*, and on Linux the helper that carries it has to be
+started inside one game's Proton prefix before that game runs. There is nothing
+to detect at the moment it matters, and a wrong guess is expensive: the helper
+in the wrong prefix, or a race engineer running the other game's thresholds.
+
+| What the game reports | Assetto Corsa | Competizione |
+|---|:---:|:---:|
+| Live telemetry — speed, revs, fuel, position | ✅ | ✅ |
+| Tyre pressures and temperature | ✅ | ✅ |
+| Tread temperatures — **the camber advice** | ✅ | ❌ |
+| Tyre wear | ✅ | ❌ |
+| Brake temperatures | ✅ | ✅ |
+| **Brake pad and disc wear** | ❌ | ✅ |
+| Track grip as a number | ✅ | ❌ |
+| Track limits — whether the lap counted | ❌ | ✅ |
+| Sector times | ✅ | ✅ |
+| Setups read from disk | ✅ | ❌ |
+| The in-game panel | ✅ | ❌ |
+| Track length in metres | ✅ | ❌ |
+
+**A cross is a feature, not a gap.** A field a game does not publish reads as
+zero, and zero is a confident wrong answer — four tyres with no tread left, a
+perfectly cambered car, an ice-rink of a track. So the advice that rests on a
+measurement a game does not make says nothing at all, and the launcher tells
+you which those are before you start. `cargo run -p ac_core --example
+capability_matrix` prints this table out of the program itself.
+
+Two things are worth knowing before downloading for ACC:
+
+- **The panel is Assetto Corsa's.** It is a Custom Shaders Patch app and CSP is
+  an AC mod; ACC is Unreal Engine and has nothing to load it. On ACC the
+  product is the terminal and the network feed.
+- **ACC's telemetry is measured, its thresholds are not verified.** The layout
+  was pinned to a recorded session — a GT3 at Spa, 337 seconds of it, in this
+  repository — so the numbers are right. The engineer's temperature thresholds
+  were chosen against Assetto Corsa's cars and have not yet been read against a
+  GT3 stint. `docs/plan-acc.md` §10 is the list of what that still needs.
+
+Other simulators are entries in the registry with a sentence each about what
+stands in the way — see [For developers](#for-developers).
 
 ---
 

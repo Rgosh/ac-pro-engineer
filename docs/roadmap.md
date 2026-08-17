@@ -323,7 +323,7 @@ disappears — for each of the four, and for each new flag added in §6.
 
 ---
 
-## 6. ACC: the folder
+## 6. ACC: the folder — **DONE**, 2026-08-17
 
 Only worth starting after §4 and §5. Everything here is additive once they are
 done.
@@ -336,6 +336,21 @@ anything under `tui/src` does. Five games are listed as planned — Competizione
 AC EVO, iRacing, rFactor 2, Le Mans Ultimate — carrying **no guessed appid, no
 guessed process name and no capabilities**, because a default capability in a
 table reads exactly like a measurement.
+
+**And now it is built.** `core/src/games/assetto_corsa_competizione/`, pinned to
+a 337-second recording of a GT3 at Spa rather than to a header file, with each
+reader refusing pages that declare the other game's shared-memory version —
+both games publish under `acpmf_*`, and on Linux into the same files, so the
+wrong parser attaching is the failure mode with no error message. Which game is
+read became `config.game` on the launcher rather than a detection, because the
+Linux bridge has to be inside one game's prefix *before* that game starts.
+
+What is left is §10 of `docs/plan-acc.md`: the thresholds, against a stint. And
+setups, which stay unread for a stated reason — ACC's files are clicks rather
+than units, and there was no ACC setup file to pin the format against.
+
+The original text is kept below because it is what the work was measured
+against.
 
 So 6.1 to 6.4 below are still the whole job for ACC; what has changed is that
 none of them requires touching anything outside the new folder. The site says
@@ -385,7 +400,7 @@ screen.
 
 ---
 
-## 8. ACC: the overlay decision — open, decide before announcing ACC
+## 8. ACC: the overlay decision — **DECIDED**: accepted, 2026-08-17
 
 **The unpleasant one.** All of `assets/frontends/csp-panel/` is a Custom Shaders
 Patch Lua app. **ACC has no CSP and no Lua app API.** On ACC the product is the
@@ -404,6 +419,14 @@ reviving it to fill a gap is how a worse version of a solved problem comes back.
 
 **Done when.** The decision is written down, and whichever way it goes the site
 says it before anybody downloads expecting the other.
+
+**Accepted, and it is in the code rather than only in prose.** The panel is a
+capability now — `in_game_panel`, true for Assetto Corsa and false for
+Competizione — so the launcher does not offer to install a panel into a game
+that cannot load it, and does not then report it as missing for ever. The site
+says it on `/acc/` and in the `/games/` table, the README says it above the
+install instructions, and the launcher's own game row lists it beside
+everything else the chosen game does and does not have.
 
 ---
 

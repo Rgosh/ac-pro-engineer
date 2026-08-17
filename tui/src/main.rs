@@ -82,7 +82,7 @@ fn set_console_icon() {
 #[command(
     name = "ac_pro_engineer",
     version,
-    about = "AC Pro Engineer — telemetry, race engineering and an in-game overlay for Assetto Corsa"
+    about = "AC Pro Engineer — telemetry and race engineering for Assetto Corsa and Competizione, with an in-game overlay for Assetto Corsa"
 )]
 struct AppArgs {
     /// Do not write a log file at all.

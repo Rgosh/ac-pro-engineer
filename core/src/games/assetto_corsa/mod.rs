@@ -76,6 +76,9 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     // AC never says whether a lap counted. Every lap is treated as valid
     // because nothing contradicts it, which is not the same as being told.
     lap_validity: false,
+    // Custom Shaders Patch is an Assetto Corsa mod, so the panel is this
+    // game's and no other's.
+    in_game_panel: true,
 };
 
 /// A connection to a running Assetto Corsa.

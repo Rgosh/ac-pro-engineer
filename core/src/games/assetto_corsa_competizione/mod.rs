@@ -89,6 +89,10 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     brake_wear: true,
     // `is_valid_lap` at offset 1408, which moved during the session.
     lap_validity: true,
+    // ACC is Unreal Engine and has no Custom Shaders Patch, so there is
+    // nothing to load the panel. Offering to install it here would be
+    // offering something that cannot work.
+    in_game_panel: false,
 };
 
 /// A connection to a running Assetto Corsa Competizione.

@@ -1,5 +1,5 @@
 use crate::AppState;
-use ac_core::i18n::Translate;
+use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 
 /// Draw a titled panel explaining that there is no telemetry yet.
@@ -10,10 +10,13 @@ fn render_waiting_panel(f: &mut Frame<'_>, area: Rect, app: &AppState, title: &s
     let theme = &app.ui_state.theme;
     let is_ru = app.config.language == ac_core::config::Language::Russian;
 
+    // The game by name, out of the registry — whichever one the driver chose.
+    // These two lines said "Assetto Corsa" whatever was selected, so somebody
+    // waiting for Competizione was told to start a different game.
     let message = if app.is_game_running {
-        "Waiting for telemetry from Assetto Corsa...".tr(is_ru)
+        tr_fmt("Waiting for telemetry from {0}...", is_ru, &[app.game.name])
     } else {
-        "Assetto Corsa is not running".tr(is_ru)
+        tr_fmt("{0} is not running", is_ru, &[app.game.name])
     };
 
     let block = Block::default()

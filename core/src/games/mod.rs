@@ -82,6 +82,13 @@ pub struct Capabilities {
     /// which is not a claim that it *is* valid, only that nothing said
     /// otherwise. ACC says.
     pub lap_validity: bool,
+    /// The in-game panel can run in this game.
+    ///
+    /// It is a Custom Shaders Patch app, and CSP is an Assetto Corsa mod —
+    /// Competizione is Unreal Engine and has nothing to load it. Without this
+    /// flag the launcher offers to install a panel into a game that cannot
+    /// run it, and then reports it as missing forever.
+    pub in_game_panel: bool,
 }
 
 impl Capabilities {
@@ -100,6 +107,7 @@ impl Capabilities {
             track_grip: true,
             brake_wear: true,
             lap_validity: true,
+            in_game_panel: true,
         }
     }
 }

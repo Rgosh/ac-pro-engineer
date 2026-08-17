@@ -17,9 +17,13 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         let message = if app.is_game_running {
             "Waiting for data...".tr_lang(lang).to_string()
         } else {
-            "Assetto Corsa is not running"
-                .tr(*lang == ac_core::config::Language::Russian)
-                .to_string()
+            // The chosen game, not a hardcoded one. See the dashboard's
+            // waiting panel for what this said before.
+            tr_fmt(
+                "{0} is not running",
+                *lang == ac_core::config::Language::Russian,
+                &[app.game.name],
+            )
         };
         let text = Paragraph::new(message)
             .alignment(Alignment::Center)

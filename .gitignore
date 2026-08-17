@@ -19,6 +19,14 @@ config.json
 /gui/
 /gui_paid/
 /ac_pro_gui/
+# What `tools/record-session.sh` leaves behind. The *recording* a layout was
+# pinned to is evidence and is committed by hand —
+# `assetto-corsa-competizione-20260816-2051.txt` is what the ACC layout tests
+# are asserted against. The bridge's own log beside it is not evidence of
+# anything, and a run that recorded no movement is worse than nothing: a page
+# of constants looks like a measurement.
+*-bridge.log
+
 # The site, past the front door.
 #
 # `site/index.html` stays tracked: it is the landing, and GitHub Pages publishes
