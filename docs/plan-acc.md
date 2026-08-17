@@ -36,7 +36,7 @@ changes, change the other.
 | 7 | The registry entry flips to playable | **done** |
 | 8 | Setups, or an honest no | **done** — the honest no |
 | 9 | Linux: the bridge into ACC's own prefix | **done** |
-| 10 | Thresholds checked against a real ACC lap | **owed** — needs a stint |
+| 10 | Thresholds checked against a real ACC lap | **doing** — five laps driven, advice not yet read back |
 | 11 | The flags for what ACC measures and Assetto Corsa does not | **done** — brake wear, track limits, track grip |
 
 **Detection stopped deciding which game is read.** It is a choice on the
@@ -290,7 +290,19 @@ discriminator in item 3 is what stops it being a silent one.
 
 **On Windows none of this exists** — the game writes the mappings itself.
 
-## 10. Thresholds against a real lap — owed
+## 10. Thresholds against a real lap — doing
+
+**A real session has now been driven through the application**: five laps in
+Competizione on 17 August 2026, with the telemetry, the screens and the lap
+analysis all reported correct. That closes the half of this item that was about
+the *reading* — the numbers arriving are the game's own, and they are right.
+
+What is still open is the half about the *advice*, and one thing about it is
+worth writing down: those five laps ran on a build from before the car classes
+landed, so the thresholds behind them were still the one-size band — 70–105 °C
+tyres and an 800 °C brake ceiling — which on a GT3 is a band nothing ever
+reaches. The engineer being quiet during that session is explained by it. The
+next stint is the one that tests the class windows.
 
 **The part that is not plumbing.** The engineer's numbers were chosen for AC's
 tyre model. On ACC:
