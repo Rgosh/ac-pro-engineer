@@ -51,3 +51,6 @@ site/compare/
 site/technical/
 site/download/
 site/faq/
+
+# Python bytecode from the site generator.
+site/__pycache__/

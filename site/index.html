@@ -784,6 +784,60 @@ footer .cols a:hover{color:var(--highlight)}
 .swipe{display:none;color:var(--dim);font-size:12.5px;margin:6px 0 0}
 
 /* ── phone ─────────────────────────────────────────────────────────── */
+
+/* ── recent updates ───────────────────────────────────────────────────────
+ *
+ * A visitor arriving cold cannot tell a maintained project from an abandoned
+ * one, and prose saying "actively developed" is what an abandoned one says
+ * too. Dates and version numbers are not. This is generated from CHANGELOG.md
+ * by build.py, so it cannot say something the releases do not.
+ *
+ * Beside the page rather than in it: the column is 1100px and a wide screen has
+ * room to spare either side, so on a wide enough one this sits in that margin
+ * and touches nothing. Under that width there is no margin to sit in, and it
+ * becomes an ordinary card under the hero — the same content, in the flow,
+ * rather than something covering the text on a laptop.
+ *
+ * The threshold is arithmetic, not a guess: 1100 for the column plus twice
+ * (260 panel + 28 gutter) is 1676, so 1700 is the first width where both fit
+ * with the column still centred. Pinning it to the *column* rather than to the
+ * viewport edge is the other half — `right: 24px` put it 19px over the text on
+ * a 1680px screen, because the panel walked inward as the window narrowed
+ * while the column stayed centred.
+ */
+.releases{
+  max-width:1100px;margin:0 auto 34px;padding:16px 18px;
+  border:1px solid var(--border);border-radius:10px;background:var(--bg-raised);
+}
+.releases h2{
+  margin:0;font-size:12px;letter-spacing:.14em;color:var(--dim);font-weight:600;
+}
+.releases .now{margin:2px 0 12px;font-size:13px;color:var(--dim)}
+.releases .now b{color:var(--good)}
+.releases ol{margin:0;padding:0;list-style:none;display:grid;gap:12px}
+.releases li{border-left:2px solid var(--border);padding-left:12px}
+.releases li:first-child{border-left-color:var(--highlight)}
+.releases a{color:var(--highlight);text-decoration:none}
+.releases a:hover{text-decoration:underline}
+.releases time{color:var(--dim);font-size:12px;margin-left:8px}
+.releases p{margin:3px 0 0;font-size:13px;line-height:1.6;color:var(--dim)}
+.releases .all{display:inline-block;margin-top:12px;font-size:12.5px;color:var(--dim)}
+.releases .all:hover{color:var(--highlight)}
+
+@media (min-width:1700px){
+  .releases{
+    position:fixed;top:calc(var(--bar) + 24px);
+    /* Half the viewport, plus half the column, plus the gutter — so it tracks
+       the column's right edge instead of the window's. */
+    left:calc(50% + 550px + 28px);
+    width:260px;max-width:260px;margin:0;z-index:5;
+    max-height:calc(100vh - var(--bar) - 48px);overflow:auto;
+  }
+  /* Four entries is a sign of life; a scrolling wall of them is a changelog,
+     and there is a link to the real one at the bottom. */
+  .releases li:nth-child(n+5){display:none}
+}
+
 @media (max-width:760px){
   :root{--pad:14px}
   .term-body{padding:20px 15px}
@@ -985,6 +1039,32 @@ footer .cols a:hover{color:var(--highlight)}
       <a class="btn ghost" href="https://github.com/Rgosh/ac-pro-engineer">Source on GitHub</a>
     </div>
   </div>
+
+<!--RELEASES-->
+<aside class="releases" aria-labelledby="releases-h">
+  <h2 id="releases-h">RECENT UPDATES</h2>
+  <p class="now">running <b>v0.4.1</b></p>
+  <ol>
+    <li>
+      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.1"><b>v0.4.1</b></a><time>2026-08-18</time>
+      <p>Five fixes, all of them the program reporting something nobody measured. Four were found by driving Competizione for the first time; one of them has been wrong…</p>
+    </li>
+    <li>
+      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.0"><b>v0.4.0</b></a><time>2026-08-18</time>
+      <p>The point: a second simulator, and an engineer that knows what car it is looking at.</p>
+    </li>
+    <li>
+      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.3.6"><b>v0.3.6</b></a><time>2026-08-10</time>
+      <p>The point: the panel could tell you what was happening; it had nothing to say about the lap you had just finished. Now it does, with the last three laps to page…</p>
+    </li>
+    <li>
+      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.3.5"><b>v0.3.5</b></a><time>2026-08-08</time>
+      <p>The point: the in-game overlay stopped being &quot;the panel that sometimes works&quot;. It opens before the race and in the pits, keeps its settings when you close its…</p>
+    </li>
+  </ol>
+  <a class="all" href="https://github.com/Rgosh/ac-pro-engineer/blob/main/CHANGELOG.md">full changelog →</a>
+</aside>
+<!--/RELEASES-->
 
   <section id="says">
     <h2><span class="tw" style="--n:21">WHAT IT ACTUALLY SAYS</span></h2>
