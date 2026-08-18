@@ -21,7 +21,10 @@
 set -euo pipefail
 
 TARGET=x86_64-pc-windows-gnu
-PREFIX="${ACPE_TEST_WINEPREFIX:-${TMPDIR:-/tmp}/acpe-test-wineprefix}"
+# Under the cache directory rather than /tmp: Wine refuses to create a
+# configuration directory in a path it does not own, and a shared /tmp is
+# exactly that on several distributions — "'/tmp' is not owned by you".
+PREFIX="${ACPE_TEST_WINEPREFIX:-${XDG_CACHE_HOME:-$HOME/.cache}/acpe-test-wineprefix}"
 
 if ! command -v wine >/dev/null 2>&1; then
     echo "wine is not installed — this script needs it to run the Windows binaries." >&2
