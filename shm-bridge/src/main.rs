@@ -245,6 +245,19 @@ fn open_tmpfs_file(dir: &Path, file_name: &str, size: usize) -> Result<File> {
     Ok(file)
 }
 
+/// Write `size` zero bytes over a file, from the start.
+///
+/// Separate from `set_len` because they are different operations and only one
+/// of them was being done: length is what CSP checks, content is what the
+/// application reads.
+fn write_zeroes(file: &File, size: usize) -> std::io::Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
+    let mut file = file;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(&vec![0u8; size])?;
+    file.flush()
+}
+
 fn create_file_mapping(dir: &Path, file_name: &str, size: usize) -> Result<FileMapping> {
     let path = dir.join(file_name);
 
@@ -272,6 +285,21 @@ fn create_file_mapping(dir: &Path, file_name: &str, size: usize) -> Result<FileM
     // restart.
     file.set_len(size as u64)
         .context(format!("Could not size the tmpfs file: {path:?}"))?;
+
+    // **And the bytes have to go, not just the length.** `set_len` to the size
+    // the file already has changes nothing, so a page left behind by an
+    // earlier run — a previous session, or the telemetry simulator — survives
+    // into this one intact. It then reads as a live session: the static page
+    // carries a car and a track and the right shared-memory version, so
+    // nothing downstream can tell it is months old. That is how a Huracán at
+    // Spa was reported as a Ferrari at Monza while the speed on the same
+    // screen was correct — physics and graphics are rewritten every frame and
+    // recovered, the static page is written once a session and did not.
+    //
+    // Zeroed, the page declares nothing, which every reader already handles:
+    // it is the state between the mapping existing and the game publishing
+    // into it, and it reads as "waiting" rather than as somebody else's lap.
+    write_zeroes(&file, size).context(format!("Could not clear the tmpfs file: {path:?}"))?;
 
     let mapping = FileMapping::new(file_name, &file, size)?;
 

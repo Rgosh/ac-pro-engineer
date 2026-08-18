@@ -61,11 +61,74 @@ fn create_shared_memory(name: &str, size: usize) -> Result<*mut u8, Box<dyn std:
 
     file.set_len(size as u64)?;
 
+    // `set_len` to the size the file already has changes nothing, so a page
+    // from an earlier run keeps every byte this one does not overwrite — and
+    // this writes the fields it cares about, not the whole struct. The same
+    // omission in the bridge is how a Huracán at Spa was reported as a Ferrari
+    // at Monza.
+    {
+        use std::io::{Seek, SeekFrom, Write};
+        let mut file = &file;
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(&vec![0u8; size])?;
+        file.flush()?;
+    }
+
     let mmap = unsafe { memmap2::MmapMut::map_mut(&file)? };
     let ptr = mmap.as_ptr() as *mut u8;
 
     std::mem::forget(mmap);
     Ok(ptr)
+}
+
+/// Set by the interrupt handler; the loop reads it and leaves.
+#[cfg(not(target_os = "windows"))]
+static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The pages this writes, so the cleanup names the same ones the creation did.
+#[cfg(not(target_os = "windows"))]
+const PAGE_NAMES: [&str; 3] = ["acpmf_physics", "acpmf_graphics", "acpmf_static"];
+
+/// **Why the simulator has to clean up after itself.**
+///
+/// The pages live in `/dev/shm` and outlive the process that made them — until
+/// a reboot, or until something else unlinks them. A simulator killed with
+/// Ctrl+C therefore leaves a complete, valid-looking session sitting there: the
+/// right shared-memory version, a car, a track. The application attaches to it
+/// and reports a car nobody is driving.
+///
+/// That is not hypothetical. It is where "Competizione says I am in a Ferrari
+/// 488 at Monza" came from, on a machine whose driver was in a Huracán at Spa:
+/// the physics and graphics pages were live, mirrored by the bridge every few
+/// milliseconds, and the static page — written once a session — was still this
+/// program's, from a run that had ended long before.
+///
+/// Only an atomic store happens in the handler, which is one of the few things
+/// that is safe to do inside one.
+#[cfg(not(target_os = "windows"))]
+fn stop_on_interrupt() {
+    extern "C" fn handler(_signal: libc::c_int) {
+        STOPPING.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    // SAFETY: installing a handler that does nothing but store to an atomic.
+    unsafe {
+        let handler = handler as *const () as libc::sighandler_t;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+    }
+}
+
+/// Remove the pages, so nothing reads them as a session tomorrow.
+#[cfg(not(target_os = "windows"))]
+fn remove_pages() {
+    for name in PAGE_NAMES {
+        let path = format!("/dev/shm/{name}");
+        match std::fs::remove_file(&path) {
+            Ok(()) => println!("Removed {path}"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => eprintln!("Could not remove {path}: {error}"),
+        }
+    }
 }
 
 /// Lap duration in milliseconds (~30 seconds per lap = one full driving scenario cycle).
@@ -236,6 +299,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         LAP_DURATION_MS / 1000
     );
     println!("Simulation started. Press Ctrl+C to stop.\n");
+
+    // Registered here rather than at the top of main: there is nothing worth
+    // cleaning up until the pages exist.
+    #[cfg(not(target_os = "windows"))]
+    stop_on_interrupt();
 
     let start_time = Instant::now();
     let mut lap_start_time = Instant::now();
@@ -496,7 +564,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         io::stdout().flush().ok();
 
         thread::sleep(Duration::from_millis(16));
+
+        #[cfg(not(target_os = "windows"))]
+        if STOPPING.load(std::sync::atomic::Ordering::SeqCst) {
+            println!("\nStopping.");
+            break;
+        }
     }
+
+    // Only reachable on the platform that has something to remove; on Windows
+    // the loop above never ends and the section dies with the process.
+    #[cfg(not(target_os = "windows"))]
+    remove_pages();
+
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 /// Assetto Corsa's two live pages.

@@ -67,3 +67,10 @@ path = "src/bin/simulator.rs"
 [[bin]]
 name = "tui_tester"
 path = "src/bin/tui_tester.rs"
+
+# Only the telemetry simulator, and only on Linux: it needs to catch Ctrl+C so
+# it can remove the `/dev/shm` files it created. On Windows a named section
+# disappears with the process that made it, so there is nothing to clean up and
+# nothing to catch.
+[target.'cfg(not(windows))'.dependencies]
+libc = "0.2"
