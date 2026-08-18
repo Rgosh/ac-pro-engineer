@@ -2,6 +2,87 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.1] - unreleased
+
+**The point:** the first real Competizione session found four ways the app
+reported things nobody measured, and one way it counted a single slide as
+fifteen hundred.
+
+### Fixed
+
+- **A slide held for half a lap was counted as hundreds of separate
+  incidents.** The counters added one per *sample* and divided by a fixed run
+  length, which is only correct if incidents arrive in equal pieces. On
+  Competizione that produced "Oversteer: 1454x" and understeer on the same lap
+  at the same time — one condition, counted per sample, reported as two
+  symptoms. An episode is now counted once, when it starts, and cannot be
+  counted again until it has cleared.
+- **The engineer said nothing at all for the first three laps.** Separating the
+  car from the driving genuinely needs a stint, and that refusal stays — but it
+  is a refusal to *attribute*, not to observe. Every lap now reports what
+  happened, marked as undecided until there are four of them, so a two-lap
+  sprint is no longer silent.
+- **Ride height and tread temperature were drawn as zeros on Competizione**,
+  which reads as a car on the tarmac with ice-cold tyres rather than as a game
+  that does not publish them. Both are capabilities now, and the Engineer tab
+  draws a dash.
+- **Wind was drawn as `0.0 km/h` on Competizione** for the same reason, on the
+  Strategy tab, two rows below a grip figure that already said "not measured".
+- **A symptom was blamed on the driver even when the driving never varied.**
+  The car-versus-driver verdict has two halves — the symptom has to move, *and*
+  the driving has to have moved with it — and only the first was checked. A
+  stint of four laps driven to the same time, with a symptom that swung between
+  them, was reported as "the driving": exactly backwards, since there was no
+  variation in the driving for it to follow. It now says so and leaves the
+  blame undecided.
+- **"Bottoming out" was warned on every lap of Assetto Corsa.** The lap
+  debrief holds ride height in metres and compared it against a threshold
+  written in millimetres, so an ordinary 62 mm cleared the check as 0.062 and
+  landed under 15 — then printed the same number back as "0 mm". It survived
+  because the only fixture carrying ride heights holds values above the
+  threshold by accident.
+- **A telemetry page left behind by an earlier run was read as a live
+  session.** The Proton helper sized the file it created and never cleared it,
+  so a static page from a previous session — or from the telemetry simulator —
+  survived intact, carrying a car, a track and the right shared-memory version.
+  Nothing downstream could tell it was old: physics and graphics are rewritten
+  every frame and recovered, the static page is written once a session and did
+  not. The page is zeroed now, which every reader already treats as "waiting".
+
+- **The telemetry simulator left its pages behind.** It writes three files into
+  `/dev/shm` and they outlive the process, so a simulator stopped with Ctrl+C
+  left a complete, valid-looking session for the application to attach to. It
+  removes them now, and clears a page it creates rather than inheriting
+  whatever was in the file.
+
+### Removed
+
+- **A "car control" score that was computed every lap and shown nowhere.** It
+  was derived from three counters against a threshold picked to make the number
+  look reasonable, which is the kind of confident figure the rest of this
+  program exists to avoid publishing. The `RadarStats` field it fed was equally
+  unread.
+
+### Added
+
+- **A Competizione picture of the Engineer tab.** It had none, which is how
+  four zeros where a tread readout goes went unreviewed through a release.
+- **The Windows build is run, not just compiled.** `./tools/test-windows.sh`
+  puts the suite through Wine as a Windows binary in a scratch prefix, so the
+  Win32 halves — process enumeration, named mappings, paths with drive letters
+  — are exercised rather than assumed. The whole workspace passes there.
+- **Tests the code did not have**, found by running `cargo mutants` over the
+  analysis modules: the distance resampling behind every ghost comparison had
+  no test at all, and neither did the pressure or temperature blocks of the lap
+  debrief. The compound bands are pinned to both games' names, including the
+  `dry_compound` that Competizione publishes and the recording proves.
+
+### Note for Linux and Steam Deck
+
+The Proton helper changed, so press **[B]** on the launcher's overlay card
+after updating. The application and the helper have to come from the same
+release.
+
 ## [v0.4.0] - 2026-08-18
 
 **The point:** a second simulator, and an engineer that knows what car it is

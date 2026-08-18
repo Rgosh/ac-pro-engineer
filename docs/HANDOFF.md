@@ -1,12 +1,25 @@
-# Handoff — the in-game overlay
+# Handoff — where the work stands
 
-State as of 2026-08-08, at v0.3.5. Read this first in a new session.
+It was the overlay's handoff and it still carries most of that detail, because
+the overlay is still the part with three pieces that have to agree. It is not
+only that any more: there are two games under `core/src/games/` now, and the
+bugs worth writing down came from the second one.
 
-`main` is pushed to `origin`, 308 tests, clippy and fmt clean on Linux **and**
-`x86_64-pc-windows-gnu`. Check both before pushing:
+State as of 2026-08-18, with v0.4.1 prepared and uncommitted. Read this
+first in a new session.
+
+`main` is at v0.4.0; the working tree carries the 0.4.1 patch described at
+the bottom of this file. 348 tests in the core, clippy and fmt clean on
+Linux **and** `x86_64-pc-windows-gnu` — and as of this patch the Windows
+target is *run* as well as built, through Wine. Check all of it before
+pushing:
 
 ```bash
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings
+```
+
+```bash
+./tools/test-windows.sh
 ```
 
 ## The shape of the thing
@@ -83,6 +96,14 @@ cargo run -p ac_core --example engineer_probe
 cargo run -p ac_core --example bridge_probe
 ```
 
+```bash
+./tools/test-game.sh acc
+```
+
+```bash
+cargo run -p ac_core --example capability_matrix
+```
+
 The engineer probe is how "four tyres WORN OUT: 0.0%" was found: AC counts wear
 down from 100, so all four corners at zero is a session that has not published
 wear, not four destroyed tyres.
@@ -121,88 +142,59 @@ font tiers cannot be scaled and a 4K screen needs more than the largest.
 - A `str.replace` with no anchor is a silent no-op — two "split this tab into
   sub-tabs" edits did nothing and the tests still passed.
 
-## Where this stands: v0.3.5
+## Where this stands: v0.4.1, prepared and uncommitted
 
-The same limit as v0.3.4 — nothing has been run on Windows or inside a real
-session by the author of the changes — and the changelog still says so at the
-top of the release. What changed under it:
+**Two games, not one.** The overlay is still Assetto Corsa's only — CSP is an
+AC mod — but everything else reads both. `docs/ARCHITECTURE.md` is the plan and
+`core/src/games/` is the half of it that exists.
 
-- **frame v5, eight advice lines.** The struct is 712 bytes; every published
-  bridge before v0.3.5 maps 440 and CSP silently refuses the mapping. [B] on
-  the launcher card is the way out.
-- **the panel is reachable outside a session.** `tick` publishes a frame with
-  `CONNECTED` clear from the launcher stage and whenever AC has nothing in
-  shared memory, so the panel opens in the garage saying "waiting for the car"
-  rather than "Pro Engineer is not running".
-- **`LAZY = ON`.** With `FULL`, CSP unloaded the script when the last window
-  closed and every setting that had not reached `ac.storage` was gone.
-- **the key map is data.** `tui/src/keys.rs` and a KEYS category in Settings;
-  every hint in the application is printed from it, and a test walks all nine
-  tabs to keep it honest.
-- **the engineer groups per-corner findings.** Four cold tyres are one line, not
-  four, so a car with four problems does not publish four lines about one of
-  them.
-- **camber is judged on cornering frames, and reported in degrees.** The check
-  read the inner-minus-outer tyre temperature of the current frame, which on a
-  straight is zero for a tyre with the right camber — so above 50 km/h it filled
-  four of the panel's eight lines with "contact patch inefficient" about a car
-  that was fine. It is averaged over frames above 0.5 g now, grouped into one
-  line, and the "now:" in the advice comes from `camberRAD` in AC's physics page
-  rather than from `CAMBER_LF VALUE=` in the setup file. That value is a step
-  index into a range inside the car's `data.acd` — an abarth500 at `VALUE=-9`
-  runs about −1.3°, and no reading of the file gets from one to the other, so
-  the shared-memory field is the only source of camber in degrees this program
-  has. `setup_manager::generate_diff` still divides it by ten to label the setup
-  comparison; the column is a difference between two setups, so it is
-  proportional but the unit on it is a guess.
+The v0.3.4-era warning that used to be here is gone: the published bridge
+creates the overlay mapping, and the three-piece version check is in place. What
+replaced it is a different lesson, from the first real Competizione session:
+**every remaining bug was the program reporting something nobody measured.**
 
-## The one thing that blocked a beta, and how v0.3.4 answered it
+Five of them, all fixed in the working tree:
 
-**No published release contains a bridge that can serve the overlay.** v0.3.3
-was tagged at 04:15 and `187b914`, the commit that added the overlay mapping to
-`ACC_FILES`, landed at 04:26. The published `shm-bridge.exe` therefore maps AC's
-four `acpmf_*` pages and nothing else: it starts, reports no error, and the
-overlay mapping is never created, so on Linux the panel waits forever with the
-application running and the file sitting in `/dev/shm`.
-
-Confirmed by scanning the published artifact — it does not contain the string
-`AcTools.CSP.Limited.ACPE.v1` anywhere, and the bridge built from this checkout
-does.
-
-Nothing in the code could fix this; a release had to be cut from a commit at or
-after `187b914`, and v0.3.4 is it. Everything else was already in place:
-
-- `bridge_update` finds the asset dist actually publishes
-  (`shm-bridge-x86_64-pc-windows-gnu.zip`, not the bare `.exe` that only v0.2.2
-  had), unpacks it, and **refuses** a bridge that does not carry the overlay
-  mapping's name — so pressing [B] today downloads v0.3.3, inspects it, and says
-  why it will not install it, rather than installing a downgrade into this bug.
-- the launcher card and `bridge_probe` both name the state.
+- a slide held for half a lap counted as hundreds of incidents, because the
+  counters added one per *sample* and divided by a fixed run length. `Episodes`
+  in `core/src/analyzer.rs` counts an episode once, when it starts.
+- the car-versus-driver verdict blamed the driver without checking whether the
+  driving had varied at all — one half of its own two-part rule.
+- ride height, tread temperature and wind were drawn as zeros on Competizione.
+  Each is a capability now; `ride_height` and `wind` were added for it.
+- "Bottoming out" fired on every lap of Assetto Corsa: the height is in metres
+  and the threshold was written in millimetres.
+- a telemetry page left by an earlier run read as a live session, because the
+  bridge sized the file it created and never cleared it.
 
 ## What is left
 
-1. **Windows.** Clippy is clean for the Windows target, the test suite passes
-   cross-compiled, and the installer uses `ac_paths` — but nothing has been
-   *run* there. The bridge is a Linux concern only; on Windows the application
-   creates the named mapping itself and `bridge::status` reports `NotRequired`.
-2. **The rest of the suggestions**: tyre temperature window from the application
-   (two fields, same shape as the pressure targets), sector times, and a small
-   history plot in the panel.
-3. The panel's strings are translated; the console's settings labels are only
-   partly, and `Wear:`, `T:` and `B:` in `formatFrame` are English in both
+1. **The slip thresholds on Competizione are not measured.** `Episodes` removed
+   the absurd counts; whether 0.2/0.3 in `analyzer.rs` are the right numbers on
+   *that* game is unanswered, and the honest way to answer it is a lap with
+   `/dev/shm/acpmf_physics` sampled beside it. Do not guess them.
+2. **The bridge must ship with the application.** `bridge_update` fetches from a
+   published release, so until 0.4.1 publishes its assets, pressing [B] installs
+   the 0.4.0 bridge — which does not have the zeroing fix the changelog tells
+   Linux users to press [B] for.
+3. **54 mutants unrun** in `car_class.rs` and `driver_vs_car.rs`.
+   `cargo mutants -p ac_core --file <path>` — it is slow and it competes with
+   whoever is using the machine, so run it deliberately. Everything it found in
+   `analyzer.rs` and `debrief.rs` has been closed.
+4. **The panel's strings are translated; the console's settings labels are only
+   partly**, and `Wear:`, `T:` and `B:` in `formatFrame` are English in both
    languages.
-4. `fetch_bridge_now` blocks the UI thread for the length of a download. One
-   small file behind an explicit keystroke, so it has not been worth a thread —
-   revisit if the asset grows.
+5. **`fetch_bridge_now` blocks the UI thread** for the length of a download. One
+   small file behind an explicit keystroke, so it has not been worth a thread.
 
 ## Done since the last handoff
 
-1. ~~**Version-check the bridge.**~~ It writes `/dev/shm/acpe-bridge.info` and
-   compiles its version into its own binary; `bridge::status` judges both, and
-   `cargo run -p ac_core --example bridge_probe` prints the verdict. Verified
-   end-to-end under Wine, including the incompatible and behind cases.
-2. ~~**Package the bridge.**~~ dist already publishes it; [B] on the launcher
-   card fetches and verifies it.
+1. ~~**Nothing has been run on Windows.**~~ It runs now — `./tools/test-windows.sh`
+   puts the whole workspace through Wine as a Windows binary. Not a substitute
+   for the real thing, and most of the distance to it.
+2. ~~**Version-check the bridge.**~~ `/dev/shm/acpe-bridge.info`, the compiled-in
+   marker, and `bridge_probe`.
+3. ~~**Package the bridge.**~~ [B] on the launcher card fetches and verifies it.
 
 ## The environment
 

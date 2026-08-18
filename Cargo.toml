@@ -3,7 +3,7 @@ resolver = "3"
 members = ["core", "tui", "shm-bridge", "tests_suite"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 authors = ["Rgosh"]
 # AGPL from the commit after 9ba92a3 (v0.3.6 and earlier were MIT, and stay
