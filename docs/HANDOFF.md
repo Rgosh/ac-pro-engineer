@@ -173,10 +173,12 @@ Five of them, all fixed in the working tree:
    the absurd counts; whether 0.2/0.3 in `analyzer.rs` are the right numbers on
    *that* game is unanswered, and the honest way to answer it is a lap with
    `/dev/shm/acpmf_physics` sampled beside it. Do not guess them.
-2. **The bridge must ship with the application.** `bridge_update` fetches from a
-   published release, so until 0.4.1 publishes its assets, pressing [B] installs
-   the 0.4.0 bridge — which does not have the zeroing fix the changelog tells
-   Linux users to press [B] for.
+2. ~~**The bridge must ship with the application.**~~ It does, and
+   automatically: `dist` publishes `shm-bridge-x86_64-pc-windows-gnu.zip`
+   beside the application's archives on every tag — check any release's assets.
+   Nothing to sequence by hand. What is still true is that [B] fetches from a
+   *published* release, so the fix is not available to anyone until the tag is
+   pushed.
 3. **54 mutants unrun** in `car_class.rs` and `driver_vs_car.rs`.
    `cargo mutants -p ac_core --file <path>` — it is slow and it competes with
    whoever is using the machine, so run it deliberately. Everything it found in
