@@ -229,6 +229,19 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings
 ```
 
+And the Windows half can now be **run**, not only built:
+
+```bash
+./tools/test-windows.sh
+```
+
+Wine, a scratch prefix, and the same suite as a Windows binary. This is the
+difference between "it compiles for that target" and "the Win32 calls in it
+return what the code expects" — process enumeration, named mappings, paths with
+drive letters. Fewer tests run than on Linux, which is correct: the bridge and
+the `/dev/shm` paths are `#[cfg(not(target_os = "windows"))]`. It is not a
+substitute for a real Windows machine, and it is most of the distance to one.
+
 ## How the panel is laid out
 
 One file per thing, under `assets/frontends/csp-panel/`:
