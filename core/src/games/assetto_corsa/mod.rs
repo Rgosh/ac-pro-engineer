@@ -62,6 +62,9 @@ pub fn telemetry_is_reachable() -> bool {
 /// `/dev/shm` by hand is still reading Assetto Corsa, and an engineer that is
 /// not told withholds every verdict that rests on a measurement.
 pub const CAPABILITIES: Capabilities = Capabilities {
+    wind: true,
+    // Published per axle, and the bottoming and rake advice are built on it.
+    ride_height: true,
     tyre_edge_temps: true,
     sectors: true,
     setups: true,

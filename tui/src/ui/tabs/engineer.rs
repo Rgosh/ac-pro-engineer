@@ -371,6 +371,39 @@ fn render_sector_advice(
 
         let alerts = &app.config.alerts;
         let fmt = app.config.formatter();
+        // **A number here is a claim that somebody measured it.** Competizione
+        // publishes neither tread temperatures nor ride height, and both used
+        // to be drawn as zeros — which read as ice-cold tyres and a car
+        // sitting on the tarmac rather than as the absence they are. Same
+        // rule the launcher and the Strategy tab already follow.
+        let measures = app
+            .reading
+            .as_ref()
+            .map(|reading| reading.capabilities)
+            .unwrap_or_else(ac_core::games::Capabilities::all);
+        // Widths are the ones the ASCII car is drawn around: twelve columns
+        // for a tread readout, nine and eight for the two ride heights.
+        let tread = |inner: f32, middle: f32, outer: f32| -> String {
+            if measures.tyre_edge_temps {
+                format!(" [{inner:>2.0}|{middle:>2.0}|{outer:>2.0}] ")
+            } else {
+                format!(" [{:^8}] ", "—")
+            }
+        };
+        let ride_left = |height: f32| -> String {
+            if measures.ride_height {
+                format!(" ↕ {height:>2.0}mm  ")
+            } else {
+                format!(" ↕ {:>4}  ", "—")
+            }
+        };
+        let ride_right = |height: f32| -> String {
+            if measures.ride_height {
+                format!("  ↕ {height:>2.0}mm")
+            } else {
+                format!("  ↕ {:>4}", "—")
+            }
+        };
         let target_psi = (alerts.tyre_pressure_min + alerts.tyre_pressure_max) / 2.0;
         let target_brake_temp = (alerts.brake_temp_max - 150.0).max(300.0);
 
@@ -468,18 +501,12 @@ fn render_sector_advice(
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(
-                        " [{:>2.0}|{:>2.0}|{:>2.0}] ",
-                        fl_temp_i, fl_temp_m, fl_temp_o
-                    ),
+                    tread(fl_temp_i, fl_temp_m, fl_temp_o),
                     Style::default().fg(Color::Gray),
                 ),
                 Span::raw("                "),
                 Span::styled(
-                    format!(
-                        " [{:>2.0}|{:>2.0}|{:>2.0}] ",
-                        fr_temp_o, fr_temp_m, fr_temp_i
-                    ),
+                    tread(fr_temp_o, fr_temp_m, fr_temp_i),
                     Style::default().fg(Color::Gray),
                 ),
             ]),
@@ -495,17 +522,11 @@ fn render_sector_advice(
                 ),
             ]),
             Line::from(vec![
-                Span::styled(
-                    format!(" ↕ {:>2.0}mm  ", fl_rh),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(ride_left(fl_rh), Style::default().fg(Color::Cyan)),
                 Span::styled("   [||]", wheel_style),
                 Span::styled("==========", front_splitter_style),
                 Span::styled("[||]   ", wheel_style),
-                Span::styled(
-                    format!("  ↕ {:>2.0}mm", fr_rh),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(ride_right(fr_rh), Style::default().fg(Color::Cyan)),
             ]),
             Line::from(vec![Span::styled(
                 "               \\   ____   /               ",
@@ -532,17 +553,11 @@ fn render_sector_advice(
                 car_body_style,
             )]),
             Line::from(vec![
-                Span::styled(
-                    format!(" ↕ {:>2.0}mm  ", rl_rh),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(ride_left(rl_rh), Style::default().fg(Color::Cyan)),
                 Span::styled("   [||]", wheel_style),
                 Span::styled("----------", car_body_style),
                 Span::styled("[||]   ", wheel_style),
-                Span::styled(
-                    format!("  ↕ {:>2.0}mm", rr_rh),
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(ride_right(rr_rh), Style::default().fg(Color::Cyan)),
             ]),
             Line::from(vec![
                 Span::styled("               ", car_body_style),
@@ -562,18 +577,12 @@ fn render_sector_advice(
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(
-                        " [{:>2.0}|{:>2.0}|{:>2.0}] ",
-                        rl_temp_i, rl_temp_m, rl_temp_o
-                    ),
+                    tread(rl_temp_i, rl_temp_m, rl_temp_o),
                     Style::default().fg(Color::Gray),
                 ),
                 Span::raw("                "),
                 Span::styled(
-                    format!(
-                        " [{:>2.0}|{:>2.0}|{:>2.0}] ",
-                        rr_temp_o, rr_temp_m, rr_temp_i
-                    ),
+                    tread(rr_temp_o, rr_temp_m, rr_temp_i),
                     Style::default().fg(Color::Gray),
                 ),
             ]),

@@ -220,11 +220,11 @@ fn create_populated_app_state() -> AppState {
         coasting_percent: 4.2,
         pedal_overlap_percent: 1.1,
         full_throttle_percent: 68.5,
+        car_control_score: 95.0,
         grip_usage_percent: 94.8,
         oversteer_count: 1,
         understeer_count: 2,
         lockup_count: 0,
-        car_control_score: 95.0,
         scrubbing_incidents: 0,
         max_steering_over_rotation: 0.0,
         // Nought to one, which is the scale `TelemetryAnalyzer` produces —
@@ -234,9 +234,9 @@ fn create_populated_app_state() -> AppState {
         // out reading "Aggression: 8800.0%".
         radar_stats: RadarStats {
             consistency: 0.94,
-            car_control: 0.95,
             aggression: 0.88,
             smoothness: 0.93,
+            car_control: 0.95,
             tyre_mgmt: 0.91,
         },
         telemetry_trace: trace_points,
@@ -422,6 +422,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.active_tab = AppTab::Strategy;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Strategy_ACC")?;
+    // The screen the missing measurements show up on most, and the one that
+    // had no ACC picture until now — which is why four zeros where a tread
+    // readout goes, and 0 mm of ride height, went unreviewed through a whole
+    // release.
+    app.active_tab = AppTab::Engineer;
+    app.ui_state.engineer.active_sub_tab = 1;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Engineer_ACC")?;
+    app.ui_state.engineer.active_sub_tab = 0;
 
     // Back to a game that measures everything, so the screenshots after this
     // are Assetto Corsa's the way the ones before it are.

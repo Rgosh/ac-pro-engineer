@@ -74,6 +74,12 @@ pub fn telemetry_is_reachable() -> bool {
 ///   here reads yet. False is the honest answer, and the Setup tab already
 ///   says so rather than showing an empty list.
 pub const CAPABILITIES: Capabilities = Capabilities {
+    // Both wind fields are zero for the whole recording.
+    wind: false,
+    // Zero for the whole recording — see `AccPhysics::ride_height`, which is
+    // marked not published for the same reason. Reported as measured, four
+    // zeros read as a car sitting on the tarmac.
+    ride_height: false,
     tyre_edge_temps: false,
     sectors: true,
     setups: false,

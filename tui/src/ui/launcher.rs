@@ -863,6 +863,8 @@ fn game_panel(app: &AppState) -> Vec<Line<'static>> {
         // Where one game is blind the other is not, and this is the pair that
         // shows it: Competizione trades tyre wear for brake wear.
         lines.push(measured(backend.capabilities.brake_wear, "Brake pad wear"));
+        lines.push(measured(backend.capabilities.ride_height, "Ride height"));
+        lines.push(measured(backend.capabilities.wind, "Wind"));
         lines.push(measured(backend.capabilities.track_grip, "Track grip"));
         lines.push(measured(backend.capabilities.lap_validity, "Track limits"));
         lines.push(measured(backend.capabilities.sectors, "Sector times"));

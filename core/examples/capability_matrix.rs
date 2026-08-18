@@ -27,6 +27,8 @@ type Row = (&'static str, fn(&ac_core::games::Capabilities) -> bool);
 const ROWS: &[Row] = &[
     ("tyre wear", |c| c.tyre_wear),
     ("tread temperatures", |c| c.tyre_edge_temps),
+    ("ride height", |c| c.ride_height),
+    ("wind", |c| c.wind),
     ("brake pad and disc wear", |c| c.brake_wear),
     ("track grip", |c| c.track_grip),
     ("track limits", |c| c.lap_validity),

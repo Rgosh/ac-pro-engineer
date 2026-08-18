@@ -456,6 +456,10 @@ fn render_environment(
         .reading
         .as_ref()
         .is_none_or(|reading| reading.capabilities.track_grip);
+    let wind_measured = app
+        .reading
+        .as_ref()
+        .is_none_or(|reading| reading.capabilities.wind);
     let grip_cell = if grip_measured {
         Cell::from(format!("{:.1}%", gfx.surface_grip * 100.0)).style(Style::default().fg(
             if gfx.surface_grip > 0.95 {
@@ -486,8 +490,16 @@ fn render_environment(
         ]),
         Row::new(vec![
             Cell::from("Wind Spd".tr_lang(lang).to_string()),
-            Cell::from(format!("{:.1} km/h", gfx.wind_speed_kmh))
-                .style(Style::default().fg(Color::White)),
+            // Same reasoning as the grip row above: a game that publishes no
+            // wind leaves zero, and "0.0 km/h" is a still day, not a missing
+            // measurement.
+            if wind_measured {
+                Cell::from(format!("{:.1} km/h", gfx.wind_speed_kmh))
+                    .style(Style::default().fg(Color::White))
+            } else {
+                Cell::from("not measured".tr_lang(lang).to_string())
+                    .style(Style::default().fg(Color::DarkGray))
+            },
         ]),
     ];
 

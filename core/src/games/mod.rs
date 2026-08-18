@@ -84,6 +84,21 @@ pub struct Capabilities {
     /// which is not a claim that it *is* valid, only that nothing said
     /// otherwise. ACC says.
     pub lap_validity: bool,
+    /// Wind speed and direction are published.
+    ///
+    /// Assetto Corsa publishes both; Competizione publishes neither, and the
+    /// Strategy tab drew the zero as `0.0 km/h` — a still day rather than an
+    /// unmeasured one. The same rule the grip row on that screen already
+    /// follows.
+    pub wind: bool,
+    /// Ride height is published.
+    ///
+    /// Assetto Corsa publishes it and Competizione does not — the field is
+    /// there in ACC's layout and reads zero for a whole session. Without this
+    /// flag the Engineer tab draws `0mm` at all four corners, which is not
+    /// "the car is on the ground", it is "nobody measured", and the bottoming
+    /// warning reads a height of zero as a car scraping the tarmac.
+    pub ride_height: bool,
     /// The in-game panel can run in this game.
     ///
     /// It is a Custom Shaders Patch app, and CSP is an Assetto Corsa mod —
@@ -109,6 +124,8 @@ impl Capabilities {
             track_grip: true,
             brake_wear: true,
             lap_validity: true,
+            wind: true,
+            ride_height: true,
             in_game_panel: true,
         }
     }
