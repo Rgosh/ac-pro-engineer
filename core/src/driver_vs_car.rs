@@ -11,19 +11,36 @@
 //! on the lap they got wrong; a driver's mistake follows the driving. So this
 //! reasons over a stint, and it refuses to answer before it has one.
 //!
+//! Both halves of that have to hold before anything is blamed on the driver:
+//! the symptom has to move, **and the driving has to have moved with it**. A
+//! stint where every lap was driven the same way carries no variation for a
+//! symptom to follow, so a symptom that moves anyway says nothing about the
+//! driver — whatever it says, it is not that.
+//!
 //! **That refusal is the feature, not a limitation to work around.** An
 //! engineer who answers a question they cannot answer is worse than one who
 //! says "give me four more laps" — the wrong answer here sends somebody to
 //! change a setup that was never the problem.
+//!
+//! What is refused is the **verdict**, and only the verdict. Counting a
+//! symptom needs one lap, and a driver in a two-lap sprint is owed what the
+//! lap showed even though nothing can be attributed from it. Below
+//! [`MIN_LAPS`] every symptom is still reported with [`Blame::Undecided`] and
+//! a reason that names how little it is working from; at or above it, the
+//! attribution runs. Saying nothing at all for the first three laps was the
+//! old behaviour, and it read as an engineer with nothing to say rather than
+//! one being careful.
 
 use crate::analyzer::LapData;
 use crate::confidence::{Confidence, Evidence};
 use crate::i18n::Translate;
 
-/// Laps needed before this will say anything at all.
+/// Laps needed before a symptom can be **blamed** on the car or the driving.
 ///
 /// Four: enough that a symptom appearing in all of them is not three
-/// coincidences, and few enough to be one run out of the pits.
+/// coincidences, and few enough to be one run out of the pits. Fewer laps than
+/// this still report the symptom — see the module note — they just decline to
+/// say whose it is.
 pub const MIN_LAPS: usize = 4;
 
 /// How many times a lap a symptom has to show up before it is a symptom.
@@ -119,13 +136,20 @@ type Symptom = (&'static str, fn(&LapData) -> f32);
 
 /// Assess a stint — the laps driven on one set of tyres and one setup.
 pub fn assess(laps: &[LapData]) -> Assessment {
-    if laps.len() < MIN_LAPS {
+    if laps.is_empty() {
         return Assessment::NotYet(NotYet {
-            laps: laps.len(),
+            laps: 0,
             needed: MIN_LAPS,
         });
     }
 
+    // **Counting is not attributing.** Below `MIN_LAPS` every symptom is still
+    // reported — a two-lap sprint is a race, and a driver locking up eight
+    // times a lap is entitled to hear it on lap one — but the blame is left
+    // `Undecided`, because the discriminator this module exists for needs a
+    // stint and there is not one yet. What is refused is the verdict, not the
+    // observation.
+    let enough_to_attribute = laps.len() >= MIN_LAPS;
     let varied = pace_varied(laps);
     let mut verdicts = Vec::new();
 
@@ -146,32 +170,68 @@ pub fn assess(laps: &[LapData]) -> Assessment {
         // A symptom that turns up in the same quantity every lap did not
         // follow the driving. One that comes and goes did.
         let consistent = evidence.confidence();
-        let (blame, reason) = match (consistent, varied) {
-            (Confidence::High, true) => (
-                Blame::Car,
-                format!(
-                    "{per_lap:.0} a lap on every one of {} laps, while the lap times moved about — \
-                     it is not following the driving",
-                    laps.len()
-                ),
-            ),
-            (Confidence::High, false) => (
+        let (blame, reason) = if !enough_to_attribute {
+            (
                 Blame::Undecided,
                 format!(
-                    "{per_lap:.0} a lap on every one of {} laps, but every lap was driven the same \
+                    "{per_lap:.0} a lap over {} — {MIN_LAPS} laps are what separate the car \
+                     from the driving, so this is what happened, not whose it is",
+                    if laps.len() == 1 {
+                        "one lap".to_string()
+                    } else {
+                        format!("{} laps", laps.len())
+                    }
+                ),
+            )
+        } else {
+            match (consistent, varied) {
+                (Confidence::High, true) => (
+                    Blame::Car,
+                    format!(
+                        "{per_lap:.0} a lap on every one of {} laps, while the lap times moved about — \
+                     it is not following the driving",
+                        laps.len()
+                    ),
+                ),
+                (Confidence::High, false) => (
+                    Blame::Undecided,
+                    format!(
+                        "{per_lap:.0} a lap on every one of {} laps, but every lap was driven the same \
                      way — there is nothing to tell the car from the habit",
-                    laps.len()
+                        laps.len()
+                    ),
                 ),
-            ),
-            (_, _) => (
-                Blame::Driver,
-                format!(
-                    "between {:.0} and {:.0} a lap over {} laps — it comes and goes with the lap",
-                    evidence.min(),
-                    evidence.max(),
-                    laps.len()
+                (_, true) => (
+                    Blame::Driver,
+                    format!(
+                        "between {:.0} and {:.0} a lap over {} laps — it comes and goes with the lap",
+                        evidence.min(),
+                        evidence.max(),
+                        laps.len()
+                    ),
                 ),
-            ),
+                // **A symptom that moves while the driving did not cannot be
+                // following the driving.** This arm used to fall into the one
+                // above and be blamed on the driver, which reverses the
+                // module's own definition: a driver's mistake follows the
+                // driving, and there was no variation in the driving to
+                // follow. What is actually happening — a car that is
+                // inconsistent lap to lap on its own, tyres coming in and
+                // going away, fuel burning off — is not something four laps
+                // can name, so it is named as undecided rather than pinned on
+                // whoever is holding the wheel.
+                (_, false) => (
+                    Blame::Undecided,
+                    format!(
+                        "between {:.0} and {:.0} a lap over {} laps, but every lap was driven the \
+                         same way — the symptom moved and the driving did not, so it is not \
+                         following it",
+                        evidence.min(),
+                        evidence.max(),
+                        laps.len()
+                    ),
+                ),
+            }
         };
 
         verdicts.push(Verdict {
@@ -214,15 +274,105 @@ mod tests {
         }
     }
 
-    /// The refusal is the feature. Three laps is not a stint.
+    /// **The verdict this module used to get backwards.** Four laps driven to
+    /// the same time, and a symptom that swings between them: nothing about
+    /// the driving varied, so the symptom cannot be following it. It was
+    /// blamed on the driver anyway, because the arm that decides "it comes and
+    /// goes with the lap" never looked at whether the lap had changed.
     #[test]
-    fn it_will_not_answer_from_too_few_laps() {
+    fn a_symptom_that_moves_while_the_driving_did_not_is_not_the_driver() {
+        let laps = vec![
+            lap(91_000, 2, 0),
+            lap(91_020, 12, 0),
+            lap(91_010, 3, 0),
+            lap(91_005, 14, 0),
+        ];
+        let verdicts = assess(&laps).verdicts().to_vec();
+        let understeer = verdicts
+            .iter()
+            .find(|v| v.symptom == "understeer")
+            .expect("a symptom averaging seven a lap is reported");
+        assert_eq!(
+            understeer.blame,
+            Blame::Undecided,
+            "the driving never varied, so nothing here follows it: {}",
+            understeer.reason
+        );
+        assert!(
+            understeer.reason.contains("driven the same way"),
+            "and it says why: {}",
+            understeer.reason
+        );
+    }
+
+    /// The same swing, but the driver was genuinely inconsistent — the lap
+    /// times moved too. Now it is the driving.
+    #[test]
+    fn a_symptom_that_moves_with_the_driving_is_the_driver() {
+        let laps = vec![
+            lap(91_000, 2, 0),
+            lap(93_400, 12, 0),
+            lap(91_800, 3, 0),
+            lap(94_100, 14, 0),
+        ];
+        let verdicts = assess(&laps).verdicts().to_vec();
+        let understeer = verdicts
+            .iter()
+            .find(|v| v.symptom == "understeer")
+            .expect("a symptom averaging seven a lap is reported");
+        assert_eq!(understeer.blame, Blame::Driver, "{}", understeer.reason);
+    }
+
+    /// The refusal is the feature, and it is a refusal to *attribute*. Three
+    /// laps still report what happened; what they will not do is say whose it
+    /// is. A two-lap sprint used to get nothing at all.
+    #[test]
+    fn a_short_stint_reports_the_symptom_but_not_the_blame() {
         let laps = vec![lap(91_000, 9, 0), lap(91_200, 9, 0), lap(91_100, 9, 0)];
         let assessment = assess(&laps);
+        let verdicts = assessment.verdicts();
+        assert_eq!(
+            verdicts.len(),
+            1,
+            "the understeer was counted: {assessment:?}"
+        );
+        assert_eq!(verdicts[0].symptom, "understeer");
+        assert_eq!(
+            verdicts[0].blame,
+            Blame::Undecided,
+            "three laps cannot tell the car from the driving"
+        );
+        assert_eq!(verdicts[0].confidence, Confidence::Low);
+        assert_eq!(verdicts[0].laps, 3);
+        assert!(
+            verdicts[0].reason.contains("3 laps"),
+            "the reason says how little it is working from: {}",
+            verdicts[0].reason
+        );
+    }
+
+    /// One lap is a lap, not a stint — and it is still worth reporting.
+    #[test]
+    fn one_lap_counts_and_says_so() {
+        let laps = vec![lap(91_000, 9, 0)];
+        let verdicts = assess(&laps).verdicts().to_vec();
+        assert_eq!(verdicts.len(), 1);
+        assert_eq!(verdicts[0].blame, Blame::Undecided);
+        assert!(
+            verdicts[0].reason.contains("one lap"),
+            "a single lap is named as one, not as \"1 laps\": {}",
+            verdicts[0].reason
+        );
+    }
+
+    /// Nothing driven yet is the only case with nothing to say.
+    #[test]
+    fn no_laps_is_the_only_not_yet() {
+        let assessment = assess(&[]);
         let Assessment::NotYet(not_yet) = &assessment else {
-            unreachable!("three laps is not a stint: {assessment:?}")
+            unreachable!("no laps is not an assessment: {assessment:?}")
         };
-        assert_eq!(not_yet.laps, 3);
+        assert_eq!(not_yet.laps, 0);
         assert_eq!(not_yet.needed, MIN_LAPS);
     }
 
