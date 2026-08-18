@@ -78,7 +78,6 @@ pub struct LapData {
     pub oversteer_count: i32,
     pub understeer_count: i32,
     pub lockup_count: i32,
-    pub car_control_score: f32,
 
     pub scrubbing_incidents: i32,
     pub max_steering_over_rotation: f32,
@@ -98,7 +97,6 @@ pub struct RadarStats {
     pub smoothness: f32,
     pub aggression: f32,
     pub consistency: f32,
-    pub car_control: f32,
     pub tyre_mgmt: f32,
 }
 
@@ -150,6 +148,50 @@ fn without_sentinel(value: f32) -> f32 {
         0.0
     } else {
         value
+    }
+}
+
+/// One episode counted once, however long it lasts.
+///
+/// **Why this is not a per-sample counter.** It was one: every sample where a
+/// tyre was sliding added one, and the total was divided by the number of
+/// samples an incident lasts. That arithmetic is only correct if incidents
+/// come in fixed-length pieces. They do not — a single slide held for half a
+/// lap is one incident, and dividing counted it as hundreds of them. On
+/// Competizione, where the slip figures sit above the threshold for most of a
+/// lap, that produced "Oversteer: 1454x" and "understeer: 1105 a lap" for the
+/// same lap, both at once: not two symptoms but one condition, counted per
+/// sample.
+///
+/// So an episode is counted when the condition has held for `min_run` samples,
+/// and cannot be counted again until it has been absent for as long. The run
+/// length is the same duration the divisor used to encode, which is why
+/// [`samples_per_incident`] is still what supplies it.
+#[derive(Default)]
+struct Episodes {
+    count: i32,
+    active: bool,
+    run: i32,
+}
+
+impl Episodes {
+    fn sample(&mut self, present: bool, min_run: i32) {
+        if present == self.active {
+            self.run = 0;
+            return;
+        }
+        self.run += 1;
+        if self.run < min_run {
+            return;
+        }
+        // Held long enough to be a change of state rather than one noisy
+        // sample. Only the start of an episode is counted; its end just arms
+        // the next one.
+        self.active = present;
+        self.run = 0;
+        if present {
+            self.count += 1;
+        }
     }
 }
 
@@ -385,10 +427,12 @@ impl TelemetryAnalyzer {
         let mut grip_usage_acc = 0.0;
         let mut grip_samples = 0.0;
 
-        let mut oversteer_c = 0;
-        let mut understeer_c = 0;
-        let mut lockup_c = 0;
-        let mut scrubbing_c = 0;
+        let mut oversteer_c = Episodes::default();
+        let mut understeer_c = Episodes::default();
+        let mut lockup_c = Episodes::default();
+        let mut scrubbing_c = Episodes::default();
+        let steady = samples_per_incident(5, update_rate_ms);
+        let steady_long = samples_per_incident(10, update_rate_ms);
         let mut max_over_rotation = 0.0_f32;
 
         let mut total_jerk = 0.0;
@@ -476,22 +520,18 @@ impl TelemetryAnalyzer {
             if p.speed_kmh > 20.0 {
                 let slip_vals = p.wheel_slip;
 
-                if slip_vals.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5 {
-                    lockup_c += 1;
-                }
+                lockup_c.sample(
+                    slip_vals.iter().any(|&s| s.abs() > 0.2) && p.brake > 0.5,
+                    steady,
+                );
+                oversteer_c.sample(slip_vals[2].abs() > 0.3 || slip_vals[3].abs() > 0.3, steady);
+                understeer_c.sample(slip_vals[0].abs() > 0.3 || slip_vals[1].abs() > 0.3, steady);
 
-                if slip_vals[2].abs() > 0.3 || slip_vals[3].abs() > 0.3 {
-                    oversteer_c += 1;
-                }
-                if slip_vals[0].abs() > 0.3 || slip_vals[1].abs() > 0.3 {
-                    understeer_c += 1;
-                }
-
-                if p.speed_kmh > 40.0
+                let scrubbing = p.speed_kmh > 40.0
                     && p.steer_angle.abs() > 0.15
-                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15)
-                {
-                    scrubbing_c += 1;
+                    && (slip_vals[0] > 0.15 || slip_vals[1] > 0.15);
+                scrubbing_c.sample(scrubbing, steady_long);
+                if scrubbing {
                     let excess = (p.steer_angle.abs() - 0.15) * 57.2958;
                     if excess > max_over_rotation {
                         max_over_rotation = excess;
@@ -659,8 +699,6 @@ impl TelemetryAnalyzer {
             sum_ride_height[1] / safe_div_len,
         ];
 
-        let mistakes = (oversteer_c + understeer_c + lockup_c) as f32;
-        let control_score = (100.0 - (mistakes / 10.0)).clamp(0.0, 100.0);
         let aggro_score = (grip_usage_percent + full_throttle_pct) / 2.0;
 
         let consistency_score = if let Some(best_idx) = self.best_lap_index {
@@ -685,7 +723,6 @@ impl TelemetryAnalyzer {
             smoothness: (throttle_smoothness + steering_smoothness) / 2.0 / 100.0,
             aggression: aggro_score / 100.0,
             consistency: consistency_score / 100.0,
-            car_control: control_score / 100.0,
             tyre_mgmt: tyre_score / 100.0,
         };
 
@@ -822,18 +859,15 @@ impl TelemetryAnalyzer {
             pedal_overlap_percent: overlap_pct,
             full_throttle_percent: full_throttle_pct,
             grip_usage_percent,
-            // These are raw per-sample counters, so they scale with how often
-            // the app sampled — halving the update rate halved every count and
-            // made laps recorded at different rates incomparable. The divisors
-            // are the run lengths that constitute one "incident" at 60 Hz;
-            // `samples_per_incident` restates them in samples at whatever rate
-            // was actually used.
-            oversteer_count: oversteer_c / samples_per_incident(5, update_rate_ms),
-            understeer_count: understeer_c / samples_per_incident(5, update_rate_ms),
-            lockup_count: lockup_c / samples_per_incident(5, update_rate_ms),
-            scrubbing_incidents: scrubbing_c / samples_per_incident(10, update_rate_ms),
+            // Episodes, counted once each — see `Episodes`. The rate the app
+            // sampled at is already accounted for in the run length these were
+            // opened with, so there is nothing left to divide by, and a slide
+            // held for half a lap is one of these rather than hundreds.
+            oversteer_count: oversteer_c.count,
+            understeer_count: understeer_c.count,
+            lockup_count: lockup_c.count,
+            scrubbing_incidents: scrubbing_c.count,
             max_steering_over_rotation: max_over_rotation,
-            car_control_score: control_score,
             radar_stats: radar,
             telemetry_trace: trace,
             // Without a single usable coordinate these are still the
@@ -1069,7 +1103,28 @@ pub fn calculate_ghost_delta(
 
 #[cfg(test)]
 mod tests {
-    use super::{LapData, TelemetryAnalyzer, samples_per_incident};
+    use super::{
+        Episodes, LapData, TelemetryAnalyzer, TelemetryPoint, TelemetryTrace, samples_per_incident,
+        without_sentinel,
+    };
+
+    fn point(distance: f32, time_ms: i32, speed: f32) -> TelemetryPoint {
+        TelemetryPoint {
+            distance,
+            time_ms,
+            speed,
+            gas: 0.0,
+            brake: 0.0,
+            gear: 3,
+            steer: 0.0,
+            lat_g: 0.0,
+            lon_g: 0.0,
+            slip_avg: 0.0,
+            x: 0.0,
+            y: 0.0,
+            rpms: 6000,
+        }
+    }
     use crate::games::{Car, Session};
 
     #[test]
@@ -1144,6 +1199,140 @@ mod tests {
 
     /// Mistake counts must mean the same thing whatever update rate the user
     /// picked, or laps recorded at different rates cannot be compared.
+    /// The bug this replaced: a condition that holds counts once, not once
+    /// per sample. Half a lap of sliding at 60 Hz used to arrive as hundreds
+    /// of separate incidents, which is how one continuous slide was reported
+    /// as "Oversteer: 1454x".
+    #[test]
+    fn one_long_slide_is_one_episode() {
+        let mut episodes = Episodes::default();
+        for _ in 0..5000 {
+            episodes.sample(true, 5);
+        }
+        assert_eq!(episodes.count, 1);
+    }
+
+    /// Two slides with the car settled in between are two.
+    #[test]
+    fn a_second_episode_needs_the_condition_to_clear_first() {
+        let mut episodes = Episodes::default();
+        for _ in 0..50 {
+            episodes.sample(true, 5);
+        }
+        for _ in 0..50 {
+            episodes.sample(false, 5);
+        }
+        for _ in 0..50 {
+            episodes.sample(true, 5);
+        }
+        assert_eq!(episodes.count, 2);
+    }
+
+    /// Resampling by distance is what makes a ghost comparison mean anything —
+    /// two laps lined up metre by metre rather than second by second — and it
+    /// had no test at all. `cargo mutants` found six separate edits to it that
+    /// nothing noticed, including turning `-` into `+` in the interpolation.
+    #[test]
+    fn resampling_interpolates_between_the_points_it_was_given() {
+        let trace = vec![
+            point(0.0, 0, 100.0),
+            point(0.5, 1000, 200.0),
+            point(1.0, 2000, 100.0),
+        ];
+        let out = TelemetryTrace::resample_by_distance(&trace, 0.25);
+
+        assert!(
+            out.len() >= 4,
+            "a quarter-lap step over a whole lap: {out:?}"
+        );
+        // Every sample sits on the step it was asked for, in order.
+        for (i, p) in out.iter().enumerate() {
+            assert!(
+                (p.distance - i as f32 * 0.25).abs() < 1e-3,
+                "sample {i} landed at {}",
+                p.distance
+            );
+        }
+        // Half way between the first two points is half way between their
+        // speeds. This is the arithmetic the mutants rewrote unnoticed.
+        let quarter = &out[1];
+        assert!(
+            (quarter.speed - 150.0).abs() < 0.5,
+            "150 km/h half way from 100 to 200, got {}",
+            quarter.speed
+        );
+        let half = &out[2];
+        assert!(
+            (half.speed - 200.0).abs() < 0.5,
+            "the sample at the point itself is the point, got {}",
+            half.speed
+        );
+    }
+
+    /// The degenerate inputs, which a lap that never published a distance
+    /// reaches: nothing to resample, and nothing to divide by.
+    #[test]
+    fn resampling_refuses_to_invent_a_trace() {
+        assert!(TelemetryTrace::resample_by_distance(&[], 0.1).is_empty());
+        let one = vec![point(0.3, 10, 90.0)];
+        assert_eq!(
+            TelemetryTrace::resample_by_distance(&one, 0.1).len(),
+            1,
+            "one point cannot be interpolated between"
+        );
+        assert_eq!(
+            TelemetryTrace::resample_by_distance(&one, 0.0).len(),
+            1,
+            "a step of zero would never advance"
+        );
+    }
+
+    /// A lap that published no coordinates leaves the bounds scan holding its
+    /// seeds, and those are finite — so only the sentinel value itself says
+    /// so. Both branches, because `cargo mutants` deleted the `!` and nothing
+    /// failed.
+    #[test]
+    fn the_sentinel_bounds_become_zero_and_real_ones_survive() {
+        assert_eq!(without_sentinel(f32::MAX), 0.0);
+        assert_eq!(without_sentinel(f32::MIN), 0.0);
+        assert_eq!(without_sentinel(f32::NAN), 0.0);
+        assert_eq!(without_sentinel(f32::INFINITY), 0.0);
+        assert_eq!(without_sentinel(-12.5), -12.5, "a real bound is kept");
+        assert_eq!(without_sentinel(0.0), 0.0);
+    }
+
+    /// Exactly the run length is enough, and one sample short is not. Both
+    /// halves matter: `cargo mutants` turned the `<` in `sample` into `<=`
+    /// and every test above still passed, because none of them sat on the
+    /// boundary. An episode that needs one extra sample is a different
+    /// threshold than the one the comment claims.
+    #[test]
+    fn the_run_length_is_exact() {
+        let mut just_short = Episodes::default();
+        for _ in 0..4 {
+            just_short.sample(true, 5);
+        }
+        assert_eq!(just_short.count, 0, "four samples is not five");
+
+        let mut exactly = Episodes::default();
+        for _ in 0..5 {
+            exactly.sample(true, 5);
+        }
+        assert_eq!(exactly.count, 1, "five samples is five");
+    }
+
+    /// A single sample over the line is noise, not an episode — the run
+    /// length is what tells them apart.
+    #[test]
+    fn a_flicker_shorter_than_the_run_length_is_not_an_episode() {
+        let mut episodes = Episodes::default();
+        for _ in 0..100 {
+            episodes.sample(true, 5);
+            episodes.sample(false, 5);
+        }
+        assert_eq!(episodes.count, 0);
+    }
+
     #[test]
     fn samples_per_incident_holds_a_fixed_duration() {
         // 16 ms is the default and is close enough to 60 Hz that the run

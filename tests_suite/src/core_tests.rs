@@ -412,12 +412,10 @@ fn test_24_theoretical_best_lap_calculation() {
         oversteer_count: 0,
         understeer_count: 0,
         lockup_count: 0,
-        car_control_score: 90.0,
         scrubbing_incidents: 0,
         max_steering_over_rotation: 0.0,
         radar_stats: ac_core::analyzer::RadarStats {
             consistency: 90.0,
-            car_control: 90.0,
             aggression: 80.0,
             smoothness: 90.0,
             tyre_mgmt: 90.0,

@@ -1039,12 +1039,10 @@ impl AppState {
                 oversteer_count: 1,
                 understeer_count: 2,
                 lockup_count: 0,
-                car_control_score: 95.0,
                 scrubbing_incidents: 0,
                 max_steering_over_rotation: 0.0,
                 radar_stats: ac_core::analyzer::RadarStats {
                     consistency: 94.0,
-                    car_control: 95.0,
                     aggression: 88.0,
                     smoothness: 93.0,
                     tyre_mgmt: 91.0,
