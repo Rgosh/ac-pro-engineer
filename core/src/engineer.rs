@@ -1051,17 +1051,7 @@ impl Engineer {
 
         let compound_name = session.compound.to_string().to_lowercase();
 
-        let class_name = if compound_name.contains("street")
-            || compound_name.contains("sport")
-            || compound_name.contains("eco")
-            || compound_name.contains("semislick")
-        {
-            "Street"
-        } else if compound_name.contains("wet") || compound_name.contains("rain") {
-            "Wet"
-        } else {
-            "Racing"
-        };
+        let class_name = compound_band(&compound_name);
         let pressure_min = self
             .config
             .alerts
@@ -2183,6 +2173,65 @@ impl Engineer {
                 }
             }
         }
+    }
+}
+
+/// Which pressure band a compound belongs to, by name.
+///
+/// **Matched on substrings because the two games name compounds nothing
+/// alike.** Assetto Corsa uses the tyre's own name — `street`, `sport`,
+/// `semislick`, `wet` — and Competizione publishes exactly two, `dry_compound`
+/// and `wet_compound`, whatever rubber is fitted underneath.
+///
+/// That difference was written down as a risk before anything measured it: an
+/// ACC name matching none of AC's would fall through to the default band. It
+/// does fall through, and the default is the right answer — every car in ACC
+/// is a racing car on slicks, so `dry_compound` belongs in `Racing`, and
+/// `wet_compound` reaches `Wet` on the substring it happens to share. Correct
+/// by construction on one game and by luck on the other, which is exactly the
+/// kind of thing that survives until somebody edits this list. Hence the
+/// tests below naming both games' strings.
+fn compound_band(compound_name: &str) -> &'static str {
+    if compound_name.contains("street")
+        || compound_name.contains("sport")
+        || compound_name.contains("eco")
+        || compound_name.contains("semislick")
+    {
+        "Street"
+    } else if compound_name.contains("wet") || compound_name.contains("rain") {
+        "Wet"
+    } else {
+        "Racing"
+    }
+}
+
+#[cfg(test)]
+mod compound_tests {
+    use super::compound_band;
+
+    /// The names Assetto Corsa publishes.
+    #[test]
+    fn assetto_corsa_compounds_land_where_they_should() {
+        assert_eq!(compound_band("street"), "Street");
+        assert_eq!(compound_band("sport"), "Street");
+        assert_eq!(compound_band("semislick"), "Street");
+        assert_eq!(compound_band("eco"), "Street");
+        assert_eq!(compound_band("wet"), "Wet");
+        assert_eq!(compound_band("rain"), "Wet");
+        assert_eq!(compound_band("slicks (soft)"), "Racing");
+    }
+
+    /// The two Competizione publishes, read off the session recording in
+    /// `tests_suite`: the graphics page carries `dry_compound` at offset 176.
+    /// A GT3 on slicks must not be given a road car's target.
+    #[test]
+    fn competizione_compounds_land_where_they_should() {
+        assert_eq!(
+            compound_band("dry_compound"),
+            "Racing",
+            "every ACC car is a racing car on slicks"
+        );
+        assert_eq!(compound_band("wet_compound"), "Wet");
     }
 }
 

@@ -240,8 +240,18 @@ pub fn default_game() -> &'static Game {
 ///
 /// **It does not decide which game is read** — `config.game` does, through
 /// [`chosen`]. This answers the other question, and one worth asking: is the
-/// game the driver said they were in actually running? It is what the launcher
-/// draws as "WAITING FOR SIMULATOR…".
+/// game the driver said they were in actually running?
+///
+/// **Nothing in the application calls this.** The launcher's
+/// "WAITING FOR SIMULATOR…" comes from a [`ProcessWatcher`] built for the
+/// *chosen* game — which is the right answer to that question and this is not,
+/// because this one searches every game and returns whichever is up. The two
+/// were the same thing when there was one game. Kept because a probe or a
+/// second front end has a real use for "is anything running", and said out
+/// loud because a comment claiming a caller that does not exist is how the
+/// wrong one gets picked next time.
+///
+/// [`ProcessWatcher`]: crate::process::ProcessWatcher
 pub fn detect_running() -> Option<&'static Game> {
     playable().find(|game| {
         game.backend().is_some_and(|backend| {
