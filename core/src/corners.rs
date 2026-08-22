@@ -162,6 +162,63 @@ pub fn time_at(trace: &[TelemetryPoint], distance: f32) -> Option<i32> {
     interpolate(trace, distance, |point| point.time_ms as f32).map(|value| value as i32)
 }
 
+/// Where on the lap a given elapsed time falls, as a normalised distance.
+///
+/// The inverse of [`time_at`], and it exists for the same reason that one does:
+/// a sector *time* cannot be drawn on a map, and a sector *line* cannot be read
+/// off any game — neither simulator publishes where its sector boundaries are.
+/// What both publish is the split, and the lap's own trace says where the
+/// driver was when the clock read that. So the line is derived from the lap
+/// rather than from a table nobody has, which is the same reasoning that makes
+/// [`detect`] look for corners in the trace instead of in track data.
+///
+/// `None` for a lap with no trace, or a time outside the one it holds.
+pub fn distance_at(trace: &[TelemetryPoint], time_ms: i32) -> Option<f32> {
+    let first = trace.first()?;
+    let last = trace.last()?;
+    if time_ms <= first.time_ms || time_ms > last.time_ms {
+        return None;
+    }
+    // Recorded in time order as well as distance order — the analyser appends
+    // once per tick — so this is the same binary search the other way round.
+    let index = trace.partition_point(|point| point.time_ms < time_ms);
+    let after = trace.get(index)?;
+    let before = trace.get(index.saturating_sub(1))?;
+
+    let span = (after.time_ms - before.time_ms) as f32;
+    if span <= f32::EPSILON {
+        return Some(after.distance);
+    }
+    let factor = (((time_ms - before.time_ms) as f32) / span).clamp(0.0, 1.0);
+    Some(before.distance + factor * (after.distance - before.distance))
+}
+
+/// Where each sector line falls on the lap, as normalised distances.
+///
+/// Built from the splits the game published and the lap the driver actually
+/// drove. A split of zero is a sector that was never measured and is skipped
+/// rather than drawn at the start line.
+pub fn sector_marks(trace: &[TelemetryPoint], sectors: &[i32]) -> Vec<f32> {
+    let mut elapsed = 0;
+    let mut marks = Vec::with_capacity(sectors.len());
+    for split in sectors {
+        if *split <= 0 {
+            continue;
+        }
+        elapsed += *split;
+        // Only the lines *inside* the lap. The last split ends at the start
+        // line, which is where the lap already begins and ends — drawing it
+        // would put a sector marker on top of the finish line and claim the
+        // track has one more section than it does.
+        if let Some(distance) = distance_at(trace, elapsed)
+            && (0.001..0.999).contains(&distance)
+        {
+            marks.push(distance);
+        }
+    }
+    marks
+}
+
 /// Interpolated anything at a normalised distance.
 fn interpolate<F>(trace: &[TelemetryPoint], distance: f32, get: F) -> Option<f32>
 where
@@ -537,6 +594,71 @@ fn match_corner(corner: &Corner, candidates: &[Corner]) -> Option<Corner> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The inverse has to land where the original came from, or a sector line
+    /// is drawn at a place the driver never was.
+    #[test]
+    fn a_time_maps_back_to_the_distance_it_came_from() {
+        let trace: Vec<TelemetryPoint> = (0..=100)
+            .map(|step| {
+                let at = step as f32 / 100.0;
+                TelemetryPoint {
+                    distance: at,
+                    time_ms: (at * 90_000.0) as i32,
+                    speed: 180.0,
+                    gas: 1.0,
+                    brake: 0.0,
+                    gear: 5,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: at,
+                    y: at,
+                    rpms: 7_000,
+                }
+            })
+            .collect();
+
+        for probe in [0.25_f32, 0.5, 0.75] {
+            let time = time_at(&trace, probe).expect("a time inside the lap");
+            let back = distance_at(&trace, time).expect("a distance inside the lap");
+            assert!(
+                (back - probe).abs() < 0.01,
+                "{probe} came back as {back} through {time} ms"
+            );
+        }
+    }
+
+    /// A split of zero is a sector nobody measured, and there is no line for
+    /// it — and the last split ends on the finish line, which is not a sector
+    /// marker.
+    #[test]
+    fn an_unmeasured_split_draws_no_sector_line() {
+        let trace: Vec<TelemetryPoint> = (0..=100)
+            .map(|step| {
+                let at = step as f32 / 100.0;
+                TelemetryPoint {
+                    distance: at,
+                    time_ms: (at * 90_000.0) as i32,
+                    speed: 180.0,
+                    gas: 1.0,
+                    brake: 0.0,
+                    gear: 5,
+                    steer: 0.0,
+                    lat_g: 0.0,
+                    lon_g: 0.0,
+                    slip_avg: 0.0,
+                    x: at,
+                    y: at,
+                    rpms: 7_000,
+                }
+            })
+            .collect();
+
+        assert_eq!(sector_marks(&trace, &[0, 0, 0]).len(), 0);
+        assert_eq!(sector_marks(&trace, &[30_000, 30_000, 30_000]).len(), 2);
+    }
     use super::*;
 
     /// A trace with one corner in it: straight, sustained lateral load, straight.
