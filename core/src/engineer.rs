@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, Language};
-use crate::games::{Capabilities, Car, Session};
+use crate::games::{Capabilities, Car, CarClass, Session};
 use crate::i18n::{Translate, tr_fmt};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
@@ -276,6 +276,58 @@ impl DrivingStyle {
     }
 }
 
+/// The tyre temperature window to judge a car against, and where it came from.
+///
+/// The class's window when the class is known **and** the driver has left the
+/// setting at its default; the driver's own numbers the moment they change
+/// one. A setting somebody has deliberately typed outranks a table, and one
+/// they have never touched is not a preference — it is the application's old
+/// one-size band, which was 70–105 °C for a Formula car and a Fiat 500 alike.
+///
+/// **Public because more than the advice depends on it.** A front end that
+/// colours a tyre readout has to use the same band the advice is written
+/// against, or the two disagree on one screen: the graphical front end painted
+/// a front-left green at 102 °C — inside the raw 70–105 alert range — directly
+/// beside the engineer's own line calling the same tyre overheating, because
+/// a GT3's window closes at 100. One rule, one place.
+pub fn tyre_window(alerts: &crate::config::AlertsConfig, class: CarClass) -> (f32, f32) {
+    let defaults = crate::config::AlertsConfig::default();
+    let untouched = (alerts.tyre_temp_min - defaults.tyre_temp_min).abs() < 0.01
+        && (alerts.tyre_temp_max - defaults.tyre_temp_max).abs() < 0.01;
+
+    if class.is_known() && untouched {
+        class.window().tyre_c
+    } else {
+        (
+            alerts.tyre_temp_min.min(alerts.tyre_temp_max),
+            alerts.tyre_temp_min.max(alerts.tyre_temp_max),
+        )
+    }
+}
+
+/// The brake ceiling for one corner, front or rear.
+///
+/// Per axle, because that is how brakes work: the recording this project pins
+/// Competizione to shows 520 °C at the front against 257 °C at the rear, and
+/// one number for all four is either too low for the fronts or blind to the
+/// rears. Same rule about the driver's own setting as [`tyre_window`], and
+/// public for the same reason.
+pub fn brake_ceiling(alerts: &crate::config::AlertsConfig, class: CarClass, wheel: usize) -> f32 {
+    let defaults = crate::config::AlertsConfig::default();
+    let untouched = (alerts.brake_temp_max - defaults.brake_temp_max).abs() < 0.01;
+
+    if class.is_known() && untouched {
+        let window = class.window();
+        if wheel < 2 {
+            window.brake_front_max_c
+        } else {
+            window.brake_rear_max_c
+        }
+    } else {
+        alerts.brake_temp_max
+    }
+}
+
 impl Engineer {
     pub fn new(config: &AppConfig) -> Self {
         info!("Engineer module initialized.");
@@ -321,34 +373,12 @@ impl Engineer {
         self.car_class
     }
 
-    /// The tyre temperature window to judge against, and where it came from.
+    /// The tyre temperature window this engineer is judging against.
     ///
-    /// The class's window when the class is known **and** the driver has left
-    /// the setting at its default; the driver's own numbers the moment they
-    /// change one. A setting somebody has deliberately typed outranks a table,
-    /// and one they have never touched is not a preference — it is the
-    /// application's old one-size band, which was 70–105 °C for a Formula car
-    /// and a Fiat 500 alike.
-    fn tyre_window(&self) -> (f32, f32) {
-        let defaults = crate::config::AlertsConfig::default();
-        let untouched = (self.config.alerts.tyre_temp_min - defaults.tyre_temp_min).abs() < 0.01
-            && (self.config.alerts.tyre_temp_max - defaults.tyre_temp_max).abs() < 0.01;
-
-        if self.car_class.is_known() && untouched {
-            self.car_class.window().tyre_c
-        } else {
-            let low = self
-                .config
-                .alerts
-                .tyre_temp_min
-                .min(self.config.alerts.tyre_temp_max);
-            let high = self
-                .config
-                .alerts
-                .tyre_temp_min
-                .max(self.config.alerts.tyre_temp_max);
-            (low, high)
-        }
+    /// See [`tyre_window`], which is the rule; this is it applied to what the
+    /// engineer currently knows about the car and the driver's settings.
+    pub fn tyre_window(&self) -> (f32, f32) {
+        tyre_window(&self.config.alerts, self.car_class)
     }
 
     /// The brake ceiling for one corner, front or rear.
@@ -358,19 +388,7 @@ impl Engineer {
     /// rear, and one number for all four is either too low for the fronts or
     /// blind to the rears. Same rule about the driver's own setting as above.
     fn brake_ceiling(&self, wheel: usize) -> f32 {
-        let defaults = crate::config::AlertsConfig::default();
-        let untouched = (self.config.alerts.brake_temp_max - defaults.brake_temp_max).abs() < 0.01;
-
-        if self.car_class.is_known() && untouched {
-            let window = self.car_class.window();
-            if wheel < 2 {
-                window.brake_front_max_c
-            } else {
-                window.brake_rear_max_c
-            }
-        } else {
-            self.config.alerts.brake_temp_max
-        }
+        brake_ceiling(&self.config.alerts, self.car_class, wheel)
     }
 
     /// What the engineer is currently willing to speak about.
