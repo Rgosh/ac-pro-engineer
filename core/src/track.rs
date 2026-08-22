@@ -1,0 +1,161 @@
+//! What a circuit is, as far as the rest of the program is concerned.
+//!
+//! **Neutral on purpose.** Assetto Corsa keeps the real shape of a track on
+//! disk — a rendered outline, the parameters to align world coordinates onto
+//! it, the names its corners actually have, and the line the AI drives.
+//! Competizione keeps none of it. So this is what a front end may ask for, and
+//! a game that cannot answer says so by returning nothing rather than by
+//! having a different shape of answer.
+//!
+//! Everything here is **additive**. The map drawn from the driver's own
+//! coordinates has to keep working exactly as it does — that is what makes it
+//! work on a circuit nobody has surveyed, which is most of what people drive.
+//! A track file, where there is one, makes that map more exact; it never
+//! becomes a requirement for having one.
+
+use serde::{Deserialize, Serialize};
+
+/// A named stretch of a circuit, as the track itself names it.
+///
+/// **This is the difference between "T7" and "Eau Rouge".** Corner detection
+/// finds where the corners are from what the car did, which works everywhere;
+/// this says what they are called, which only the track knows. The two are
+/// matched by distance, so a track with no names loses the names and keeps
+/// every number.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    pub name: String,
+    /// Where it begins and ends, as a fraction of the lap.
+    pub from: f32,
+    pub to: f32,
+}
+
+impl Section {
+    /// Whether a place on the lap falls inside this section.
+    pub fn holds(&self, distance: f32) -> bool {
+        // A section that wraps the start line — a chicane at 0.98 to 0.02 —
+        // is two ranges rather than an empty one.
+        if self.from <= self.to {
+            (self.from..=self.to).contains(&distance)
+        } else {
+            distance >= self.from || distance <= self.to
+        }
+    }
+}
+
+/// A stretch where the rear wing may be opened.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrsZone {
+    /// Where the gap to the car ahead is measured.
+    pub detection: f32,
+    pub start: f32,
+    pub end: f32,
+}
+
+/// How world coordinates land on the track's own rendered outline.
+///
+/// The numbers are the game's, straight out of the file that ships beside the
+/// image. Their meaning: a world point is shifted by the offsets, divided by
+/// the scale factor, and the margin is the blank border the image was drawn
+/// with.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Alignment {
+    pub width: f32,
+    pub height: f32,
+    pub margin: f32,
+    pub scale_factor: f32,
+    pub x_offset: f32,
+    pub z_offset: f32,
+}
+
+impl Alignment {
+    /// Where a world position falls on the outline image, in pixels.
+    pub fn place(&self, world_x: f32, world_z: f32) -> (f32, f32) {
+        let scale = if self.scale_factor.abs() < f32::EPSILON {
+            1.0
+        } else {
+            self.scale_factor
+        };
+        (
+            (world_x + self.x_offset) / scale + self.margin,
+            (world_z + self.z_offset) / scale + self.margin,
+        )
+    }
+}
+
+/// One point of a line the track itself carries.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct LinePoint {
+    pub x: f32,
+    /// Altitude. Carried because a track has elevation and a plot of it is
+    /// worth having; no map uses it.
+    pub y: f32,
+    pub z: f32,
+    /// Metres from the start line.
+    pub metres: f32,
+}
+
+/// Everything a game could tell us about the circuit that is loaded.
+///
+/// Every field is optional and absent means absent — a track with no
+/// `sections.ini` has no names, not a list of empty ones.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TrackData {
+    /// The folder it was read from, so a screen can say where a name came
+    /// from and a cache can be keyed on it.
+    pub source: String,
+    /// The rendered outline that ships with the track, if there is one. A path
+    /// rather than the pixels: decoding a PNG is the front end's business and
+    /// the core has no image decoder.
+    pub outline: Option<std::path::PathBuf>,
+    pub alignment: Option<Alignment>,
+    pub sections: Vec<Section>,
+    pub drs: Vec<DrsZone>,
+    /// The line the game's own AI drives. **Not an optimal line** — it is a
+    /// line that gets round, and saying otherwise would be inventing a
+    /// measurement. Useful as a reference and labelled as what it is.
+    pub ai_line: Vec<LinePoint>,
+}
+
+impl TrackData {
+    /// Whether anything at all was found.
+    pub fn is_empty(&self) -> bool {
+        self.outline.is_none()
+            && self.alignment.is_none()
+            && self.sections.is_empty()
+            && self.drs.is_empty()
+            && self.ai_line.is_empty()
+    }
+
+    /// What the track calls the corner at this place on the lap.
+    pub fn name_at(&self, distance: f32) -> Option<&str> {
+        self.sections
+            .iter()
+            .find(|section| section.holds(distance))
+            .map(|section| section.name.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_section_that_wraps_the_line_still_holds_both_ends() {
+        let chicane = Section {
+            name: "Chicane".to_string(),
+            from: 0.97,
+            to: 0.03,
+        };
+        assert!(chicane.holds(0.99));
+        assert!(chicane.holds(0.01));
+        assert!(!chicane.holds(0.5));
+    }
+
+    #[test]
+    fn a_track_with_no_files_names_nothing() {
+        let nothing = TrackData::default();
+        assert!(nothing.is_empty());
+        assert_eq!(nothing.name_at(0.5), None);
+    }
+}

@@ -38,6 +38,7 @@ pub mod ring_buffer;
 pub mod session_info;
 pub mod setup_manager;
 pub mod steam;
+pub mod track;
 pub mod updater;
 
 pub use ring_buffer::RingBuffer;

@@ -12,6 +12,7 @@ pub mod reading;
 pub mod setups;
 pub mod shm;
 pub mod structs;
+pub mod tracks;
 
 use crate::games::{Capabilities, GameId, Reading, Source};
 
