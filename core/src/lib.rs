@@ -25,6 +25,9 @@ pub mod crash_logger;
 pub mod debrief;
 pub mod driver_vs_car;
 pub mod engineer;
+/// The handbook both front ends draw. The words live here; the styling does
+/// not — see the module note.
+pub mod guide;
 pub mod i18n;
 pub mod memory;
 pub mod net;
