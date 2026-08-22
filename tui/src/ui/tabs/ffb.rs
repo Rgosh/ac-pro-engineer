@@ -35,27 +35,33 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState, engineer: &Engineer
             (0.0, 0.0, 0.0, 0.0)
         };
 
-    let ffb_status_color;
-    let recommendation;
-    let status_text;
-
-    if clip_ratio > 0.02 {
-        ffb_status_color = Color::Red;
-        status_text = "CRITICAL CLIPPING".tr(is_ru);
-        recommendation = "Lower Game Gain immediately!".tr(is_ru);
+    // The four verdicts, worst first, as one expression: the wheel is either
+    // clipping hard, clipping a little, too weak to feel, or right.
+    let (ffb_status_color, status_text, recommendation) = if clip_ratio > 0.02 {
+        (
+            Color::Red,
+            "CRITICAL CLIPPING".tr(is_ru),
+            "Lower Game Gain immediately!".tr(is_ru),
+        )
     } else if clip_ratio > 0.001 {
-        ffb_status_color = Color::Yellow;
-        status_text = "LIGHT CLIPPING".tr(is_ru);
-        recommendation = "Lower Gain slightly (2-3%)".tr(is_ru);
+        (
+            Color::Yellow,
+            "LIGHT CLIPPING".tr(is_ru),
+            "Lower Gain slightly (2-3%)".tr(is_ru),
+        )
     } else if last_ffb.abs() < 0.6 && engineer.stats.total_frames > 300 {
-        ffb_status_color = Color::Cyan;
-        status_text = "WEAK SIGNAL".tr(is_ru);
-        recommendation = "Safe to increase Gain".tr(is_ru);
+        (
+            Color::Cyan,
+            "WEAK SIGNAL".tr(is_ru),
+            "Safe to increase Gain".tr(is_ru),
+        )
     } else {
-        ffb_status_color = Color::Green;
-        status_text = "OPTIMAL".tr(is_ru);
-        recommendation = "Settings are perfect".tr(is_ru);
-    }
+        (
+            Color::Green,
+            "OPTIMAL".tr(is_ru),
+            "Settings are perfect".tr(is_ru),
+        )
+    };
 
     let ffb_info_text = vec![
         Line::from(vec![

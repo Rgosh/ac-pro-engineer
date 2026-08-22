@@ -130,8 +130,11 @@ impl Page {
         self.samples += 1;
         self.bytes = self.bytes.max(bytes.len());
         self.last_raw = bytes.to_vec();
-        for (index, chunk) in bytes.chunks_exact(4).enumerate() {
-            let raw = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        // `as_chunks` rather than `chunks_exact(4)`: the chunk is a fixed-size
+        // array, so the four indices below cannot be out of bounds and the
+        // compiler knows it. Clippy started asking for this in 1.98.
+        for (index, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
+            let raw = u32::from_le_bytes(*chunk);
             self.words
                 .entry(index * 4)
                 .and_modify(|word| word.see(raw))

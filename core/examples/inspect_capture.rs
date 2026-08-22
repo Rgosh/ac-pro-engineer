@@ -92,7 +92,10 @@ fn hex_bytes(text: &str) -> Vec<u8> {
         {
             continue;
         }
-        for pair in cleaned.as_bytes().chunks_exact(2) {
+        // `as_chunks` rather than `chunks_exact(2)`, for the reason clippy
+        // started giving in 1.98: the pair is a fixed-size array, so neither
+        // index below can be out of bounds.
+        for pair in cleaned.as_bytes().as_chunks::<2>().0 {
             let value = |b: u8| match b {
                 b'0'..=b'9' => b - b'0',
                 b'a'..=b'f' => b - b'a' + 10,
