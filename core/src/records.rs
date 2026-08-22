@@ -9,6 +9,15 @@ use tracing::warn;
 /// already applies before a lap is processed at all.
 pub const MIN_PLAUSIBLE_LAP_MS: i32 = 10_000;
 
+/// Today, in the shape the record file writes dates in.
+///
+/// Public because a front end that stores a record has to write the same shape
+/// — a date in another format sorts wrongly beside the rest for ever, and the
+/// format is this module's business rather than the caller's.
+pub fn today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackRecord {
     pub car_id: String,
@@ -258,7 +267,7 @@ impl RecordManager {
             track_config: track_config.to_string(),
             time_ms: calculated_time,
             driver_name: "AI Calculation".to_string(),
-            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            date: today(),
             source: "Physics Est.".to_string(),
         }
     }
