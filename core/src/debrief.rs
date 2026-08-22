@@ -14,8 +14,10 @@
 //! and both the terminal and the overlay render the same values.
 
 use crate::analyzer::LapData;
+use crate::confidence::Evidence;
 use crate::config::AppConfig;
-use crate::engineer::{Recommendation, Severity};
+use crate::engineer::{Chain, Recommendation, Severity, brake_ceiling, tyre_window};
+use crate::games::CarClass;
 use crate::i18n::Translate;
 
 /// The corners, in the order every array in AC's physics page uses.
@@ -51,21 +53,56 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     let ru = config.language == crate::config::Language::Russian;
     let fmt = config.formatter();
     let alerts = &config.alerts;
+    // **The same bands the live engineer judges by.** This read the raw alert
+    // range, which is 70–105 °C and 800 °C for every car ever made — so the
+    // live feed called a GT3's front-left overheating at 102 °C and the
+    // debrief of that very lap came back "clean", because a GT3's window
+    // closes at 100 and the alert range does not. One car, one lap, two
+    // answers, and the driver has no way to tell which one to believe.
+    let class = CarClass::from_id(&lap.car_model);
+    let (tyre_min, tyre_max) = tyre_window(alerts, class);
+    // Every figure below is a whole-lap average, so each observation is worth
+    // far more than one reading — which is exactly what `averaged_over` is
+    // for. Without it two corners agreeing over five thousand samples each
+    // count as two samples and the finding comes back "low confidence", which
+    // is the opposite of true. One observation stays Low whatever it is
+    // averaged over, and that is the core's deliberate answer rather than
+    // something to work around.
+    let per_observation = lap.telemetry_trace.len().max(1) as u32;
     let mut out: Vec<Recommendation> = Vec::new();
 
-    let mut push =
-        |component: &str, category: &str, severity: Severity, message: String, action: String| {
-            out.push(Recommendation {
-                component: component.to_string(),
-                category: category.to_string(),
-                severity,
-                message,
-                action,
-                parameters: Vec::new(),
-                confidence: 0.9,
-                chain: None,
-            });
-        };
+    // **Every finding states its case.** A line that says what to change and
+    // not why is a warning light; the mechanism, the measurement it produced
+    // and — the field that matters most — what to look at on the next run to
+    // know whether the change worked are what make it an engineer's. The live
+    // rules have carried a chain since v0.3.7 and these did not, so a driver
+    // who read the debrief got strictly less than one who watched the live
+    // feed of the same lap.
+    let mut push = |component: &str,
+                    category: &str,
+                    severity: Severity,
+                    message: String,
+                    action: String,
+                    cause: String,
+                    effect: String,
+                    confirm: String,
+                    evidence: Evidence| {
+        out.push(Recommendation {
+            component: component.to_string(),
+            category: category.to_string(),
+            severity,
+            message,
+            action,
+            parameters: Vec::new(),
+            confidence: 0.9,
+            chain: Some(Chain {
+                cause,
+                effect,
+                confirm,
+                evidence,
+            }),
+        });
+    };
 
     // --- pressures -------------------------------------------------------
     //
@@ -116,6 +153,24 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 "Put pressure in".tr(ru)
             }
             .to_string(),
+            if high {
+                "the tyre is running hotter than the cold setting allowed for, and pressure follows temperature"
+            } else {
+                "the tyre never reached the temperature the cold setting was chosen for"
+            }
+            .tr(ru)
+            .to_string(),
+            format!(
+                "{} {} ({} {})",
+                corner_phrase(corners, ru),
+                fmt.format_pressure(average),
+                "target".tr(ru),
+                fmt.format_pressure(target)
+            ),
+            "the same corners' hot pressure on the next run, after changing the cold setting by the difference"
+                .tr(ru)
+                .to_string(),
+            Evidence::from_values(corners.iter().map(|c| lap.avg_wheels_pressure[*c])).averaged_over(per_observation),
         );
     }
 
@@ -127,9 +182,9 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
         if temp <= 0.0 {
             continue;
         }
-        if temp > alerts.tyre_temp_max {
+        if temp > tyre_max {
             hot.push(corner);
-        } else if temp < alerts.tyre_temp_min {
+        } else if temp < tyre_min {
             cold.push(corner);
         }
     }
@@ -163,6 +218,26 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 "More pressure / work them harder".tr(ru)
             }
             .to_string(),
+            if is_hot {
+                "more energy is going into the tyre each lap than it can shed"
+            } else {
+                "the tyre is not being asked for enough to reach its working range"
+            }
+            .tr(ru)
+            .to_string(),
+            format!(
+                "{} {} ({} {}–{})",
+                corner_phrase(corners, ru),
+                fmt.format_temp(average),
+                "window".tr(ru),
+                fmt.format_temp(tyre_min),
+                fmt.format_temp(tyre_max)
+            ),
+            "whether those corners come back inside the window on the next full lap"
+                .tr(ru)
+                .to_string(),
+            Evidence::from_values(corners.iter().map(|c| lap.avg_tyre_temp[*c]))
+                .averaged_over(per_observation),
         );
     }
 
@@ -196,6 +271,18 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                     fmt.format_temp_delta(spread)
                 ),
                 "Less negative camber".tr(ru).to_string(),
+                "the tyre is leaning far enough that the inner shoulder carries the corner alone"
+                    .tr(ru)
+                    .to_string(),
+                format!(
+                    "{where_} {} {}",
+                    "inner minus outer".tr(ru),
+                    fmt.format_temp_delta(spread)
+                ),
+                "the inner-minus-outer spread on that axle next run — under 12° is the target"
+                    .tr(ru)
+                    .to_string(),
+                Evidence::from_values(spreads.iter().copied()).averaged_over(per_observation),
             );
         } else if spread < 4.0 {
             push(
@@ -212,6 +299,18 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                     fmt.format_temp_delta(spread)
                 ),
                 "More negative camber".tr(ru).to_string(),
+                "the tyre is standing too upright, so the outer shoulder takes the load in a corner"
+                    .tr(ru)
+                    .to_string(),
+                format!(
+                    "{where_} {} {}",
+                    "inner minus outer".tr(ru),
+                    fmt.format_temp_delta(spread)
+                ),
+                "the inner-minus-outer spread on that axle next run — 4° to 12° is the target"
+                    .tr(ru)
+                    .to_string(),
+                Evidence::from_values(spreads.iter().copied()).averaged_over(per_observation),
             );
         }
     }
@@ -219,7 +318,9 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     // --- brakes -----------------------------------------------------------
     let mut cooking: Vec<usize> = Vec::new();
     for corner in 0..4 {
-        if lap.max_brake_temp[corner] > alerts.brake_temp_max {
+        // Per axle, because that is how brakes work — a rear at 520 °C is
+        // cooking and a front at 520 °C is working.
+        if lap.max_brake_temp[corner] > brake_ceiling(alerts, class, corner) {
             cooking.push(corner);
         }
     }
@@ -239,6 +340,19 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 fmt.format_temp(peak)
             ),
             "Open the brake ducts".tr(ru).to_string(),
+            "the brakes are putting more heat in per lap than the ducting takes out"
+                .tr(ru)
+                .to_string(),
+            format!(
+                "{} {} {}",
+                corner_phrase(&cooking, ru),
+                "peaked at".tr(ru),
+                fmt.format_temp(peak)
+            ),
+            "the peak on those corners next run — it should fall, and the pedal should stop going long"
+                .tr(ru)
+                .to_string(),
+            Evidence::from_values(cooking.iter().map(|c| lap.max_brake_temp[*c])).averaged_over(per_observation),
         );
     }
 
@@ -274,6 +388,14 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             Severity::Warning,
             format!("{} ({:.0} mm)", "Bottoming out".tr(ru), lowest),
             "Raise the ride height / stiffer springs".tr(ru).to_string(),
+            "the floor is reaching the road under load, and a floor on the road makes no downforce"
+                .tr(ru)
+                .to_string(),
+            format!("{} {:.0} mm", "lowest average height".tr(ru), lowest),
+            "whether the height stays above 15 mm through the fastest compression next run"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     }
 
@@ -286,6 +408,20 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             Severity::Info,
             format!("{}: {}x", "Oversteer".tr(ru), lap.oversteer_count),
             "Softer rear ARB / more rear wing".tr(ru).to_string(),
+            "the rear axle is running out of grip before the front"
+                .tr(ru)
+                .to_string(),
+            format!(
+                "{}: {}x, {} {}x",
+                "Oversteer".tr(ru),
+                lap.oversteer_count,
+                "against understeer".tr(ru),
+                lap.understeer_count
+            ),
+            "whether the two counts move towards each other on the next lap"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     } else if lap.understeer_count > lap.oversteer_count && lap.understeer_count > 2 {
         push(
@@ -294,6 +430,20 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             Severity::Info,
             format!("{}: {}x", "Understeer".tr(ru), lap.understeer_count),
             "Softer front ARB / more front wing".tr(ru).to_string(),
+            "the front axle is running out of grip before the rear"
+                .tr(ru)
+                .to_string(),
+            format!(
+                "{}: {}x, {} {}x",
+                "Understeer".tr(ru),
+                lap.understeer_count,
+                "against oversteer".tr(ru),
+                lap.oversteer_count
+            ),
+            "whether the two counts move towards each other on the next lap"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     }
 
@@ -308,6 +458,14 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             Severity::Info,
             format!("{}: {}", "Lockups".tr(ru), lap.lockup_count),
             "Ease onto the pedal / more ABS".tr(ru).to_string(),
+            "the front tyres are being asked to stop the car faster than they can hold"
+                .tr(ru)
+                .to_string(),
+            format!("{}: {}", "Lockups".tr(ru), lap.lockup_count),
+            "the lockup count on the next lap — it is the cheapest tenth on the table"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     }
     if lap.scrubbing_incidents > 2 {
@@ -322,6 +480,20 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
                 lap.max_steering_over_rotation
             ),
             "Less steering — the tyres are scrubbing".tr(ru).to_string(),
+            "more lock is being applied than the front tyres can turn into direction"
+                .tr(ru)
+                .to_string(),
+            format!(
+                "{}: {}x, {} {:.0}°",
+                "Over-rotation".tr(ru),
+                lap.scrubbing_incidents,
+                "worst".tr(ru),
+                lap.max_steering_over_rotation
+            ),
+            "the count next lap, and whether the front tyres come back down in temperature"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     }
     if lap.coasting_percent > 15.0 {
@@ -331,6 +503,18 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
             Severity::Info,
             format!("{} {:.0}%", "Coasting".tr(ru), lap.coasting_percent),
             "Get back on the throttle sooner".tr(ru).to_string(),
+            "there is time on the lap where the car is neither slowing nor accelerating"
+                .tr(ru)
+                .to_string(),
+            format!(
+                "{} {:.0}%",
+                "of the lap coasting".tr(ru),
+                lap.coasting_percent
+            ),
+            "the coasting figure next lap — under 10% is where it should sit"
+                .tr(ru)
+                .to_string(),
+            Evidence::default(),
         );
     }
 
