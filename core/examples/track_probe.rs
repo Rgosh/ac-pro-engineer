@@ -31,13 +31,20 @@ fn main() {
         println!(
             "{name:<26} outline {}  align {}  sections {:<3} drs {:<2} ai {} points",
             if data.outline.is_some() { "yes" } else { "no " },
-            if data.alignment.is_some() { "yes" } else { "no " },
+            if data.alignment.is_some() {
+                "yes"
+            } else {
+                "no "
+            },
             data.sections.len(),
             data.drs.len(),
             data.ai_line.len(),
         );
         for section in data.sections.iter().take(3) {
-            println!("      {:.3}–{:.3}  {}", section.from, section.to, section.name);
+            println!(
+                "      {:.3}–{:.3}  {}",
+                section.from, section.to, section.name
+            );
         }
     }
 }
