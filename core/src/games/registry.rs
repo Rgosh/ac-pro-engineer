@@ -285,6 +285,30 @@ pub fn chosen(id: &str) -> &'static Game {
         .unwrap_or_else(default_game)
 }
 
+/// What the game knows about the circuit that is loaded.
+///
+/// **Additive and optional.** Assetto Corsa keeps a rendered outline, the
+/// names its corners actually have, the DRS zones and the AI's line beside
+/// every track on the driver's own disk; Competizione keeps none of it. A game
+/// that has nothing to say returns an empty [`TrackData`], and everything
+/// built on this has to keep working when it does — a map drawn from the
+/// driver's own coordinates is what makes this program work on a circuit
+/// nobody has surveyed, and a track file only ever makes it more exact.
+///
+/// It reaches for the disk, so it belongs off whatever thread is drawing, and
+/// it is worth calling only when the track changes.
+pub fn track_data(id: &str, track: &str, config: &str) -> crate::track::TrackData {
+    // Only Assetto Corsa keeps any of this, and the id is the registry's own
+    // rather than a string written here.
+    if by_id(id).map(|game| game.id) != Some(super::assetto_corsa::GAME_ID) {
+        return crate::track::TrackData::default();
+    }
+    match crate::games::assetto_corsa::paths::ac_install_root(None) {
+        Some(install) => crate::games::assetto_corsa::tracks::read(&install, track, config),
+        None => crate::track::TrackData::default(),
+    }
+}
+
 /// Every game this build can actually read, in the order they are offered.
 pub fn selectable() -> Vec<&'static Game> {
     playable().collect()
