@@ -204,6 +204,94 @@ fn ai_line(path: &Path) -> Vec<LinePoint> {
         .collect()
 }
 
+/// What the game knows about one car.
+///
+/// `ui/ui_car.json` ships beside every car in the game, including any mod:
+/// the name a person would use, the brand, the class the author filed it
+/// under, the headline specifications, and the engine's torque and power
+/// against revs.
+///
+/// **The file is not always valid JSON.** Several of the cars that ship with
+/// the game have raw newlines inside string values, which no parser accepts —
+/// so control characters are replaced before parsing rather than the car being
+/// reported as absent. That is a real property of the data and not a shortcut.
+pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
+    let root = install.join("content").join("cars").join(car);
+    let ui = root.join("ui");
+    let Ok(raw) = std::fs::read_to_string(ui.join("ui_car.json")) else {
+        return crate::track::CarData::default();
+    };
+    let cleaned: String = raw
+        .chars()
+        .map(|c| if c.is_control() && c != '\n' { ' ' } else { c })
+        .map(|c| if c == '\n' { ' ' } else { c })
+        .collect();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else {
+        debug!("{} is not readable as JSON", ui.display());
+        return crate::track::CarData::default();
+    };
+
+    let text = |key: &str| {
+        value
+            .get(key)
+            .and_then(|found| found.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    // Both curves are arrays of two-element arrays of *strings*, which is how
+    // the game writes them.
+    let curve = |key: &str| -> Vec<(f32, f32)> {
+        value
+            .get(key)
+            .and_then(|found| found.as_array())
+            .map(|points| {
+                points
+                    .iter()
+                    .filter_map(|pair| {
+                        let pair = pair.as_array()?;
+                        let read = |at: usize| -> Option<f32> {
+                            let entry = pair.get(at)?;
+                            entry
+                                .as_str()
+                                .and_then(|text| text.trim().parse().ok())
+                                .or_else(|| entry.as_f64().map(|number| number as f32))
+                        };
+                        Some((read(0)?, read(1)?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    crate::track::CarData {
+        name: text("name"),
+        brand: text("brand"),
+        class: text("class"),
+        tags: value
+            .get("tags")
+            .and_then(|found| found.as_array())
+            .map(|tags| {
+                tags.iter()
+                    .filter_map(|tag| tag.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        specs: value
+            .get("specs")
+            .and_then(|found| found.as_object())
+            .map(|specs| {
+                specs
+                    .iter()
+                    .filter_map(|(key, entry)| Some((key.clone(), entry.as_str()?.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        torque: curve("torqueCurve"),
+        power: curve("powerCurve"),
+        badge: Some(ui.join("badge.png")).filter(|path| path.is_file()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +342,38 @@ mod tests {
 
         assert!(read(&dir, "spa", "").ai_line.is_empty());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// **The file is not always valid JSON**, and several cars that ship with
+    /// the game are the reason: raw newlines inside a string value, which no
+    /// parser accepts. Reporting those cars as absent would be wrong, so the
+    /// control characters are replaced — and this is the test that says so.
+    #[test]
+    fn a_car_whose_description_has_a_raw_newline_is_still_read() {
+        let dir = std::env::temp_dir().join("acpe-car-newline");
+        let ui = dir.join("content/cars/ks_test/ui");
+        std::fs::create_dir_all(&ui).expect("a temporary car folder");
+        std::fs::write(
+            ui.join("ui_car.json"),
+            "{\"name\": \"Test Car\", \"brand\": \"Brand\",\n \
+             \"description\": \"one\nline break inside a string\",\n \
+             \"specs\": {\"bhp\": \"130bhp\"},\n \
+             \"torqueCurve\": [[\"0\", \"50\"], [\"5000\", \"152\"]],\n \
+             \"powerCurve\": [[\"0\", \"0\"], [\"5000\", \"130\"]]}",
+        )
+        .expect("the file must be writable");
+
+        let car = read_car(&dir, "ks_test");
+        assert_eq!(car.name, "Test Car");
+        assert_eq!(car.specs, vec![("bhp".to_string(), "130bhp".to_string())]);
+        assert_eq!(car.torque_peak(), Some((5_000.0, 152.0)));
+        assert_eq!(car.power_peak(), Some((5_000.0, 130.0)));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A car with no `ui` folder is a normal state — a mod may ship none.
+    #[test]
+    fn a_car_with_no_metadata_reads_as_nothing() {
+        assert!(read_car(Path::new("/nonexistent"), "nobody").is_empty());
     }
 }

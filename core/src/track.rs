@@ -159,3 +159,59 @@ mod tests {
         assert_eq!(nothing.name_at(0.5), None);
     }
 }
+
+/// What a game knows about the car that is loaded.
+///
+/// The same shape of answer as [`TrackData`] and for the same reasons: only
+/// Assetto Corsa keeps any of it, every field is optional, and a game with
+/// nothing to say returns an empty one rather than a differently shaped
+/// something.
+///
+/// **The curves are the reason this exists.** A rev counter is a number; the
+/// engine's own torque and power against revs is what says whether a driver is
+/// short-shifting, and it ships beside every car including one installed from
+/// a forum yesterday.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CarData {
+    /// As the car calls itself — "Mazda Miata NA" rather than
+    /// `ks_mazda_miata`.
+    pub name: String,
+    pub brand: String,
+    /// The game's own class word, which is not this program's car class: it is
+    /// free text and a mod may put anything in it.
+    pub class: String,
+    pub tags: Vec<String>,
+    /// Power, weight and the rest, as the car writes them — strings, because
+    /// that is what they are in the file and parsing "197+km/h" into a number
+    /// would be inventing precision.
+    pub specs: Vec<(String, String)>,
+    /// Newton-metres against revs.
+    pub torque: Vec<(f32, f32)>,
+    /// Brake horsepower against revs.
+    pub power: Vec<(f32, f32)>,
+    /// The brand badge that ships with the car.
+    pub badge: Option<std::path::PathBuf>,
+}
+
+impl CarData {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty() && self.torque.is_empty() && self.power.is_empty()
+    }
+
+    /// The revs the engine makes most torque at.
+    pub fn torque_peak(&self) -> Option<(f32, f32)> {
+        self.torque
+            .iter()
+            .copied()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// The revs it makes most power at, which is not the same place and is the
+    /// one that decides where to change gear.
+    pub fn power_peak(&self) -> Option<(f32, f32)> {
+        self.power
+            .iter()
+            .copied()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+    }
+}

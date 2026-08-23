@@ -309,6 +309,21 @@ pub fn track_data(id: &str, track: &str, config: &str) -> crate::track::TrackDat
     }
 }
 
+/// What the game knows about the car that is loaded.
+///
+/// The same shape and the same rules as [`track_data`]: only Assetto Corsa
+/// answers, it reaches for the disk, and it is worth calling when the car
+/// changes rather than every frame.
+pub fn car_data(id: &str, car: &str) -> crate::track::CarData {
+    if by_id(id).map(|game| game.id) != Some(super::assetto_corsa::GAME_ID) {
+        return crate::track::CarData::default();
+    }
+    match crate::games::assetto_corsa::paths::ac_install_root(None) {
+        Some(install) => crate::games::assetto_corsa::tracks::read_car(&install, car),
+        None => crate::track::CarData::default(),
+    }
+}
+
 /// Every game this build can actually read, in the order they are offered.
 pub fn selectable() -> Vec<&'static Game> {
     playable().collect()

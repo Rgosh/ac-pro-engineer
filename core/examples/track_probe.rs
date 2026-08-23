@@ -47,4 +47,40 @@ fn main() {
             );
         }
     }
+
+    // And the cars, which carry their own specifications and the engine's
+    // torque and power against revs.
+    println!("\nCARS");
+    let cars = install.join("content").join("cars");
+    let Ok(entries) = std::fs::read_dir(&cars) else {
+        return;
+    };
+    let mut ids: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .collect();
+    ids.sort();
+
+    let (mut with_curves, mut total) = (0, 0);
+    for id in &ids {
+        let car = ac_core::games::assetto_corsa::tracks::read_car(&install, id);
+        total += 1;
+        if car.torque.is_empty() {
+            continue;
+        }
+        with_curves += 1;
+        if with_curves <= 6 {
+            let peak = car.power_peak().unwrap_or((0.0, 0.0));
+            println!(
+                "{:<26} {:<22} {} points, peak {:.0} bhp at {:.0} rpm",
+                id,
+                car.name,
+                car.torque.len(),
+                peak.1,
+                peak.0
+            );
+        }
+    }
+    println!("{with_curves} of {total} cars carry a torque curve");
 }
