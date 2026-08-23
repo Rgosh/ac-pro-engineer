@@ -25,6 +25,9 @@
 <meta property="og:image:alt" content="Pro Engineer — Assetto Corsa telemetry and virtual race engineer, showing sample advice about tyre pressures and understeer">
 <meta property="og:site_name" content="Pro Engineer">
 <meta property="og:locale" content="en_GB">
+<!--MODIFIED-->
+<meta property="article:modified_time" content="2026-08-24">
+<!--/MODIFIED-->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://proengineer.app/og.png">
 <!-- Without max-image-preview:large a result gets a thumbnail instead of the
@@ -236,6 +239,22 @@ nav.tabs a{
 }
 nav.tabs a:hover{color:var(--text);text-decoration:none;border-bottom-color:var(--border)}
 nav.tabs a.on{color:var(--highlight);border-bottom-color:var(--highlight)}
+/* One tab that asks to be clicked first.
+   The accent, and a dot before it — enough to catch the eye in a row of eight
+   without turning the strip into a advertisement. It keeps the underline when
+   it is also the page you are on, so the two states add up rather than one
+   hiding the other. */
+/* The same mark on the landing's card for it. */
+.card.pick{border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.card.pick h3{color:var(--accent)}
+.card.pick .go{color:var(--accent)}
+nav.tabs a.pick{color:var(--accent)}
+nav.tabs a.pick::before{
+  content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--accent);margin-right:7px;vertical-align:2px;
+}
+nav.tabs a.pick:hover{color:var(--accent);border-bottom-color:var(--accent)}
+nav.tabs a.pick.on{border-bottom-color:var(--accent)}
 
 /* ── the games menu ──────────────────────────────────────────────────
    Two games fit in the strip; six do not, and a strip that scrolls sideways
@@ -940,6 +959,51 @@ footer .cols a:hover{color:var(--highlight)}
   .tally div{padding:10px 8px}
   .tally b{font-size:18px}
 }
+
+/* ── the changelog ───────────────────────────────────────────────────
+   /changelog/ is the application's own CHANGELOG.md rendered, so this
+   styles Markdown's shapes rather than markup written for the site: a
+   release is a section, its notes are headings, bullets and the odd
+   block quote. Nothing else on the site has a plain <ul> in it, which is
+   why these are scoped to .log — a rule for bare `ul` here would reach
+   into the panels and tables on every other page. */
+.log{padding:34px 0 6px;border-top:1px solid var(--border)}
+.log:first-of-type{border-top:0}
+.log > h2{margin-bottom:14px}
+.log > h2 time{
+  color:var(--dim);font-size:12.5px;letter-spacing:0;
+  font-weight:400;flex:none;
+}
+/* The release the site is currently built from. A reader scrolling a
+   year of history should not have to compare version numbers with the
+   download button to find out where they are. */
+.log > h2 .tag{flex:none}
+.log h3{
+  font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);margin:26px 0 8px;
+}
+.log p{color:var(--dim);margin:0 0 12px;max-width:78ch;line-height:1.75}
+.log p b, .log li b{color:var(--text);font-weight:600}
+.log-list{margin:0 0 16px;padding:0;list-style:none;max-width:78ch}
+.log-list li{
+  color:var(--dim);line-height:1.75;padding:0 0 10px 18px;
+  position:relative;font-size:14.5px;
+}
+/* The mark is drawn rather than a bullet character: a list-style dot
+   sits on the text's own line height and drifts as the size changes. */
+.log-list li::before{
+  content:"";position:absolute;left:2px;top:.72em;
+  width:5px;height:5px;background:var(--border);border-radius:1px;
+}
+.log blockquote{
+  border-left:2px solid var(--warn);margin:0 0 18px;padding:14px 0 2px 16px;
+  background:linear-gradient(90deg,var(--bg-raised),transparent 60%);
+}
+.log blockquote h3{margin-top:0}
+.log blockquote p:last-child{margin-bottom:12px}
+.log .src{margin:6px 0 0;font-size:12.5px}
+.log .src a{color:var(--dim);text-decoration:none}
+.log .src a:hover{color:var(--highlight)}
 /*PE_CSS_END*/
   /* ── the landing's own ────────────────────────────────────────────
      The block logo, and the pieces only the front door uses. */
@@ -998,6 +1062,7 @@ footer .cols a:hover{color:var(--highlight)}
   <nav class="tabs">
 <!--NAV-->
     <a href="https://proengineer.app/" class="on">OVERVIEW</a>
+    <a href="https://proengineer.app/rg/" class="pick">RG PRO ENGINEER</a>
     <span class="has-menu">
       <button class="games" type="button" aria-haspopup="true">GAMES</button>
       <span class="menu">
@@ -1062,7 +1127,7 @@ footer .cols a:hover{color:var(--highlight)}
       <p>The point: the in-game overlay stopped being &quot;the panel that sometimes works&quot;. It opens before the race and in the pits, keeps its settings when you close its…</p>
     </li>
   </ol>
-  <a class="all" href="https://github.com/Rgosh/ac-pro-engineer/blob/main/CHANGELOG.md">full changelog →</a>
+  <a class="all" href="https://proengineer.app/changelog/">full changelog →</a>
 </aside>
 <!--/RELEASES-->
 
@@ -1086,7 +1151,7 @@ footer .cols a:hover{color:var(--highlight)}
     </div>
 
     <div class="stats">
-      <div class="stat"><b>130</b><span>FEATURES</span></div>
+      <div class="stat"><b>156</b><span>FEATURES</span></div>
       <div class="stat"><b>9</b><span>TERMINAL TABS</span></div>
       <div class="stat"><b>5</b><span>GAME WINDOWS</span></div>
       <div class="stat"><b>16</b><span>GUIDE CHAPTERS</span></div>
@@ -1138,12 +1203,24 @@ footer .cols a:hover{color:var(--highlight)}
       straight to the part you came for.
     </p>
     <div class="grid">
+      <!-- First in the grid, and the accent, for the same reason it is marked
+           in the tab strip: it is the front end most people should start with,
+           and the landing linked it only from the nav. -->
+      <a class="card pick" href="https://proengineer.app/rg/">
+        <h3><span class="k">▸</span> RG Pro Engineer <span class="sim-badge">NEW</span></h3>
+        <p>
+          The same engineer in a window rather than a terminal: every channel plotted,
+          the circuit and your car drawn from the game's own files, and findings that
+          name the corner and what it cost.
+        </p>
+        <span class="go">See the window</span>
+      </a>
       <a class="card" href="https://proengineer.app/features/">
-        <h3><span class="k">▸</span> Everything it does <span class="n">130</span></h3>
+        <h3><span class="k">▸</span> Everything it does <span class="n">156</span></h3>
         <p>The whole list, folded by area: tyres, the engineer, the debrief, corner
         analysis, ghosts and traces, driving style, fuel, force feedback, setups, the
         in-game panel, the built-in setup guide.</p>
-        <span class="go">All 130 features</span>
+        <span class="go">All 156 features</span>
       </a>
       <a class="card" href="https://proengineer.app/technical/">
         <h3><span class="k">▸</span> How it works</h3>
