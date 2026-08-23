@@ -57,6 +57,10 @@ allow = ["AGPL-3.0-only"]
 name = "ac_tui"
 allow = ["AGPL-3.0-only"]
 
+[[licenses.exceptions]]
+name = "kn5"
+allow = ["AGPL-3.0-only"]
+
 # The one third-party exception, and it is narrow on purpose.
 [[licenses.exceptions]]
 # Mozilla's CA root store, pulled in by reqwest/rustls. MPL-2.0 is copyleft per
