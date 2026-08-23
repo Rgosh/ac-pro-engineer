@@ -282,7 +282,20 @@ pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
             .map(|specs| {
                 specs
                     .iter()
-                    .filter_map(|(key, entry)| Some((key.clone(), entry.as_str()?.to_string())))
+                    .filter_map(|(key, entry)| {
+                        // **Not every specification is a string.** The Z4 GT3
+                        // writes its fuel range as a bare number, and reading
+                        // only strings dropped it without a word — a
+                        // specification silently missing is worse than an ugly
+                        // one, because nobody goes looking for it.
+                        let text = match entry {
+                            serde_json::Value::String(text) => text.clone(),
+                            serde_json::Value::Number(number) => number.to_string(),
+                            serde_json::Value::Bool(flag) => flag.to_string(),
+                            _ => return None,
+                        };
+                        Some((key.clone(), text))
+                    })
                     .collect()
             })
             .unwrap_or_default(),
@@ -357,7 +370,7 @@ mod tests {
             ui.join("ui_car.json"),
             "{\"name\": \"Test Car\", \"brand\": \"Brand\",\n \
              \"description\": \"one\nline break inside a string\",\n \
-             \"specs\": {\"bhp\": \"130bhp\"},\n \
+             \"specs\": {\"bhp\": \"130bhp\", \"range\": 182},\n \
              \"torqueCurve\": [[\"0\", \"50\"], [\"5000\", \"152\"]],\n \
              \"powerCurve\": [[\"0\", \"0\"], [\"5000\", \"130\"]]}",
         )
@@ -365,7 +378,15 @@ mod tests {
 
         let car = read_car(&dir, "ks_test");
         assert_eq!(car.name, "Test Car");
-        assert_eq!(car.specs, vec![("bhp".to_string(), "130bhp".to_string())]);
+        // Both shapes a specification comes in: the Z4 GT3 writes its range
+        // as a bare number and every other field as a string.
+        assert_eq!(
+            car.specs,
+            vec![
+                ("bhp".to_string(), "130bhp".to_string()),
+                ("range".to_string(), "182".to_string()),
+            ]
+        );
         assert_eq!(car.torque_peak(), Some((5_000.0, 152.0)));
         assert_eq!(car.power_peak(), Some((5_000.0, 130.0)));
         std::fs::remove_dir_all(&dir).ok();
