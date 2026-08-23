@@ -83,6 +83,10 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     // Custom Shaders Patch is an Assetto Corsa mod, so the panel is this
     // game's and no other's.
     in_game_panel: true,
+    // Both simulators publish the same five zones, and the reader carries
+    // them now. A session with damage switched off publishes five zeros,
+    // which the flag is what distinguishes from an undamaged car.
+    damage: true,
 };
 
 /// A connection to a running Assetto Corsa.

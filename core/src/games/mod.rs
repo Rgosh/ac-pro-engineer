@@ -106,6 +106,13 @@ pub struct Capabilities {
     /// flag the launcher offers to install a panel into a game that cannot
     /// run it, and then reports it as missing forever.
     pub in_game_panel: bool,
+    /// Bodywork damage is published, and the session has it switched on.
+    ///
+    /// Both simulators publish five zones, and a session with damage disabled
+    /// publishes five zeros — which is the same four bytes as an undamaged
+    /// car. The flag is what tells "nothing has happened" apart from "nothing
+    /// is being recorded".
+    pub damage: bool,
 }
 
 impl Capabilities {
@@ -127,6 +134,7 @@ impl Capabilities {
             wind: true,
             ride_height: true,
             in_game_panel: true,
+            damage: true,
         }
     }
 }

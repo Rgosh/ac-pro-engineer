@@ -99,6 +99,10 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     // nothing to load the panel. Offering to install it here would be
     // offering something that cannot work.
     in_game_panel: false,
+    // Both simulators publish the same five zones, and the reader carries
+    // them now. A session with damage switched off publishes five zeros,
+    // which the flag is what distinguishes from an undamaged car.
+    damage: true,
 };
 
 /// A connection to a running Assetto Corsa Competizione.

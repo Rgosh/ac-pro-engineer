@@ -263,6 +263,22 @@ pub struct Car {
     pub abs_level: i32,
     pub abs_in_action: f32,
 
+    /// How much of the bodywork has been hit, in five zones.
+    ///
+    /// **Front, rear, left, right and centre**, and the number is the game's
+    /// own damage figure rather than a percentage of anything — zero is
+    /// undamaged and it climbs. Both simulators publish it in the same five
+    /// slots, and until now neither carried it past the reader: a screen that
+    /// tells a driver everything about the tyres and nothing about the car
+    /// they have just put into a wall is missing the thing they noticed.
+    ///
+    /// Gated on [`Capabilities::damage`](super::Capabilities::damage), because
+    /// a game with damage switched off publishes five zeros and five zeros is
+    /// "no damage", not "not measured" — and those are the same four bytes.
+    pub damage: [f32; 5],
+    /// How many wheels are off the track, where the game counts them.
+    pub tyres_off_track: i32,
+
     /// The game's own delta to its reference lap, in seconds.
     pub reference_delta_s: f32,
     /// Force feedback output, 0..1. Above 1 the wheel is clipping.

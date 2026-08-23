@@ -111,6 +111,8 @@ fn car_of(p: &AccPhysics, g: &AccGraphics) -> Car {
 
         // ACC measures the delta to its own reference lap on the graphics
         // page, in milliseconds, where AC has a float on the physics page.
+        damage: p.car_damage,
+        tyres_off_track: p.number_of_tyres_out,
         reference_delta_s: g.i_delta_lap_time as f32 / 1000.0,
         force_feedback: p.final_ff,
         pit_limiter: p.pit_limiter_on != 0,

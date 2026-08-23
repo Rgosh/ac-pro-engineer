@@ -82,6 +82,8 @@ impl From<&AcPhysics> for Car {
             abs_level: p.abs_level,
             abs_in_action: p.abs_in_action,
 
+            damage: p.car_damage,
+            tyres_off_track: p.number_of_tyres_out,
             reference_delta_s: p.performance_meter,
             force_feedback: p.final_ff,
             pit_limiter: p.pit_limiter_on != 0,
@@ -208,6 +210,8 @@ mod tests {
             tyre_temp_o: [70.0; 4],
             final_ff: 0.62,
             performance_meter: -0.34,
+            car_damage: [12.5, 0.0, 3.25, 0.0, 1.0],
+            number_of_tyres_out: 2,
             ..Default::default()
         });
         assert_eq!(car.speed_kmh, 214.0);
@@ -216,6 +220,11 @@ mod tests {
         assert_eq!(car.avg_tyre_temp_c(FL), 80.0);
         assert_eq!(car.force_feedback, 0.62);
         assert_eq!(car.reference_delta_s, -0.34);
+        // Five zones in the order the game publishes them, carried through
+        // rather than stopping at the reader — which is where they stopped
+        // until now, on both games.
+        assert_eq!(car.damage, [12.5, 0.0, 3.25, 0.0, 1.0]);
+        assert_eq!(car.tyres_off_track, 2);
     }
 
     /// The session table is the one the terminal printed before this file
