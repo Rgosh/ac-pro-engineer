@@ -191,11 +191,29 @@ pub struct CarData {
     pub power: Vec<(f32, f32)>,
     /// The brand badge that ships with the car.
     pub badge: Option<std::path::PathBuf>,
+    /// The car's real outline, in its own metres, out of the model the game
+    /// renders. `None` where the car ships no model this can read.
+    ///
+    /// **Not serialised.** It is derived from a file on disk and re-read in a
+    /// moment, and writing a few hundred points into every saved lap would be
+    /// storing a car's shape in a record of a lap.
+    #[serde(skip)]
+    pub shape: Option<CarShape>,
 }
+
+/// A car seen from above, to scale.
+///
+/// Re-exported rather than redeclared: the parser already has exactly this
+/// shape and a second copy of it here would be two definitions to keep in
+/// step. Front ends name this and never the parser.
+pub type CarShape = kn5::Shape;
 
 impl CarData {
     pub fn is_empty(&self) -> bool {
-        self.name.is_empty() && self.torque.is_empty() && self.power.is_empty()
+        self.name.is_empty()
+            && self.torque.is_empty()
+            && self.power.is_empty()
+            && self.shape.is_none()
     }
 
     /// The revs the engine makes most torque at.

@@ -218,8 +218,14 @@ fn ai_line(path: &Path) -> Vec<LinePoint> {
 pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
     let root = install.join("content").join("cars").join(car);
     let ui = root.join("ui");
+    // The shape is read whether or not the metadata is: a car may ship a model
+    // and no `ui_car.json`, and its outline is worth having on its own.
+    let shape = kn5::car_shape(&root);
     let Ok(raw) = std::fs::read_to_string(ui.join("ui_car.json")) else {
-        return crate::track::CarData::default();
+        return crate::track::CarData {
+            shape,
+            ..Default::default()
+        };
     };
     let cleaned: String = raw
         .chars()
@@ -228,7 +234,10 @@ pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
         .collect();
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else {
         debug!("{} is not readable as JSON", ui.display());
-        return crate::track::CarData::default();
+        return crate::track::CarData {
+            shape,
+            ..Default::default()
+        };
     };
 
     let text = |key: &str| {
@@ -302,6 +311,7 @@ pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
         torque: curve("torqueCurve"),
         power: curve("powerCurve"),
         badge: Some(ui.join("badge.png")).filter(|path| path.is_file()),
+        shape,
     }
 }
 

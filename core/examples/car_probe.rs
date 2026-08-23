@@ -36,6 +36,30 @@ fn main() {
         println!("  torque  {value:.0} Nm at {revs:.0} rpm");
     }
     println!("  curve   {} points", car.torque.len());
+    match car.shape.as_ref() {
+        Some(shape) => {
+            println!(
+                "  shape   {:.2} m long, {:.2} wide, {:.2} tall, {} points",
+                shape.length_m,
+                shape.width_m,
+                shape.height_m,
+                shape.outline.len()
+            );
+            match (
+                shape.wheelbase_m(),
+                shape.track_front_m(),
+                shape.track_rear_m(),
+            ) {
+                (Some(base), Some(front), Some(rear)) => println!(
+                    "  wheels  base {base:.2} m, track {front:.2} front and {rear:.2} rear"
+                ),
+                // The model did not name them, and four wheels in the wrong
+                // place is worse than none.
+                _ => println!("  wheels  the model does not name them"),
+            }
+        }
+        None => println!("  shape   no model this can read"),
+    }
     println!(
         "  badge   {}",
         car.badge

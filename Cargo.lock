@@ -10,6 +10,7 @@ dependencies = [
  "chrono",
  "directories-next",
  "flate2",
+ "kn5",
  "memmap2",
  "reqwest",
  "rust-ini",

@@ -13,6 +13,11 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+# The car's real shape, out of the game's own model files. A workspace crate
+# rather than a module here because it is a file-format parser and has nothing
+# to do with telemetry — see `kn5/src/lib.rs`.
+kn5 = { path = "../kn5" }
+
 anyhow = { workspace = true }
 zerocopy = { workspace = true, features = ["derive"] }
 directories-next = { workspace = true }
