@@ -12,12 +12,12 @@
 
 use crate::model::{Model, Point};
 
-/// How many slices the outline is taken in.
+/// How many stations the car is measured at, nose to tail.
 ///
-/// Ninety-six is a point every four degrees: fine enough that an arch is a
-/// curve rather than a facet, coarse enough that the whole shape is a few
-/// hundred bytes and one polyline to draw.
-const SLICES: usize = 96;
+/// Sixty-four over four metres is a measurement every six centimetres: fine
+/// enough that an arch is a curve rather than a facet, coarse enough that the
+/// whole outline is a hundred and twenty points and one polyline to draw.
+const STATIONS: usize = 64;
 
 /// **Only the body.** A car's model carries its mirrors, its wing and its
 /// aerial, and a silhouette that includes an aerial is a silhouette with a
@@ -103,34 +103,86 @@ pub fn shape(model: &Model) -> Shape {
         min_z = min_z.min(point.z);
         max_z = max_z.max(point.z);
     }
-    let centre = ((min_x + max_x) * 0.5, (min_z + max_z) * 0.5);
 
-    // The farthest point in each slice. A slice with nothing in it is skipped
-    // rather than filled: a gap in the outline is better than a point invented
-    // to close it.
-    let mut farthest: Vec<Option<(f32, [f32; 2])>> = vec![None; SLICES];
+    // **Sliced along the car, not swept round it.** An angular sweep from the
+    // middle is right for a round thing and wrong for one twice as long as it
+    // is wide: the slices bunch up at the sides and thin out at the nose, so
+    // the flanks come out lumpy and the ends come out square. What a car wants
+    // is the left and right edge at each station down its length, which is how
+    // anyone would measure one — and it produces a silhouette rather than a
+    // potato.
+    let along = (max_z - min_z).max(0.01);
+    let mut left = vec![f32::NAN; STATIONS];
+    let mut right = vec![f32::NAN; STATIONS];
     for point in &body {
-        let (dx, dz) = (point.x - centre.0, point.z - centre.1);
-        let reach = dx.hypot(dz);
-        if reach <= f32::EPSILON {
-            continue;
+        let station = (((point.z - min_z) / along) * (STATIONS - 1) as f32).round() as usize;
+        let station = station.min(STATIONS - 1);
+        if left[station].is_nan() || point.x < left[station] {
+            left[station] = point.x;
         }
-        let angle = dz.atan2(dx);
-        let slice = (((angle + std::f32::consts::PI) / std::f32::consts::TAU) * SLICES as f32)
-            as usize
-            % SLICES;
-        if farthest[slice].is_none_or(|(best, _)| reach > best) {
-            farthest[slice] = Some((reach, [point.x, point.z]));
+        if right[station].is_nan() || point.x > right[station] {
+            right[station] = point.x;
+        }
+    }
+    // A mirror is one station wide and a wheel arch is a dozen, so the median
+    // of a short window takes the first out and leaves the second.
+    let left = smooth(&left);
+    let right = smooth(&right);
+
+    // Down one side and back up the other, which closes the ring in order.
+    let station_z = |station: usize| min_z + along * station as f32 / (STATIONS - 1) as f32;
+    let mut outline: Vec<[f32; 2]> = Vec::with_capacity(STATIONS * 2);
+    for (station, edge) in right.iter().enumerate() {
+        if let Some(edge) = edge {
+            outline.push([*edge, station_z(station)]);
+        }
+    }
+    for (station, edge) in left.iter().enumerate().rev() {
+        if let Some(edge) = edge {
+            outline.push([*edge, station_z(station)]);
         }
     }
 
     Shape {
-        outline: farthest.into_iter().flatten().map(|(_, at)| at).collect(),
+        outline,
         length_m: max_z - min_z,
         width_m: max_x - min_x,
         height_m: max_y - min_y,
         wheels: wheels(model),
     }
+}
+
+/// One edge of the car, with the spikes taken out of it.
+///
+/// **A car's model is not only its body.** Mirrors stand out sideways and a
+/// wing stands out backwards, and the outermost point at a station is
+/// whichever of those happens to fall there — so a raw edge is a flank with
+/// three or four spines on it. A mirror is one station wide and a wheel arch
+/// is a dozen, so the median of a short window takes the first out and leaves
+/// the second. The median rather than the mean, because one spike drags a mean
+/// and cannot move a median at all.
+///
+/// A station nothing fell in comes back as nothing rather than as a guess: a
+/// gap in an outline is better than a point invented to close it.
+fn smooth(edge: &[f32]) -> Vec<Option<f32>> {
+    (0..edge.len())
+        .map(|station| {
+            let mut window: Vec<f32> = (-2_isize..=2)
+                .filter_map(|offset| {
+                    let at = station as isize + offset;
+                    (0..edge.len() as isize)
+                        .contains(&at)
+                        .then(|| edge[at as usize])
+                        .filter(|value| !value.is_nan())
+                })
+                .collect();
+            if window.is_empty() {
+                return None;
+            }
+            window.sort_by(f32::total_cmp);
+            Some(window[window.len() / 2])
+        })
+        .collect()
 }
 
 fn wheels(model: &Model) -> Option<[[f32; 2]; 4]> {
