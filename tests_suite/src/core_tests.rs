@@ -744,6 +744,7 @@ fn test_42_csv_export_format() {
         slip_avg: 0.01,
         x: 10.0,
         y: 20.0,
+        detail: Default::default(),
     });
 
     let tmp_path = std::env::temp_dir().join("test_export.csv");
@@ -776,6 +777,7 @@ fn test_43_ghost_delta_calculation() {
         slip_avg: 0.0,
         x: 0.0,
         y: 0.0,
+        detail: Default::default(),
     });
     best_lap.telemetry_trace.push(TelemetryPoint {
         distance: 1000.0,
@@ -791,6 +793,7 @@ fn test_43_ghost_delta_calculation() {
         slip_avg: 0.0,
         x: 100.0,
         y: 100.0,
+        detail: Default::default(),
     });
 
     let delta = calculate_ghost_delta(&best_lap, 1.0, 31.5);

@@ -616,6 +616,7 @@ mod tests {
                     x: at,
                     y: at,
                     rpms: 7_000,
+                    detail: Default::default(),
                 }
             })
             .collect();
@@ -652,6 +653,7 @@ mod tests {
                     x: at,
                     y: at,
                     rpms: 7_000,
+                    detail: Default::default(),
                 }
             })
             .collect();
@@ -698,6 +700,7 @@ mod tests {
                     x: 0.0,
                     y: 0.0,
                     rpms: 7000,
+                    detail: Default::default(),
                 }
             })
             .collect()

@@ -155,6 +155,7 @@ fn create_populated_app_state() -> AppState {
             x: px,
             y: py,
             slip_avg: 0.02,
+            detail: Default::default(),
         });
     }
     for (index, p) in history.into_iter().enumerate() {

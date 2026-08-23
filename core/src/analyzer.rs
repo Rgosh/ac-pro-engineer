@@ -115,6 +115,123 @@ pub struct TelemetryPoint {
     pub x: f32,
     pub y: f32,
     pub rpms: i32,
+    /// Everything else the game published at this instant.
+    ///
+    /// **Separate, and defaulted, on purpose.** The fields above are the ones
+    /// every screen and every rule reads, and they were the whole of a sample
+    /// until a front end wanted to plot suspension travel against distance and
+    /// found there was nothing to plot. This is the rest of it — per corner
+    /// where the car has four of something, and the handful of scalars that
+    /// change through a lap.
+    ///
+    /// `serde(default)` because laps saved before it existed are still laps:
+    /// they load, and everything drawn from this reads zero, which is why
+    /// [`Detail::measured`] exists rather than a screen guessing.
+    #[serde(default)]
+    pub detail: Detail,
+}
+
+/// The rest of one instant, beyond what every screen reads.
+///
+/// Adds about two hundred bytes to a sample, which is a megabyte and a half
+/// over a lap at sixty a second. That is the price of being able to plot any
+/// channel the game publishes rather than the six somebody chose in advance,
+/// and it is the right way round: a telemetry program that throws the data
+/// away at the door cannot get it back.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct Detail {
+    /// False on a lap recorded before this existed, so a screen can tell a
+    /// zero apart from a lap that never carried the field.
+    pub measured: bool,
+
+    pub tyre_core_temp_c: [f32; 4],
+    pub tyre_temp_inner_c: [f32; 4],
+    pub tyre_temp_middle_c: [f32; 4],
+    pub tyre_temp_outer_c: [f32; 4],
+    pub tyre_pressure_psi: [f32; 4],
+    pub tyre_wear: [f32; 4],
+    pub brake_temp_c: [f32; 4],
+    pub brake_pad_mm: [f32; 4],
+    pub wheel_load: [f32; 4],
+    pub wheel_slip: [f32; 4],
+    pub suspension_travel: [f32; 4],
+    pub camber_rad: [f32; 4],
+
+    /// Front and rear, in metres.
+    pub ride_height_m: [f32; 2],
+    pub vertical_g: f32,
+    pub clutch: f32,
+    pub fuel_litres: f32,
+    pub brake_bias: f32,
+    pub tc_in_action: f32,
+    pub abs_in_action: f32,
+    pub force_feedback: f32,
+    pub air_temp_c: f32,
+    pub road_temp_c: f32,
+}
+
+impl Detail {
+    /// Everything of one reading that is not already on the point above it.
+    pub fn of(car: &crate::games::Car) -> Self {
+        Self {
+            measured: true,
+            tyre_core_temp_c: car.tyre_core_temp_c,
+            tyre_temp_inner_c: car.tyre_temp_inner_c,
+            tyre_temp_middle_c: car.tyre_temp_middle_c,
+            tyre_temp_outer_c: car.tyre_temp_outer_c,
+            tyre_pressure_psi: car.tyre_pressure_psi,
+            tyre_wear: car.tyre_wear,
+            brake_temp_c: car.brake_temp_c,
+            brake_pad_mm: car.brake_pad_mm,
+            wheel_load: car.wheel_load,
+            wheel_slip: car.wheel_slip,
+            suspension_travel: car.suspension_travel,
+            camber_rad: car.camber_rad,
+            ride_height_m: car.ride_height_m,
+            vertical_g: car.acc_g[1],
+            clutch: car.clutch,
+            fuel_litres: car.fuel_litres,
+            brake_bias: car.brake_bias,
+            tc_in_action: car.tc_in_action,
+            abs_in_action: car.abs_in_action,
+            force_feedback: car.force_feedback,
+            air_temp_c: car.air_temp_c,
+            road_temp_c: car.road_temp_c,
+        }
+    }
+
+    /// Between two instants, for resampling a lap onto an even grid.
+    pub fn between(from: &Self, to: &Self, factor: f32) -> Self {
+        let mix = |a: f32, b: f32| a + factor * (b - a);
+        let corners = |a: &[f32; 4], b: &[f32; 4]| std::array::from_fn(|i| mix(a[i], b[i]));
+        Self {
+            // Only measured where both ends were: half of a reading nobody
+            // took is still nobody's reading.
+            measured: from.measured && to.measured,
+            tyre_core_temp_c: corners(&from.tyre_core_temp_c, &to.tyre_core_temp_c),
+            tyre_temp_inner_c: corners(&from.tyre_temp_inner_c, &to.tyre_temp_inner_c),
+            tyre_temp_middle_c: corners(&from.tyre_temp_middle_c, &to.tyre_temp_middle_c),
+            tyre_temp_outer_c: corners(&from.tyre_temp_outer_c, &to.tyre_temp_outer_c),
+            tyre_pressure_psi: corners(&from.tyre_pressure_psi, &to.tyre_pressure_psi),
+            tyre_wear: corners(&from.tyre_wear, &to.tyre_wear),
+            brake_temp_c: corners(&from.brake_temp_c, &to.brake_temp_c),
+            brake_pad_mm: corners(&from.brake_pad_mm, &to.brake_pad_mm),
+            wheel_load: corners(&from.wheel_load, &to.wheel_load),
+            wheel_slip: corners(&from.wheel_slip, &to.wheel_slip),
+            suspension_travel: corners(&from.suspension_travel, &to.suspension_travel),
+            camber_rad: corners(&from.camber_rad, &to.camber_rad),
+            ride_height_m: std::array::from_fn(|i| mix(from.ride_height_m[i], to.ride_height_m[i])),
+            vertical_g: mix(from.vertical_g, to.vertical_g),
+            clutch: mix(from.clutch, to.clutch),
+            fuel_litres: mix(from.fuel_litres, to.fuel_litres),
+            brake_bias: mix(from.brake_bias, to.brake_bias),
+            tc_in_action: mix(from.tc_in_action, to.tc_in_action),
+            abs_in_action: mix(from.abs_in_action, to.abs_in_action),
+            force_feedback: mix(from.force_feedback, to.force_feedback),
+            air_temp_c: mix(from.air_temp_c, to.air_temp_c),
+            road_temp_c: mix(from.road_temp_c, to.road_temp_c),
+        }
+    }
 }
 
 /// Shortest split treated as a real sector. Anything under a second is AC
@@ -248,6 +365,7 @@ impl TelemetryTrace {
                 x: p0.x + factor * (p1.x - p0.x),
                 y: p0.y + factor * (p1.y - p0.y),
                 rpms: if factor < 0.5 { p0.rpms } else { p1.rpms },
+                detail: Detail::between(&p0.detail, &p1.detail, factor),
             });
 
             target_dist += step;
@@ -788,6 +906,7 @@ impl TelemetryAnalyzer {
                     x,
                     y: z,
                     rpms: p.rpm,
+                    detail: Detail::of(p),
                 });
             }
         }
@@ -1123,6 +1242,7 @@ mod tests {
             x: 0.0,
             y: 0.0,
             rpms: 6000,
+            detail: Default::default(),
         }
     }
     use crate::games::{Car, Session};
@@ -1466,6 +1586,7 @@ mod tests {
             slip_avg: 0.0,
             x: 0.0,
             y: 0.0,
+            detail: Default::default(),
         }];
         let resampled_single = TelemetryTrace::resample_by_distance(&single, 0.1);
         assert_eq!(resampled_single.len(), 1);
@@ -1493,6 +1614,7 @@ mod tests {
                     slip_avg: 0.0,
                     x: 0.0,
                     y: 0.0,
+                    detail: Default::default(),
                 }
             })
             .collect();
@@ -1516,6 +1638,7 @@ mod tests {
                     slip_avg: 0.0,
                     x: 0.0,
                     y: 0.0,
+                    detail: Default::default(),
                 }
             })
             .collect();
@@ -1552,6 +1675,7 @@ mod tests {
                     slip_avg: 0.0,
                     x: 0.0,
                     y: 0.0,
+                    detail: Default::default(),
                 }
             })
             .collect();
@@ -1574,6 +1698,7 @@ mod tests {
                     slip_avg: 0.0,
                     x: 0.0,
                     y: 0.0,
+                    detail: Default::default(),
                 }
             })
             .collect();

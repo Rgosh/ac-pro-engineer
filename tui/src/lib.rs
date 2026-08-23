@@ -991,6 +991,7 @@ impl AppState {
                     x: px,
                     y: py,
                     slip_avg: 0.02,
+                    detail: Default::default(),
                 });
             }
 
