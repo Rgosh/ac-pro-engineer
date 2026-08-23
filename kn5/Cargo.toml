@@ -1,0 +1,12 @@
+[package]
+name = "kn5"
+description = "Reading the shape of a car out of Assetto Corsa's own model files"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Nothing. The format is a little-endian byte stream and a tree, and a parser
+# for it that needs a dependency is a parser doing too much — see the note at
+# the top of `lib.rs` about what this deliberately does not read.

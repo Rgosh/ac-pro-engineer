@@ -1110,6 +1110,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kn5"
+version = "0.4.1"
+
+[[package]]
 name = "kurbo"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

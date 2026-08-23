@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "tui", "shm-bridge", "tests_suite"]
+members = ["core", "kn5", "tui", "shm-bridge", "tests_suite"]
 
 [workspace.package]
 version = "0.4.1"
