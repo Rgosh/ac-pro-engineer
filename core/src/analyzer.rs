@@ -481,6 +481,28 @@ impl TelemetryAnalyzer {
         }
     }
 
+    /// Throw away everything that belonged to the last car and track.
+    ///
+    /// A driver going back to the menu and picking another car does not restart
+    /// this program, and the shared memory stays mapped throughout — so without
+    /// this, laps driven in a Miata sit in the same list as laps driven in a
+    /// GT3, the best of them becomes the reference the other car is compared
+    /// against, and the measured circuit length from the last track stamps
+    /// itself onto laps of the new one.
+    ///
+    /// The world record goes too: it is looked up per car and per track, and is
+    /// set again when the first lap of the new pairing finishes.
+    pub fn start_new_session(&mut self) {
+        self.laps.clear();
+        self.best_lap_index = None;
+        self.best_sectors = [i32::MAX, i32::MAX, i32::MAX];
+        self.reference_lap = None;
+        self.world_record = None;
+        self.track_length_m = 0.0;
+        self.track_length_measured = false;
+        self.measured_length = crate::track::MeasuredLength::default();
+    }
+
     pub fn set_world_record(&mut self, record: TrackRecord) {
         self.world_record = Some(record);
     }
@@ -1655,6 +1677,43 @@ mod tests {
         // Quicker and clean: this one is the best.
         drive(&mut analyzer, 3, 90_500, true);
         assert_eq!(analyzer.best_lap_index, Some(2));
+    }
+
+    /// A driver who goes back to the menu and picks another car does not
+    /// restart the program, and everything here belonged to the car they left.
+    #[test]
+    fn a_new_car_starts_from_nothing() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.set_track_length(7_004.0);
+        analyzer.process_lap(
+            1,
+            92_000,
+            &[Car {
+                speed_kmh: 120.0,
+                ..Default::default()
+            }],
+            &[Session::default()],
+            [30_000, 31_000, 31_000],
+            "gt3".to_string(),
+            "spa".to_string(),
+            27.5,
+            16,
+        );
+        assert_eq!(analyzer.best_lap_index, Some(0));
+        assert_eq!(analyzer.best_sectors_ms()[0], Some(30_000));
+
+        analyzer.start_new_session();
+
+        assert!(analyzer.laps.is_empty());
+        assert_eq!(analyzer.best_lap_index, None);
+        assert_eq!(analyzer.best_sectors_ms()[0], None);
+        assert!(analyzer.reference_lap.is_none());
+        assert!(analyzer.world_record.is_none());
+        assert_eq!(
+            analyzer.track_length_m, 0.0,
+            "the previous circuit's length would stamp itself onto laps of the new one"
+        );
+        assert!(!analyzer.track_length_measured());
     }
 
     /// Assetto Corsa never reports validity, so every lap there is valid and

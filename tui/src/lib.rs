@@ -1148,6 +1148,55 @@ impl AppState {
             self.track_sector_count = sector_count;
         }
         let capabilities = reading.capabilities;
+
+        // **The car and the track can change without this program restarting.**
+        // They were read once, in `connect_memory`, and the shared memory stays
+        // mapped when a driver goes back to the menu and picks something else —
+        // so every lap after that was recorded under the previous car's name,
+        // written into the previous car's record, and compared against a
+        // reference set in a different car on a different circuit. The measured
+        // circuit length carried over too, stamping Spa's 7004 m onto laps of
+        // Monza.
+        //
+        // **An empty name is not a different car.** Both games publish nothing
+        // for a frame or two between sessions and at the menu, and treating
+        // that as a change would throw away the session's laps every time the
+        // driver looked at a menu. Blank is "nothing reported this instant",
+        // which is the distinction this whole program is built on.
+        //
+        // The demo is skipped: it sets names a person can read, and it is not
+        // a game changing under us.
+        let reported_car = reading.fixed.car_model.trim();
+        let reported_track = reading.fixed.track.trim();
+        if !self.is_demo_mode && !reported_car.is_empty() && !reported_track.is_empty() {
+            let changed = self.session_info.car_name != reported_car
+                || self.session_info.track_name != reported_track
+                || self.session_info.track_config != reading.fixed.track_config;
+            if changed {
+                // Nothing to throw away the first time a car is seen: the
+                // connection has only just been made and the laps are this
+                // session's.
+                let had_one = !self.session_info.car_name.is_empty();
+                self.session_info.car_name = reported_car.to_string();
+                self.session_info.track_name = reported_track.to_string();
+                self.session_info.track_config = reading.fixed.track_config.clone();
+                self.session_info.player_name = reading.fixed.driver_name.clone();
+                self.session_info.max_rpm = reading.fixed.max_rpm;
+                self.session_info.max_fuel = reading.fixed.max_fuel_litres;
+                if had_one {
+                    info!(
+                        "Now {} at {}; the laps before this belonged to another car",
+                        self.session_info.car_name, self.session_info.track_name
+                    );
+                    self.analyzer.start_new_session();
+                    self.current_lap_cars.clear();
+                    self.current_lap_sessions.clear();
+                    self.current_lap_sectors = [0; 3];
+                    self.current_lap_number = -1;
+                }
+            }
+        }
+
         self.reading = Some(reading);
 
         self.update_live_buffers(&car, &session);
@@ -1829,6 +1878,51 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&game);
+    }
+
+    /// A driver going back to the menu and picking another car does not
+    /// restart this program. Everything the analyser holds belonged to the car
+    /// they left, and the record about to be written is keyed on its name.
+    #[test]
+    fn a_new_car_ends_the_session_the_old_one_was_in() {
+        let mut app = AppState::new();
+        app.stage = AppStage::Running;
+
+        let reading = |car: &str, track: &str| Reading {
+            capabilities: Capabilities::all(),
+            fixed: Fixed {
+                car_model: car.to_string(),
+                track: track.to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        app.process_tick_logic(reading("ks_mazda_mx5", "spa"));
+        app.analyzer.laps.push(ac_core::analyzer::LapData {
+            lap_time_ms: 120_000,
+            valid: true,
+            ..Default::default()
+        });
+        app.analyzer.set_track_length(7_004.0);
+
+        // The same car again: nothing is disturbed.
+        app.process_tick_logic(reading("ks_mazda_mx5", "spa"));
+        assert_eq!(app.analyzer.laps.len(), 1);
+
+        // **A frame with nothing in it is not a different car.** Both games
+        // publish blank between sessions, and treating that as a change threw
+        // the session away every time the driver opened a menu.
+        app.process_tick_logic(reading("", ""));
+        assert_eq!(app.analyzer.laps.len(), 1);
+        assert_eq!(app.session_info.car_name, "ks_mazda_mx5");
+
+        // Another car: the laps, the reference and the circuit length go.
+        app.process_tick_logic(reading("ferrari_488_gt3_evo", "monza"));
+        assert!(app.analyzer.laps.is_empty());
+        assert_eq!(app.analyzer.track_length_m, 0.0);
+        assert_eq!(app.session_info.car_name, "ferrari_488_gt3_evo");
+        assert_eq!(app.session_info.track_name, "monza");
     }
 
     #[test]
