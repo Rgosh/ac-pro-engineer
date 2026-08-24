@@ -112,6 +112,16 @@ impl FrameReceiver {
         })
     }
 
+    /// The address actually being listened on.
+    ///
+    /// Not the one that was asked for: a caller may bind port 0 and let the
+    /// operating system choose, and then this is the only way anybody — a
+    /// status line, or the person who has to read the port out to a friend —
+    /// can find out which one it got.
+    pub fn listening_on(&self) -> std::io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
+
     /// Who we are hearing from, for the status line.
     pub fn sender(&self) -> Option<&(SocketAddr, String)> {
         self.last_sender.as_ref()
