@@ -1050,6 +1050,21 @@ impl TelemetryAnalyzer {
         self.laps.push(lap_data);
         info!("Lap {} successfully added to telemetry stack.", lap_number);
 
+        // **A lap the game called invalid is not a best lap.** The best
+        // sectors have always filtered on this; the best *lap* did not, so on
+        // a game that reports track limits — Competizione does, Assetto Corsa
+        // never has — a cut lap became the reference every later lap was
+        // compared against, and the consistency score's baseline. On a game
+        // that never says, `valid` is true for every lap and this changes
+        // nothing.
+        //
+        // If every lap so far was invalid there is no best lap, which is the
+        // same answer the sectors give and is the honest one: there is nothing
+        // yet that counted.
+        let is_valid = self.laps.last().map(|lap| lap.valid).unwrap_or(false);
+        if !is_valid {
+            return;
+        }
         if let Some(best_idx) = self.best_lap_index {
             if best_idx < self.laps.len() {
                 if lap_time_ms < self.laps[best_idx].lap_time_ms && lap_time_ms > 10000 {
@@ -1592,6 +1607,78 @@ mod tests {
 
         assert_eq!(analyzer.best_sectors_ms()[2], None);
         assert_eq!(analyzer.theoretical_best_lap_ms(), None);
+    }
+
+    /// **And an invalid lap is not the best lap either.**
+    ///
+    /// The sectors filtered on validity from the start; the best *lap* did
+    /// not, so on a game that reports track limits a cut lap became the
+    /// reference every later lap was compared against. It is also what the
+    /// consistency score measures spread around, and what the analysis screen
+    /// draws a ghost from.
+    #[test]
+    fn the_best_lap_skips_a_lap_the_game_invalidated() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let car = Car {
+            speed_kmh: 120.0,
+            ..Default::default()
+        };
+        let session = |valid| Session {
+            lap_is_valid: valid,
+            ..Default::default()
+        };
+        let drive = |analyzer: &mut TelemetryAnalyzer, number, time_ms, valid| {
+            analyzer.process_lap(
+                number,
+                time_ms,
+                &[car],
+                &[session(valid)],
+                [0, 0, 0],
+                "test_car".to_string(),
+                "test_track".to_string(),
+                27.5,
+                16,
+            );
+        };
+
+        drive(&mut analyzer, 1, 92_000, true);
+        assert_eq!(analyzer.best_lap_index, Some(0));
+
+        // Quicker, and it never counted.
+        drive(&mut analyzer, 2, 89_000, false);
+        assert_eq!(
+            analyzer.best_lap_index,
+            Some(0),
+            "a lap the game called invalid became the reference"
+        );
+
+        // Quicker and clean: this one is the best.
+        drive(&mut analyzer, 3, 90_500, true);
+        assert_eq!(analyzer.best_lap_index, Some(2));
+    }
+
+    /// Assetto Corsa never reports validity, so every lap there is valid and
+    /// the rule above is invisible on it. Worth a test of its own: gating on a
+    /// field a game does not fill is how a working feature goes silent.
+    #[test]
+    fn a_game_that_never_reports_validity_still_gets_a_best_lap() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.process_lap(
+            1,
+            92_000,
+            &[Car {
+                speed_kmh: 120.0,
+                ..Default::default()
+            }],
+            // `Session::default()` is what a game that says nothing produces.
+            &[Session::default()],
+            [0, 0, 0],
+            "test_car".to_string(),
+            "test_track".to_string(),
+            27.5,
+            16,
+        );
+        assert_eq!(analyzer.best_lap_index, Some(0));
     }
 
     /// Invalid laps do not contribute a best sector.

@@ -1260,10 +1260,22 @@ impl AppState {
                     // WR meant `records.json` only ever gained an entry from
                     // someone who had beaten it, so for every normal driver
                     // the personal best was never saved at all.
-                    let mut personal = reference.clone();
-                    personal.time_ms = last_lap_time;
-                    personal.source = "User Best".to_string();
-                    self.record_manager.update_if_faster(personal);
+                    // **Only a lap that counted.** `records.json` outlives the
+                    // session and is what the off-pace advice measures against
+                    // later, so a lap Competizione called invalid — a wheel
+                    // over the line, a cut — would sit there as this driver's
+                    // best for ever. The analyser has just decided that
+                    // question for the lap it closed; ask it rather than
+                    // computing validity a second way. Assetto Corsa reports no
+                    // validity at all, so every lap there is valid and this
+                    // reads exactly as it did.
+                    let counted = self.analyzer.laps.last().is_some_and(|lap| lap.valid);
+                    if counted {
+                        let mut personal = reference.clone();
+                        personal.time_ms = last_lap_time;
+                        personal.source = "User Best".to_string();
+                        self.record_manager.update_if_faster(personal);
+                    }
 
                     self.analyzer.set_world_record(reference);
                 }
