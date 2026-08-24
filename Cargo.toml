@@ -13,13 +13,19 @@ authors = ["Rgosh"]
 license = "AGPL-3.0-only"
 
 [workspace.dependencies]
-anyhow = "1.0"
+# 1.0.103 is where RUSTSEC-2026-0190 was fixed — unsoundness in
+# `Error::downcast_mut`. Same reasoning as memmap2 below: name the floor.
+anyhow = "1.0.103"
 zerocopy = "0.8.39"
 chrono = "0.4"
 clap = "4.5.60"
 crossterm = "0.29.0"
 directories-next = "2.0"
-memmap2 = "0.9.10"
+# **The patch version is spelled out on purpose.** 0.9.10 carries
+# RUSTSEC-2026-0186, an unchecked pointer offset — in the crate that maps the
+# game's shared memory, which is as close to this program's hot path as a
+# dependency gets. A caret on "0.9" would let a fresh resolve pick it again.
+memmap2 = "0.9.11"
 nix = "0.31.1"
 ratatui = "0.26"
 serde = "1.0"
