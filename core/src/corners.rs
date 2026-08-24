@@ -193,6 +193,78 @@ pub fn distance_at(trace: &[TelemetryPoint], time_ms: i32) -> Option<f32> {
     Some(before.distance + factor * (after.distance - before.distance))
 }
 
+/// How far ahead or behind the reference this lap was at a place on the track.
+///
+/// Positive is slower, the same sign convention as
+/// [`Decomposition::total_ms`] and every "+0.28" a driver has ever read.
+///
+/// `None` where either lap has nothing at that distance — a trace that starts
+/// after the line, or a reference that ended early. Withheld rather than
+/// clamped: a delta of zero and "no measurement here" look identical on a
+/// coloured line, and one of them is a lie.
+pub fn delta_ms_at(
+    lap: &[TelemetryPoint],
+    reference: &[TelemetryPoint],
+    distance: f32,
+) -> Option<i32> {
+    // **`time_at` clamps at both ends** — outside the trace it answers with
+    // the first or last sample rather than with nothing, which is right for
+    // `decompose`, whose section ends are deliberately `f32::MAX`. It is wrong
+    // here: a stretch the reference never covered would come back as a
+    // constant delta and be drawn as a plausible stretch of colour. So the
+    // bounds are checked before the interpolation, not inside it.
+    if !covers(lap, distance) || !covers(reference, distance) {
+        return None;
+    }
+    Some(time_at(lap, distance)? - time_at(reference, distance)?)
+}
+
+/// Whether a trace actually holds this distance, rather than clamping to it.
+fn covers(trace: &[TelemetryPoint], distance: f32) -> bool {
+    match (trace.first(), trace.last()) {
+        (Some(first), Some(last)) => distance >= first.distance && distance <= last.distance,
+        _ => false,
+    }
+}
+
+/// One point of a delta trace.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeltaPoint {
+    /// Normalised distance round the lap, 0..1.
+    pub distance: f32,
+    /// Milliseconds behind the reference here. Positive is slower.
+    pub delta_ms: i32,
+}
+
+/// Time gained and lost against a reference, sampled along the lap.
+///
+/// [`decompose`] answers "which corner cost me" and this answers "where,
+/// exactly" — the racing line coloured by time rather than by speed, which is
+/// the first view every driver looks for and the one thing this program could
+/// not draw. The arithmetic was already here, inside `decompose`, where nothing
+/// else could reach it.
+///
+/// **Sampled at the lap's own points**, not at a fixed interval. The front end
+/// draws the line from those same points, so a delta per point colours a
+/// segment each without anybody interpolating twice; a fixed grid would need
+/// resampling on the way back out.
+///
+/// The last point's delta is the lap's own delta, so this and
+/// `Decomposition::total_ms` agree by construction rather than by coincidence.
+pub fn delta_trace(lap: &[TelemetryPoint], reference: &[TelemetryPoint]) -> Vec<DeltaPoint> {
+    if lap.is_empty() || reference.is_empty() {
+        return Vec::new();
+    }
+    lap.iter()
+        .filter_map(|point| {
+            delta_ms_at(lap, reference, point.distance).map(|delta_ms| DeltaPoint {
+                distance: point.distance,
+                delta_ms,
+            })
+        })
+        .collect()
+}
+
 /// Where each sector line falls on the lap, as normalised distances.
 ///
 /// Built from the splits the game published and the lap the driver actually
@@ -662,6 +734,74 @@ mod tests {
         assert_eq!(sector_marks(&trace, &[30_000, 30_000, 30_000]).len(), 2);
     }
     use super::*;
+
+    /// A lap against itself is a flat zero everywhere. Trivial, and it is the
+    /// test that catches a sign flipped or an off-by-one in the interpolation
+    /// — both of which draw a plausible-looking coloured line.
+    #[test]
+    fn a_lap_against_itself_gained_nothing_anywhere() {
+        let lap = trace_with_corners(&[(0.30, 0.36, 1.4)]);
+        let deltas = delta_trace(&lap, &lap);
+
+        assert_eq!(deltas.len(), lap.len());
+        assert!(
+            deltas.iter().all(|point| point.delta_ms == 0),
+            "a lap is not slower than itself anywhere"
+        );
+    }
+
+    /// **The agreement that matters.** The decomposition charges each corner a
+    /// share of the lap's delta; this samples the same delta along the lap. If
+    /// the two disagree the driver is shown a coloured line saying one thing
+    /// and a table saying another, and neither can be trusted after that.
+    #[test]
+    fn the_last_delta_is_the_lap_delta_the_decomposition_reports() {
+        let reference = trace_with_corners(&[(0.30, 0.36, 1.4)]);
+        // The same lap, two seconds slower by the end: every sample after the
+        // corner carries the loss.
+        let lap: Vec<TelemetryPoint> = reference
+            .iter()
+            .map(|point| {
+                let mut slower = point.clone();
+                if point.distance > 0.30 {
+                    slower.time_ms += 2_000;
+                }
+                slower
+            })
+            .collect();
+
+        let corners = detect(&lap);
+        let reference_corners = detect(&reference);
+        let decomposition = decompose(&lap, &reference, &corners, &reference_corners);
+        let deltas = delta_trace(&lap, &reference);
+
+        let last = deltas.last().expect("a lap that was driven has a delta");
+        assert_eq!(last.delta_ms, decomposition.total_ms);
+        assert_eq!(last.delta_ms, 2_000);
+    }
+
+    /// Withheld, not clamped: where the reference has nothing to compare
+    /// against there is no delta, and drawing zero there would colour that
+    /// stretch as "exactly on the reference".
+    #[test]
+    fn a_stretch_the_reference_never_covered_has_no_delta() {
+        let lap = trace_with_corners(&[(0.30, 0.36, 1.4)]);
+        // A reference that only covers the second half of the lap.
+        let reference: Vec<TelemetryPoint> = lap
+            .iter()
+            .filter(|point| point.distance >= 0.5)
+            .cloned()
+            .collect();
+
+        let deltas = delta_trace(&lap, &reference);
+
+        assert!(delta_ms_at(&lap, &reference, 0.10).is_none());
+        assert!(
+            deltas.iter().all(|point| point.distance >= 0.5),
+            "the uncovered half was given a delta anyway"
+        );
+        assert!(!deltas.is_empty(), "the covered half still has one");
+    }
 
     /// A trace with one corner in it: straight, sustained lateral load, straight.
     fn trace_with_corners(corners: &[(f32, f32, f32)]) -> Vec<TelemetryPoint> {
