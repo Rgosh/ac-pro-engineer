@@ -30,7 +30,18 @@ nix = "0.31.1"
 ratatui = "0.26"
 serde = "1.0"
 serde_json = "1.0"
-reqwest = { version = "0.11", default-features = false, features = [
+# **0.12, and the reason is the advisory list rather than a feature.** 0.11
+# pins hyper 0.14, which pins h2 0.3 (RUSTSEC-2026-0258) and rustls 0.21 with
+# rustls-webpki 0.101 — three advisories there, two of them certificate
+# name-constraint bugs. This crate is what downloads a release archive and a
+# `shm-bridge.exe` and puts them on somebody's disk, so a flaw in how it decides
+# a certificate is trustworthy is the one dependency bug that matters most here.
+# 0.12 brings hyper 1, h2 0.4 and rustls-webpki 0.103, and clears all five.
+#
+# No system TLS anywhere: `rustls-tls` and nothing else, so a Linux build does
+# not want OpenSSL headers and a Windows one does not want schannel behaving
+# differently from the Linux build it was tested against.
+reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "json",
     "rustls-tls",
