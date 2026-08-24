@@ -87,6 +87,20 @@ have made all along and never did.
   reported until the car has been round, and a lap outside 500 m to 30 km is
   not believed.
 
+### In the terminal
+
+- **The delta graph was shifted.** It resampled both laps onto
+  a grid and compared sample *i* of one with sample *i* of the other, which is
+  the same place on the track only if the two traces start at the same
+  distance — a lap from a standing start and a lap joined at speed do not. The
+  line is interpolated at matching distances now, and a stretch the reference
+  never covered is missing from it rather than drawn flat at zero.
+- **Braking, on the worst corner.** Beside "braking 14 m later": how much
+  harder the car was stopped, how much longer the braking zone was, and how
+  much longer you stayed on the pedal after peak pressure.
+- **The Analysis screen says when the metres were measured rather than
+  published**, which on Competizione they are.
+
 ### For anyone building on it
 
 `ac_core::laps::LapStore` is where a saved lap lives — save, list, load,
