@@ -39,8 +39,8 @@ jobs:
   # with somebody. A dependency added in six months is how the next one gets in,
   # and nobody re-runs an audit they remember passing.
   #
-  # `deny.toml` holds the allowed set, the one narrow MPL-2.0 exception, and the
-  # reason for each.
+  # `deny.toml` holds the allowed set, the one narrow third-party exception, and
+  # the reason for each.
   licences:
     name: dependency licences
     runs-on: ubuntu-latest
@@ -49,6 +49,26 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check licenses
+
+  # A different question, so a job of its own: does anything in the graph have a
+  # known security advisory against it.
+  #
+  # It was not wired in until v0.4.2, and the cost of that arrived all at once —
+  # eight advisories, five of them inside the crate that downloads a release
+  # archive and puts it on somebody's machine, including two bugs in how a
+  # certificate's name constraints are checked. Every one was a version bump
+  # away and nothing had ever mentioned them.
+  #
+  # `deny.toml` holds the one entry this ignores and the reason. That list is
+  # meant to shrink.
+  advisories:
+    name: dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
 
   # AGENTS.md requires check, clippy and test to pass cleanly. Clippy performs a
   # check as part of its run, so clippy + test covers all three commands.

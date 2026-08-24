@@ -63,14 +63,25 @@ allow = ["AGPL-3.0-only"]
 
 # The one third-party exception, and it is narrow on purpose.
 [[licenses.exceptions]]
-# Mozilla's CA root store, pulled in by reqwest/rustls. MPL-2.0 is copyleft per
-# *file*, so it may ship inside a closed product provided its own files stay
-# available — which for an unmodified crate means pointing at upstream.
+# Mozilla's CA root store, pulled in by reqwest/rustls. **Two licences, because
+# the crate changed its own.**
 #
-# The obligation stops being a footnote the moment it is vendored and edited in
-# tree. Do not patch this crate locally; take a released version or none.
+# Up to 0.26 it was MPL-2.0: copyleft per *file*, shippable inside a closed
+# product provided its own files stay available, which for an unmodified crate
+# means pointing at upstream. From 1.0 it is CDLA-Permissive-2.0 — a licence
+# written for *data*, which is what a list of certificate authorities is. It is
+# permissive with no copyleft and no attribution requirement, so it asks less of
+# a closed product than the MPL did, not more.
+#
+# reqwest 0.12 brought the 1.0 line in and this check caught it, which is the
+# whole reason the file exists. Both are listed rather than only the new one:
+# an older reqwest on a branch would otherwise fail for a licence that was
+# already reviewed.
+#
+# The MPL obligation stops being a footnote the moment the crate is vendored and
+# edited in tree. Do not patch it locally; take a released version or none.
 name = "webpki-roots"
-allow = ["MPL-2.0"]
+allow = ["MPL-2.0", "CDLA-Permissive-2.0"]
 
 [bans]
 # Not what this file is for. Duplicate versions and heavy dependencies are worth
@@ -80,7 +91,22 @@ allow = ["MPL-2.0"]
 multiple-versions = "allow"
 
 [advisories]
-# Likewise: `cargo deny check advisories` is worth running and is a different
-# question with a different failure mode, a different urgency and a different
-# fix. It is not wired into CI yet.
+# **Wired into CI as of v0.4.2.** It was not, and the cost of that showed up in
+# one sitting: eight advisories had accumulated, five of them inside the crate
+# that downloads a release archive and puts it on somebody's disk — including
+# two bugs in how a certificate's name constraints are checked. All of them were
+# a version bump away, and none had ever been reported by anything.
+#
+# A different question from licences, with a different urgency and a different
+# fix, so it is a job of its own and its failure means something specific.
 yanked = "allow"
+
+# `paste`, a proc-macro that is no longer maintained. Not a vulnerability: there
+# is nothing to exploit and no fixed version to move to. It arrives through
+# ratatui 0.26 and image 0.24, so clearing it means a terminal-wide upgrade of
+# both — worth doing, and not something to do inside a patch release, which is
+# also not a reason to leave the whole check switched off.
+#
+# **This is a list to shrink.** An entry here is a decision to look at again,
+# not a way to make a check quiet.
+ignore = ["RUSTSEC-2024-0436"]
