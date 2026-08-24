@@ -775,7 +775,13 @@ impl SetupManager {
             };
             let content = (store.serialise)(setup);
 
-            match fs::write(&file_path, content) {
+            // **Atomic, because this writes into the game's own setup folder.**
+            // A plain write that is interrupted — a crash, a power cut, the
+            // game reading the file at that moment — leaves a correctly named
+            // setup holding half a file, and the driver finds out about it in
+            // the pits. Everything else that saves user data here goes through
+            // `atomic_file`; this was the last one that did not.
+            match crate::atomic_file::write_atomic(&file_path, content.as_bytes()) {
                 Ok(_) => {
                     *status_lock = format!("✅ SAVED to {}!", target_car);
                     drop(status_lock);
