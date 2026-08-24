@@ -204,6 +204,16 @@ impl CarClass {
         if has("singleseater") || has("formula") || has("open wheel") {
             return CarClass::Formula;
         }
+        // **Cup cars before the tags that call them GT3.** Kunos tags the
+        // 911 GT3 Cup `#GT3` — reasonably, it is a GT3-badged Porsche — and
+        // this ladder returning on that tag meant the id never got looked at,
+        // so `from_id`'s deliberate cup rule below was unreachable on the game
+        // that has tags at all. A Cup car judged against GT3 windows is judged
+        // on half the downforce and softer rubber than the numbers were taken
+        // from.
+        if has("cup") || Self::is_one_make(car_id) {
+            return CarClass::Gt4;
+        }
         if has("prototype") || has("lmp") {
             return CarClass::Prototype;
         }
@@ -226,6 +236,16 @@ impl CarClass {
         Self::from_id(car_id)
     }
 
+    /// A one-make racer: a Cup car, or an Audi TT/RS one-make challenger.
+    ///
+    /// Its own function because **both** classifiers need it and only one of
+    /// them had it. Their ids carry the base class as well as the series, and
+    /// so do the game's tags.
+    fn is_one_make(car_id: &str) -> bool {
+        let id = car_id.to_lowercase();
+        id.contains("_cup") || id.contains("cup_") || (id.contains("_st") && id.contains("audi"))
+    }
+
     /// The class a car's id alone gives away.
     ///
     /// Both games name their cars descriptively, and Competizione's are
@@ -238,7 +258,7 @@ impl CarClass {
         // Cup and one-make racers first: their ids carry the base class too,
         // so `porsche_992_gt3_cup` would otherwise read as a GT3 — which it
         // is not, on softer rubber and half the downforce.
-        if id.contains("_cup") || id.contains("cup_") || id.contains("_st") && id.contains("audi") {
+        if Self::is_one_make(car_id) {
             return CarClass::Gt4;
         }
         if id.contains("gt4") {
@@ -315,6 +335,42 @@ mod tests {
         ] {
             assert_eq!(CarClass::from_id(id), expected, "{id}");
         }
+    }
+
+    /// **A Cup car is not a GT3, whichever way it is asked.**
+    ///
+    /// Kunos tags the 911 GT3 Cup `#GT3`, reasonably enough — it is a
+    /// GT3-badged Porsche. The tag ladder returned on that and the id was
+    /// never looked at, so the cup rule written into `from_id` was unreachable
+    /// on the only game that has tags. The two classifiers gave the same car
+    /// two different classes, and the one that won judged it against GT3
+    /// windows: another class's rubber and another class's downforce.
+    #[test]
+    fn a_cup_car_is_not_a_gt3_however_it_is_asked() {
+        let tags = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+        for (id, tag_list) in [
+            ("porsche_991ii_gt3_cup", tags(&["gt3"])),
+            ("ks_porsche_911_gt3_cup_2017", tags(&["#GT3", "#Cup"])),
+            ("porsche_992_gt3_cup", tags(&[])),
+        ] {
+            assert_eq!(
+                CarClass::identify(id, &tag_list),
+                CarClass::Gt4,
+                "{id} with {tag_list:?}"
+            );
+            assert_eq!(
+                CarClass::identify(id, &tag_list),
+                CarClass::from_id(id),
+                "the two classifiers disagree about {id}"
+            );
+        }
+
+        // And the rule is narrow: a GT3 that is not a cup car is still a GT3.
+        assert_eq!(
+            CarClass::identify("porsche_991ii_gt3_r", &tags(&["gt3"])),
+            CarClass::Gt3
+        );
     }
 
     /// A game's own tags beat a guess about a string, and Assetto Corsa has
