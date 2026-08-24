@@ -308,14 +308,14 @@ next stint is the one that tests the class windows.
 tyre model. On ACC:
 
 - **Camber and tread temperature are withheld**, so they cannot be wrong.
-- **Tyre pressure** runs. The target is a setting the driver sets, so it is
-  less dangerous than it looks, but the compound bands in
-  `analyze_tyre_pressure` are AC's compound names matched as strings — ACC's
-  compound names will not match any of them and will fall to the default band.
-  Check that on a real lap before calling ACC supported.
-- **Brake temperature** runs on AC's thresholds. GT3 carbon brakes work far
-  hotter than most AC cars, so this is the rule most likely to say something
-  wrong first.
+- ~~**Tyre pressure** runs against AC's compound names.~~ **Done.**
+  `compound_band` matches on substrings and has tests naming ACC's own
+  `dry_compound` and `wet_compound`: the first is a racing car on slicks and
+  lands in `Racing`, the second reaches `Wet`.
+- ~~**Brake temperature** runs on AC's thresholds.~~ **Done in v0.4.0**, by
+  `games::car_class`: a GT3 is judged against 600 °C front and 450 °C rear from
+  published operating windows, per axle, rather than against one 800 °C ceiling
+  chosen for road cars. What is still owed is the stint that checks it.
 
 The recording gives the first number to check against: **520 °C front and
 257 °C rear** is normal running for a GT3 on carbon, and `alerts.brake_temp_max`
@@ -331,10 +331,16 @@ until the capture:
   measured" rather than drawing 0.0 % in red. The named states ACC publishes
   instead were *not* mapped to a fraction — that would be inventing the
   measurement this was about.
-- **Compound names.** ACC calls them `dry_compound` and `wet_compound`, which
-  match none of AC's names, so `analyze_tyre_pressure` falls to its default
-  band. The static page carries the real names — `DHD2` and `WH` in the
-  recording — which is where a band for this game would come from.
+- ~~**Compound names.**~~ **Done**, see above. The static page carries the real
+  rubber — `DHD2` and `WH` in the recording — which is where a band narrower
+  than "racing slick" would come from if one is ever wanted.
+
+**What is actually left**, as of v0.4.2: one thing, and it needs the wheel
+rather than the keyboard. Everything in this section that could be settled by
+reading code has been. Also new in v0.4.2 and worth a lap of attention: the
+circuit now measures its own length from the car's distance travelled, because
+ACC publishes none — so every answer this program gives in metres appears on
+that game for the first time, and Spa should read about 7004 m.
 
 **Done when.** A stint has been driven on ACC and every line of advice it
 produced has been read against the numbers that produced it —

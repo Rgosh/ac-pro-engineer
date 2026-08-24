@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.2] - 2026-08-24
+
+A patch, and the frame does not change — every `shm-bridge.exe` and every
+installed panel from v0.4.0 onward keeps working, and nobody has to fetch a
+bridge. Two of these are bugs that looked like something else, and three are
+measurements this core could have made all along and never did.
+
+### Fixed
+
+- **Saved laps no longer depend on which folder the program was started from.**
+  `saved_laps/` was a path relative to the working directory. The terminal is
+  started from the folder it was unpacked into, a graphical front end from a
+  desktop entry whose working directory is your home — so the two wrote to
+  different places and neither could see the other's laps. There is one store
+  now, beside the settings and the records, and laps from earlier releases are
+  moved into it once, at startup.
+- **A lap is written atomically.** Everything else that saves your data here
+  already was; a lap went out through a plain write, which returns before the
+  data is on the disk. A crash or a power cut left a file that failed to parse
+  on the day you wanted it.
+- **Two laps to the same thousandth no longer overwrite each other.** The name
+  was the car, the track and the lap time, so driving the same time twice
+  silently replaced the first one. The date is in the name now.
+- **A car or track with `:`, `?`, `*`, `"` or `|` in its name saves.** Spaces
+  and slashes were handled; the rest of what Windows refuses was not, and the
+  save failed with an error about the file system rather than about the name.
+- **Eight security advisories, five of them in the code that downloads
+  software.** reqwest 0.11 pinned hyper 0.14, h2 0.3 and rustls-webpki 0.101 —
+  including two bugs in how a certificate's name constraints are checked and a
+  panic reachable while parsing a revocation list. An update channel is a way
+  of running chosen code on your machine, and the part of it that decides who
+  it is talking to has to be right. Also memmap2, which maps the simulator's
+  shared memory, and anyhow.
+
+### Added
+
+- **Where the time went, along the lap.** `corners::delta_trace` gives time
+  gained and lost against a reference lap sampled at the lap's own points —
+  what a racing line coloured by time rather than by speed is drawn from. It
+  agrees with the corner decomposition at the line by construction, so a
+  coloured map and a table of corners cannot tell you two different stories.
+- **Braking, measured.** Every corner now carries its braking zone: where it
+  started and ended, how long it lasted, the hardest the pedal was pressed, the
+  strongest deceleration reached, and the trail — timed from leaving peak
+  pressure rather than from reaching it. Against a reference lap: how much
+  harder the car was stopped, how much longer the zone was in metres, and how
+  much longer the driver stayed on the pedal. A corner taken flat has no
+  braking rather than a braking of zeros.
+- **Competizione's circuit measures itself.** ACC publishes no track length, so
+  every answer this program gives in metres was withheld on it — no "braking
+  14 m earlier", no corner distances. The car's own distance travelled between
+  two crossings of the line is the length of the lap between them, and both
+  games already published that and nothing had ever read it. It is a
+  measurement and is marked as one: a published length always wins, nothing is
+  reported until the car has been round, and a lap outside 500 m to 30 km is
+  not believed.
+
+### For anyone building on it
+
+`ac_core::laps::LapStore` is where a saved lap lives — save, list, load,
+delete, and the migration. A front end that still writes `saved_laps/` itself
+is writing somewhere its user cannot find.
+
 ## [v0.4.1] - 2026-08-18
 
 Five fixes, all of them the program reporting something nobody measured. Four

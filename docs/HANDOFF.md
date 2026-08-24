@@ -5,14 +5,26 @@ the overlay is still the part with three pieces that have to agree. It is not
 only that any more: there are two games under `core/src/games/` now, and the
 bugs worth writing down came from the second one.
 
-State as of 2026-08-18, with v0.4.1 prepared and uncommitted. Read this
-first in a new session.
+State as of 2026-08-24, with v0.4.2 cut. Read this first in a new session.
 
-`main` is at v0.4.0; the working tree carries the 0.4.1 patch described at
-the bottom of this file. 348 tests in the core, clippy and fmt clean on
-Linux **and** `x86_64-pc-windows-gnu` — and as of this patch the Windows
-target is *run* as well as built, through Wine. Check all of it before
-pushing:
+543 tests across the workspace, clippy and fmt clean on Linux **and**
+`x86_64-pc-windows-gnu`, the Windows target *run* as well as built through
+Wine, and `cargo deny check advisories` down to one unmaintained crate —
+`paste`, reached through ratatui 0.26 and image 0.24, which is a terminal-wide
+upgrade rather than a patch.
+
+What v0.4.2 changed, and where to look when one of them surprises you:
+
+* Saved laps live in `ac_core::laps`, beside the settings, and no longer in
+  whatever folder the program was started from. A front end still writing
+  `saved_laps/` itself is writing somewhere its user cannot find.
+* `corners::delta_trace` — time gained and lost along the lap, which the
+  corner decomposition agrees with at the line by construction.
+* `Corner::braking` — the zone, measured, additive and `serde(default)`.
+* `track::MeasuredLength` — the circuit's length from the car's own distance,
+  for Competizione, which publishes none. Never filed as a capability.
+
+Check all of it before pushing:
 
 ```bash
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings
@@ -24,11 +36,14 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warn
 
 ## The shape of the thing
 
-The desktop application computes everything and publishes a 712-byte
-`#[repr(C)]` `OverlayFrame` once per tick — frame version 5, which carries
-eight advice lines rather than four. **Any `shm-bridge.exe` older than v0.3.5
-maps 440 bytes, CSP refuses to open the mapping, and the panel waits forever
-beside a file that is right there.** A CSP Lua app reads fields and calls
+The desktop application computes everything and publishes a 2484-byte
+`#[repr(C)]` `OverlayFrame` once per tick — frame version 6 since v0.4.0, which
+added the debrief. **A `shm-bridge.exe` older than the frame maps too few
+bytes, CSP refuses to open the mapping, and the panel waits forever beside a
+file that is right there.** The two numbers in this paragraph are the ones to
+distrust first: they were a release behind for the whole of v0.4.x's
+development, and `core/src/overlay/frame.rs` and `shm-bridge/src/main.rs` are
+where the truth is. A CSP Lua app reads fields and calls
 ImGui. Lua runs on AC's render thread where LuaJIT collects garbage mid-frame,
 so the panel formats text when a frame *arrives*, not when one is drawn, and
 allocates nothing per frame that can be allocated once.

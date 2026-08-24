@@ -39,7 +39,7 @@ in the draw path.
 
 ## The frame contract
 
-`core/src/overlay/frame.rs` owns a 712-byte `#[repr(C)]` `OverlayFrame` and the
+`core/src/overlay/frame.rs` owns a 2484-byte `#[repr(C)]` `OverlayFrame` and the
 generator that emits its Lua declaration. Three artefacts encode it:
 
 1. the application, which writes it,
@@ -78,7 +78,7 @@ Four numbers, and confusing them wastes an evening:
 
 | Number | Where | Changes when |
 |---|---|---|
-| `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves (5 as of v0.3.5) |
+| `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves (6 as of v0.4.0) |
 | `app_version` in the frame | filled by `OverlayFrame::empty` | every release, on its own |
 | `BRIDGE_PROTOCOL` | `bridge.rs`, `shm-bridge/src/main.rs` | the bridge's note gains a key |
 | `PANEL_VERSION`, manifest `VERSION` | the panel, `manifest.ini` | every release |
