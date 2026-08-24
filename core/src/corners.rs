@@ -75,6 +75,14 @@ const THROTTLE_ON: f32 = 0.50;
 /// braking zone in a road car.
 const BRAKE_LOOKBACK: f32 = 0.05;
 
+/// How close to the hardest press still counts as being at it, 0..1.
+///
+/// A pedal held at maximum reports 0.987, 0.991, 0.986 — the same press, and
+/// three different floats. Without a tolerance the "last sample at the peak" is
+/// whichever of them happened to be largest, and the trail is measured from a
+/// point chosen by noise.
+const AT_PEAK: f32 = 0.02;
+
 /// Which way a corner goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Direction {
@@ -89,6 +97,64 @@ impl Direction {
             Direction::Left => "←",
             Direction::Right => "→",
         }
+    }
+}
+
+/// The braking for one corner, measured.
+///
+/// `brake_point` alone answers "did I brake too early". It says nothing about
+/// what happens between that point and the apex, which is where the time in a
+/// braking zone actually goes: how hard the car was stopped, and how long the
+/// driver stayed on the pedal while turning in.
+///
+/// Every field is measured from the trace. Nothing here is a score out of ten
+/// — a number a driver cannot go and change is a number that wastes their
+/// evening.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Braking {
+    /// Normalised distance where the brakes came on. The same value as
+    /// [`Corner::brake_point`], repeated here so a braking zone is a thing on
+    /// its own rather than two fields that have to be read together.
+    pub start: f32,
+    /// Where the driver came off the brakes. The apex when they never did —
+    /// which is trail braking all the way in, and is a shape rather than a
+    /// mistake.
+    pub release: f32,
+    /// How long the brakes were applied, in milliseconds.
+    pub duration_ms: i32,
+    /// The strongest deceleration reached, in g, reported positive.
+    ///
+    /// The trace carries braking as negative longitudinal g; this is its
+    /// magnitude, which is the convention `LapData::peak_brake_g` already uses
+    /// and the one a driver reads on any other tool.
+    pub peak_decel_g: f32,
+    /// The hardest the pedal was pressed, 0..1.
+    pub peak_pressure: f32,
+    /// From leaving peak pressure to coming off the pedal, in milliseconds.
+    ///
+    /// The trail. A long one is a driver rolling the brake off into the corner;
+    /// a short one is a driver releasing it in one movement. Neither is wrong,
+    /// and the difference against a reference lap is what is worth reading.
+    ///
+    /// Measured from the **last** sample at the hardest pressure rather than
+    /// the first. A driver who holds maximum pressure for half the zone has not
+    /// been trailing for half the zone — they have been stopping the car, and
+    /// timing from the first of those samples would report the whole zone as
+    /// trail on every corner where the peak came early.
+    pub release_ms: i32,
+    /// Speed when the brakes came on and when they came off, km/h.
+    pub entry_speed: f32,
+    pub release_speed: f32,
+}
+
+impl Braking {
+    /// How far the braking zone was, in metres, on a track whose length is
+    /// known. `None` otherwise, rather than a number of laps.
+    pub fn distance_m(&self, track_length_m: f32) -> Option<f32> {
+        if track_length_m <= 0.0 {
+            return None;
+        }
+        Some((self.release - self.start).max(0.0) * track_length_m)
     }
 }
 
@@ -117,6 +183,13 @@ pub struct Corner {
     /// Where the driver first touched the brakes for this corner, if they did.
     /// `None` on a corner taken flat.
     pub brake_point: Option<f32>,
+    /// What happened between that point and the apex.
+    ///
+    /// `None` on a corner taken flat, and on any corner of a lap saved before
+    /// this was measured — `serde(default)` rather than a version bump,
+    /// because a lap from an older release is still a lap.
+    #[serde(default)]
+    pub braking: Option<Braking>,
     /// Where they got back to real throttle, if they did before the corner
     /// ended.
     pub throttle_point: Option<f32>,
@@ -444,6 +517,8 @@ fn measure(stretch: &Stretch, trace: &[TelemetryPoint], number: usize) -> Option
     let throttle_delay_ms =
         throttle.and_then(|point| Some(time_at(trace, point)? - time_at(trace, slowest.distance)?));
 
+    let brake_point = brake_point(trace, stretch.start, slowest.distance);
+
     Some(Corner {
         number,
         direction: stretch.direction,
@@ -454,7 +529,8 @@ fn measure(stretch: &Stretch, trace: &[TelemetryPoint], number: usize) -> Option
         min_speed: slowest.speed,
         exit_speed: last.speed,
         peak_lat_g,
-        brake_point: brake_point(trace, stretch.start, slowest.distance),
+        brake_point,
+        braking: brake_point.and_then(|start| braking(trace, start, slowest.distance)),
         throttle_point: throttle,
         throttle_delay_ms,
         entry_time_ms: first.time_ms,
@@ -501,6 +577,72 @@ fn brake_point(trace: &[TelemetryPoint], entry_index: usize, apex: f32) -> Optio
     open.or(last_finished)
 }
 
+/// Measure the braking that started at `start` and ended by the apex.
+///
+/// The run is walked once. Everything reported comes off samples inside it —
+/// nothing is inferred from the speed at the ends, because a car that was
+/// already slowing before the pedal moved would then be credited to the
+/// braking.
+fn braking(trace: &[TelemetryPoint], start: f32, apex: f32) -> Option<Braking> {
+    let mut peak_pressure = 0.0f32;
+    let mut peak_pressure_at: Option<i32> = None;
+    let mut strongest_decel = 0.0f32;
+    let mut entry_speed = None;
+    let mut last_on: Option<&TelemetryPoint> = None;
+    let mut release: Option<&TelemetryPoint> = None;
+
+    for point in trace.iter() {
+        if point.distance < start {
+            continue;
+        }
+        if point.distance > apex {
+            break;
+        }
+        if point.brake > BRAKE_ON {
+            if entry_speed.is_none() {
+                entry_speed = Some(point.speed);
+            }
+            // The peak only grows, so "still at the peak" is a comparison
+            // against it with a tolerance — a pedal held down does not report
+            // the same float twice.
+            if point.brake > peak_pressure {
+                peak_pressure = point.brake;
+                peak_pressure_at = Some(point.time_ms);
+            } else if point.brake >= peak_pressure - AT_PEAK {
+                peak_pressure_at = Some(point.time_ms);
+            }
+            // Braking is negative longitudinal g; the magnitude is what gets
+            // reported, the same way `LapData::peak_brake_g` does it.
+            strongest_decel = strongest_decel.max(-point.lon_g);
+            last_on = Some(point);
+            release = None;
+        } else if last_on.is_some() && release.is_none() {
+            release = Some(point);
+        }
+    }
+
+    let first_on_speed = entry_speed?;
+    let last_on = last_on?;
+    // Off the brakes before the apex, or still on them at it. The second is
+    // trail braking all the way in, and the apex is where the measurement ends
+    // rather than where the driver released.
+    let ended = release.unwrap_or(last_on);
+
+    let start_time = time_at(trace, start)?;
+    Some(Braking {
+        start,
+        release: ended.distance,
+        duration_ms: (ended.time_ms - start_time).max(0),
+        peak_decel_g: strongest_decel.max(0.0),
+        peak_pressure,
+        release_ms: peak_pressure_at
+            .map(|at| (ended.time_ms - at).max(0))
+            .unwrap_or(0),
+        entry_speed: first_on_speed,
+        release_speed: ended.speed,
+    })
+}
+
 /// Where the driver got back to real throttle after the apex.
 fn throttle_point(trace: &[TelemetryPoint], apex: f32, exit: f32) -> Option<f32> {
     trace
@@ -535,6 +677,40 @@ impl CornerComparison {
         let mine = self.corner.brake_point?;
         let theirs = self.reference.as_ref()?.brake_point?;
         Some((mine - theirs) * track_length_m)
+    }
+
+    /// How much harder the car was stopped than in the reference, in g.
+    ///
+    /// Positive is harder. `None` when either lap was flat here — which is not
+    /// a difference of zero, and is drawn as no answer.
+    pub fn peak_decel_delta_g(&self) -> Option<f32> {
+        let mine = self.corner.braking?.peak_decel_g;
+        let theirs = self.reference.as_ref()?.braking?.peak_decel_g;
+        Some(mine - theirs)
+    }
+
+    /// How much longer the braking zone was than the reference's, in metres.
+    ///
+    /// Positive is longer — more track spent slowing down. Read beside
+    /// [`CornerComparison::braking_delta_m`]: braking later *and* over a
+    /// shorter distance is a driver stopping the car harder, and braking later
+    /// over the same distance is one carrying the speed further in.
+    pub fn braking_distance_delta_m(&self, track_length_m: f32) -> Option<f32> {
+        let mine = self.corner.braking?.distance_m(track_length_m)?;
+        let theirs = self
+            .reference
+            .as_ref()?
+            .braking?
+            .distance_m(track_length_m)?;
+        Some(mine - theirs)
+    }
+
+    /// How much longer the driver stayed on the pedal after the hardest press,
+    /// in milliseconds. Positive is a longer trail.
+    pub fn trail_delta_ms(&self) -> Option<i32> {
+        let mine = self.corner.braking?.release_ms;
+        let theirs = self.reference.as_ref()?.braking?.release_ms;
+        Some(mine - theirs)
     }
 
     /// How much later the driver got back on the throttle than in the
@@ -734,6 +910,142 @@ mod tests {
         assert_eq!(sector_marks(&trace, &[30_000, 30_000, 30_000]).len(), 2);
     }
     use super::*;
+
+    /// A braking zone built to known numbers: on the brakes from 0.270 to
+    /// 0.300 of the lap, at 0.9 of the pedal until 0.285 and 0.4 after it, and
+    /// 1.2 g at its strongest. Inside `BRAKE_LOOKBACK` of the corner on
+    /// purpose — a zone further back than that is one `brake_point` will not
+    /// look for, which is its own behaviour and has its own test.
+    fn trace_with_a_braking_zone() -> Vec<TelemetryPoint> {
+        (0..1000)
+            .map(|index| {
+                let distance = index as f32 / 1000.0;
+                let braking = (0.270..0.300).contains(&distance);
+                let cornering = (0.300..0.360).contains(&distance);
+                // Hardest in the middle of the zone, rolled off into the apex.
+                let pressure = if braking {
+                    // Hard, then rolled off into the apex — the trail.
+                    if distance < 0.285 { 0.9 } else { 0.4 }
+                } else {
+                    0.0
+                };
+                TelemetryPoint {
+                    distance,
+                    time_ms: index * 100,
+                    speed: if braking {
+                        200.0 - (distance - 0.270) * 1000.0
+                    } else if cornering {
+                        100.0
+                    } else {
+                        200.0
+                    },
+                    gas: if braking || cornering { 0.0 } else { 1.0 },
+                    brake: pressure,
+                    gear: 4,
+                    steer: 0.0,
+                    lat_g: if cornering { 1.4 } else { 0.0 },
+                    lon_g: if braking { -1.2 } else { 0.0 },
+                    slip_avg: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    rpms: 7000,
+                    detail: Default::default(),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_braking_zone_is_measured_where_it_was_driven() {
+        let trace = trace_with_a_braking_zone();
+        let corner = detect(&trace).into_iter().next().expect("one corner");
+        let braking = corner.braking.expect("the corner was braked for");
+
+        assert!(
+            (braking.start - 0.270).abs() < 0.005,
+            "started at {}",
+            braking.start
+        );
+        assert!(
+            (braking.release - 0.300).abs() < 0.005,
+            "released at {}",
+            braking.release
+        );
+        assert!(
+            (braking.peak_decel_g - 1.2).abs() < 0.01,
+            "peak was {} g",
+            braking.peak_decel_g
+        );
+        assert!(
+            (braking.peak_pressure - 0.9).abs() < 0.01,
+            "peak pressure was {}",
+            braking.peak_pressure
+        );
+        // Three per cent of a 100-second lap.
+        assert!(
+            (braking.duration_ms - 3_000).abs() <= 200,
+            "lasted {} ms",
+            braking.duration_ms
+        );
+    }
+
+    /// Deceleration is negative longitudinal g in the trace and positive
+    /// everywhere a person reads it. Getting that backwards reports every
+    /// braking zone as 0.0 g, which looks like a car that never brakes.
+    #[test]
+    fn deceleration_is_reported_the_way_a_driver_reads_it() {
+        let trace = trace_with_a_braking_zone();
+        let corner = detect(&trace).into_iter().next().expect("one corner");
+        assert!(corner.braking.expect("braking").peak_decel_g > 0.0);
+    }
+
+    /// The trail: from leaving peak pressure to coming off the pedal. Here the
+    /// pressure drops at 0.285 and the brakes come off at 0.300 — 1.5 per cent
+    /// of a 100-second lap, and half the zone rather than all of it.
+    #[test]
+    fn the_trail_is_measured_from_the_hardest_press() {
+        let trace = trace_with_a_braking_zone();
+        let corner = detect(&trace).into_iter().next().expect("one corner");
+        let braking = corner.braking.expect("braking");
+        assert!(
+            (braking.release_ms - 1_500).abs() <= 200,
+            "the pedal left peak pressure at 0.285 and came off at 0.300, so \
+             the trail is half the zone and not all of it; got {} ms",
+            braking.release_ms
+        );
+    }
+
+    /// A corner nobody braked for has no braking, which is not a braking of
+    /// zero — the difference is the whole of what this project is about.
+    #[test]
+    fn a_corner_taken_flat_has_no_braking_rather_than_an_empty_one() {
+        let flat = trace_with_corners(&[(0.30, 0.36, 1.0)]);
+        let flat: Vec<TelemetryPoint> = flat
+            .into_iter()
+            .map(|mut point| {
+                point.brake = 0.0;
+                point
+            })
+            .collect();
+        let corner = detect(&flat).into_iter().next().expect("one corner");
+        assert!(corner.brake_point.is_none());
+        assert!(corner.braking.is_none());
+    }
+
+    /// A lap saved before any of this existed still loads, with no braking on
+    /// its corners rather than a parse error.
+    #[test]
+    fn a_corner_from_an_older_release_still_deserialises() {
+        let older = r#"{
+            "number": 1, "direction": "Left",
+            "entry": 0.3, "apex": 0.32, "exit": 0.36,
+            "entry_speed": 200.0, "min_speed": 100.0, "exit_speed": 150.0,
+            "peak_lat_g": 1.4, "brake_point": 0.24, "throttle_point": 0.33,
+            "throttle_delay_ms": 100, "entry_time_ms": 30000, "exit_time_ms": 36000
+        }"#;
+        let corner: Corner = serde_json::from_str(older).expect("an older corner still loads");
+        assert!(corner.braking.is_none());
+    }
 
     /// A lap against itself is a flat zero everywhere. Trivial, and it is the
     /// test that catches a sign flipped or an off-by-one in the interpolation
@@ -1083,6 +1395,7 @@ mod tests {
                 exit_speed: 0.0,
                 peak_lat_g: 0.0,
                 brake_point: None,
+                braking: None,
                 throttle_point: None,
                 throttle_delay_ms: None,
                 entry_time_ms: 0,
