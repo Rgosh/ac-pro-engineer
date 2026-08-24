@@ -2152,7 +2152,18 @@ impl Engineer {
             });
         }
 
-        if (session.session_time_left_ms > 0.0 || session.total_laps > 0)
+        // **Only a session that ends in a chequered flag.** This asks whether
+        // the tank will see the finish, and practice, qualifying and superpole
+        // have no finish to see: a clock counting down an hour of practice is
+        // not a race distance, and the answer was "Short 5.7 L — save fuel or
+        // box" to a driver doing exactly what practice is for. The Strategy
+        // tab already knew the difference; the engineer did not, so the same
+        // fact reached the driver two different ways.
+        //
+        // The FUEL LOW warning above is not gated and should not be: running
+        // the tank dry ends a practice lap the same way it ends a race one.
+        if !session.kind.has_no_finish()
+            && (session.session_time_left_ms > 0.0 || session.total_laps > 0)
             && session.fuel_per_lap > 0.0
         {
             // Whole laps, not the display fraction: a timed race runs until
@@ -3327,6 +3338,59 @@ mod tests {
             "45 L at 2.5 L/lap is 18 laps, got {}",
             engineer.stats.fuel_laps_remaining
         );
+    }
+
+    /// **Practice has no finish to run short of.**
+    ///
+    /// The race-finish check asks whether the tank will see the flag, and it
+    /// fired on any session with a clock — which is every session. An hour of
+    /// practice on a GT3 became "Short 5.7 L, save fuel or box", advice about
+    /// a distance nobody is running.
+    #[test]
+    fn no_fuel_verdict_about_finishing_a_session_that_does_not_finish() {
+        use crate::games::SessionKind;
+        let config = AppConfig::default();
+        let mut engineer = engineer_reading_a_complete_game(&config);
+        let info = crate::session_info::SessionInfo::default();
+
+        // An hour on the clock, two-minute laps, and not enough fuel for
+        // thirty of them.
+        let session = |kind| Session {
+            kind,
+            session_time_left_ms: 3_600_000.0,
+            best_lap_ms: 120_000,
+            last_lap_ms: 120_000,
+            fuel_per_lap: 2.5,
+            ..Default::default()
+        };
+        let car = Car {
+            fuel_litres: 30.0,
+            speed_kmh: 120.0,
+            ..Default::default()
+        };
+
+        let said_short = |engineer: &mut Engineer, kind| {
+            engineer.update(&car, &session(kind), &info);
+            engineer
+                .analyze_live(&car, &session(kind), None)
+                .iter()
+                .any(|rec| rec.category.contains("Race Finish"))
+        };
+
+        assert!(
+            said_short(&mut engineer, SessionKind::Race),
+            "a race is exactly what this advice is for"
+        );
+        for quiet in [
+            SessionKind::Practice,
+            SessionKind::Qualifying,
+            SessionKind::Superpole,
+        ] {
+            assert!(
+                !said_short(&mut engineer, quiet),
+                "{quiet:?} has no finish, so there is nothing to be short for"
+            );
+        }
     }
 
     /// Burn measured across a refuel is meaningless, and the stale estimate
