@@ -24,6 +24,15 @@ pub struct LapData {
     /// and everything that reports metres refuses rather than inventing them.
     #[serde(default)]
     pub track_length_m: f32,
+    /// Whether that length was measured from the car's own distance rather
+    /// than published by the game.
+    ///
+    /// Competizione publishes none, so on that game it is worked out over a
+    /// lap — and a screen reporting metres should be able to say which of the
+    /// two it is showing, because afterwards both are an `f32`. Absent from
+    /// laps saved before this existed, which is what `serde(default)` says.
+    #[serde(default)]
+    pub track_length_measured: bool,
     pub save_date: String,
     #[serde(default)]
     pub from_file: bool,
@@ -382,38 +391,34 @@ impl TelemetryTrace {
 pub struct LapComparison;
 
 impl LapComparison {
-    /// Calculate time delta series between `current` lap and `reference` lap by distance.
-    /// Returns vector of (current_time_seconds, delta_seconds).
-    /// Positive delta_seconds means current lap is behind reference lap.
-    pub fn delta_by_distance(
+    /// Time gained and lost against a reference lap, ready to plot.
+    ///
+    /// `(seconds into this lap, seconds behind the reference)`. Positive is
+    /// slower, which is the sign every driver reads.
+    ///
+    /// **Paired by distance, not by index.** What was here resampled both laps
+    /// onto a fixed grid and then compared sample *i* of one with sample *i* of
+    /// the other — which is the same place on the track only if both traces
+    /// happen to start at the same distance and hold the same number of
+    /// samples. They do not: a lap recorded from a standing start and one
+    /// joined at speed begin at different points, and the whole graph was then
+    /// shifted by the difference with nothing to show that it was.
+    ///
+    /// [`crate::corners::delta_ms_at`] interpolates both laps at the same
+    /// distance, and withholds an answer where either lap has nothing there —
+    /// so a stretch the reference never covered is absent from the line rather
+    /// than drawn flat.
+    pub fn delta_over_time(
         current: &[TelemetryPoint],
         reference: &[TelemetryPoint],
-        step: f32,
     ) -> Vec<(f64, f64)> {
-        if current.is_empty() || reference.is_empty() {
-            return Vec::new();
-        }
-
-        let resampled_curr = TelemetryTrace::resample_by_distance(current, step);
-        let resampled_ref = TelemetryTrace::resample_by_distance(reference, step);
-
-        if resampled_curr.is_empty() || resampled_ref.is_empty() {
-            return Vec::new();
-        }
-
-        let min_len = resampled_curr.len().min(resampled_ref.len());
-        let mut delta_series = Vec::with_capacity(min_len);
-
-        for i in 0..min_len {
-            let p_c = &resampled_curr[i];
-            let p_r = &resampled_ref[i];
-
-            let time_sec = p_c.time_ms as f64 / 1000.0;
-            let delta_sec = (p_c.time_ms as f64 - p_r.time_ms as f64) / 1000.0;
-            delta_series.push((time_sec, delta_sec));
-        }
-
-        delta_series
+        current
+            .iter()
+            .filter_map(|point| {
+                let delta = crate::corners::delta_ms_at(current, reference, point.distance)?;
+                Some((point.time_ms as f64 / 1000.0, delta as f64 / 1000.0))
+            })
+            .collect()
     }
 }
 
@@ -1015,6 +1020,7 @@ impl TelemetryAnalyzer {
             car_model: car_name,
             track_name,
             track_length_m: self.track_length_m,
+            track_length_measured: self.track_length_measured,
             save_date,
             from_file: false,
             air_temp,
@@ -1836,7 +1842,7 @@ mod tests {
             })
             .collect();
 
-        let delta = LapComparison::delta_by_distance(&lap_a, &lap_b, 0.05);
+        let delta = LapComparison::delta_over_time(&lap_a, &lap_b);
         assert!(!delta.is_empty());
         for (_time, dt) in delta {
             assert!(
@@ -1896,7 +1902,7 @@ mod tests {
             })
             .collect();
 
-        let delta = LapComparison::delta_by_distance(&lap_slow, &lap_fast, 0.1);
+        let delta = LapComparison::delta_over_time(&lap_slow, &lap_fast);
         let final_delta = delta.last().expect("should have points").1;
         assert!(
             (final_delta - 5.0).abs() < 0.2,

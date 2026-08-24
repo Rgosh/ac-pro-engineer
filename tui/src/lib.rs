@@ -1004,6 +1004,8 @@ impl AppState {
                 track_name: "Autodromo Nazionale Monza".to_string(),
                 // Monza, so the corner report has real metres to work in.
                 track_length_m: 5793.0,
+                // Monza's own figure, as the game would publish it.
+                track_length_measured: false,
                 save_date: "2026-07-31".to_string(),
                 from_file: false,
                 air_temp: 22.5,

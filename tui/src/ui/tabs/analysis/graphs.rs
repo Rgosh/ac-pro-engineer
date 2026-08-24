@@ -43,10 +43,9 @@ pub fn render(
         && !bl.telemetry_trace.is_empty()
     {
         let series = cache.get_or_compute(lap.lap_number, bl.lap_number, || {
-            ac_core::analyzer::LapComparison::delta_by_distance(
+            ac_core::analyzer::LapComparison::delta_over_time(
                 &lap.telemetry_trace,
                 &bl.telemetry_trace,
-                0.002,
             )
         });
         has_delta = !series.is_empty();

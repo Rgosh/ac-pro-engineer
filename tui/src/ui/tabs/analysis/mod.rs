@@ -36,10 +36,11 @@ const STATUS_TICKS: u16 = 200;
 /// Cached delta-versus-best series, keyed by the pair of laps it was computed
 /// from.
 ///
-/// `delta_by_distance` resamples both traces, and resampling clones and fully
-/// sorts up to 7200 points each. Doing that on every frame is a lot of work
-/// to arrive at the same answer sixty times a second — the laps are finished
-/// and their traces cannot change.
+/// `delta_over_time` interpolates the reference at every one of this lap's
+/// points — a binary search each, over traces of up to 7200 points. Cheaper
+/// than the resampling it replaced and still not worth doing sixty times a
+/// second to arrive at the same answer: the laps are finished and their traces
+/// cannot change.
 #[derive(Default)]
 pub struct DeltaCache {
     key: Option<(i32, i32)>,

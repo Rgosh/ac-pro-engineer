@@ -190,6 +190,7 @@ fn create_populated_app_state() -> AppState {
         car_model: "Ferrari SF70H".to_string(),
         track_name: "Autodromo Nazionale Monza".to_string(),
         track_length_m: 5793.0,
+        track_length_measured: false,
         save_date: "2026-07-30".to_string(),
         from_file: false,
         air_temp: 22.5,

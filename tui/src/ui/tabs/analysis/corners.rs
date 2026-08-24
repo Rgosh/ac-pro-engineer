@@ -389,6 +389,53 @@ fn render_detail(
             ),
         }
 
+        // What happened *inside* the braking zone, which is where the time in
+        // one actually goes. All three are withheld when either lap took the
+        // corner flat: a corner nobody braked for has no braking, which is not
+        // a braking of zeros.
+        if let Some(harder) = section.peak_decel_delta_g() {
+            row(
+                "Stopping".tr(is_ru),
+                tr_fmt(
+                    "{0} g {1}",
+                    is_ru,
+                    &[
+                        &format!("{:.2}", harder.abs()),
+                        if harder >= 0.0 { "harder" } else { "softer" }.tr(is_ru),
+                    ],
+                ),
+                harder >= -0.05,
+            );
+        }
+        if let Some(longer) = section.braking_distance_delta_m(lap.track_length_m) {
+            row(
+                "Braking zone".tr(is_ru),
+                tr_fmt(
+                    "{0} m {1}",
+                    is_ru,
+                    &[
+                        &format!("{:.0}", longer.abs()),
+                        if longer >= 0.0 { "longer" } else { "shorter" }.tr(is_ru),
+                    ],
+                ),
+                longer <= 1.0,
+            );
+        }
+        if let Some(trail) = section.trail_delta_ms() {
+            row(
+                "Trail".tr(is_ru),
+                tr_fmt(
+                    "{0} s {1}",
+                    is_ru,
+                    &[
+                        &format!("{:.2}", trail.abs() as f32 / 1000.0),
+                        if trail >= 0 { "longer" } else { "shorter" }.tr(is_ru),
+                    ],
+                ),
+                true,
+            );
+        }
+
         if let Some((entry, min, exit)) = section.speed_deltas() {
             row(
                 "Entry speed".tr(is_ru),
@@ -431,6 +478,22 @@ fn render_detail(
             ),
             None => {}
         }
+    }
+
+    // **Where the metres came from.** Competizione publishes no track length,
+    // so it is worked out from the distance the car covered between two
+    // crossings of the line. Everything above that is denominated in metres
+    // rests on it, and a reader deciding whether to trust "14 m later" should
+    // be told which of the two numbers they are reading.
+    if lap.track_length_measured && lap.track_length_m > 0.0 {
+        lines.push(Line::from(Span::styled(
+            tr_fmt(
+                "  metres from a circuit measured over a lap: {0} m",
+                is_ru,
+                &[&format!("{:.0}", lap.track_length_m)],
+            ),
+            Style::default().fg(Color::DarkGray),
+        )));
     }
 
     f.render_widget(

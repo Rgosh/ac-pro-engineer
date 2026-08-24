@@ -377,6 +377,7 @@ fn test_24_theoretical_best_lap_calculation() {
         car_model: "test".into(),
         track_name: "test".into(),
         track_length_m: 0.0,
+        track_length_measured: false,
         save_date: "2026-07-30".into(),
         from_file: false,
         air_temp: 20.0,
