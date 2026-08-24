@@ -1,8 +1,10 @@
 # v0.4.2 — what the core owes the window
 
-Written 2026-08-24, after reading the core against what RG Pro Engineer needs
-from it. **Everything here is a change in this repository**; the window's own
-list is `docs/PLAN-NEXT.md` in `Rgosh/RGProEngineer` and does not overlap.
+Written 2026-08-24, after reading the core against what the graphical front
+end needs from it. **Everything here is a change in this repository.** That
+front end is not published as source and keeps its own list; nothing about how
+it works internally belongs in this file, and what is written here is the
+core's side of the boundary.
 
 ## What kind of release this is
 
@@ -28,8 +30,9 @@ targets, and `cargo deny check advisories` **fails** — see A2.
 
 `tui/src/ui/tabs/analysis/mod.rs:230` writes to `saved_laps/`, a path relative
 to the working directory, with `fs::write`, under a name made of the car, the
-track and the lap time. `RGProEngineer/src/saved.rs:24` reads from the same
-relative path. Four consequences, and the first is the one people report:
+track and the lap time. The graphical front end reads the same relative path,
+with its own copy of half the logic. Four consequences, and the first is the
+one people report:
 
 * The window is started from a desktop entry, whose working directory is the
   home folder; the terminal is usually started from its own install folder.
@@ -164,10 +167,9 @@ is to be cut this week: A1 gives it its foundation, and it lands as cleanly in
 * **`ratatui` 0.26 → 0.29 and `image` 0.24 → 0.25**, which is what would clear
   the `paste` advisory. Unmaintained is not a vulnerability, and a terminal
   redraw is not a patch release.
-* **Merging the two updaters.** The window updates from a manifest on
-  proengineer.app and the terminal from GitHub releases; `RGProEngineer/src/update.rs`
-  explains why, and the explanation still holds. A shared channel is a design
-  change, not a fix.
+* **Merging the two update channels.** The terminal updates from GitHub
+  releases and the other front end from a manifest on proengineer.app, for
+  reasons that still hold. A shared channel is a design change, not a fix.
 * **Anything touching the frame**, for the reason at the top.
 * The window's own list — beginner mode, the map colouring, the braking screen.
   B1–B3 are what those are built from; drawing them is the other repository.
