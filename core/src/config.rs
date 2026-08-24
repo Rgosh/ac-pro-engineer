@@ -225,6 +225,16 @@ pub struct OverlayConfig {
     /// feeds a friend watching, or a relay for a championship.
     #[serde(default)]
     pub broadcast_to: String,
+    /// Whether that address is being used.
+    ///
+    /// **A switch of its own, so turning sharing off does not lose where it
+    /// was going.** Clearing the address would do it and would make a person
+    /// type it again every time; a front end with a toggle needs somewhere to
+    /// put the answer. Defaults to true so a configuration written before this
+    /// existed keeps behaving exactly as it did: the address is what decided,
+    /// and an empty one is still off.
+    #[serde(default = "default_true")]
+    pub broadcast_enabled: bool,
     /// How many times a second to send there.
     ///
     /// Ten by default, not the tick rate. A spectator cannot tell the
@@ -250,6 +260,10 @@ pub struct OverlayConfig {
     /// only from this machine, which is what a second front end wants.
     #[serde(default)]
     pub receive_from: String,
+    /// Whether that address is being listened on. Same reasoning as
+    /// [`Self::broadcast_enabled`].
+    #[serde(default = "default_true")]
+    pub receive_enabled: bool,
 }
 
 fn default_broadcast_hz() -> f32 {
@@ -269,9 +283,11 @@ impl Default for OverlayConfig {
             startup_card: true,
             onboarding_done: false,
             broadcast_to: String::new(),
+            broadcast_enabled: true,
             broadcast_hz: default_broadcast_hz(),
             broadcast_name: String::new(),
             receive_from: String::new(),
+            receive_enabled: true,
         }
     }
 }

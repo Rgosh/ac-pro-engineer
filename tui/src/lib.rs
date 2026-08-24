@@ -398,7 +398,10 @@ impl AppState {
             // Configured, and off unless it is. This is telemetry about a
             // person; it leaves the machine because they said so.
             let target = config.overlay.broadcast_to.trim();
-            if !target.is_empty() {
+            // The switch as well as the address: a front end with a toggle
+            // turns sharing off without losing where it was going, and this
+            // has to mean the same thing on both of them.
+            if !target.is_empty() && config.overlay.broadcast_enabled {
                 match target.parse() {
                     Ok(address) => match ac_core::broadcast::udp::UdpSink::new(
                         address,
@@ -426,7 +429,7 @@ impl AppState {
         // already on it, and the rest of the application still works.
         let receiver = {
             let listen = config.overlay.receive_from.trim();
-            if listen.is_empty() {
+            if listen.is_empty() || !config.overlay.receive_enabled {
                 None
             } else {
                 match listen.parse() {
