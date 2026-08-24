@@ -448,6 +448,15 @@ pub struct TelemetryAnalyzer {
     /// The loaded track's length in metres, stamped onto every lap processed
     /// from here on. Set once when a session is recognised; zero until then.
     pub track_length_m: f32,
+    /// Worked out from the car's own distance, for a game that does not publish
+    /// a length. See [`crate::track::MeasuredLength`].
+    measured_length: crate::track::MeasuredLength,
+    /// Whether [`Self::track_length_m`] was measured here rather than reported
+    /// by the game.
+    ///
+    /// A front end that says "7004 m" should be able to say where that came
+    /// from, and nothing else can tell afterwards: both are an `f32` in metres.
+    track_length_measured: bool,
 }
 
 pub type Analyzer = TelemetryAnalyzer;
@@ -467,6 +476,8 @@ impl TelemetryAnalyzer {
             world_record: None,
             reference_lap: None,
             track_length_m: 0.0,
+            measured_length: crate::track::MeasuredLength::default(),
+            track_length_measured: false,
         }
     }
 
@@ -475,12 +486,48 @@ impl TelemetryAnalyzer {
     }
 
     /// Tell the analyser how long the track is, so laps recorded from now on
-    /// carry it. Ignores a value AC has not filled in yet, which it has not
-    /// during the first frames of a session.
+    /// carry it. Ignores a value the game has not filled in yet, which it has
+    /// not during the first frames of a session.
+    ///
+    /// **A published length wins over a measured one** and clears the mark: the
+    /// game's own number is exact, and the measurement is only ever there
+    /// because the game had nothing to say.
     pub fn set_track_length(&mut self, metres: f32) {
         if metres > 0.0 {
             self.track_length_m = metres;
+            self.track_length_measured = false;
         }
+    }
+
+    /// Feed the lap-length measurement one sample.
+    ///
+    /// For the game that publishes no track length. Harmless on the one that
+    /// does — a published length is never replaced — so a front end calls this
+    /// every tick without asking which game it is on, which is the only way it
+    /// stays correct when a third game arrives.
+    ///
+    /// Returns the length in metres on the tick a lap is first measured, so a
+    /// caller can log it or say so on screen.
+    pub fn observe_distance(
+        &mut self,
+        track_position: f32,
+        distance_travelled_m: f32,
+    ) -> Option<f32> {
+        let measured = self
+            .measured_length
+            .observe(track_position, distance_travelled_m)?;
+        if self.track_length_measured || self.track_length_m <= 0.0 {
+            self.track_length_m = measured;
+            self.track_length_measured = true;
+            return Some(measured);
+        }
+        None
+    }
+
+    /// Whether the track length came from this program measuring it rather than
+    /// from the game reporting it.
+    pub fn track_length_measured(&self) -> bool {
+        self.track_length_measured
     }
 
     // Ten parameters, all of them distinct lap facts the caller already holds.
@@ -1710,5 +1757,81 @@ mod tests {
             "Expected ~+5.0s delta at finish, got {}",
             final_delta
         );
+    }
+}
+
+#[cfg(test)]
+mod measured_track_length_tests {
+    use super::TelemetryAnalyzer;
+
+    /// One lap of a circuit, sampled the way a game publishes it.
+    fn lap(analyzer: &mut TelemetryAnalyzer, from_m: f32, length_m: f32) -> f32 {
+        let mut travelled = from_m;
+        for step in 0..100 {
+            travelled += length_m / 100.0;
+            analyzer.observe_distance(step as f32 / 100.0, travelled);
+        }
+        travelled
+    }
+
+    /// Competizione publishes no track length, so everything reported in metres
+    /// is withheld on it. Two crossings of the line say how long the circuit is.
+    #[test]
+    fn a_game_that_publishes_nothing_gets_a_measured_length() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.set_track_length(0.0); // what ACC reports
+
+        // The line is crossed at the *start* of a lap, so the first lap of a
+        // session ends with one crossing recorded and nothing measured — a
+        // session joined halfway down the straight has no length to report.
+        let after_one = lap(&mut analyzer, 0.0, 7_004.0);
+        let after_two = lap(&mut analyzer, after_one, 7_004.0);
+        assert_eq!(
+            analyzer.track_length_m, 0.0,
+            "one crossing measures nothing, and a guess would be worse than none"
+        );
+
+        lap(&mut analyzer, after_two, 7_004.0);
+        assert!(
+            (analyzer.track_length_m - 7_004.0).abs() < 80.0,
+            "measured {} m",
+            analyzer.track_length_m
+        );
+        assert!(
+            analyzer.track_length_measured(),
+            "a front end has to be able to say where the number came from"
+        );
+    }
+
+    /// Assetto Corsa's own spline length is exact. A measurement taken from the
+    /// car must never replace it — and the mark has to say so, or a screen
+    /// would report the game's own figure as something this program worked out.
+    #[test]
+    fn a_published_length_is_never_replaced_by_a_measured_one() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        analyzer.set_track_length(7_004.0);
+
+        let after_one = lap(&mut analyzer, 0.0, 6_800.0);
+        let after_two = lap(&mut analyzer, after_one, 6_800.0);
+        lap(&mut analyzer, after_two, 6_800.0);
+
+        assert_eq!(analyzer.track_length_m, 7_004.0);
+        assert!(!analyzer.track_length_measured());
+    }
+
+    /// The session recognises the track a few frames in, which on Assetto Corsa
+    /// arrives after the car has already been driving. A length that was
+    /// measured first has to step aside for the published one.
+    #[test]
+    fn a_published_length_arriving_late_takes_over() {
+        let mut analyzer = TelemetryAnalyzer::new();
+        let after_one = lap(&mut analyzer, 0.0, 6_800.0);
+        let after_two = lap(&mut analyzer, after_one, 6_800.0);
+        lap(&mut analyzer, after_two, 6_800.0);
+        assert!(analyzer.track_length_measured());
+
+        analyzer.set_track_length(7_004.0);
+        assert_eq!(analyzer.track_length_m, 7_004.0);
+        assert!(!analyzer.track_length_measured());
     }
 }

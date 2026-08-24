@@ -1698,6 +1698,16 @@ impl AppState {
             // Stamped onto every lap from here, so a corner report can say
             // "14 m later on the brakes" rather than a fraction of a lap.
             self.analyzer.set_track_length(fixed.track_length_m);
+            // And where the game publishes no length — Competizione does not —
+            // the car measures the circuit itself over a lap. Called on every
+            // game: a published length is never replaced, so this costs a
+            // comparison on the one that has one.
+            if let Some(metres) = self.analyzer.observe_distance(
+                reading.session.track_position,
+                reading.session.distance_travelled_m,
+            ) {
+                info!("Measured the circuit over a lap: {metres:.0} m");
+            }
             self.is_connected = true;
 
             self.reading = Some(reading);

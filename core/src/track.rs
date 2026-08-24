@@ -15,6 +15,144 @@
 
 use serde::{Deserialize, Serialize};
 
+/// How long the circuit is, worked out from the car that just drove round it.
+///
+/// **Because one of the two games does not say.** Assetto Corsa publishes its
+/// spline length and this is never needed there. Competizione publishes
+/// `trackSPlineLength` as zero — pinned by the layout tests against a real
+/// recorded session, so it is the game's behaviour and not a parsing mistake —
+/// and the consequence reaches the driver: every answer denominated in metres
+/// is withheld on the game most GT3 drivers are on. No "braking 14 m earlier",
+/// no corner distances.
+///
+/// The measurement was already sitting there. Both games publish how far the
+/// car has travelled since the session started, and both readers already put it
+/// on the `Reading`, where nothing has ever read it. The distance between two
+/// crossings of the line is the length of the lap between them.
+///
+/// # What this is not
+///
+/// It is **not** the game reporting a track length, and it must never be filed
+/// as one. `Capabilities::track_length` stays false on a game that does not
+/// publish it: that flag answers "does this game measure it", and the answer is
+/// still no. This answers a different question — "has the car been round yet"
+/// — and until it has, there is no length here rather than a plausible one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MeasuredLength {
+    /// The distance reading when the car last crossed the line.
+    at_line_m: Option<f32>,
+    /// Where the car was on the previous sample, so a wrap can be spotted.
+    last_position: f32,
+    /// The best answer so far, metres.
+    metres: Option<f32>,
+}
+
+/// The shortest and longest circuit this will believe in, metres.
+///
+/// Anything outside is a session that was reset, a car teleported to the pits,
+/// or a distance counter that started somewhere else — and a wrong track length
+/// is worse than none, because every metre-denominated answer would quietly be
+/// scaled by it. The narrowest real circuits are under a kilometre; the longest
+/// in common use is the Nordschleife at 20.8 km.
+const PLAUSIBLE_M: std::ops::RangeInclusive<f32> = 500.0..=30_000.0;
+
+/// How far round the lap counts as "about to cross the line" and "just after
+/// it". A wrap is a fall from the first to the second.
+const NEAR_LINE: (f32, f32) = (0.9, 0.1);
+
+impl MeasuredLength {
+    /// Feed one sample: where the car is round the lap, 0..1, and how far it
+    /// has travelled since the session started, in metres.
+    ///
+    /// Returns the length when a lap has just been completed and measured,
+    /// so a caller can act on it the moment it arrives rather than polling.
+    pub fn observe(&mut self, track_position: f32, distance_travelled_m: f32) -> Option<f32> {
+        let previous = self.last_position;
+        self.last_position = track_position;
+
+        // Not a crossing.
+        if !(previous > NEAR_LINE.0 && track_position < NEAR_LINE.1) {
+            return None;
+        }
+
+        let previous_line = self.at_line_m.replace(distance_travelled_m);
+        let covered = distance_travelled_m - previous_line?;
+        if !PLAUSIBLE_M.contains(&covered) {
+            // A lap that measured as impossible says nothing, and the crossing
+            // is still recorded — the next lap is measured from here.
+            return None;
+        }
+        self.metres = Some(covered);
+        Some(covered)
+    }
+
+    /// The measured length, if the car has been round once.
+    pub fn metres(&self) -> Option<f32> {
+        self.metres
+    }
+}
+
+#[cfg(test)]
+mod measured_length_tests {
+    use super::MeasuredLength;
+
+    /// One lap of Spa, sampled the way the game publishes it: the position
+    /// wraps at the line and the distance keeps counting up.
+    fn drive(measure: &mut MeasuredLength, laps: usize, length_m: f32) -> Vec<f32> {
+        let mut travelled = 0.0;
+        let mut measured = Vec::new();
+        for _ in 0..laps {
+            for step in 0..100 {
+                let position = step as f32 / 100.0;
+                travelled += length_m / 100.0;
+                if let Some(metres) = measure.observe(position, travelled) {
+                    measured.push(metres);
+                }
+            }
+        }
+        measured
+    }
+
+    #[test]
+    fn nothing_is_known_until_the_car_has_been_round() {
+        let mut measure = MeasuredLength::default();
+        // Half a lap in: the line has been crossed once at most, and one
+        // crossing measures nothing.
+        drive(&mut measure, 1, 7_004.0);
+        assert_eq!(measure.metres(), None);
+    }
+
+    #[test]
+    fn a_second_crossing_measures_the_lap_between_them() {
+        let mut measure = MeasuredLength::default();
+        drive(&mut measure, 3, 7_004.0);
+        let metres = measure.metres().expect("three laps is two measurements");
+        assert!((metres - 7_004.0).abs() < 80.0, "measured {metres} m");
+    }
+
+    /// A session reset, a tow to the pits, or a distance counter that started
+    /// somewhere else. A wrong length would silently scale every answer given
+    /// in metres, which is worse than having none.
+    #[test]
+    fn an_impossible_lap_is_not_believed() {
+        let mut measure = MeasuredLength::default();
+        measure.observe(0.95, 1_000.0);
+        measure.observe(0.05, 1_000.0);
+        // Ninety kilometres later, the line again.
+        measure.observe(0.95, 91_000.0);
+        measure.observe(0.05, 91_000.0);
+        assert_eq!(measure.metres(), None);
+    }
+
+    #[test]
+    fn a_game_that_publishes_its_length_needs_none_of_this() {
+        // The type is inert until it is fed; nothing here runs on Assetto
+        // Corsa, where `track_length_m` arrives from the game itself.
+        let measure = MeasuredLength::default();
+        assert_eq!(measure.metres(), None);
+    }
+}
+
 /// A named stretch of a circuit, as the track itself names it.
 ///
 /// **This is the difference between "T7" and "Eau Rouge".** Corner detection
