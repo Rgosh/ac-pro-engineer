@@ -6,8 +6,12 @@ All notable changes to this project will be documented in this file.
 
 A patch, and the frame does not change — every `shm-bridge.exe` and every
 installed panel from v0.4.0 onward keeps working, and nobody has to fetch a
-bridge. Two of these are bugs that looked like something else, and three are
-measurements this core could have made all along and never did.
+bridge.
+
+Most of what is fixed here looked like something else while it was happening:
+laps that vanished, a reference lap that made no sense, advice about a race
+nobody was running. Three of the additions are measurements this core could
+have made all along and never did.
 
 ### Fixed
 
@@ -28,6 +32,30 @@ measurements this core could have made all along and never did.
 - **A car or track with `:`, `?`, `*`, `"` or `|` in its name saves.** Spaces
   and slashes were handled; the rest of what Windows refuses was not, and the
   save failed with an error about the file system rather than about the name.
+- **Changing car or track without restarting kept the old session.** The two
+  were read once, when the connection was made, and the shared memory stays
+  mapped when you go back to the menu — so laps in the new car were recorded
+  under the old car's name, your personal best went into the wrong car's
+  record, the analysis compared a GT3 against a lap set in a Miata, and the
+  circuit length measured at Spa was used for laps of Monza. A blank frame,
+  which both games publish at a menu, is not treated as a change.
+- **A lap the game invalidated could become your best lap and your record.**
+  The best *sectors* always skipped invalid laps; the best lap and the saved
+  personal best did not, so on Competizione a cut lap became the reference
+  everything later was compared against — and it outlived the session in
+  `records.json`. Assetto Corsa reports no validity, so nothing changes there.
+- **A Cup car was judged against GT3 numbers on Assetto Corsa.** The car's id
+  says `cup` and the rule for it existed, but the game's own tags are checked
+  first and Kunos tags the 911 GT3 Cup `#GT3` — so the rule was unreachable on
+  the one game that has tags. A Cup car ran against a GT3's tyre window and
+  brake ceilings.
+- **The engineer told you to save fuel in practice.** The "you will not reach
+  the finish" check fired in any session with a clock, which is every session.
+  Practice, qualifying and superpole have no finish to be short of. Running the
+  tank dry is still warned about everywhere.
+- **A setup is written atomically.** Saving into the game's own setup folder
+  used a plain write, so an interrupted save left a correctly named setup with
+  half a file in it — found in the pits.
 - **Eight security advisories, five of them in the code that downloads
   software.** reqwest 0.11 pinned hyper 0.14, h2 0.3 and rustls-webpki 0.101 —
   including two bugs in how a certificate's name constraints are checked and a
