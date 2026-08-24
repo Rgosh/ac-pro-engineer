@@ -3,8 +3,6 @@ use crate::ui::file_menu::FileMenu;
 use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
-use std::fs;
-use std::path::{Path, PathBuf};
 
 pub mod corners;
 pub mod dynamics;
@@ -228,40 +226,21 @@ impl AnalysisState {
     }
 
     pub fn save_lap_data(&mut self, lap: &ac_core::analyzer::LapData) {
-        let dir = "saved_laps";
-        if let Err(e) = fs::create_dir_all(dir) {
-            self.set_status(format!("Error create dir: {}", e));
-            return;
-        }
-
-        let clean_car = lap
-            .car_model
-            .replace(" ", "_")
-            .replace("/", "")
-            .replace("\\", "");
-        let clean_track = lap
-            .track_name
-            .replace(" ", "_")
-            .replace("/", "")
-            .replace("\\", "");
-
-        let min = lap.lap_time_ms / 60000;
-        let sec = (lap.lap_time_ms % 60000) / 1000;
-        let ms = lap.lap_time_ms % 1000;
-        let time_str = format!("{}-{:02}-{:03}", min, sec, ms);
-
-        let filename = format!("{}/{}_{}_{}.json", dir, clean_car, clean_track, time_str);
-        let path = Path::new(&filename);
-
-        match serde_json::to_string_pretty(lap) {
-            Ok(json) => {
-                if let Err(e) = fs::write(path, json) {
-                    self.set_status(format!("Error saving: {}", e));
-                } else {
-                    self.set_status(format!("Saved: {}", filename));
-                }
+        // **The store owns all of this now**: where the folder is, a name that
+        // cannot collide with another lap's, and a write that a power loss
+        // cannot leave half-finished. What was here instead was a relative
+        // path, `fs::write`, and a name made of the car, the track and the lap
+        // time — under which the same time driven twice replaced the first one
+        // without a word.
+        match ac_core::laps::LapStore::new().save(lap) {
+            Ok(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                self.set_status(format!("Saved: {}", name));
             }
-            Err(e) => self.set_status(format!("Serialization error: {}", e)),
+            Err(message) => self.set_status(format!("Error saving: {}", message)),
         }
     }
 
@@ -289,22 +268,14 @@ impl AnalysisState {
         let selected_file = self.load_menu.borrow().get_selected();
 
         if let Some(filename) = selected_file {
-            let path = PathBuf::from("saved_laps").join(&filename);
-            let res: Result<(), String> = (|| {
-                let metadata = fs::metadata(&path).map_err(|e| format!("Read Error: {}", e))?;
-                if metadata.len() > 10 * 1024 * 1024 {
-                    return Err("File too large (>10MB)".to_string());
-                }
-                let content =
-                    fs::read_to_string(&path).map_err(|e| format!("Read Error: {}", e))?;
-                let mut lap = serde_json::from_str::<ac_core::analyzer::LapData>(&content)
-                    .map_err(|e| format!("JSON Error: {}", e))?;
-
-                lap.from_file = true;
-                analyzer.reference_lap = Some(lap.clone());
-                analyzer.laps.push(lap);
-                Ok(())
-            })();
+            // The size guard, the parse and `from_file` all live in the store,
+            // because the window needs the same three and had its own copy of
+            // two of them.
+            let res: Result<(), String> =
+                ac_core::laps::LapStore::new().load(&filename).map(|lap| {
+                    analyzer.reference_lap = Some(lap.clone());
+                    analyzer.laps.push(lap);
+                });
 
             match res {
                 Ok(()) => {

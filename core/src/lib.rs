@@ -29,6 +29,10 @@ pub mod engineer;
 /// not — see the module note.
 pub mod guide;
 pub mod i18n;
+/// Where a saved lap lives. One folder, found the same way from any
+/// working directory, because two front ends looking in `./saved_laps`
+/// are two front ends that cannot see each other's laps.
+pub mod laps;
 pub mod memory;
 pub mod net;
 pub mod overlay;

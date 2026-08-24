@@ -1,7 +1,6 @@
 use ac_core::i18n::Translate;
 use ratatui::{prelude::*, widgets::*};
 use std::error::Error;
-use std::fs;
 
 #[derive(Debug, Clone)]
 pub struct FileMenu {
@@ -37,24 +36,16 @@ impl FileMenu {
 
     pub fn refresh_files(&mut self) -> Result<(), Box<dyn Error>> {
         self.files.clear();
-        let dir = "saved_laps";
-        if fs::metadata(dir).is_err() {
-            fs::create_dir(dir)?;
-        }
-
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                if let Ok(file_type) = entry.file_type()
-                    && file_type.is_file()
-                    && let Some(name) = entry.file_name().to_str()
-                    && name.ends_with(".json")
-                {
-                    self.files.push(name.to_string());
-                }
-            }
-        }
-        self.files.sort();
-        self.files.reverse();
+        // **The store decides where laps are, not this menu.** This used to
+        // read `saved_laps/` relative to the working directory, which is a
+        // different folder depending on how the program was started — and a
+        // different one again from the window's. `ac_core::laps` is the one
+        // answer, and it lists newest first, which is the lap somebody wants.
+        self.files = ac_core::laps::LapStore::new()
+            .list()
+            .into_iter()
+            .map(|lap| lap.file_name)
+            .collect();
         if let Some(sel) = self.state.selected()
             && sel >= self.files.len()
         {

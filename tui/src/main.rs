@@ -231,6 +231,34 @@ async fn main() -> Result<(), anyhow::Error> {
 
     info!("Starting application and connecting to telemetry...");
 
+    // **Laps saved by an earlier release, brought along.** Up to v0.4.1 both
+    // front ends wrote `saved_laps/` relative to the working directory, so a
+    // driver's laps are wherever they happened to start the program from —
+    // usually the folder it was unpacked into, sometimes the home directory.
+    // Moved once, into the store beside the settings, where every front end
+    // looks. Nothing is overwritten and a folder that cannot be read is
+    // skipped: losing a lap to a migration would be worse than the problem it
+    // fixes.
+    {
+        let store = ac_core::laps::LapStore::new();
+        let mut candidates = vec![PathBuf::from("saved_laps")];
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(beside) = exe.parent()
+        {
+            candidates.push(beside.join("saved_laps"));
+        }
+        let mut adopted = 0;
+        for folder in candidates {
+            adopted += store.adopt(&folder);
+        }
+        if adopted > 0 {
+            info!(
+                "Moved {adopted} saved lap(s) into {}",
+                store.dir().display()
+            );
+        }
+    }
+
     // Not fatal. `Command::spawn` returns NotFound when protontricks-launch
     // is not installed, and `?` here killed the app before the TUI existed —
     // so anyone running AC natively, through a different launcher, or just
