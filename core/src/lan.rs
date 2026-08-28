@@ -193,7 +193,7 @@ impl LanWish {
             },
             share_to: overlay.broadcast_to.clone(),
             share_as: overlay.broadcast_name.clone(),
-            share_hz: overlay.broadcast_hz,
+            share_hz: lan.share_hz,
             listen_on: overlay.receive_from.clone(),
             blocks: [
                 overlay.show_telemetry,
@@ -217,7 +217,6 @@ impl LanWish {
         overlay.broadcast_enabled = self.mode.sends();
         overlay.broadcast_to = self.share_to.clone();
         overlay.broadcast_name = self.share_as.clone();
-        overlay.broadcast_hz = self.share_hz;
         overlay.receive_enabled = self.mode.receives();
         overlay.receive_from = self.listen_on.clone();
         overlay.show_telemetry = self.blocks[0];
@@ -226,6 +225,7 @@ impl LanWish {
         overlay.show_timing = self.blocks[3];
         overlay.show_fuel = self.blocks[4];
         config.lan.mode = self.mode;
+        config.lan.share_hz = self.share_hz;
         config.lan.only_on_track = self.only_on_track;
         config.lan.quiet_after_s = self.quiet_after_s;
         config.lan.announce = self.announce;

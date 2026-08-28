@@ -167,6 +167,7 @@ impl UIRenderer {
                         AppTab::Ffb => 6,
                         AppTab::Settings => 7,
                         AppTab::Guide => 8,
+                        AppTab::Lan => 9,
                     };
                     help_overlay::render(f, f.size(), tab_idx, &app.config.keys);
                 }
@@ -216,6 +217,7 @@ impl UIRenderer {
             AppTab::Ffb => tabs::ffb::render(f, main_layout[1], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[1], app),
             AppTab::Guide => tabs::guide::render(f, main_layout[1], app),
+            AppTab::Lan => tabs::lan::render(f, main_layout[1], app),
         }
 
         self.render_footer(f, main_layout[2], app);
@@ -245,6 +247,7 @@ impl UIRenderer {
             AppTab::Ffb => tabs::ffb::render(f, main_layout[2], app, &app.engineer),
             AppTab::Settings => tabs::settings::render(f, main_layout[2], app),
             AppTab::Guide => tabs::guide::render(f, main_layout[2], app),
+            AppTab::Lan => tabs::lan::render(f, main_layout[2], app),
         }
 
         self.render_footer(f, main_layout[3], app);
@@ -304,6 +307,7 @@ impl UIRenderer {
             "🎮 FFB".to_string(),
             format!("⚙️ {}", "SETTINGS".tr_lang(lang).to_string()),
             "📖 Guide".to_string(),
+            format!("🌐 {}", "LAN".tr_lang(lang).to_string()),
         ];
 
         let active_index = match app.active_tab {
@@ -316,6 +320,7 @@ impl UIRenderer {
             AppTab::Ffb => 6,
             AppTab::Settings => 7,
             AppTab::Guide => 8,
+            AppTab::Lan => 9,
         };
 
         let tab_widget = Tabs::new(tabs)

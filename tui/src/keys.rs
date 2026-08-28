@@ -39,6 +39,16 @@ pub enum Action {
     OverlayInstall,
     OverlayUninstall,
     OverlayDiagnostics,
+    /// Start sharing this session, or stop.
+    LanShare,
+    /// Start watching, or stop.
+    LanWatch,
+    /// Send to whoever the cursor is on in the list.
+    LanPick,
+    /// Everything off, keeping every address where it was.
+    LanOff,
+    /// Be findable on the network, or stop being.
+    LanAnnounce,
 }
 
 /// A parsed binding: what to press, and with what held down.
@@ -333,6 +343,7 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
         (&keys.tab_ffb, Action::GoToTab(AppTab::Ffb)),
         (&keys.tab_settings, Action::GoToTab(AppTab::Settings)),
         (&keys.tab_guide, Action::GoToTab(AppTab::Guide)),
+        (&keys.tab_lan, Action::GoToTab(AppTab::Lan)),
     ];
 
     for (binding, action) in global {
@@ -367,6 +378,13 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
             (&keys.overlay_install, Action::OverlayInstall),
             (&keys.overlay_uninstall, Action::OverlayUninstall),
             (&keys.overlay_diagnostics, Action::OverlayDiagnostics),
+        ],
+        AppTab::Lan => &[
+            (&keys.lan_share, Action::LanShare),
+            (&keys.lan_watch, Action::LanWatch),
+            (&keys.lan_pick, Action::LanPick),
+            (&keys.lan_off, Action::LanOff),
+            (&keys.lan_announce, Action::LanAnnounce),
         ],
         _ => &[],
     };
@@ -426,6 +444,16 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
         ("tab_ffb", "Go to FFB", keys.tab_ffb.as_str()),
         ("tab_settings", "Go to Settings", keys.tab_settings.as_str()),
         ("tab_guide", "Go to Guide", keys.tab_guide.as_str()),
+        ("tab_lan", "Go to LAN", keys.tab_lan.as_str()),
+        ("lan_share", "LAN: share this session", keys.lan_share.as_str()),
+        ("lan_watch", "LAN: watch somebody", keys.lan_watch.as_str()),
+        ("lan_pick", "LAN: send to the one chosen", keys.lan_pick.as_str()),
+        ("lan_off", "LAN: everything off", keys.lan_off.as_str()),
+        (
+            "lan_announce",
+            "LAN: be findable",
+            keys.lan_announce.as_str(),
+        ),
         (
             "analysis_save",
             "Analysis: save lap",
@@ -489,6 +517,12 @@ pub fn action_of(field: &str) -> Option<Action> {
         "tab_ffb" => Action::GoToTab(AppTab::Ffb),
         "tab_settings" => Action::GoToTab(AppTab::Settings),
         "tab_guide" => Action::GoToTab(AppTab::Guide),
+        "tab_lan" => Action::GoToTab(AppTab::Lan),
+        "lan_share" => Action::LanShare,
+        "lan_watch" => Action::LanWatch,
+        "lan_pick" => Action::LanPick,
+        "lan_off" => Action::LanOff,
+        "lan_announce" => Action::LanAnnounce,
         "analysis_save" => Action::AnalysisSave,
         "analysis_load" => Action::AnalysisLoad,
         "analysis_compare" => Action::AnalysisCompare,
@@ -530,6 +564,13 @@ pub fn hints(tab: AppTab) -> &'static [(&'static str, &'static str, &'static str
             ("setup_download", "Download", "Скачать"),
             ("help", "Help", "Помощь"),
         ],
+        AppTab::Lan => &[
+            ("lan_share", "Share", "Делиться"),
+            ("lan_watch", "Watch", "Смотреть"),
+            ("lan_pick", "Send to", "Кому"),
+            ("lan_off", "Off", "Выкл"),
+            ("help", "Help", "Помощь"),
+        ],
         _ => &[
             ("screenshot", "Screenshot", "Снимок"),
             ("language", "Language", "Язык"),
@@ -559,6 +600,12 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
         "tab_ffb" => keys.tab_ffb = value,
         "tab_settings" => keys.tab_settings = value,
         "tab_guide" => keys.tab_guide = value,
+        "tab_lan" => keys.tab_lan = value,
+        "lan_share" => keys.lan_share = value,
+        "lan_watch" => keys.lan_watch = value,
+        "lan_pick" => keys.lan_pick = value,
+        "lan_off" => keys.lan_off = value,
+        "lan_announce" => keys.lan_announce = value,
         "analysis_save" => keys.analysis_save = value,
         "analysis_load" => keys.analysis_load = value,
         "analysis_compare" => keys.analysis_compare = value,
@@ -923,6 +970,40 @@ mod tests {
         assert_eq!(listed.len(), fields.len());
     }
 
+    /// Every tab, in the order the strip has them.
+    fn every_tab() -> Vec<AppTab> {
+        let mut found = vec![AppTab::Dashboard];
+        let mut tab = AppTab::Dashboard.next();
+        // A bound rather than trust: a `next` that skipped a tab and looped
+        // early would hang this instead of failing it.
+        while tab != AppTab::Dashboard && found.len() < 64 {
+            found.push(tab);
+            tab = tab.next();
+        }
+        found
+    }
+
+    /// Going forward and coming back have to visit the same tabs. A tab added
+    /// to one and not the other is reachable only one way round, which reads
+    /// as the strip skipping it.
+    #[test]
+    fn the_tab_strip_is_a_cycle_both_ways() {
+        let forward = every_tab();
+        assert!(forward.len() > 8, "only {} tabs", forward.len());
+
+        let mut backward = vec![AppTab::Dashboard];
+        let mut tab = AppTab::Dashboard.previous();
+        while tab != AppTab::Dashboard && backward.len() < 64 {
+            backward.push(tab);
+            tab = tab.previous();
+        }
+        backward[1..].reverse();
+        assert_eq!(
+            forward, backward,
+            "next and previous disagree about the order of the tabs"
+        );
+    }
+
     /// The check this module exists for.
     ///
     /// Every key named in a hint has to do, on the tab the hint is drawn on,
@@ -932,17 +1013,12 @@ mod tests {
     #[test]
     fn the_hints_only_name_keys_that_do_something() {
         let keys = KeyBindings::default();
-        let tabs = [
-            AppTab::Dashboard,
-            AppTab::Telemetry,
-            AppTab::Engineer,
-            AppTab::Setup,
-            AppTab::Analysis,
-            AppTab::Strategy,
-            AppTab::Ffb,
-            AppTab::Settings,
-            AppTab::Guide,
-        ];
+        // **Walked rather than listed.** The list here was nine tabs written
+        // out by hand, so a tenth would have been added to the program and not
+        // to this check — which is the failure this test exists to prevent,
+        // one level up. `next` is the strip's own order and it is a cycle, so
+        // following it visits every tab exactly once.
+        let tabs = every_tab();
 
         for tab in tabs {
             for (field, label, _) in hints(tab) {

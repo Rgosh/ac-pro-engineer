@@ -3,6 +3,7 @@ pub mod dashboard;
 pub mod engineer;
 pub mod ffb;
 pub mod guide;
+pub mod lan;
 pub mod settings;
 pub mod setup;
 pub mod strategy;

@@ -108,6 +108,26 @@ impl Broadcaster {
         });
     }
 
+    /// Keep the sinks whose names `keep` accepts, and drop the rest.
+    ///
+    /// **A front end whose switch moved cannot just rebuild the list.** The
+    /// panel's shared mapping is a sink too, and dropping every one of them to
+    /// change where a *network* sink points would blank the driver's own
+    /// windscreen for a tick. By name because that is what a sink offers —
+    /// see [`Sink::name`] and [`Self::sink_names`] — and because a caller that
+    /// added `udp 192.168.1.42:9001` may only know it wanted "the network
+    /// one": the address it typed was a hostname and what the sink is called
+    /// is what that resolved to.
+    pub fn retain_sinks(&mut self, mut keep: impl FnMut(&str) -> bool) {
+        self.entries.retain(|entry| {
+            let wanted = keep(entry.sink.name());
+            if !wanted {
+                info!(sink = entry.sink.name(), "Stopped broadcasting to a sink");
+            }
+            wanted
+        });
+    }
+
     /// Which sinks are live, for the diagnostics screen.
     pub fn sink_names(&self) -> Vec<String> {
         self.entries

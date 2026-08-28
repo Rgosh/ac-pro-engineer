@@ -108,6 +108,8 @@ pub enum AppTab {
     Ffb,
     Settings,
     Guide,
+    /// Sharing this session, and watching somebody else's.
+    Lan,
 }
 
 impl AppTab {
@@ -121,13 +123,15 @@ impl AppTab {
             AppTab::Strategy => AppTab::Ffb,
             AppTab::Ffb => AppTab::Settings,
             AppTab::Settings => AppTab::Guide,
-            AppTab::Guide => AppTab::Dashboard,
+            AppTab::Guide => AppTab::Lan,
+            AppTab::Lan => AppTab::Dashboard,
         }
     }
 
     pub fn previous(&self) -> Self {
         match self {
-            AppTab::Dashboard => AppTab::Guide,
+            AppTab::Dashboard => AppTab::Lan,
+            AppTab::Lan => AppTab::Guide,
             AppTab::Guide => AppTab::Settings,
             AppTab::Settings => AppTab::Ffb,
             AppTab::Ffb => AppTab::Strategy,
@@ -317,12 +321,35 @@ pub struct AppState {
     /// rebuild is not a thing to do quietly.
     pub bridge_offer: Arc<Mutex<Option<ac_core::overlay::bridge_update::RemoteBridge>>>,
     pub overlay_install_status: String,
-    /// Listening for another machine's frames, when `receive_from` is set.
-    ///
-    /// `None` is the ordinary case: this is off unless a viewer asks for it.
-    pub receiver: Option<ac_core::broadcast::receiver::FrameReceiver>,
     /// Who is being watched, for the status line. `None` until one arrives.
     pub remote_sender: Option<String>,
+    /// What the driver has asked the network to do.
+    ///
+    /// The wish, in `ac_core::lan`, so the window and this agree about every
+    /// rule; the sockets below are reconciled against it once a tick, which is
+    /// what makes a keypress mean something without a restart.
+    pub lan: ac_core::lan::LanWish,
+    /// The wish the sockets were last built from. Compared rather than
+    /// applied: nothing is torn down that has not changed.
+    pub lan_applied: ac_core::lan::LanWish,
+    /// Somebody else's session, arriving whole.
+    pub watching: Option<ac_core::broadcast::session::Listener>,
+    /// This session, going out whole, to one address.
+    pub sharing: Option<ac_core::broadcast::session::Sender>,
+    /// Everybody on this network who is running the program.
+    pub finder: Option<ac_core::broadcast::discovery::Discovery>,
+    /// The list as of the last poll, for the screen to draw.
+    pub peers: Vec<ac_core::broadcast::discovery::Peer>,
+    /// Which of them the cursor is on.
+    pub peer_cursor: usize,
+    /// What the link is doing, for the screen that reports it.
+    pub link: ac_core::broadcast::session::Link,
+    /// Why the network is not doing what was asked, when it is not.
+    ///
+    /// A port another program already holds is the ordinary failure, and it
+    /// has to reach a screen: a tab that simply stayed empty would be the
+    /// hardest way to find that out.
+    pub lan_trouble: Option<String>,
     /// The last few finished laps and what the engineer made of each, ready
     /// for the frame.
     ///
@@ -424,34 +451,9 @@ impl AppState {
             broadcaster
         };
 
-        // The other end of it. Off unless asked for, and a port that cannot be
-        // bound is a warning rather than a failure to start: something else is
-        // already on it, and the rest of the application still works.
-        let receiver = {
-            let listen = config.overlay.receive_from.trim();
-            if listen.is_empty() || !config.overlay.receive_enabled {
-                None
-            } else {
-                match listen.parse() {
-                    Ok(address) => {
-                        match ac_core::broadcast::receiver::FrameReceiver::bind(address) {
-                            Ok(receiver) => {
-                                info!(%listen, "Listening for another machine's frames");
-                                Some(receiver)
-                            }
-                            Err(error) => {
-                                warn!(error = ?error, %listen, "Could not listen there");
-                                None
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        warn!(error = ?error, %listen, "receive_from is not an ip:port address");
-                        None
-                    }
-                }
-            }
-        };
+        // What the network has been asked to do. Read here, acted on by
+        // `reconcile_lan` on the first tick — see the field.
+        let lan = ac_core::lan::LanWish::from_config(&config);
 
         let mut state = Self {
             game,
@@ -526,8 +528,21 @@ impl AppState {
             bridge_offer: Arc::new(Mutex::new(None)),
             overlay_install_status: String::new(),
             overlay_debrief: Vec::new(),
-            receiver,
             remote_sender: None,
+            // **Nothing is opened here.** The wish is read from the
+            // configuration and the sockets are built on the first tick by the
+            // same reconciliation that handles every later change — one path
+            // rather than two, so a copy that starts with sharing already on
+            // and one that has it switched on afterwards behave identically.
+            lan,
+            lan_applied: ac_core::lan::LanWish::default(),
+            watching: None,
+            sharing: None,
+            finder: None,
+            peers: Vec::new(),
+            peer_cursor: 0,
+            link: ac_core::broadcast::session::Link::default(),
+            lan_trouble: None,
             broadcast,
             overlay_result_popup: false,
             show_overlay_diagnosis: false,
@@ -1369,16 +1384,22 @@ impl AppState {
         self.ui_state.update_blink();
         self.ui_state.analysis.tick_status();
 
-        // Somebody else driving takes the panel over entirely. Before the game
-        // is read, not after: the point of watching a friend is that the
+        // The sockets, against what the screens asked for. First, so a key
+        // pressed on the LAN tab means something on this very tick.
+        self.reconcile_lan();
+        self.pump_discovery();
+
+        // Somebody else driving takes the screens over entirely. Before the
+        // game is read, not after: the point of watching a friend is that the
         // numbers on screen are theirs, and letting the local tick run
         // underneath would have the two fighting for the same mapping.
-        if self.pump_received_frame() {
+        if self.pump_watched_session() {
             return;
         }
         if self.is_demo_mode {
             self.update_demo_tick();
             if let Some(reading) = self.reading.clone() {
+                self.share_reading(&reading);
                 self.process_tick_logic(reading);
             }
             return;
@@ -1473,6 +1494,7 @@ impl AppState {
             self.is_game_running = true;
         }
 
+        self.share_reading(&reading);
         self.process_tick_logic(reading);
     }
 
@@ -1544,43 +1566,185 @@ impl AppState {
         frame
     }
 
-    /// Draw whatever a remote sender published, if this build is listening.
+    /// Open, close and re-aim the sockets so they match what was asked for.
     ///
-    /// Returns whether a frame was taken over, so the caller can stop: while
-    /// somebody else's telemetry is on screen the local game is not what the
-    /// panel is about.
-    ///
-    /// The receiver is the other half of `broadcast::udp` and does no analysis:
-    /// what arrives is the finished frame, sentences and all, so the viewer
-    /// sees exactly what the driver's own engineer is saying.
-    fn pump_received_frame(&mut self) -> bool {
-        use ac_core::broadcast::receiver::Received;
+    /// **Compared rather than applied.** Nothing is torn down that has not
+    /// changed: a driver who edits their name mid-session must not lose the
+    /// link while they type, and re-binding a port on every tick would be a
+    /// socket a second. This is the only place any of the three is built.
+    fn reconcile_lan(&mut self) {
+        use ac_core::broadcast::session::{Listener, Sender};
 
-        let Some(receiver) = self.receiver.as_mut() else {
+        if self.lan == self.lan_applied {
+            return;
+        }
+        let wish = self.lan.clone();
+        self.lan_trouble = None;
+
+        if wish.listening_on() != self.lan_applied.listening_on()
+            || wish.quiet_after_s != self.lan_applied.quiet_after_s
+        {
+            self.watching = None;
+            self.link = ac_core::broadcast::session::Link::default();
+            self.remote_sender = None;
+            if let Some(address) = wish.listening_on() {
+                match Listener::open(address, wish.quiet_after_s) {
+                    Ok(listener) => self.watching = listener,
+                    Err(why) => {
+                        warn!(why, "Not listening for a shared session");
+                        self.lan_trouble = Some(why);
+                    }
+                }
+            }
+        }
+
+        if wish.sending_to() != self.lan_applied.sending_to()
+            || wish.share_as != self.lan_applied.share_as
+            || wish.share_hz != self.lan_applied.share_hz
+        {
+            self.sharing = None;
+            if let Some(target) = wish.sending_to() {
+                match Sender::open(target, &wish.share_as, wish.share_hz) {
+                    Ok(sender) => self.sharing = Some(sender),
+                    Err(why) => {
+                        warn!(why, "Not sharing this session");
+                        self.lan_trouble = Some(why);
+                    }
+                }
+            }
+        }
+
+        // **The group is joined the first time somebody wants the network at
+        // all**, and not at startup. Binding a multicast port on a machine
+        // whose owner never uses this is a firewall prompt for nothing.
+        if self.finder.is_none() && (wish.mode != ac_core::lan::Mode::Off || wish.announce) {
+            match ac_core::broadcast::discovery::Discovery::open() {
+                Ok(found) => self.finder = Some(found),
+                Err(why) => {
+                    // A network that refuses multicast is a normal state:
+                    // typing an address still works, and this only ever
+                    // shortened that.
+                    warn!(why, "Not looking for others on this network");
+                    self.lan_trouble.get_or_insert(why);
+                }
+            }
+        }
+
+        // The summary sink follows the same switch, so one flag does not turn
+        // half of it on. It is the frame rather than the session — see the
+        // `receiver` field — and it costs a kilobyte at ten a second.
+        // Only the network one: the panel's own mapping is in this list too
+        // and blanking a driver's windscreen because they typed in a name box
+        // is not a thing to do.
+        self.broadcast
+            .retain_sinks(|name| !name.starts_with("udp "));
+        if let Some(target) = wish.sending_to()
+            && let Ok(address) = target.parse()
+        {
+            match ac_core::broadcast::udp::UdpSink::new(
+                address,
+                self.game.id,
+                wish.share_as.clone(),
+                self.config.overlay.broadcast_hz,
+            ) {
+                Ok(sink) => self.broadcast.add(Box::new(sink)),
+                Err(error) => warn!(error = ?error, "Could not open the summary socket"),
+            }
+        }
+
+        self.lan_applied = wish;
+    }
+
+    /// Say we are here, and take in everybody who said the same.
+    fn pump_discovery(&mut self) {
+        use ac_core::broadcast::discovery::{Announcement, Role, SCHEMA, WHAT};
+
+        let Some(finder) = self.finder.as_mut() else {
+            return;
+        };
+        // Built from what is on screen rather than from the settings: the car
+        // and the track are what makes an entry in somebody else's list worth
+        // choosing.
+        let announcement = self.lan.announce.then(|| {
+            let (car, track) = self
+                .reading
+                .as_ref()
+                .map(|reading| (reading.fixed.car_model.clone(), reading.fixed.track.clone()))
+                .unwrap_or_default();
+            let role = if self.is_connected && self.lan.mode.sends() {
+                Role::Driving
+            } else if self.lan.mode.receives() {
+                Role::Watching
+            } else {
+                Role::Idle
+            };
+            Announcement {
+                what: WHAT.to_string(),
+                schema: SCHEMA,
+                id: finder.id().to_string(),
+                name: if self.lan.share_as.trim().is_empty() {
+                    "somebody".to_string()
+                } else {
+                    self.lan.share_as.trim().to_string()
+                },
+                role,
+                port: self.lan.listening_port(),
+                car,
+                track,
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                front_end: "terminal".to_string(),
+            }
+        });
+        finder.poll(announcement.as_ref());
+        self.peers = finder.peers();
+        self.peer_cursor = self.peer_cursor.min(self.peers.len().saturating_sub(1));
+    }
+
+    /// Somebody else's session, into the screens that draw this one.
+    ///
+    /// **Through `process_tick_logic`, exactly as a local game's reading is.**
+    /// Laps are detected here, the traces are filled here, the engineer runs
+    /// here — so every tab works and speaks this machine's own units and
+    /// language. A watcher used to be handed the finished frame and could see
+    /// it only through the in-game panel.
+    ///
+    /// Returns whether the local game should be left alone this tick.
+    fn pump_watched_session(&mut self) -> bool {
+        let Some(listener) = self.watching.as_mut() else {
             return false;
         };
-
-        match receiver.poll() {
-            Received::Frame(frame) => {
-                self.remote_sender = receiver.sender().map(|(from, name)| {
-                    if name.is_empty() {
-                        from.to_string()
-                    } else {
-                        format!("{name} ({from})")
-                    }
-                });
-                if let Some(writer) = self.overlay_writer.as_mut() {
-                    writer.publish(&frame);
-                }
-                true
-            }
-            // A datagram that was not ours, or nothing at all. Neither is a
-            // reason to stop drawing what is already on screen — a receiver
-            // polled sixty times a second sees `Idle` on almost every tick,
-            // and blanking the panel between two ten-a-second frames would
-            // flicker the whole session.
-            Received::Rejected(_) | Received::Idle => self.remote_sender.is_some(),
+        let arrived = listener.poll();
+        self.link = listener.link();
+        self.remote_sender = self.link.from.clone();
+        if arrived.is_empty() {
+            // Nothing this tick is not the end of a session: at thirty a
+            // second most ticks see nothing, and blanking the screens between
+            // two readings would flicker the whole thing.
+            return !self.link.quiet;
         }
+        // **Every one of them, in order.** A lap's splits and its trace are
+        // built out of the readings themselves, so one skipped because a newer
+        // had arrived is a hole in the picture.
+        for reading in arrived {
+            self.is_connected = true;
+            self.process_tick_logic(reading);
+        }
+        true
+    }
+
+    /// Send this reading to whoever is watching.
+    ///
+    /// Called with the *local* feed's readings only. Sending one that arrived
+    /// from somebody else would put two copies in a loop with each other.
+    fn share_reading(&mut self, reading: &Reading) {
+        let Some(sender) = self.sharing.as_mut() else {
+            return;
+        };
+        // "Only while I am on track": a session spent in the menus otherwise
+        // sends thirty readings a second saying nothing is happening, and a
+        // watcher cannot tell a driver in the pits from one who has quit.
+        sender.hold(self.lan.only_on_track && !reading.session.status.is_on_track());
+        sender.send(reading);
     }
 
     /// Publish a frame with no car in it.
@@ -1838,6 +2002,89 @@ mod tests {
     /// never again — so a first attempt that found nothing, or could not
     /// write, left the panel missing for the whole session however long the
     /// application then sat there with the game running. This is the retry,
+    /// **Two copies of this program, over a socket, and every screen filled.**
+    ///
+    /// The terminal could not watch anybody at all until v0.4.5, and the
+    /// window could — which is the whole reason the protocol moved into the
+    /// core. What this holds is the part that no unit test on either side
+    /// covers: that a reading sent by one copy comes out of the other's
+    /// `pump_watched_session` and through `process_tick_logic`, which is what
+    /// makes the dashboard, the traces and the engineer draw somebody else's
+    /// driving rather than a summary of it.
+    #[test]
+    fn one_copy_watches_another_and_fills_its_own_screens() {
+        use ac_core::games::{Reading, Status};
+
+        let mut watcher = AppState::new();
+        watcher.stage = AppStage::Running;
+        watcher.lan.watch_simply();
+        // Port zero: the kernel picks a free one, so this test cannot fail
+        // because a driver happens to be sharing on this machine right now.
+        watcher.lan.listen_on = "127.0.0.1:0".to_string();
+        watcher.reconcile_lan();
+        let listening_on = watcher
+            .watching
+            .as_ref()
+            .expect("the watcher opened a port")
+            .listening_on()
+            .to_string();
+
+        let mut driver = AppState::new();
+        driver.lan.share_simply("Kimi");
+        driver.lan.share_to = listening_on;
+        // Every reading, because this loop is faster than any interval and the
+        // pacing has a test of its own in the core.
+        driver.lan.share_hz = 0.0;
+        driver.reconcile_lan();
+        assert!(driver.sharing.is_some(), "the driver opened no link");
+
+        // Two laps of a very simple circuit: enough for the position to fall
+        // twice, which is what a completed lap is made of.
+        let mut sent = 0;
+        for step in 0..400 {
+            let round = (step % 200) as f32 / 200.0;
+            let mut reading = Reading::default();
+            reading.session.status = Status::Live;
+            reading.session.track_position = round;
+            reading.session.car_position_m = [round * 1000.0, 0.0, round * -500.0];
+            reading.session.completed_laps = step / 200;
+            reading.car.speed_kmh = 100.0 + round * 100.0;
+            reading.car.rpm = 6000;
+            reading.car.tyre_core_temp_c = [88.0; 4];
+            reading.fixed.car_model = "bmw_z4_gt3".to_string();
+            reading.fixed.track = "spa".to_string();
+            driver.share_reading(&reading);
+            sent += 1;
+            watcher.pump_watched_session();
+        }
+
+        assert_eq!(
+            driver.sharing.as_ref().map(|link| link.sent()),
+            Some(sent),
+            "the driver's link did not send every reading"
+        );
+        assert_eq!(
+            watcher.link.from.as_deref(),
+            Some("Kimi"),
+            "the watcher cannot say whose numbers are on its screen"
+        );
+        let heard = watcher
+            .reading
+            .as_ref()
+            .expect("the watcher has no reading, so every screen says it is waiting");
+        assert_eq!(heard.fixed.car_model, "bmw_z4_gt3");
+        assert!(heard.car.speed_kmh > 100.0);
+        assert!(
+            watcher.car_history.len() > 100,
+            "the traces are drawn from this and it holds {}",
+            watcher.car_history.len()
+        );
+        assert!(
+            watcher.is_connected,
+            "a watcher with a session on screen is not disconnected"
+        );
+    }
+
     /// driven the way the running application drives it.
     #[test]
     fn a_game_that_appears_later_still_gets_the_panel() {

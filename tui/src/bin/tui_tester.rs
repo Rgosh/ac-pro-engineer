@@ -385,6 +385,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         capture(&terminal, width, height, screenshot_dir, name)?;
     }
 
+    // 2a. The network tab, with somebody on the other end of it.
+    //
+    // **The state is real rather than posed where it can be**: the link and
+    // the peer list are what a copy holds after it has heard from another
+    // one, so the picture is of the screen a driver sees rather than of an
+    // empty form. It is the screen the whole of v0.4.5 is about and the one
+    // nobody had looked at.
+    {
+        use ac_core::broadcast::discovery::{Peer, Role};
+        use std::time::Instant;
+
+        app.lan.share_simply("Rgosh");
+        app.lan.share_to = "192.168.1.42:9001".to_string();
+        app.lan.watch_simply();
+        app.link = ac_core::broadcast::session::Link {
+            listening_on: "0.0.0.0:9001".to_string(),
+            from: Some("MartialArts".to_string()),
+            quiet: false,
+            trouble: None,
+            rate_hz: 29.8,
+            seen: 4_120,
+            age_ms: 38,
+            lost: 3,
+        };
+        app.peers = vec![
+            Peer {
+                id: "a".to_string(),
+                name: "MartialArts".to_string(),
+                role: Role::Driving,
+                reachable_at: "192.168.1.42:9001".parse()?,
+                car: "ks_audi_rs3_lms".to_string(),
+                track: "ks_nordschleife".to_string(),
+                version: "0.4.5".to_string(),
+                front_end: "window".to_string(),
+                last_seen: Instant::now(),
+            },
+            Peer {
+                id: "b".to_string(),
+                name: "Ann".to_string(),
+                role: Role::Watching,
+                reachable_at: "192.168.1.7:9001".parse()?,
+                car: String::new(),
+                track: String::new(),
+                version: "0.4.5".to_string(),
+                front_end: "terminal".to_string(),
+                last_seen: Instant::now(),
+            },
+        ];
+        app.active_tab = AppTab::Lan;
+        terminal.draw(|f| renderer.render(f, &app))?;
+        capture(&terminal, width, height, screenshot_dir, "LAN")?;
+
+        // And the state everybody meets first: switched off, nobody found.
+        app.lan = ac_core::lan::LanWish::default();
+        app.link = ac_core::broadcast::session::Link::default();
+        app.peers.clear();
+        terminal.draw(|f| renderer.render(f, &app))?;
+        capture(&terminal, width, height, screenshot_dir, "LAN_Off")?;
+    }
+
     // 2b. The same dashboard, on a game that measures a different set.
     //
     // Every screenshot above stands in for Assetto Corsa, which publishes

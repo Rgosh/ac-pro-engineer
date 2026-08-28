@@ -282,10 +282,22 @@ pub struct OverlayConfig {
 /// does. A configuration written before this existed has no `lan` key and gets
 /// the defaults, which is off — nothing starts leaving a machine because
 /// somebody updated.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanConfig {
     #[serde(default)]
     pub mode: crate::lan::Mode,
+    /// How many whole readings a second to send to another copy of this
+    /// program.
+    ///
+    /// **Its own number, not [`OverlayConfig::broadcast_hz`].** That one paces
+    /// the *summary* — a panel's worth of finished numbers, where ten a second
+    /// is more than a spectator can tell apart. What travels here is the
+    /// reading, and the watching machine builds laps, traces and the map's
+    /// line out of it, so the rate is how finely their picture of the driving
+    /// is drawn. Sharing one field meant somebody who had set the summary to
+    /// ten got a map drawn from ten samples a second and no way to know why.
+    #[serde(default = "default_share_hz")]
+    pub share_hz: f32,
     /// Only send while the car is on track. See [`crate::lan::LanWish`].
     #[serde(default)]
     pub only_on_track: bool,
@@ -297,8 +309,24 @@ pub struct LanConfig {
     pub announce: bool,
 }
 
+impl Default for LanConfig {
+    fn default() -> Self {
+        Self {
+            mode: crate::lan::Mode::default(),
+            share_hz: default_share_hz(),
+            only_on_track: false,
+            quiet_after_s: default_quiet_after(),
+            announce: true,
+        }
+    }
+}
+
 fn default_quiet_after() -> f32 {
     3.0
+}
+
+fn default_share_hz() -> f32 {
+    30.0
 }
 
 fn default_broadcast_hz() -> f32 {
@@ -439,6 +467,8 @@ pub struct KeyBindings {
     pub tab_settings: String,
     #[serde(default = "key_tab_9")]
     pub tab_guide: String,
+    #[serde(default = "key_tab_10")]
+    pub tab_lan: String,
 
     #[serde(default = "key_analysis_save")]
     pub analysis_save: String,
@@ -456,6 +486,22 @@ pub struct KeyBindings {
     pub setup_browser: String,
     #[serde(default = "key_setup_download")]
     pub setup_download: String,
+
+    /// Start sharing this session, or stop.
+    #[serde(default = "key_lan_share")]
+    pub lan_share: String,
+    /// Start watching, or stop.
+    #[serde(default = "key_lan_watch")]
+    pub lan_watch: String,
+    /// Send to whoever the cursor is on.
+    #[serde(default = "key_lan_pick")]
+    pub lan_pick: String,
+    /// Everything off, keeping every address where it was.
+    #[serde(default = "key_lan_off")]
+    pub lan_off: String,
+    /// Say on the network that this copy is here, or stop saying it.
+    #[serde(default = "key_lan_announce")]
+    pub lan_announce: String,
 }
 
 fn key_help() -> String {
@@ -512,6 +558,26 @@ fn key_tab_8() -> String {
 fn key_tab_9() -> String {
     "9".to_string()
 }
+/// The tenth tab, on the tenth digit. Nine tabs took 1 to 9 and there is
+/// exactly one key left that reads as "the next one".
+fn key_tab_10() -> String {
+    "0".to_string()
+}
+fn key_lan_share() -> String {
+    "s".to_string()
+}
+fn key_lan_watch() -> String {
+    "w".to_string()
+}
+fn key_lan_pick() -> String {
+    "enter".to_string()
+}
+fn key_lan_off() -> String {
+    "o".to_string()
+}
+fn key_lan_announce() -> String {
+    "a".to_string()
+}
 fn key_analysis_save() -> String {
     "s".to_string()
 }
@@ -555,11 +621,17 @@ impl Default for KeyBindings {
             tab_ffb: key_tab_7(),
             tab_settings: key_tab_8(),
             tab_guide: key_tab_9(),
+            tab_lan: key_tab_10(),
             analysis_save: key_analysis_save(),
             analysis_load: key_analysis_load(),
             analysis_compare: key_analysis_compare(),
             analysis_export: key_analysis_export(),
             analysis_filter: key_analysis_filter(),
+            lan_share: key_lan_share(),
+            lan_watch: key_lan_watch(),
+            lan_pick: key_lan_pick(),
+            lan_off: key_lan_off(),
+            lan_announce: key_lan_announce(),
             setup_browser: key_setup_browser(),
             setup_download: key_setup_download(),
         }

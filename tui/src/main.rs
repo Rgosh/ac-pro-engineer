@@ -1008,6 +1008,84 @@ async fn main() -> Result<(), anyhow::Error> {
                                 _ => {}
                             }
                         }
+                        // **Nothing here opens a socket.** Every key moves the
+                        // wish and the tick reconciles it, which is what makes
+                        // a keypress take effect without the drawing thread
+                        // waiting on a name to resolve — see
+                        // `AppState::reconcile_lan`.
+                        AppTab::Lan => {
+                            let mut wish = app_lock.lan.clone();
+                            match (action, key.code) {
+                                (Some(keys::Action::LanShare), _) => {
+                                    if wish.mode.sends() {
+                                        wish.mode = if wish.mode.receives() {
+                                            ac_core::lan::Mode::Watch
+                                        } else {
+                                            ac_core::lan::Mode::Off
+                                        };
+                                    } else {
+                                        // The name a watcher sees. The game's
+                                        // own is the best guess there is, and
+                                        // is better than "somebody".
+                                        let name = if wish.share_as.trim().is_empty() {
+                                            app_lock.session_info.player_name.clone()
+                                        } else {
+                                            wish.share_as.clone()
+                                        };
+                                        wish.share_simply(&name);
+                                    }
+                                }
+                                (Some(keys::Action::LanWatch), _) => {
+                                    if wish.mode.receives() {
+                                        wish.mode = if wish.mode.sends() {
+                                            ac_core::lan::Mode::Share
+                                        } else {
+                                            ac_core::lan::Mode::Off
+                                        };
+                                    } else {
+                                        wish.watch_simply();
+                                    }
+                                }
+                                (Some(keys::Action::LanPick), _) => {
+                                    if let Some(peer) =
+                                        app_lock.peers.get(app_lock.peer_cursor)
+                                        && peer.reachable()
+                                    {
+                                        wish.send_to_peer(peer);
+                                        if wish.share_as.trim().is_empty() {
+                                            let name =
+                                                app_lock.session_info.player_name.clone();
+                                            wish.share_simply(&name);
+                                        }
+                                    }
+                                }
+                                (Some(keys::Action::LanOff), _) => wish.off(),
+                                (Some(keys::Action::LanAnnounce), _) => {
+                                    wish.announce = !wish.announce;
+                                }
+                                (_, KeyCode::Up) => {
+                                    app_lock.peer_cursor =
+                                        app_lock.peer_cursor.saturating_sub(1);
+                                }
+                                (_, KeyCode::Down) => {
+                                    let last = app_lock.peers.len().saturating_sub(1);
+                                    app_lock.peer_cursor =
+                                        (app_lock.peer_cursor + 1).min(last);
+                                }
+                                _ => {}
+                            }
+                            if wish != app_lock.lan {
+                                // **Written down as it changes.** A switch
+                                // that has to be set again after a restart is
+                                // a switch somebody stops using, and both
+                                // programs read the same file.
+                                wish.write_into(&mut app_lock.config);
+                                if let Err(error) = app_lock.config.save() {
+                                    error!(error = ?error, "Could not save the network settings");
+                                }
+                                app_lock.lan = wish;
+                            }
+                        }
                         _ => {}
                     },
                 }
