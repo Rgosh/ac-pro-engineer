@@ -5,7 +5,8 @@ program. The window has its own copy of this in `RGProEngineer/docs/`, and the
 two listings are separate pages that point at each other.
 
 The description itself is `overtake-listing.bbcode` beside this; the post for a
-new release is `overtake-0.4.5-post.bbcode`.
+new release is `overtake-0.4.5-post.txt`, which is plain text rather than
+BBCode — see below.
 
 | Field | What to put |
 |---|---|
@@ -31,8 +32,13 @@ after an update would be the stale one.
    out of it rather than letting two accumulate.
 2. **The version field** — the number alone, and it is what people see in the
    "updated" column.
-3. **The post** — `overtake-0.4.5-post.bbcode` in the mod's own update thread.
+3. **The post** — `overtake-0.4.5-post.txt` in the mod's own update thread.
    That is what reaches everybody who is watching it.
+
+**The post is plain text and carries no pictures.** The listing is the page
+somebody lands on and it is worth the screenshots; an update post is read by
+people who already have the program, and every one on this thread so far has
+been words. Paste it straight in.
 
 ## The description editor
 

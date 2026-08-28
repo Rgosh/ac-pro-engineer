@@ -74,13 +74,15 @@ Both products have a page there, and each has its own copy of the words.
 | | The terminal | The window |
 |---|---|---|
 | Listing | `docs/overtake-listing.bbcode` | `RGProEngineer/docs/overtake-listing.bbcode` |
-| Release post | `docs/overtake-0.4.5-post.bbcode` | `RGProEngineer/docs/overtake-0.4.5-post.bbcode` |
+| Release post | `docs/overtake-0.4.5-post.txt` | `RGProEngineer/docs/overtake-0.4.5-post.txt` |
 | The form | `docs/overtake-fields.md` | `RGProEngineer/docs/overtake-fields.md` |
 | Version field | `0.4.5` | `0.4.5` |
 | Attachment | none — it links to the GitHub release | `dist/rg-pro-engineer-0.4.5-windows-and-linux.zip` |
 
-Paste into the **source view** of the editor, not the rich-text box, or the
-tags arrive as literal words.
+**The listing is BBCode; the update post is not.** Paste the listing into the
+editor's **source view** or its tags arrive as literal words. The post is plain
+text on purpose — an update post carries no pictures and no markup, which is
+how every previous one on both threads was written.
 
 And one reply that is owed:
 `RGProEngineer/docs/overtake-reply-martialarts.bbcode` — it credits the report
