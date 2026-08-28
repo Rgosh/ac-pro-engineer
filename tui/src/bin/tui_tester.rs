@@ -407,6 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rate_hz: 29.8,
             seen: 4_120,
             age_ms: 38,
+            worst_age_ms: 210,
             lost: 3,
         };
         app.peers = vec![

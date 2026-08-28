@@ -350,11 +350,14 @@ fn render_deeper(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Style::default().fg(Color::DarkGray),
         )));
     }
+    // **Named rather than promised.** A line pointing at a screen that does
+    // not exist yet is the fault the hint tests were written for; these three
+    // are in `config.json`, under `lan`, and both programs read that file.
     lines.push(Line::from(Span::styled(
         format!(
             "{}  ·  {}",
-            "everything else is in Settings → SHARING".tr_lang(lang),
-            "the same file both programs read".tr_lang(lang),
+            "rate and the rest: config.json, under \"lan\"".tr_lang(lang),
+            "both programs read it".tr_lang(lang),
         ),
         Style::default().fg(Color::DarkGray),
     )));

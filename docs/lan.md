@@ -1,0 +1,126 @@
+# Sharing a session, and watching one
+
+Two people, two machines, one network. One drives; the other sees the
+dashboard, the traces, the map, the corner table and the engineer — of the
+driving happening on the other machine, in their own units and their own
+language.
+
+It works between **any two** of the three: the terminal (`ac_pro_engineer`),
+the window (Pro Engineer), and either of them watching the other. They speak
+one protocol as of v0.4.5.
+
+## The short version
+
+**Driving, and want to be watched.** Open `LAN` — `0` in the terminal, the LAN
+button in the window. Press `S`. That is sharing on: you are announced on the
+network, you are listening, and the rate and the port are chosen for you. The
+only thing left is *who to send to*, and it is the line the screen says is
+missing.
+
+**Watching somebody.** Open `LAN`. Press `W`. Nothing else is asked. When the
+driver's copy appears in `ON THIS NETWORK`, that is them; your screens fill as
+soon as they start sending to you.
+
+**Which of you picks whom does not matter.** Either end can aim at the other:
+put the cursor on a name and press `Enter`, and that machine becomes the one
+your session is sent to. Two people trying it out usually both press `S` and
+`W` and pick each other, which is `BOTH` — you send yours and watch theirs.
+
+**Off.** `O`. Every address and name is kept, so switching back on tomorrow is
+one key rather than one form.
+
+## What each key does
+
+| Key | What |
+|---|---|
+| `0` | the LAN screen |
+| `S` | share this session, or stop |
+| `W` | watch, or stop |
+| `↑` `↓` | move through the list of machines |
+| `Enter` | send my session to the one the cursor is on |
+| `O` | everything off, keeping the addresses |
+| `A` | be findable on the network, or stop being |
+
+They are bindings like every other key in this program: `config.json`, under
+`keys`, and the Settings screen lists them.
+
+## What travels
+
+The **reading** — everything one tick of the simulator says, about two
+kilobytes, thirty times a second. The watching machine runs its own analysis
+on it: it finds the laps, builds the traces, draws the map's line, and its own
+engineer writes the advice. That is why a watcher gets every screen rather
+than a summary, and why the advice is in the watcher's language.
+
+An **announcement** is separate and much smaller: a name, whether you are
+driving or watching, the port you listen on, the car, the track and the
+release. Nothing about the driving is in it — a machine with no business here
+can read every packet on the group and learn a name and a port. Turning `A`
+off stops sending it; it does not stop you *seeing* anybody, because listening
+says nothing.
+
+Two numbers, if you need them:
+
+* **9001** — where a session arrives. One machine owns it.
+* **9002** — the group everybody joins to find each other: `239.255.42.99`,
+  which routers do not forward off the local network.
+
+## When it does not work
+
+Run the probe. It is the same four things the program does, printed:
+
+```bash
+cargo run -p ac_core --example lan_probe
+```
+
+and on the other machine, aimed back at the first one:
+
+```bash
+cargo run -p ac_core --example lan_probe -- send 192.168.1.42:9001
+```
+
+It says this machine's address, whether the port could be listened on, whether
+the group could be joined, who was found, and whether anything arrived. A real
+run between two processes looks like this:
+
+```text
+── this machine ─────────────────────────────────────────
+  192.168.1.167  — this is what a friend on the LAN sends to
+
+── the port a session arrives on ────────────────────────
+  listening on 0.0.0.0:9001
+
+── the group copies find each other on ──────────────────
+  joined — announcing as "lan_probe" every two seconds
+
+── twenty seconds ──────────────────────────────────────
+  1 copies on this network:
+    lan_probe        not listening          driving   probe 0.4.5
+  a session is arriving from lan_probe
+    300 readings, 29 a second, 0 ms old, 0 lost — 122 km/h
+```
+
+The three things that actually go wrong:
+
+* **"cannot listen: address already in use."** The program is already running
+  and holding the port. Watch from the program, not from the probe.
+* **The list stays empty.** The network is not carrying multicast — a guest
+  network, a VPN, some office switches. Everything still works: type the other
+  machine's address into `sending to` by hand. The probe prints the address to
+  type.
+* **A name appears but says `not listening`.** They have not pressed `W`, so
+  there is nowhere to send. That is a state, not a fault, and the list says so
+  rather than offering a link that would carry nothing.
+
+## Two copies on one machine
+
+Supported on purpose, and the way to try this before trusting it at a LAN
+party: the group is joined on loopback as well as on the network, so a second
+copy on the same desk finds the first. Give the second one a different
+listening port if you want both to receive.
+
+## What a watcher never does
+
+Write a record. Somebody else's lap is not your personal best, and the file
+that outlives the session is the one place that mistake would be permanent —
+the same rule the demo obeys.
