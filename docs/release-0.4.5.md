@@ -84,8 +84,8 @@ editor's **source view** or its tags arrive as literal words. The post is plain
 text on purpose — an update post carries no pictures and no markup, which is
 how every previous one on both threads was written.
 
-And one reply that is owed:
-`RGProEngineer/docs/overtake-reply-martialarts.bbcode` — it credits the report
+And one reply that is owed, in the window's own thread:
+`RGProEngineer/docs/overtake-reply-to-the-report.txt` — it thanks the report
 that found the mirrored car and asks for the one screenshot that would settle
 the question this release could not.
 
@@ -108,10 +108,10 @@ Run it again only if you change a page.
 
 ## What is still open after this release
 
-* **MartialArts's inner-minus-outer question.** The mirrored car explains
-  everything he could see; it does not explain a negative `I-O` in the advice
-  text, if he saw one. The reply asks for the screenshot that decides it. Not a
-  blocker — both fixes ship either way.
+* **The inner-minus-outer question from the report.** The mirrored car explains
+  everything that could be seen on screen; it does not explain a negative `I-O`
+  in the advice text, if there was one. The reply asks for the screenshot that
+  decides it. Not a blocker — both fixes ship either way.
 * **Competizione in the window.** One constant away in the code, and one driven
   stint away in fact: its brake and pad thresholds have never been read against
   real laps. `docs/plan-acc.md` §10.

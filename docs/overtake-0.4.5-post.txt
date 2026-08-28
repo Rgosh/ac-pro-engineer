@@ -60,9 +60,8 @@ link is bad, you can see that it is the link.
   doing the opposite. Too little negative camber means the tyre stands up and
   the outer shoulder takes the load, and that is what it says now. The message
   also names the edge — "outer edge hotter" — instead of "contact patch
-  inefficient" beside a number you had to work out for yourself. Reported by
-  MartialArts on the graphical version's thread; the engineer is shared, so both
-  got the fix.
+  inefficient" beside a number you had to work out for yourself. Reported on the
+  graphical version's thread; the engineer is shared, so both got the fix.
 * "not a saved lap: missing field rpms". Choosing your own reference lap could
   refuse to open it. A field was added to the lap format and old files were
   never taught to survive it — so every lap saved before that release stopped
