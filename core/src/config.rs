@@ -90,6 +90,15 @@ pub struct AppConfig {
     #[serde(default)]
     pub overlay: OverlayConfig,
 
+    /// What the driver has asked the network to do.
+    ///
+    /// The addresses live in [`OverlayConfig`] and always have; this is
+    /// everything a mode needs besides them. **Both front ends read it**, so a
+    /// person who set sharing up in one does not set it up again in the other
+    /// — see [`crate::lan`].
+    #[serde(default)]
+    pub lan: LanConfig,
+
     #[serde(default = "default_data_path")]
     pub data_path: PathBuf,
 
@@ -264,6 +273,32 @@ pub struct OverlayConfig {
     /// [`Self::broadcast_enabled`].
     #[serde(default = "default_true")]
     pub receive_enabled: bool,
+}
+
+/// The half of the streaming settings that is not an address.
+///
+/// Its own section rather than four more fields on [`OverlayConfig`]: those
+/// are about what the *panel* draws, and these are about what the network
+/// does. A configuration written before this existed has no `lan` key and gets
+/// the defaults, which is off — nothing starts leaving a machine because
+/// somebody updated.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LanConfig {
+    #[serde(default)]
+    pub mode: crate::lan::Mode,
+    /// Only send while the car is on track. See [`crate::lan::LanWish`].
+    #[serde(default)]
+    pub only_on_track: bool,
+    /// How long a link may be silent before a screen says so.
+    #[serde(default = "default_quiet_after")]
+    pub quiet_after_s: f32,
+    /// Say on the network that this copy is here.
+    #[serde(default = "default_true")]
+    pub announce: bool,
+}
+
+fn default_quiet_after() -> f32 {
+    3.0
 }
 
 fn default_broadcast_hz() -> f32 {
@@ -624,6 +659,7 @@ impl Default for AppConfig {
             // changing and is what an old configuration already says.
             game: String::new(),
             overlay: OverlayConfig::default(),
+            lan: LanConfig::default(),
         }
     }
 }

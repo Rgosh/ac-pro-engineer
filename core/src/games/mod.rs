@@ -53,7 +53,7 @@ pub type GameId = &'static str;
 /// told what the game reports withholds everything rather than inventing it.
 /// That failure is loud — the advice goes silent, and the screenshots show it —
 /// where the permissive default fails silently, one wrong verdict at a time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Capabilities {
     /// Inner and outer tyre surface temperatures, not just the middle. The
     /// camber advice is built entirely on the difference between them.

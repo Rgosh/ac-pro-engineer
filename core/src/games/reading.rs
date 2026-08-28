@@ -23,6 +23,7 @@
 //!   capability flags are for, and why they have to be consulted.
 
 use super::Capabilities;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 
 /// Index of the front-left wheel in every `[f32; 4]` below.
@@ -88,6 +89,26 @@ impl Name {
     }
 }
 
+/// **On the wire it is the word, not the buffer.** A `Name` is thirty-two
+/// bytes and a length, and a derived `Serialize` would put a thirty-three
+/// element array of numbers in the JSON — unreadable to the fifty lines of
+/// Python this format exists to be readable by, and four times the size. It
+/// travels as `"semislick"` and arrives through the same constructor a game's
+/// reader uses, so a name too long for the buffer is truncated on the way in
+/// exactly as it would have been on the machine that read it.
+impl Serialize for Name {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Ok(Self::new(&text))
+    }
+}
+
 impl Default for Name {
     fn default() -> Self {
         Self {
@@ -116,7 +137,7 @@ impl From<&str> for Name {
 }
 
 /// Whether the game is actually driving a car right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Status {
     /// In the menus, or nothing published yet.
     #[default]
@@ -137,7 +158,7 @@ impl Status {
 }
 
 /// What kind of session is running.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SessionKind {
     #[default]
     Unknown,
@@ -194,7 +215,7 @@ impl SessionKind {
 }
 
 /// What the car is doing this instant.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Car {
     pub speed_kmh: f32,
     pub rpm: i32,
@@ -344,7 +365,7 @@ impl Car {
 /// see [`Name`] for why the tyre compound is not a `String`.
 // `Default` by hand rather than derived: one field's default is not zero, and
 // a derive cannot say so. See `lap_is_valid`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     pub status: Status,
     pub kind: SessionKind,
@@ -434,7 +455,7 @@ impl Default for Session {
 /// Read once on connecting and refreshed with every reading, because a game
 /// that changes car or track without closing is a game that would otherwise
 /// keep reporting the previous one.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fixed {
     pub car_model: String,
     pub track: String,
@@ -451,7 +472,7 @@ pub struct Fixed {
 }
 
 /// Everything one tick of a simulator has to say.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Reading {
     pub car: Car,
     pub session: Session,

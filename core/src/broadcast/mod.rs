@@ -13,6 +13,16 @@
 //! * a friend on another machine, or a relay for a championship, is the same
 //!   UDP sink with a different address
 //!
+//! And beside all three, because it answers a different question: another copy
+//! of *this program* watching a driver is sent the whole [`games::Reading`]
+//! rather than the finished frame — [`session`] — and finds the driver without
+//! anybody reading an address out loud — [`discovery`]. A frame is a panel's
+//! worth of data; a watcher wants the map, the traces and its own units, and
+//! none of the three survive a summary. See `session`'s own header for the
+//! table.
+//!
+//! [`games::Reading`]: crate::games::Reading
+//!
 //! ## The rule that shapes all of it
 //!
 //! **A sink is allowed to be slow, to fail, and to go away, and the tick must
@@ -30,7 +40,9 @@
 //! [`OverlayFrame`] has speed, gear, four corners, lap times and advice text in
 //! it, and nothing of any one simulator's own layout anywhere.
 
+pub mod discovery;
 pub mod receiver;
+pub mod session;
 pub mod shm;
 pub mod udp;
 
