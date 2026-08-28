@@ -1,0 +1,41 @@
+[SIZE=5][B]v0.4.5 — watch somebody else's session[/B][/SIZE]
+
+Two people, two machines, one network. One drives; the other presses one key and their own screens fill with the driving happening on the other machine — the dashboard, the traces, the map, the corner table and the engineer.
+
+[IMG]https://proengineer.app/screenshots/LAN.png[/IMG]
+
+[B]Not a summary of it.[/B] The whole reading travels, thirty times a second, so the watching copy finds the laps, builds the traces, draws the map's line and writes its own advice — in [I]its[/I] units and [I]its[/I] language rather than the sender's. A spectator can ask the same questions the driver can.
+
+[LIST]
+[*]Open [B]LAN[/B] — the tenth tab, on [B]0[/B]. [B]S[/B] shares, [B]W[/B] watches, [B]Enter[/B] aims at whoever the cursor is on, [B]O[/B] turns everything off and keeps the addresses
+[*]The copies find each other on the network. Nobody reads an IP address out loud, and typing one still works where multicast does not
+[*]It works between this and the [URL='https://proengineer.app/rg/']graphical front end[/URL] in either direction — one protocol as of this release
+[*]What is announced carries a name, a role, a port, the car and the track, and [B]nothing about the driving[/B]
+[*]No server in the middle, because there is no server. Nothing leaves your local network
+[/LIST]
+
+[B]Across the internet[/B] it needs no code and no relay: a mesh VPN — Tailscale or ZeroTier, both free for a handful of machines — puts both computers on one private network wherever they are, and you type the address instead of picking it from the list. About half a megabit a second, one way. The guide is `docs/lan.md` in the repository.
+
+[B]Settings → SHARING[/B] holds the half nobody looks at twice: readings a second, only-while-on-track, the quiet timeout, being findable, and whether a session is accepted from the whole network or only from this machine.
+
+[HR][/HR]
+[SIZE=5][B]Fixed[/B][/SIZE]
+
+[LIST]
+[*][B]The camber advice no longer contradicts itself.[/B] Told to add negative camber on a car already at -3.5°, you would read the reason first — and it said "the outer shoulder is not being loaded through corners", which is the argument for the opposite. Too little negative camber means the tyre stands up and the outer shoulder takes the load, and that is what it says now. The message also names the edge — "outer edge hotter" — instead of "contact patch inefficient" beside a number you had to interpret. Reported on the graphical front end's thread by [B]MartialArts[/B]; the rule is shared, so both got it.
+[*][B]A lap saved by an older release loads again.[/B] Selecting your own reference lap could answer [I]"not a saved lap: missing field `rpms`"[/I]. That field was added to a sample and not to the format's rules, so every lap saved before it stopped opening — and the laps most worth keeping are the oldest ones.
+[*][B]The demo fills the Analysis tab.[/B] It built one lap, and that tab is the half of this program that is about comparing: one entry in the picker, nothing to overlay, nothing to subtract. Five laps now.
+[*][B]An empty mapping is no longer read as a running game.[/B] On Linux the bridge creates the shared-memory pages when it starts and leaves them when the game quits, so a reader gets zeros whether or not anything is running.
+[*][B]`engineer_probe` prints the tread it judged[/B] — inner, middle, outer, the inner-minus-outer every camber verdict is made of, and the camber the wheel is running. When that advice was questioned there was no way to ask the program what it had read, only what it had concluded.
+[/LIST]
+
+[HR][/HR]
+[SIZE=5][B]Worth knowing[/B][/SIZE]
+
+[LIST]
+[*][B]Both machines need 0.4.5 to watch each other.[/B] There is no half-working mode with the previous release, and the screen says so by name rather than calling the datagram noise.
+[*][B]The frame does not change.[/B] Every `shm-bridge.exe` and every installed panel from v0.4.0 onward keeps working — nobody has to fetch a bridge.
+[*]Numbered 0.4.5 rather than 0.4.3 because the two skipped numbers are the state where the two front ends spoke different protocols, and nothing shipped from there.
+[/LIST]
+
+[URL='https://github.com/Rgosh/ac-pro-engineer/releases/latest']Download[/URL] · [URL='https://proengineer.app/changelog/']full changelog[/URL]

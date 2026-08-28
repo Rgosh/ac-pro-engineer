@@ -1,0 +1,104 @@
+[SIZE=6][B]Pro Engineer — a race engineer for Assetto Corsa and Competizione, in your terminal and in the car[/B][/SIZE]
+
+Telemetry tools show you numbers. The hard part was never reading them — it is knowing which of the forty on screen is the one costing you the lap.
+
+This one answers that in sentences, on a second screen and inside the car.
+
+[IMG]https://proengineer.app/screenshots/Dashboard.png[/IMG]
+
+[B]Free and open source.[/B] No account, no tier, nothing uploaded. AGPL v3, and every threshold, every piece of advice and every read of the game's memory is in the repository where anyone can check it.
+
+[HR][/HR]
+[SIZE=5][B]The engineer[/B][/SIZE]
+
+Advice grouped and ranked, with the reasoning under each line and a confidence marker in front of it. Four cold tyres is one sentence, not four.
+
+[IMG]https://proengineer.app/screenshots/Engineer.png[/IMG]
+
+[QUOTE][B]Fronts: outer edge hotter (I-O: -6 °C)[/B]
+More neg. camber (now: -1.5°). If maxed → soften ARB.
+[I]the tyre is standing too upright, so the outer shoulder takes the load in a corner[/I][/QUOTE]
+
+Every rule says what it read, what it concluded and how you will know whether the change worked. Advice that rests on a measurement your game does not publish [B]stays quiet[/B] rather than guessing — that is the whole reason the two simulators are told apart.
+
+[HR][/HR]
+[SIZE=5][B]Two simulators, and what each one measures[/B][/SIZE]
+
+[LIST]
+[*][B]Assetto Corsa[/B] — everything, plus the in-game panel
+[*][B]Assetto Corsa Competizione[/B] — telemetry, strategy and lap analysis; no tread temperatures and no tyre wear, because the game publishes neither, so those verdicts are withheld and brake pad life takes their place
+[/LIST]
+
+You pick the game on the launcher. It is not detected: both publish under the same three names, and a confident wrong answer costs a Proton prefix and an engineer running the other game's numbers.
+
+[IMG]https://proengineer.app/screenshots/Launcher_Game.png[/IMG]
+
+[HR][/HR]
+[SIZE=5][B]NEW in v0.4.5 — somebody else's session, on your screens[/B][/SIZE]
+
+Two people, two machines, one network. One drives; the other presses one key and their own screens fill with the driving happening on the other machine — the dashboard, the traces, the map, the corner table and the engineer.
+
+[IMG]https://proengineer.app/screenshots/LAN.png[/IMG]
+
+[B]Not a summary of it.[/B] The whole reading travels, so the watching copy finds the laps, builds the traces and writes its own advice — in [I]its[/I] units and [I]its[/I] language.
+
+[LIST]
+[*]Open [B]LAN[/B] (key [B]0[/B]), press [B]S[/B] to share or [B]W[/B] to watch
+[*]The copies find each other on the network — nobody reads an IP address out loud
+[*]It works between this and the graphical front end in either direction
+[*]What is announced carries a name, a role and a port, and nothing about the driving
+[*]No server in the middle, because there is no server. Nothing leaves your network
+[/LIST]
+
+Across the internet it works through a mesh VPN — Tailscale or ZeroTier, both free — at about half a megabit a second. The guide is in the repository.
+
+[HR][/HR]
+[SIZE=5][B]In the car[/B][/SIZE]
+
+Five windows drawn by a Custom Shaders Patch Lua app: the panel, the engineer, telemetry, status and the lap debrief. Each opens and closes on its own, every block switches off, and the whole thing is readable at 4K.
+
+[IMG]https://proengineer.app/screenshots/Overlay_Main.png[/IMG]
+
+[B]It computes nothing.[/B] Lua runs on Assetto Corsa's render thread, where a millisecond is a sixth of the frame budget at 165 Hz — so everything is worked out on the desktop side and copied in. The application installs the panel itself, every time it starts.
+
+Assetto Corsa only: CSP is an AC mod and Competizione is Unreal Engine.
+
+[HR][/HR]
+[SIZE=5][B]The lap, afterwards[/B][/SIZE]
+
+[IMG]https://proengineer.app/screenshots/Analysis_Corners.png[/IMG]
+
+Corner by corner against a reference lap, each loss priced in seconds and named — braking point, entry, minimum and exit speed, and one instruction resting on two measured numbers. Plus sector splits, a ghost against your own best lap rather than the game's, MoTeC-compatible CSV export, and a sixteen-chapter setup guide built in.
+
+[HR][/HR]
+[SIZE=5][B]Linux and Steam Deck[/B][/SIZE]
+
+Both are first-class. Under Proton the game's telemetry lives inside the Wine prefix, so a small bridge runs in it and mirrors the pages out — the application fetches it, starts it and tells you what it found. One screen answers "why is the panel blank" by naming which of the application, the bridge and the panel does not fit.
+
+[HR][/HR]
+[SIZE=5][B]What it costs to run[/B][/SIZE]
+
+[LIST]
+[*]About [B]0.1 % of one CPU core[/B]
+[*]Nothing in your game folder except its own panel, which it can also remove
+[*]No account, no telemetry sent anywhere you did not choose
+[/LIST]
+
+[HR][/HR]
+[SIZE=5][B]Download[/B][/SIZE]
+
+[LIST]
+[*][URL='https://github.com/Rgosh/ac-pro-engineer/releases/latest'][B]Latest release on GitHub[/B][/URL] — Windows and Linux
+[*][URL='https://proengineer.app/']proengineer.app[/URL] — what it does, screen by screen
+[/LIST]
+
+Every archive is published with a SHA-256 beside it, and the in-app updater checks what it downloads against that list.
+
+[HR][/HR]
+[SIZE=5][B]Free, and open[/B][/SIZE]
+
+AGPL v3: [URL='https://github.com/Rgosh/ac-pro-engineer']github.com/Rgosh/ac-pro-engineer[/URL]
+
+There is also a [URL='https://proengineer.app/rg/']graphical front end[/URL] on the same engine — free as well, and a window rather than a terminal.
+
+⭐ If it is useful, a star on the repository is the only marketing this project has.

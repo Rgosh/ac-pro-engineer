@@ -59,6 +59,28 @@ from v0.4.0 onward keeps working, and nobody has to fetch a bridge.
   inner-minus-outer that every camber verdict is made of, and the camber the
   wheel is running. When that advice was questioned there was no way to ask the
   program what it had *read* — only what it had concluded.
+- **A lap saved by an older release loads again.** Selecting your own reference
+  lap could answer "not a saved lap: missing field `rpms`". That field was
+  added to a sample and not to the format's rules, so every lap saved before it
+  stopped opening — and the laps most worth keeping are the oldest ones. `x`,
+  `y` and `rpms` default now, and the rule is written where the next field will
+  be added: one that arrives after the format shipped defaults, the ones that
+  were there from the first version do not, so a genuinely wrong file still
+  fails rather than loading as a lap of zeroes. The regression test uses the
+  actual file that failed.
+- **The demo fills the Analysis tab.** It built one lap, and that tab is the
+  half of this program that is *about* comparing: with a single lap the picker
+  had one entry, there was no reference to overlay, the sector table had
+  nothing to subtract and the delta was flat. Five laps now, a second and a
+  half apart and slower in the corners rather than everywhere.
+- **An empty mapping is no longer read as a running game.** On Linux the bridge
+  creates the shared-memory pages when it starts and leaves them when the game
+  quits, so a reader gets a `Reading` of zeros whether or not anything is
+  running. `games::Reading::car_is_loaded` is the shared answer — the car's
+  name or its rev limit, not the status, because Assetto Corsa reports
+  `Status::Off` in the menus and in the garage. A watched session obeys the
+  same rule: a friend who has not started their game reads as waiting rather
+  than as a nameless car at 0 km/h.
 
 ### Changed
 
@@ -69,6 +91,27 @@ from v0.4.0 onward keeps working, and nobody has to fetch a bridge.
 - The settings categories, their captions and the letter that opens each are one
   list now. The footer's `[A/S/D/F/G/H]` is built from it, so it cannot go stale
   the way `[A/S/D]` did twice.
+- **Sharing and listening each have a switch of their own**, so turning either
+  off keeps the address it was using rather than making somebody type it again
+  next time.
+- **A receiver reports the port it actually got.** Asking for port zero means
+  "any free one", and a screen has to be able to say which one that was.
+- The hint check walks the tab strip rather than a list of nine tabs written
+  out by hand — a tenth added to the program and not to the test is exactly the
+  failure that test exists to catch, one level up.
+
+### Known
+
+- **Both machines have to be on 0.4.5 to watch each other.** There is no
+  half-working mode with v0.4.2, and the screen says so by name rather than
+  calling the datagram noise.
+- **A whole reading is 1917 bytes**, which is two IP fragments rather than one.
+  On a switched network that is nothing; over a mesh VPN it is why the rate is
+  a setting and why the LAN screen counts the readings that never arrived.
+- **Assetto Corsa Competizione's advice thresholds are still Assetto Corsa's.**
+  Camber and tread verdicts are withheld there and cannot be wrong; the brake
+  and pad numbers are owed a driven stint. `docs/plan-acc.md` §10 is the item,
+  and it is why the graphical front end still offers one game.
 
 ## [v0.4.2] - 2026-08-24
 
