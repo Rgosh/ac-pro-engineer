@@ -500,7 +500,7 @@ mod tests {
         let envelope = Envelope {
             what: WHAT.to_string(),
             schema: SCHEMA,
-            from: "MartialArts".to_string(),
+            from: "Alex".to_string(),
             sequence: 123_456,
             reading,
         };

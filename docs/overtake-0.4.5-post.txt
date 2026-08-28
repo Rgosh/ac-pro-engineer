@@ -1,0 +1,128 @@
+🌐 v0.4.5 — Watch Somebody Else's Session
+
+v0.4.5 lets one person drive and another person watch — not a summary of it, the
+whole session, on every screen. Plus the fix a driver reported last week, and
+two more found while chasing it. Website: https://proengineer.app
+
+
+🌐 Somebody Else's Session, On Your Screens
+
+Two people, two machines, one network. One drives; the other presses one key and
+their own screens fill with the driving happening on the other machine — the
+dashboard, the traces, the map, the corner table and the engineer.
+
+* Every screen, not a copy of four sentences. The whole reading travels thirty
+  times a second, so the watching copy finds the laps, builds the traces, draws
+  the map's line and runs its own engineer over your driving. A spectator can
+  ask the same questions the driver can.
+* In their units and their language. The advice is written on the machine
+  reading it, not on yours — your friend sees °F and English if that is what
+  they use.
+* Two keys. Open LAN, the new tenth tab, on 0. S shares, W watches. The port,
+  the rate and being findable are all chosen for you.
+* Nobody reads an IP address out loud. The copies announce themselves and appear
+  in each other's list, with the car and the track beside the name. Put the
+  cursor on somebody and press Enter.
+* It works with the graphical version too, in either direction — terminal
+  watching the window, window watching the terminal. One protocol as of this
+  release.
+* Nothing leaves your network. There is no server in the middle, because there
+  is no server. What gets announced is a name, a role and a port — nothing about
+  your driving, and being findable is a switch you can turn off.
+
+Watching a friend in another city? It needs no relay and no port forwarding: a
+mesh VPN (Tailscale or ZeroTier, both free for a handful of machines) puts both
+computers on one private network wherever they are. The watcher presses W, the
+driver types the watcher's mesh address, and that is it. About half a megabit a
+second, one way — less than a video call.
+
+For a coach watching a driver, a friend on the sofa, or a spare laptop beside
+the rig running your session on its own screen.
+
+
+⚙️ New: Settings → SHARING
+
+The half you set once and never look at again: readings a second, only send
+while I'm on track, how long a quiet link waits before saying so, whether you
+are findable, and whether a session is accepted from the whole network or only
+from this machine.
+
+The LAN screen itself reports what is actually happening — who is sending, at
+what rate, how old the picture is, and how many readings never arrived. If the
+link is bad, you can see that it is the link.
+
+
+🔧 Fixed
+
+* The camber advice no longer argues with itself. Told to add negative camber on
+  a car already at -3.5°, you would read the reason first — and it said "the
+  outer shoulder is not being loaded through corners", which is the argument for
+  doing the opposite. Too little negative camber means the tyre stands up and
+  the outer shoulder takes the load, and that is what it says now. The message
+  also names the edge — "outer edge hotter" — instead of "contact patch
+  inefficient" beside a number you had to work out for yourself. Reported by
+  MartialArts on the graphical version's thread; the engineer is shared, so both
+  got the fix.
+* "not a saved lap: missing field rpms". Choosing your own reference lap could
+  refuse to open it. A field was added to the lap format and old files were
+  never taught to survive it — so every lap saved before that release stopped
+  loading, and the laps most worth keeping are the oldest ones. They open again,
+  and the test that keeps it that way uses the exact file that failed.
+* The demo now fills the Analysis tab. It only ever built one lap, and that tab
+  is the half of the program that is about comparing — one lap means nothing to
+  overlay, nothing to subtract and a flat delta. Five laps now, so everything on
+  that screen does what it does in a real session.
+* An empty mapping is no longer mistaken for a running game. On Linux the bridge
+  creates the shared-memory pages when it starts and leaves them when the game
+  quits, so the app could read zeros and believe a car was there.
+* engineer_probe prints the tread it judged — inner, middle, outer, the
+  inner-minus-outer every camber verdict is made of, and the camber the wheel is
+  actually running. When advice is questioned there was no way to ask the
+  program what it read, only what it concluded. Now there is.
+
+
+📋 Also
+
+* lan_probe — a diagnostic that says which of the four parts of the network is
+  at fault: your machine's address, the port, the group the copies find each
+  other on, and whether anything is arriving. Run it before anybody is waiting
+  on you.
+* Sharing and listening each have their own switch, so turning one off keeps the
+  address instead of making you type it again.
+* The Russian translation covers the new screens.
+* Both machines need v0.4.5 to watch each other. There is no half-working mode
+  with the previous release — the screen says so by name rather than calling the
+  traffic noise.
+
+
+💾 How to Update
+
+Windows: launch your current version and let the Auto-Updater install v0.4.5.
+Restart Assetto Corsa afterwards so it picks up the new panel.
+
+Linux & Steam Deck: let the Auto-Updater install v0.4.5, then restart Assetto
+Corsa. You do not need a new shm-bridge.exe this time — the telemetry frame did
+not change in this release, so every bridge from v0.4.0 onward keeps working. If
+you are coming from v0.3.x, press the button on the launcher's overlay card to
+fetch one.
+
+The launcher may note that your bridge was built for an older release. That is a
+note, not a fault — it says so because it is worth knowing before something is
+wrong. Fetch the matching one if you would rather have them in step.
+
+For LAN: update both machines. Open LAN (key 0), one of you presses S and the
+other W, and pick each other out of the list.
+
+Prefer a clean install? The archive contains the Windows and Linux builds,
+shm-bridge.exe, and a loose copy of the overlay.
+
+Not sure whether the panel is working? Press the diagnostics key on the launcher
+for a full report: it names the application, the panel and the bridge, and tells
+you which of the three does not fit.
+
+
+Enjoying Pro Engineer? Please leave a review here on Overtake.gg or give us a
+Star on GitHub — that's what keeps the project going!
+
+https://proengineer.app
+https://github.com/Rgosh/ac-pro-engineer

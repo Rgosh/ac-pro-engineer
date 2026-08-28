@@ -392,6 +392,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // one, so the picture is of the screen a driver sees rather than of an
     // empty form. It is the screen the whole of v0.4.5 is about and the one
     // nobody had looked at.
+    //
+    // **The names are made up, and have to be.** This picture is published —
+    // on the site, in the README and in a forum listing — and a real person's
+    // handle in it is that person's name on somebody else's marketing. Alex
+    // and Ann, or anything equally plainly invented.
     {
         use ac_core::broadcast::discovery::{Peer, Role};
         use std::time::Instant;
@@ -401,7 +406,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.lan.watch_simply();
         app.link = ac_core::broadcast::session::Link {
             listening_on: "0.0.0.0:9001".to_string(),
-            from: Some("MartialArts".to_string()),
+            from: Some("Alex".to_string()),
             quiet: false,
             trouble: None,
             rate_hz: 29.8,
@@ -413,7 +418,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.peers = vec![
             Peer {
                 id: "a".to_string(),
-                name: "MartialArts".to_string(),
+                name: "Alex".to_string(),
                 role: Role::Driving,
                 reachable_at: "192.168.1.42:9001".parse()?,
                 car: "ks_audi_rs3_lms".to_string(),
