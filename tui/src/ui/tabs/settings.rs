@@ -10,6 +10,11 @@ pub enum SettingsCategory {
     Display,
     RaceEngineer,
     Overlay,
+    /// What the network does: the rate, the two habits, and where to listen.
+    ///
+    /// The two switches live on the LAN tab, where the list of machines is —
+    /// this is the half somebody sets once and does not look at again.
+    Sharing,
     Keys,
 }
 
@@ -26,6 +31,23 @@ pub struct SettingsState {
     /// What the last capture refused to do, and why.
     pub key_message: Option<String>,
 }
+
+/// The categories, in the order they are drawn, with the letter that opens
+/// each one.
+///
+/// **One list.** The captions used to be written out in the renderer and the
+/// letters in `handle_input`, and they drifted twice: the pane said `A / S / D`
+/// after a fourth category was added, and a fifth after that. The screen reads
+/// its letters from here and `every_category_is_reachable_by_its_letter` walks
+/// the same list, so a caption cannot advertise a key that does not work.
+pub const CATEGORIES: [(SettingsCategory, &str, &str, char); 6] = [
+    (SettingsCategory::System, "SYSTEM", "💻", 'a'),
+    (SettingsCategory::Display, "DISPLAY", "👁️", 's'),
+    (SettingsCategory::RaceEngineer, "ENGINEER", "🔧", 'd'),
+    (SettingsCategory::Overlay, "OVERLAY", "🖥️", 'f'),
+    (SettingsCategory::Sharing, "SHARING", "🌐", 'g'),
+    (SettingsCategory::Keys, "KEYS", "⌨️", 'h'),
+];
 
 impl Default for SettingsState {
     fn default() -> Self {
@@ -49,7 +71,8 @@ impl SettingsState {
             SettingsCategory::System => SettingsCategory::Display,
             SettingsCategory::Display => SettingsCategory::RaceEngineer,
             SettingsCategory::RaceEngineer => SettingsCategory::Overlay,
-            SettingsCategory::Overlay => SettingsCategory::Keys,
+            SettingsCategory::Overlay => SettingsCategory::Sharing,
+            SettingsCategory::Sharing => SettingsCategory::Keys,
             SettingsCategory::Keys => SettingsCategory::System,
         };
         self.selected_index = 0;
@@ -63,7 +86,8 @@ impl SettingsState {
             SettingsCategory::Display => SettingsCategory::System,
             SettingsCategory::RaceEngineer => SettingsCategory::Display,
             SettingsCategory::Overlay => SettingsCategory::RaceEngineer,
-            SettingsCategory::Keys => SettingsCategory::Overlay,
+            SettingsCategory::Sharing => SettingsCategory::Overlay,
+            SettingsCategory::Keys => SettingsCategory::Sharing,
         };
         self.selected_index = 0;
         self.is_editing = false;
@@ -147,9 +171,7 @@ impl SettingsState {
                 KeyCode::Up => self.selected_index = self.selected_index.saturating_sub(1),
                 KeyCode::Right => self.next_category(),
                 KeyCode::Left => self.prev_category(),
-                KeyCode::Char('a') | KeyCode::Char('A') => {
-                    self.set_category(SettingsCategory::System)
-                }
+                KeyCode::Char(letter) => self.jump_to_category(letter),
                 KeyCode::Enter => {
                     self.capturing = true;
                     self.key_message = None;
@@ -166,30 +188,12 @@ impl SettingsState {
         if !self.is_editing {
             match key {
                 KeyCode::Down => self.selected_index += 1,
-                KeyCode::Up => {
-                    if self.selected_index > 0 {
-                        self.selected_index -= 1
-                    }
-                }
+                KeyCode::Up => self.selected_index = self.selected_index.saturating_sub(1),
 
                 KeyCode::Right => self.next_category(),
                 KeyCode::Left => self.prev_category(),
 
-                KeyCode::Char('a') | KeyCode::Char('A') => {
-                    self.set_category(SettingsCategory::System)
-                }
-                KeyCode::Char('s') | KeyCode::Char('S') => {
-                    self.set_category(SettingsCategory::Display)
-                }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    self.set_category(SettingsCategory::RaceEngineer)
-                }
-                KeyCode::Char('f') | KeyCode::Char('F') => {
-                    self.set_category(SettingsCategory::Overlay)
-                }
-                KeyCode::Char('g') | KeyCode::Char('G') => {
-                    self.set_category(SettingsCategory::Keys)
-                }
+                KeyCode::Char(letter) => self.jump_to_category(letter),
 
                 KeyCode::Enter => self.is_editing = true,
                 _ => {}
@@ -227,12 +231,26 @@ impl SettingsState {
         }
     }
 
+    /// Open the category a letter belongs to, if it belongs to one.
+    ///
+    /// **Off [`CATEGORIES`], so a caption cannot advertise a key that does
+    /// nothing.** The letters were written out here and the captions in the
+    /// renderer, and they drifted twice — the pane said `A / S / D` after a
+    /// fourth category had been added, and again after a fifth.
+    fn jump_to_category(&mut self, letter: char) {
+        let wanted = letter.to_ascii_lowercase();
+        if let Some((category, _, _, _)) = CATEGORIES.iter().find(|(_, _, _, key)| *key == wanted) {
+            self.set_category(*category);
+        }
+    }
+
     fn get_item_count(&self) -> usize {
         match self.category {
             SettingsCategory::System => 5,
             SettingsCategory::Display => 2,
             SettingsCategory::RaceEngineer => 11,
             SettingsCategory::Overlay => 7,
+            SettingsCategory::Sharing => 5,
             // Counted off the binding list rather than written down, so adding
             // an action cannot leave a row that is drawn and unreachable.
             SettingsCategory::Keys => {
@@ -358,6 +376,43 @@ impl SettingsState {
                 }
                 _ => {}
             },
+            SettingsCategory::Sharing => match self.selected_index {
+                0 => {
+                    // Five a second is a picture that jumps; a hundred and
+                    // twenty is more than any simulator ticks. Both ends of
+                    // the range are a rate somebody could have a reason for.
+                    let next = config.lan.share_hz + delta;
+                    config.lan.share_hz = next.clamp(5.0, 120.0);
+                }
+                1 if delta.abs() > 0.0 => {
+                    config.lan.only_on_track = !config.lan.only_on_track
+                }
+                2 => {
+                    let next = config.lan.quiet_after_s + delta * 0.5;
+                    config.lan.quiet_after_s = next.clamp(1.0, 30.0);
+                }
+                3 if delta.abs() > 0.0 => config.lan.announce = !config.lan.announce,
+                4 if delta.abs() > 0.0 => {
+                    // **The one address that is a choice rather than a
+                    // number.** Everything on the network, or only this
+                    // machine — which is what somebody trying two copies on
+                    // one desk wants, and what somebody on a shared network
+                    // wants for a different reason. The port is kept.
+                    let port = config
+                        .overlay
+                        .receive_from
+                        .rsplit_once(':')
+                        .map(|(_, port)| port.to_string())
+                        .unwrap_or_else(|| ac_core::lan::PORT.to_string());
+                    let everywhere = !config.overlay.receive_from.starts_with("127.");
+                    config.overlay.receive_from = if everywhere {
+                        format!("127.0.0.1:{port}")
+                    } else {
+                        format!("0.0.0.0:{port}")
+                    };
+                }
+                _ => {}
+            },
         }
     }
 
@@ -402,6 +457,14 @@ impl SettingsState {
                 8 => "Target hot pressure, front.".tr(is_ru),
                 9 => "Target hot pressure, rear.".tr(is_ru),
                 10 => "Measure the delta against your own best lap, not AC's meter.".tr(is_ru),
+                _ => "",
+            },
+            SettingsCategory::Sharing => match self.selected_index {
+                0 => "Readings a second sent to a watcher. Their map is drawn from these.".tr(is_ru),
+                1 => "Only send while the car is on track, not in the menus.".tr(is_ru),
+                2 => "How long a link may be silent before the screen says so.".tr(is_ru),
+                3 => "Say on the network that this copy is here, so others can find it.".tr(is_ru),
+                4 => "Accept a session from the whole network, or only from this machine.".tr(is_ru),
                 _ => "",
             },
             SettingsCategory::Overlay => match self.selected_index {
@@ -767,22 +830,11 @@ fn render_sidebar(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         .border_style(Style::default().fg(Color::DarkGray))
         .padding(Padding::new(0, 1, 1, 1));
 
-    let categories = [
-        (SettingsCategory::System, "SYSTEM".tr(is_ru), "💻", "[A]"),
-        (SettingsCategory::Display, "DISPLAY".tr(is_ru), "👁️", "[S]"),
-        (
-            SettingsCategory::RaceEngineer,
-            "ENGINEER".tr(is_ru),
-            "🔧",
-            "[D]",
-        ),
-        (SettingsCategory::Overlay, "OVERLAY".tr(is_ru), "🖥️", "[F]"),
-        (SettingsCategory::Keys, "KEYS".tr(is_ru), "⌨️", "[G]"),
-    ];
-
-    let items: Vec<ListItem<'_>> = categories
+    let items: Vec<ListItem<'_>> = CATEGORIES
         .iter()
-        .map(|(cat, name, icon, key)| {
+        .map(|(cat, name, icon, letter)| {
+            let name = name.tr(is_ru);
+            let key = format!("[{}]", letter.to_ascii_uppercase());
             let is_selected = app.ui_state.settings.category == *cat;
 
             let (bg, fg, modif) = if is_selected {
@@ -850,6 +902,7 @@ fn render_settings_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         SettingsCategory::Display => render_display_settings(f, &rows, app),
         SettingsCategory::RaceEngineer => render_engineer_settings(f, &rows, app),
         SettingsCategory::Overlay => render_overlay_settings(f, &rows, app),
+        SettingsCategory::Sharing => render_sharing_settings(f, &rows, app),
         // Unreachable: the key list is drawn before this function splits the
         // area, because twenty-three three-row blocks do not fit in a pane
         // that holds eleven.
@@ -1108,6 +1161,57 @@ fn render_display_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
 /// The in-game panel's sections. Toggling one here changes a flag on the next
 /// published frame, so the panel follows within a tick — no restart, and no
 /// need to alt-tab into the game to find out whether it worked.
+/// What the network does, other than being on.
+///
+/// **The two switches are not here.** Sharing and watching are on the LAN tab,
+/// beside the list of machines, because that is where somebody is standing
+/// when they want them — this is the half that is set once. The line at the
+/// bottom says so rather than leaving a driver hunting for a switch on the
+/// wrong screen.
+fn render_sharing_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
+    let lan = &app.config.lan;
+    let is_ru = app.config.language == Language::Russian;
+    let on_off = |yes: bool| if yes { "ON" } else { "OFF" }.to_string();
+
+    let items = vec![
+        (
+            "Readings a second".tr(is_ru).to_string(),
+            format!("{:.0}", lan.share_hz),
+            false,
+        ),
+        (
+            "Only while on track".tr(is_ru).to_string(),
+            on_off(lan.only_on_track),
+            true,
+        ),
+        (
+            "Quiet after".tr(is_ru).to_string(),
+            format!("{:.1} s", lan.quiet_after_s),
+            false,
+        ),
+        (
+            "Findable on the network".tr(is_ru).to_string(),
+            on_off(lan.announce),
+            true,
+        ),
+        (
+            "Accept a session from".tr(is_ru).to_string(),
+            if app.config.overlay.receive_from.starts_with("127.") {
+                "this machine".tr(is_ru).to_string()
+            } else {
+                "the whole network".tr(is_ru).to_string()
+            },
+            true,
+        ),
+    ];
+
+    for (i, (label, val, is_toggle)) in items.into_iter().enumerate() {
+        if i < areas.len() {
+            render_item(f, areas[i], i, label, val, is_toggle, app);
+        }
+    }
+}
+
 fn render_overlay_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
     let overlay = &app.config.overlay;
     let is_ru = app.config.language == Language::Russian;
@@ -1265,12 +1369,23 @@ fn render_description_panel(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // A/S/D/F/G, not A/S/D. There have been four categories since the overlay
-    // one landed and five since the key map, and this line named three of them
-    // -- so the two newest were reachable only by arrow key, and the help
-    // overlay repeated the same wrong list.
-    let controls_text =
-        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D/F/G] Categories".tr(is_ru);
+    // **Built from `CATEGORIES`, not typed.** This line said `A/S/D` while
+    // there were five categories, so the two newest were reachable only by
+    // arrow key; corrected by hand to `A/S/D/F/G`, it was wrong again the day
+    // a sixth arrived. It cannot be now.
+    let letters: String = CATEGORIES
+        .iter()
+        .map(|(_, _, _, key)| key.to_ascii_uppercase())
+        .collect::<Vec<char>>()
+        .iter()
+        .map(|letter| letter.to_string())
+        .collect::<Vec<String>>()
+        .join("/");
+    let controls_text = tr_fmt(
+        "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [{0}] Categories",
+        is_ru,
+        &[&letters],
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1408,16 +1523,15 @@ mod tests {
     #[test]
     fn every_category_is_reachable_by_its_letter() {
         let mut config = AppConfig::default();
-        for (key, expected) in [
-            ('a', SettingsCategory::System),
-            ('s', SettingsCategory::Display),
-            ('d', SettingsCategory::RaceEngineer),
-            ('f', SettingsCategory::Overlay),
-            ('g', SettingsCategory::Keys),
-        ] {
+        for (expected, name, _, key) in CATEGORIES {
             let mut state = SettingsState::new();
             state.handle_input(KeyCode::Char(key), &mut config);
-            assert_eq!(state.category, expected, "[{key}] should open {expected:?}");
+            assert_eq!(state.category, expected, "[{key}] should open {name}");
+            // And in the case somebody's keyboard sends, which is the one the
+            // caption is printed in.
+            let mut shouted = SettingsState::new();
+            shouted.handle_input(KeyCode::Char(key.to_ascii_uppercase()), &mut config);
+            assert_eq!(shouted.category, expected, "[{key}] in capitals");
         }
     }
 
@@ -1426,13 +1540,28 @@ mod tests {
     fn the_categories_cycle_both_ways() {
         let mut state = SettingsState::new();
         let start = state.category;
-        for _ in 0..5 {
+        // As many steps as there are categories, off the list rather than a
+        // number that has to be remembered when a sixth is added.
+        for _ in 0..CATEGORIES.len() {
             state.next_category();
         }
         assert_eq!(state.category, start);
-        for _ in 0..5 {
+        for _ in 0..CATEGORIES.len() {
             state.prev_category();
         }
         assert_eq!(state.category, start);
+
+        // Every category has to be *on* the cycle: one added to the enum and
+        // to the list but not to `next_category` is a screen nobody can reach
+        // with the arrows.
+        let mut seen = Vec::new();
+        let mut walk = SettingsState::new();
+        for _ in 0..CATEGORIES.len() {
+            seen.push(walk.category);
+            walk.next_category();
+        }
+        for (category, name, _, _) in CATEGORIES {
+            assert!(seen.contains(&category), "{name} is not on the cycle");
+        }
     }
 }

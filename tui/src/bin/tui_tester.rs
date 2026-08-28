@@ -438,6 +438,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|f| renderer.render(f, &app))?;
         capture(&terminal, width, height, screenshot_dir, "LAN")?;
 
+        // The other half of the same feature: the settings somebody sets once.
+        app.active_tab = AppTab::Settings;
+        app.ui_state
+            .settings
+            .set_category(ac_tui::ui::tabs::settings::SettingsCategory::Sharing);
+        terminal.draw(|f| renderer.render(f, &app))?;
+        capture(&terminal, width, height, screenshot_dir, "Settings_Sharing")?;
+        app.ui_state
+            .settings
+            .set_category(ac_tui::ui::tabs::settings::SettingsCategory::System);
+        app.active_tab = AppTab::Lan;
+
         // And the state everybody meets first: switched off, nobody found.
         app.lan = ac_core::lan::LanWish::default();
         app.link = ac_core::broadcast::session::Link::default();

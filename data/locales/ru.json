@@ -447,7 +447,7 @@
   "Wear: critical below": "Износ: критично ниже",
   "Wind Spd": "Ветер",
   "[O] Leave Review  [H] Hide Forever": "[O] Оставить отзыв  [H] Скрыть навсегда",
-  "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [A/S/D/F/G] Categories": "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [A/S/D/F/G] Категории",
+  "[↑/↓] Select   [ENTER] Edit   [←/→] Change   [{0}] Categories": "[↑/↓] Выбор   [ENTER] Изменить   [←/→] Менять   [{0}] Категории",
   "[↑/↓] Select  [←/→] Change  [ENTER] Open  [Q] Quit": "[↑/↓] Навигация  [←/→] Менять  [ENTER] Выбор  [Q] Выход",
   "across {0} {1}s": "по {0} {1}",
   "against oversteer": "против избыточной",

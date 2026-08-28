@@ -1951,6 +1951,14 @@ impl AppState {
         self.car_history.set_capacity(cap);
         self.session_history.set_capacity(cap);
         self.engineer.update_config(&self.config);
+        // **And the network, which is also a setting now.** The SHARING
+        // category writes into the configuration; without this the rate a
+        // driver just changed would take effect on the next launch, which is
+        // the failure the comment above this function was written about.
+        // The mode and the addresses are not re-read from here — those are
+        // the LAN tab's, and it has already written them into the same
+        // configuration, so what comes back is what is on screen.
+        self.lan = ac_core::lan::LanWish::from_config(&self.config);
     }
 
     pub fn update_live_buffers(&mut self, car: &Car, session: &Session) {
