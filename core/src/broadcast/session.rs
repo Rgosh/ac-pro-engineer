@@ -202,6 +202,13 @@ pub struct Link {
     pub seen: u64,
     /// How old the picture is, in milliseconds.
     pub age_ms: u32,
+    /// The worst it has been over the last few seconds.
+    ///
+    /// **The number that tells a bad link from a busy one.** A picture that is
+    /// 30 ms old right now and was 900 ms old a second ago is a link somebody
+    /// should look at; the instantaneous age never shows that, because it is
+    /// read at the moment a reading has just arrived.
+    pub worst_age_ms: u32,
     /// Readings the sender numbered and this never saw.
     pub lost: u64,
 }
@@ -218,6 +225,7 @@ pub struct Listener {
     last_sequence: Option<u64>,
     rate_from: Option<(Instant, u64)>,
     rate_hz: f32,
+    worst_age: (Instant, u32),
     trouble: Option<&'static str>,
     quiet_after: Duration,
 }
@@ -259,6 +267,7 @@ impl Listener {
             last_sequence: None,
             rate_from: None,
             rate_hz: 0.0,
+            worst_age: (Instant::now(), 0),
             trouble: None,
             quiet_after: Duration::from_secs_f32(quiet_after_s.max(0.5)),
         }))
@@ -300,7 +309,20 @@ impl Listener {
             self.last_sequence = Some(envelope.sequence);
             self.from = Some(envelope.from);
             self.seen += 1;
-            self.last_arrival = Some(Instant::now());
+            // How stale the picture had become before this arrived, kept over
+            // a window: see `Link::worst_age_ms`.
+            let now = Instant::now();
+            let age = self
+                .last_arrival
+                .map(|when| now.duration_since(when).as_millis().min(60_000) as u32)
+                .unwrap_or(0);
+            let (since, worst) = self.worst_age;
+            self.worst_age = if now.duration_since(since) > Duration::from_secs(5) {
+                (now, age)
+            } else {
+                (since, worst.max(age))
+            };
+            self.last_arrival = Some(now);
             arrived.push(envelope.reading);
         }
         self.measure_rate();
@@ -336,6 +358,7 @@ impl Listener {
                 .last_arrival
                 .map(|when| when.elapsed().as_millis().min(60_000) as u32)
                 .unwrap_or(0),
+            worst_age_ms: self.worst_age.1,
             lost: self.lost,
         }
     }
