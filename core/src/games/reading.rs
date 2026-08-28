@@ -487,6 +487,30 @@ pub struct Reading {
     pub capabilities: Capabilities,
 }
 
+impl Reading {
+    /// Whether a game actually wrote this, as opposed to a mapping that exists
+    /// and has never been written to.
+    ///
+    /// **The two are the same bytes**, and telling them apart is not optional
+    /// on Linux: `shm-bridge` creates the pages when it starts, so they are
+    /// there — full of zeros — from before the game is launched until after it
+    /// has quit. A front end that trusts `poll` returning `Some` shows a
+    /// connected car doing 0 km/h in first gear on a track with no name, which
+    /// is what a driver reported after opening the window with no game
+    /// running at all.
+    ///
+    /// **The car's name and its rev limit, not the status.** Assetto Corsa
+    /// reports `Status::Off` in the menus and in the garage — which is most of
+    /// the time somebody has the program open and wants it to be working — but
+    /// it publishes the static page as soon as a car is loaded. So this is
+    /// "there is a car loaded", which is the question every screen is really
+    /// asking, and `Status::is_on_track` stays what it is: whether that car is
+    /// being driven this instant.
+    pub fn car_is_loaded(&self) -> bool {
+        !self.fixed.car_model.trim().is_empty() || self.fixed.max_rpm > 0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,6 +521,31 @@ mod tests {
     /// The `é` is deliberately the thirty-second byte: it is two bytes long, so
     /// a cut at the capacity lands inside it and the truncation has to step
     /// back rather than write half a character.
+    /// **An empty mapping is not a session.** The bridge creates the pages
+    /// before the game is started and leaves them after it quits, so a reader
+    /// polling them gets a `Reading` of zeros rather than nothing at all.
+    #[test]
+    fn a_mapping_nobody_has_written_to_is_not_a_loaded_car() {
+        assert!(
+            !Reading::default().car_is_loaded(),
+            "all zeros is a mapping waiting for a game, not a car"
+        );
+
+        // In the garage and in the menus the car is loaded and the status is
+        // Off — which is most of the time somebody has this open.
+        let mut parked = Reading::default();
+        parked.fixed.car_model = "ks_audi_rs3_lms".to_string();
+        assert!(parked.car_is_loaded());
+        assert!(!parked.session.status.is_on_track());
+
+        // And a game that published no name but did publish the car's limits
+        // is still a car: the two are read from the same page, and a front end
+        // refusing on one of them would blank on a mod that names nothing.
+        let mut nameless = Reading::default();
+        nameless.fixed.max_rpm = 8500;
+        assert!(nameless.car_is_loaded());
+    }
+
     #[test]
     fn a_long_name_is_truncated_rather_than_refused() {
         let long = format!("{}é and more", "a".repeat(Name::CAPACITY - 1));

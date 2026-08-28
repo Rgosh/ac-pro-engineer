@@ -988,11 +988,27 @@ impl AppState {
             ..Default::default()
         });
 
+        // **Five laps, not one.** The demo is what somebody opens before
+        // they have driven anything, and the Analysis tab is the half of this
+        // program that is *about* comparing: with one lap there is no
+        // reference to overlay, the lap picker has a single entry, the corner
+        // table has nothing to subtract and the delta is flat. Every one of
+        // those screens photographed as empty, which is what a driver saw and
+        // reported as the tab "not being in the demo".
+        //
+        // They differ the way real laps do — a second or so apart, and quicker
+        // where the driving is quicker — so the corner report has a genuine
+        // loss to name rather than a rounding error.
+        const DEMO_LAPS: i32 = 5;
         if self.analyzer.laps.is_empty() {
+            for lap in 0..DEMO_LAPS {
+            // Lap 3 is the quick one; the others give away up to a second and
+            // a half, and give it away in the corners rather than everywhere.
+            let off_the_pace = (lap - 2).abs() as f32 * 0.6;
             let mut trace_points = Vec::with_capacity(300);
             for i in 0..300 {
                 let t = i as f32 * 0.05;
-                let spd = 180.0 + (t * 2.0).sin() * 70.0;
+                let spd = 180.0 + (t * 2.0).sin() * 70.0 - off_the_pace * (t * 2.0).sin().max(0.0) * 6.0;
                 let px = (t * 0.8).cos() * 150.0;
                 let py = (t * 0.8).sin() * 80.0;
                 trace_points.push(ac_core::analyzer::TelemetryPoint {
@@ -1013,10 +1029,17 @@ impl AppState {
                 });
             }
 
+            let lap_time_ms = 81452 + (off_the_pace * 1000.0) as i32;
             let mock_lap = ac_core::analyzer::LapData {
-                lap_number: 5,
-                lap_time_ms: 81452,
-                sectors: [24120, 28350, 28982],
+                lap_number: lap + 1,
+                lap_time_ms,
+                // The three add up to the lap, which is what the sector table
+                // checks and what a driver adds up by eye.
+                sectors: [
+                    24120 + (off_the_pace * 300.0) as i32,
+                    28350 + (off_the_pace * 400.0) as i32,
+                    lap_time_ms - 24120 - 28350 - (off_the_pace * 700.0) as i32,
+                ],
                 valid: true,
                 car_model: "Ferrari SF70H".to_string(),
                 track_name: "Autodromo Nazionale Monza".to_string(),
@@ -1030,8 +1053,8 @@ impl AppState {
                 road_temp: 34.0,
                 track_grip: 98.0,
                 timestamp: "14:32:05".to_string(),
-                max_speed: 342.5,
-                avg_speed: 254.2,
+                max_speed: 342.5 - off_the_pace * 2.0,
+                avg_speed: 254.2 - off_the_pace * 3.0,
                 avg_pressure: Some(27.4),
                 min_corner_speed_avg: 78.5,
                 fuel_used: 2.85,
@@ -1076,7 +1099,17 @@ impl AppState {
             };
 
             self.analyzer.laps.push(mock_lap);
-            self.analyzer.best_lap_index = Some(0);
+            }
+            // The quickest, found rather than assumed — the loop above may be
+            // reordered and this must not become a lie about which lap is the
+            // reference every other screen compares against.
+            self.analyzer.best_lap_index = self
+                .analyzer
+                .laps
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, lap)| lap.lap_time_ms)
+                .map(|(index, _)| index);
         }
 
         self.update_demo_tick();
@@ -2010,6 +2043,62 @@ mod tests {
     /// never again — so a first attempt that found nothing, or could not
     /// write, left the panel missing for the whole session however long the
     /// application then sat there with the game running. This is the retry,
+    /// **The demo has to fill the Analysis tab, because that tab is the
+    /// reason somebody opens the demo.**
+    ///
+    /// It built one lap, so the lap picker had a single entry, there was no
+    /// reference to overlay, the sector table had nothing to subtract and the
+    /// delta was flat. Reported from the outside as the tab "not being there
+    /// in the demo", which is what an analysis screen with nothing to compare
+    /// looks like.
+    #[test]
+    fn the_demo_gives_the_analysis_tab_something_to_compare() {
+        let mut app = AppState::new();
+        app.enable_demo_simulation();
+
+        let laps = &app.analyzer.laps;
+        assert!(
+            laps.len() >= 4,
+            "the demo produced {} laps; the analysis screens want several",
+            laps.len()
+        );
+        assert!(
+            laps.iter().any(|lap| !lap.telemetry_trace.is_empty()),
+            "a lap with no trace draws no map and no plot"
+        );
+
+        // Laps a driver could tell apart, which is what makes a comparison
+        // mean anything: all five identical would photograph as working and
+        // answer nothing.
+        let quickest = laps.iter().map(|lap| lap.lap_time_ms).min().unwrap_or(0);
+        let slowest = laps.iter().map(|lap| lap.lap_time_ms).max().unwrap_or(0);
+        assert!(
+            slowest - quickest > 500,
+            "only {} ms between the quickest and the slowest",
+            slowest - quickest
+        );
+
+        // And the reference every other screen compares against is the
+        // quickest of them, not whichever was pushed first.
+        let best = app
+            .analyzer
+            .best_lap_index
+            .and_then(|index| laps.get(index))
+            .expect("the demo names a best lap");
+        assert_eq!(best.lap_time_ms, quickest);
+
+        // Each lap's splits add up to its own time; the sector table subtracts
+        // them from the best and a driver adds them up by eye.
+        for lap in laps {
+            let summed: i32 = lap.sectors.iter().sum();
+            assert_eq!(
+                summed, lap.lap_time_ms,
+                "lap {} splits into {:?}, which is {summed} ms",
+                lap.lap_number, lap.sectors
+            );
+        }
+    }
+
     /// **Two copies of this program, over a socket, and every screen filled.**
     ///
     /// The terminal could not watch anybody at all until v0.4.5, and the

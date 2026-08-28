@@ -121,8 +121,26 @@ pub struct TelemetryPoint {
     pub lat_g: f32,
     pub lon_g: f32,
     pub slip_avg: f32,
+    /// Where the car was, in the track's own metres. **Defaulted**: added
+    /// after the format shipped, so a lap saved before it has no such key.
+    #[serde(default)]
     pub x: f32,
+    #[serde(default)]
     pub y: f32,
+    /// Revs at this instant. **Defaulted, for the same reason, and it is the
+    /// one that was missed.**
+    ///
+    /// A lap is a file on somebody's disk that outlives every release. This
+    /// field was added to the struct and not to the format's rules, so every
+    /// lap saved before it stopped loading — `not a saved lap: missing field
+    /// \`rpms\`` — and the laps most worth keeping are the oldest ones.
+    /// Reported from the outside, by a driver whose reference lap vanished.
+    ///
+    /// **The rule this file now follows:** a field added after the format
+    /// shipped defaults; the ones that were there from the first version do
+    /// not, so a genuinely wrong file still fails rather than loading as a lap
+    /// of zeroes.
+    #[serde(default)]
     pub rpms: i32,
     /// Everything else the game published at this instant.
     ///

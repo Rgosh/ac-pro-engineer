@@ -395,6 +395,44 @@ mod tests {
         assert!(store.delete("../records.json").is_err());
     }
 
+    /// **A lap saved by an older release still loads.**
+    ///
+    /// `tests/fixtures/lap-v0.3.json` is a real lap off the author's disk with
+    /// its trace cut to one sample — twelve keys per sample, no `rpms` and no
+    /// `detail`. It stopped loading when `rpms` was added to the struct and
+    /// not to the format's rules, and the symptom was a driver selecting his
+    /// own reference lap and being told it was "not a saved lap".
+    ///
+    /// A lap is a file that outlives every release, so this is the test to
+    /// *extend* rather than rewrite the next time a field is added: put the
+    /// older shape in and check it still comes back.
+    #[test]
+    fn a_lap_saved_by_an_older_release_still_loads() {
+        let dir = scratch("older-release");
+        fs::write(
+            dir.join("older.json"),
+            include_str!("../tests/fixtures/lap-v0.3.json"),
+        )
+        .expect("write");
+
+        let store = LapStore::with_dir(&dir);
+        let lap = store
+            .load("older.json")
+            .expect("a lap saved before `rpms` existed is still a lap");
+
+        assert_eq!(lap.lap_time_ms, 29207);
+        assert_eq!(lap.car_model, "kunos_ferrari_488_gt3");
+        assert_eq!(lap.telemetry_trace.len(), 1);
+
+        let sample = &lap.telemetry_trace[0];
+        assert_eq!(sample.speed, 295.0);
+        // Absent, so zero — and `detail.measured` is false, which is how every
+        // screen tells "the lap never carried this" from "it was measured as
+        // zero".
+        assert_eq!(sample.rpms, 0);
+        assert!(!sample.detail.measured);
+    }
+
     #[test]
     fn something_that_is_not_a_lap_says_so_rather_than_panicking() {
         let dir = scratch("garbage");

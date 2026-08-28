@@ -1,0 +1,145 @@
+{
+  "lap_number": 8,
+  "lap_time_ms": 29207,
+  "sectors": [
+    0,
+    0,
+    29207
+  ],
+  "valid": true,
+  "car_model": "kunos_ferrari_488_gt3",
+  "track_name": "monza",
+  "save_date": "2026-07-31",
+  "from_file": false,
+  "air_temp": 23.0,
+  "road_temp": 35.0,
+  "track_grip": 98.0,
+  "timestamp": "00:51:50",
+  "max_speed": 295.0,
+  "avg_speed": 189.5849,
+  "avg_pressure": 27.40082,
+  "min_corner_speed_avg": 102.25686,
+  "fuel_used": 1.864975,
+  "gear_shifts": 4,
+  "peak_lat_g": 2.35,
+  "peak_brake_g": 1.8,
+  "avg_tyre_temp": [
+    92.14621,
+    91.8123,
+    90.47925,
+    91.14616
+  ],
+  "max_brake_temp": [
+    480.0,
+    490.0,
+    390.0,
+    400.0
+  ],
+  "pressure_deviation": 0.14999041,
+  "suspension_travel_hist": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "avg_wheels_pressure": [
+    27.399658,
+    27.60035,
+    27.199526,
+    27.399658
+  ],
+  "avg_tyre_temp_i": [
+    95.47925,
+    94.47925,
+    93.47925,
+    93.47925
+  ],
+  "avg_tyre_temp_m": [
+    92.47925,
+    91.47925,
+    90.47925,
+    91.47925
+  ],
+  "avg_tyre_temp_o": [
+    88.47925,
+    89.47925,
+    87.47924,
+    88.47925
+  ],
+  "avg_brake_temp": [
+    480.0,
+    490.0,
+    390.0,
+    400.0
+  ],
+  "avg_ride_height": [
+    25.0,
+    55.0
+  ],
+  "damper_histograms": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "throttle_smoothness": 99.805664,
+  "steering_smoothness": 99.74348,
+  "trail_braking_score": 67.173096,
+  "coasting_percent": 0.0,
+  "pedal_overlap_percent": 16.823986,
+  "full_throttle_percent": 27.15158,
+  "grip_usage_percent": 79.70552,
+  "oversteer_count": 36,
+  "understeer_count": 46,
+  "lockup_count": 46,
+  "car_control_score": 35.4,
+  "scrubbing_incidents": 23,
+  "max_steering_over_rotation": 11.459159,
+  "radar_stats": {
+    "smoothness": 0.9977457,
+    "aggression": 0.5342855,
+    "consistency": 0.9998,
+    "car_control": 0.354,
+    "tyre_mgmt": 0.97000194
+  },
+  "telemetry_trace": [
+    {
+      "distance": 0.0,
+      "time_ms": 30007,
+      "speed": 295.0,
+      "gas": 1.0,
+      "brake": 0.0,
+      "gear": 6,
+      "steer": 0.0,
+      "lat_g": 0.0,
+      "lon_g": 0.6,
+      "slip_avg": 0.025,
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "bounds_min_x": 3.4028235e+38,
+  "bounds_max_x": -3.4028235e+38,
+  "bounds_min_y": 3.4028235e+38,
+  "bounds_max_y": -3.4028235e+38
+}
