@@ -1354,7 +1354,9 @@ impl Engineer {
     /// wheels reads -0.023 rad on the left and +0.021 on the right. Negating
     /// the right-hand corners puts all four on one scale, where negative means
     /// the top of the tyre leans in — which is what a driver means by camber.
-    fn camber_degrees(car: &Car, corner: usize) -> f32 {
+    /// Public because the probe prints it beside the tread it explains: the
+    /// mirrored sign is the kind of thing a second copy gets wrong.
+    pub fn camber_degrees(car: &Car, corner: usize) -> f32 {
         let sign = if corner == 1 || corner == 3 {
             -1.0
         } else {
@@ -1437,12 +1439,21 @@ impl Engineer {
                 // Fahrenheit selected the user saw a Celsius number
                 // labelled °F. A spread is a difference, so it converts
                 // by scale only -- `format_temp` would add 32.
+                // **Say which edge is hot, not that a patch is "inefficient".**
+                // A driver who reads "contact patch inefficient" beside a
+                // negative I-O has to work out for himself that the number
+                // means the outer edge — and one who has just set three and a
+                // half degrees of negative camber reasonably reads the advice
+                // as contradicting his own car. The debrief has said which
+                // edge since it was written; this is the same three phrases.
                 message: format!(
                     "{where_} {} (I-O: {})",
-                    if more_camber {
-                        "contact patch inefficient"
-                    } else {
+                    if !more_camber {
                         "inner edge overheating"
+                    } else if spread < 0.0 {
+                        "outer edge hotter"
+                    } else {
+                        "heated too evenly"
                     }
                     .tr(ru),
                     fmt.format_temp_delta(spread)
@@ -1482,10 +1493,18 @@ impl Engineer {
                 // above stops being a bolted-on precondition and becomes part
                 // of how sure the advice says it is.
                 chain: Some(Chain {
+                    // **Which shoulder is working, the right way round.** Too
+                    // little negative camber means the tyre stands up in a
+                    // corner and the *outer* shoulder takes the load — that is
+                    // why the advice is more camber. This said the outer
+                    // shoulder was not being loaded, which is the reason to do
+                    // the opposite, beside an action that did this. The
+                    // debrief's wording for the same two cases, which is the
+                    // one that was right.
                     cause: if more_camber {
-                        "the outer shoulder is not being loaded through corners"
+                        "the tyre is standing too upright, so the outer shoulder takes the load in a corner"
                     } else {
-                        "the inner shoulder is carrying the corner"
+                        "the tyre is leaning far enough that the inner shoulder carries the corner alone"
                     }
                     .tr(ru)
                     .to_string(),
@@ -2950,6 +2969,56 @@ mod tests {
             recs[0].action.contains("-1.5°"),
             "the advice names the camber the car is running: {}",
             recs[0].action
+        );
+    }
+
+    /// The two halves of one piece of camber advice have to agree with each
+    /// other, and with the number beside them.
+    ///
+    /// A driver who has just set three and a half degrees of negative camber
+    /// and is told to add more will read the reason before he believes the
+    /// action. This used to say the outer shoulder was *not* being loaded —
+    /// the reason to take camber out — beside an action that put camber in,
+    /// and a message that named no edge at all. Reported from the outside,
+    /// which is where wording faults are always found.
+    #[test]
+    fn the_reason_for_more_camber_is_the_outer_shoulder_working() {
+        let config = AppConfig::default();
+        let mut engineer = engineer_reading_a_complete_game(&config);
+
+        let car = Car {
+            speed_kmh: 160.0,
+            acc_g: [1.2, 1.0, 0.0],
+            // Outer edge hotter than inner: not enough negative camber.
+            tyre_temp_inner_c: [90.0; 4],
+            tyre_temp_outer_c: [96.0; 4],
+            ..Default::default()
+        };
+        drive(&mut engineer, &car, 120);
+
+        let mut recs = Vec::new();
+        engineer.analyze_camber(&car, &mut recs);
+        let advice = recs.first().expect("an outer edge six degrees hot is advice");
+
+        assert!(
+            advice.action.contains("More neg. camber"),
+            "the action: {}",
+            advice.action
+        );
+        assert!(
+            advice.message.contains("outer edge hotter"),
+            "the message has to name the edge the number is about: {}",
+            advice.message
+        );
+        let cause = advice
+            .chain
+            .as_ref()
+            .expect("camber advice carries its reasoning")
+            .cause
+            .clone();
+        assert!(
+            cause.contains("outer shoulder takes the load"),
+            "the reason has to be the one the action follows from: {cause}"
         );
     }
 

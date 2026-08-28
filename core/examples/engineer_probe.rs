@@ -128,6 +128,26 @@ fn main() {
                 "core — this game measures no tread"
             }
         );
+        // **The three numbers the camber advice is actually made of.** The
+        // mean above hides them, and the mean is not what any camber verdict
+        // reads: inner minus outer is, and its *sign* is the whole verdict.
+        // A driver reported the advice contradicting his car in v0.4.2, and
+        // there was no way to ask this program what it had read — only what it
+        // had concluded. Printed with the camber the wheel is running, since
+        // the two together are what makes a verdict believable or not.
+        if reading.capabilities.tyre_edge_temps {
+            println!("tread     inner / middle / outer      I-O    camber");
+            for (corner, name) in ["FL", "FR", "RL", "RR"].iter().enumerate() {
+                println!(
+                    "  {name}      {:5.1} {:5.1} {:5.1} °C   {:+6.1}   {:+6.2}°",
+                    car.tyre_temp_inner_c[corner],
+                    car.tyre_temp_middle_c[corner],
+                    car.tyre_temp_outer_c[corner],
+                    car.tyre_temp_inner_c[corner] - car.tyre_temp_outer_c[corner],
+                    Engineer::camber_degrees(&car, corner)
+                );
+            }
+        }
         println!(
             "brake     {:5.0} {:5.0} {:5.0} {:5.0} °C",
             car.brake_temp_c[0], car.brake_temp_c[1], car.brake_temp_c[2], car.brake_temp_c[3]
