@@ -687,6 +687,49 @@ async fn main() -> Result<(), anyhow::Error> {
                     continue;
                 }
 
+                // **An address being typed wants its letters, not their
+                // bindings.** `s` is share and `w` is watch on this tab, so
+                // typing a hostname without this turns sharing on and off
+                // halfway through the word. Same reasoning as the key capture
+                // below, and it has to come before `resolve` for the same
+                // reason.
+                if app_lock.active_tab == AppTab::Lan && app_lock.typing.is_some() {
+                    let done = match key.code {
+                        KeyCode::Esc => {
+                            app_lock.typing = None;
+                            None
+                        }
+                        KeyCode::Enter => app_lock.typing.take(),
+                        KeyCode::Backspace => {
+                            if let Some(typing) = app_lock.typing.as_mut() {
+                                typing.text.pop();
+                            }
+                            None
+                        }
+                        KeyCode::Char(letter) => {
+                            if let Some(typing) = app_lock.typing.as_mut() {
+                                // An address is short. A field with no ceiling
+                                // is a field somebody can paste a file into.
+                                if typing.text.chars().count() < 60 {
+                                    typing.text.push(letter);
+                                }
+                            }
+                            None
+                        }
+                        _ => None,
+                    };
+                    if let Some(typed) = done
+                        && app_lock.address_typed(&typed)
+                    {
+                        let wish = app_lock.lan.clone();
+                        wish.write_into(&mut app_lock.config);
+                        if let Err(error) = app_lock.config.save() {
+                            error!(error = ?error, "Could not save the network settings");
+                        }
+                    }
+                    continue;
+                }
+
                 // The Settings screen's key-capture mode wants the next
                 // keypress raw, whatever it is bound to — otherwise F10 could
                 // never be rebound, because it would toggle the overlay on the
@@ -1047,15 +1090,47 @@ async fn main() -> Result<(), anyhow::Error> {
                                     }
                                 }
                                 (Some(keys::Action::LanPick), _) => {
-                                    if let Some(peer) = app_lock.peers.get(app_lock.peer_cursor)
-                                        && peer.reachable()
-                                    {
-                                        wish.send_to_peer(peer);
-                                        if wish.share_as.trim().is_empty() {
-                                            let name = app_lock.session_info.player_name.clone();
-                                            wish.share_simply(&name);
+                                    match app_lock.peers.get(app_lock.peer_cursor).cloned() {
+                                        Some(peer) if peer.reachable() => {
+                                            wish.send_to_peer(&peer);
+                                            if wish.share_as.trim().is_empty() {
+                                                let name =
+                                                    app_lock.session_info.player_name.clone();
+                                                wish.share_simply(&name);
+                                            }
+                                        }
+                                        // **A key that does nothing has to say
+                                        // so.** Somebody who has not switched
+                                        // watching on announces port zero, and
+                                        // pressing Enter on them was silent —
+                                        // which reads as the program ignoring
+                                        // the keyboard.
+                                        Some(peer) => {
+                                            app_lock.lan_trouble = Some(format!(
+                                                "{} is not listening — they press W on their side",
+                                                peer.name
+                                            ));
+                                        }
+                                        None => {
+                                            app_lock.lan_trouble = Some(
+                                                "nobody in the list — press E and type their \
+                                                 address"
+                                                    .to_string(),
+                                            );
                                         }
                                     }
+                                }
+                                (Some(keys::Action::LanType), _) => {
+                                    // Where to send is what somebody wants
+                                    // nine times out of ten; the listening
+                                    // address is already set by W and is only
+                                    // typed when it has to be something other
+                                    // than every interface.
+                                    app_lock.typing = Some(ac_tui::Typing {
+                                        what: ac_tui::TypingInto::SendTo,
+                                        text: wish.share_to.clone(),
+                                    });
+                                    app_lock.lan_trouble = None;
                                 }
                                 (Some(keys::Action::LanOff), _) => wish.off(),
                                 (Some(keys::Action::LanAnnounce), _) => {

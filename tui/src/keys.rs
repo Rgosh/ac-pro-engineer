@@ -49,6 +49,8 @@ pub enum Action {
     LanOff,
     /// Be findable on the network, or stop being.
     LanAnnounce,
+    /// Type an address by hand.
+    LanType,
 }
 
 /// A parsed binding: what to press, and with what held down.
@@ -385,6 +387,7 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
             (&keys.lan_pick, Action::LanPick),
             (&keys.lan_off, Action::LanOff),
             (&keys.lan_announce, Action::LanAnnounce),
+            (&keys.lan_type, Action::LanType),
         ],
         _ => &[],
     };
@@ -462,6 +465,7 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
             "LAN: be findable",
             keys.lan_announce.as_str(),
         ),
+        ("lan_type", "LAN: type an address", keys.lan_type.as_str()),
         (
             "analysis_save",
             "Analysis: save lap",
@@ -531,6 +535,7 @@ pub fn action_of(field: &str) -> Option<Action> {
         "lan_pick" => Action::LanPick,
         "lan_off" => Action::LanOff,
         "lan_announce" => Action::LanAnnounce,
+        "lan_type" => Action::LanType,
         "analysis_save" => Action::AnalysisSave,
         "analysis_load" => Action::AnalysisLoad,
         "analysis_compare" => Action::AnalysisCompare,
@@ -576,6 +581,7 @@ pub fn hints(tab: AppTab) -> &'static [(&'static str, &'static str, &'static str
             ("lan_share", "Share", "Делиться"),
             ("lan_watch", "Watch", "Смотреть"),
             ("lan_pick", "Send to", "Кому"),
+            ("lan_type", "Type address", "Ввести адрес"),
             ("lan_off", "Off", "Выкл"),
             ("help", "Help", "Помощь"),
         ],
@@ -614,6 +620,7 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
         "lan_pick" => keys.lan_pick = value,
         "lan_off" => keys.lan_off = value,
         "lan_announce" => keys.lan_announce = value,
+        "lan_type" => keys.lan_type = value,
         "analysis_save" => keys.analysis_save = value,
         "analysis_load" => keys.analysis_load = value,
         "analysis_compare" => keys.analysis_compare = value,

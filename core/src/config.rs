@@ -502,6 +502,9 @@ pub struct KeyBindings {
     /// Say on the network that this copy is here, or stop saying it.
     #[serde(default = "key_lan_announce")]
     pub lan_announce: String,
+    /// Type an address by hand, for a network that does not carry multicast.
+    #[serde(default = "key_lan_type")]
+    pub lan_type: String,
 }
 
 fn key_help() -> String {
@@ -578,6 +581,9 @@ fn key_lan_off() -> String {
 fn key_lan_announce() -> String {
     "a".to_string()
 }
+fn key_lan_type() -> String {
+    "e".to_string()
+}
 fn key_analysis_save() -> String {
     "s".to_string()
 }
@@ -632,6 +638,7 @@ impl Default for KeyBindings {
             lan_pick: key_lan_pick(),
             lan_off: key_lan_off(),
             lan_announce: key_lan_announce(),
+            lan_type: key_lan_type(),
             setup_browser: key_setup_browser(),
             setup_download: key_setup_download(),
         }

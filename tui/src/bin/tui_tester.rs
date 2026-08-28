@@ -443,6 +443,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|f| renderer.render(f, &app))?;
         capture(&terminal, width, height, screenshot_dir, "LAN")?;
 
+        // **The way out of an empty list**, which is the state every network
+        // that blocks multicast leaves this screen in — and until v0.4.5 the
+        // terminal had no way through it at all. One picture of somebody
+        // halfway through typing an address.
+        app.peers.clear();
+        app.lan.share_to.clear();
+        app.typing = Some(ac_tui::Typing {
+            what: ac_tui::TypingInto::SendTo,
+            text: "192.168.1.42:900".to_string(),
+        });
+        terminal.draw(|f| renderer.render(f, &app))?;
+        capture(&terminal, width, height, screenshot_dir, "LAN_Typing")?;
+        app.typing = None;
+
         // The other half of the same feature: the settings somebody sets once.
         app.active_tab = AppTab::Settings;
         app.ui_state

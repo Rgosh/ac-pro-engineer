@@ -144,6 +144,44 @@ impl AppTab {
     }
 }
 
+/// An address being typed, and which box it belongs to.
+///
+/// Two fields rather than a free-for-all: what a person types is an address,
+/// and the two things an address can be here are where a session goes and
+/// where one is listened for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Typing {
+    pub what: TypingInto,
+    /// What has been typed so far. Kept apart from the wish until Enter, so a
+    /// half-typed host does not tear a working link down on every keystroke.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypingInto {
+    /// `host:port` — where this session is sent.
+    SendTo,
+    /// `ip:port` — where somebody else's session is listened for.
+    ListenOn,
+}
+
+impl TypingInto {
+    pub fn label(self) -> &'static str {
+        match self {
+            TypingInto::SendTo => "send to",
+            TypingInto::ListenOn => "listen on",
+        }
+    }
+
+    /// What to show somebody who has typed nothing yet.
+    pub fn hint(self) -> &'static str {
+        match self {
+            TypingInto::SendTo => "192.168.1.42:9001",
+            TypingInto::ListenOn => "0.0.0.0:9001",
+        }
+    }
+}
+
 /// What a confirmation is about to do to the game folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayAction {
@@ -344,6 +382,17 @@ pub struct AppState {
     pub peer_cursor: usize,
     /// What the link is doing, for the screen that reports it.
     pub link: ac_core::broadcast::session::Link,
+    /// An address being typed on the LAN tab, and nothing yet if nobody is.
+    ///
+    /// **The half the terminal did not have.** Its LAN screen could only aim
+    /// at a machine picked out of the discovered list — which is fine until
+    /// the list is empty, and it is empty on every network that does not carry
+    /// multicast: guest Wi-Fi, an access point with client isolation, a mesh
+    /// VPN, plenty of ordinary home routers. The window has had two text boxes
+    /// since it got the feature; here there was no way in at all, so "it does
+    /// not send to the other person" was the correct behaviour of a screen
+    /// with no way to say who the other person is.
+    pub typing: Option<Typing>,
     /// Why the network is not doing what was asked, when it is not.
     ///
     /// A port another program already holds is the ordinary failure, and it
@@ -541,6 +590,7 @@ impl AppState {
             finder: None,
             peers: Vec::new(),
             peer_cursor: 0,
+            typing: None,
             link: ac_core::broadcast::session::Link::default(),
             lan_trouble: None,
             broadcast,
@@ -1600,6 +1650,40 @@ impl AppState {
         frame
     }
 
+    /// Take an address somebody typed, and switch on what they meant by it.
+    ///
+    /// **Typing an address is asking to use it.** Making somebody type a
+    /// hostname and then press another key to turn sharing on is a second step
+    /// for a decision already made, and it is the step people forget — the
+    /// screen then shows an address and sends nothing to it.
+    ///
+    /// Returns whether the wish changed, so the caller knows to write it down.
+    pub fn address_typed(&mut self, typed: &Typing) -> bool {
+        let mut wish = self.lan.clone();
+        let address = typed.text.trim().to_string();
+        match typed.what {
+            TypingInto::SendTo => {
+                wish.share_to = address;
+                if !wish.share_to.is_empty() && !wish.mode.sends() {
+                    let name = match wish.share_as.trim().is_empty() {
+                        true => self.session_info.player_name.clone(),
+                        false => wish.share_as.clone(),
+                    };
+                    wish.share_simply(&name);
+                }
+            }
+            TypingInto::ListenOn => {
+                wish.listen_on = address;
+                if !wish.listen_on.is_empty() && !wish.mode.receives() {
+                    wish.watch_simply();
+                }
+            }
+        }
+        let changed = wish != self.lan;
+        self.lan = wish;
+        changed
+    }
+
     /// Open, close and re-aim the sockets so they match what was asked for.
     ///
     /// **Compared rather than applied.** Nothing is torn down that has not
@@ -2104,6 +2188,70 @@ mod tests {
                 lap.lap_number, lap.sectors
             );
         }
+    }
+
+    /// **A typed address is the only way in on a network with no multicast**,
+    /// and it has to switch sharing on by itself.
+    ///
+    /// The terminal could aim only at a machine picked out of the discovered
+    /// list. That list is empty on guest Wi-Fi, on an access point with client
+    /// isolation and across any mesh VPN — and there was no other way to say
+    /// who the other person is, so "it does not send to the other person" was
+    /// the correct behaviour of a screen with no way to be told.
+    #[test]
+    fn an_address_typed_by_hand_is_a_link() {
+        let mut app = AppState::new();
+        app.session_info.player_name = "Rgosh".to_string();
+        // Off and empty, said here rather than inherited: `AppState::new`
+        // reads this machine's configuration, and a test that passes or fails
+        // by what somebody set up last week is a test that says nothing.
+        app.lan = ac_core::lan::LanWish::default();
+
+        let changed = app.address_typed(&Typing {
+            what: TypingInto::SendTo,
+            text: "  192.168.1.42:9001  ".to_string(),
+        });
+
+        assert!(
+            changed,
+            "the wish has to change, or nothing is written down"
+        );
+        assert_eq!(
+            app.lan.share_to, "192.168.1.42:9001",
+            "trimmed, because a trailing space is not part of an address"
+        );
+        assert!(
+            app.lan.mode.sends(),
+            "typing where to send is asking to send there"
+        );
+        assert_eq!(
+            app.lan.share_as, "Rgosh",
+            "and the name a watcher sees defaults to the one the game knows"
+        );
+        assert_eq!(
+            app.lan.complaint(),
+            None,
+            "nothing is left missing: {:?}",
+            app.lan.complaint()
+        );
+
+        // The sockets follow on the next tick, which is what actually sends.
+        app.reconcile_lan();
+        assert!(app.sharing.is_some(), "no link was opened for that address");
+
+        // And the other box behaves the same way round.
+        let mut watcher = AppState::new();
+        watcher.lan = ac_core::lan::LanWish::default();
+        watcher.address_typed(&Typing {
+            what: TypingInto::ListenOn,
+            text: "127.0.0.1:0".to_string(),
+        });
+        assert!(watcher.lan.mode.receives());
+        watcher.reconcile_lan();
+        assert!(
+            watcher.watching.is_some(),
+            "no port was opened to listen on"
+        );
     }
 
     /// **Two copies of this program, over a socket, and every screen filled.**

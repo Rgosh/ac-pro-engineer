@@ -13,9 +13,15 @@
 
 use crate::AppState;
 use ac_core::broadcast::discovery::Role;
-use ac_core::i18n::Translate;
+use ac_core::config::Language;
+use ac_core::i18n::{Translate, tr_fmt};
 use ac_core::lan::Mode;
 use ratatui::{prelude::*, widgets::*};
+
+/// The flag `tr_fmt` takes, from the language every other call here uses.
+fn is_ru(language: &Language) -> bool {
+    *language == Language::Russian
+}
 
 pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
@@ -94,18 +100,46 @@ fn render_switches(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ]),
         Line::from(vec![
             Span::styled(format!("{:<14}", "sending to".tr_lang(lang)), label),
-            match wish.share_to.trim().is_empty() {
+            match (&app.typing, wish.share_to.trim().is_empty()) {
+                // **Being typed into, and it has to look like it.** A cursor
+                // and a highlight, because a field that looks the same whether
+                // or not it has the keyboard is a field somebody types into
+                // the wrong one of.
+                (Some(typing), _) if typing.what == crate::TypingInto::SendTo => Span::styled(
+                    format!("{}▏", typing.text),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 // **The one thing a person still has to choose**, said where
-                // they are looking rather than in a manual.
-                true => Span::styled(
-                    "nobody yet — choose below".tr_lang(lang),
+                // they are looking rather than in a manual, and with both ways
+                // of doing it named.
+                (_, true) => Span::styled(
+                    format!(
+                        "{} — {} [{}]",
+                        "nobody yet".tr_lang(lang),
+                        "choose below, or type".tr_lang(lang),
+                        crate::keys::describe(&keys.lan_type),
+                    ),
                     Style::default().fg(Color::Yellow),
                 ),
-                false => Span::styled(wish.share_to.clone(), value),
+                (_, false) => Span::styled(wish.share_to.clone(), value),
             },
         ]),
     ];
-    if sharing {
+    if let Some(typing) = &app.typing {
+        lines.push(Line::from(Span::styled(
+            // Short, because this panel is half the screen and a line that
+            // runs on under the divider is a line nobody finishes reading.
+            format!(
+                "{}  ·  {}",
+                tr_fmt("e.g. {0}", is_ru(lang), &[typing.what.hint()]),
+                "ENTER ok, ESC cancel".tr_lang(lang),
+            ),
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else if sharing {
         let sent = app.sharing.as_ref().map(|link| link.sent()).unwrap_or(0);
         lines.push(Line::from(vec![
             Span::styled(format!("{:<14}", "sent".tr_lang(lang)), label),
@@ -226,9 +260,17 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         let (text, colour) = match (&app.lan_trouble, app.finder.is_some()) {
             (Some(why), _) => (why.clone(), Color::Yellow),
             (None, true) => (
-                "nobody else yet — start the program on the other machine"
-                    .tr_lang(lang)
-                    .to_string(),
+                // **And what to do when it stays empty**, which is the state
+                // every network that blocks multicast leaves this in.
+                format!(
+                    "{}  ·  {}",
+                    "nobody else yet — start the program on the other machine".tr_lang(lang),
+                    tr_fmt(
+                        "no list on this network? press [{0}] and type their address",
+                        is_ru(lang),
+                        &[&crate::keys::describe(&keys.lan_type)],
+                    ),
+                ),
                 Color::DarkGray,
             ),
             (None, false) => (
