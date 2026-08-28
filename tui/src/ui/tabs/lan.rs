@@ -184,11 +184,20 @@ fn render_switches(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ]),
         (None, _) => Line::from(""),
     });
+    // **Something arrived and was not usable**, which is a different answer
+    // from silence and the only one that says what to do: a copy on another
+    // release, or another program on the same port.
+    if let Some(trouble) = app.link.trouble {
+        lines.push(Line::from(Span::styled(
+            trouble.tr_lang(lang),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
     if app.link.lost > 0 {
         lines.push(Line::from(vec![
             Span::styled(format!("{:<14}", "lost".tr_lang(lang)), label),
             Span::styled(
-                format!("{}", app.link.lost),
+                format!("{}  ({} ms worst)", app.link.lost, app.link.worst_age_ms),
                 Style::default().fg(Color::DarkGray),
             ),
         ]));
@@ -356,7 +365,7 @@ fn render_deeper(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     lines.push(Line::from(Span::styled(
         format!(
             "{}  ·  {}",
-            "rate and the rest: config.json, under \"lan\"".tr_lang(lang),
+            "rate and the rest: config.json, section lan".tr_lang(lang),
             "both programs read it".tr_lang(lang),
         ),
         Style::default().fg(Color::DarkGray),
