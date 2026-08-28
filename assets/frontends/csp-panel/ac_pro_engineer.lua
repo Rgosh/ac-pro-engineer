@@ -61,7 +61,7 @@ local EXPECTED_VERSION = 6
 -- ruling out when something in the game looks wrong. Checked against the crate
 -- by `cargo test -p ac_core the_panel_announces`, so it cannot be left behind
 -- at release time.
-local PANEL_VERSION = '0.4.2'
+local PANEL_VERSION = '0.4.5'
 
 local frame = require('acpe.frame')
 frame.configure(EXPECTED_VERSION, PANEL_VERSION)

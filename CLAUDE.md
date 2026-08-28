@@ -278,6 +278,34 @@ and it is handed them by `frame.configure` — but the installer greps
 the alternative is an install missing a `require` target — which fails at load,
 in the game, with every window drawing the error.
 
+## The network, and which protocol answers which question
+
+Two travel, and neither replaces the other:
+
+- **`broadcast::udp`** sends the computed *frame* — a panel's worth of finished
+  numbers and sentences, about a kilobyte, for the in-game panel, a relay, or
+  fifty lines of Python. `broadcast::receiver` is its other end.
+- **`broadcast::session`** sends the whole `Reading`, for another copy of this
+  program. The receiving copy runs its own analysis, so every screen works and
+  the watcher's own units and language apply. A frame cannot do this and it is
+  not about size: there are no coordinates in one, so no map; no throttle, so
+  no traces; no capabilities, so an unmeasured zero and a measured one read
+  alike.
+
+`broadcast::discovery` is multicast to *find*, never to stream — a group is
+broadcast to a switch, and thirty readings a second on one is everybody's
+problem. `lan::LanWish` is what a front end writes down and the tick
+reconciles; **nothing opens a socket where a key was pressed**, because
+resolving a name blocks for seconds on a machine with no network.
+
+**Two sockets cannot hold one port.** The terminal used to bind `receive_from`
+for the frame receiver, which is the port a session arrives on — that is why
+the frame receiver is not in the terminal any more.
+
+`cargo run -p ac_core --example lan_probe` says which of the four halves is
+broken: this machine's address, the port, the group, and whether anything is
+arriving. Run it before reading any of this code.
+
 ## Adding a sink, or a game
 
 Both have a shape now, and both are meant to be additive:
@@ -327,8 +355,12 @@ binding into something to draw.
 
 **Do not write a key name into a string.** Every hint, the help overlay and the
 Settings screen read from `keys::all` / `keys::hints`, and
-`the_hints_only_name_keys_that_do_something` walks all nine tabs and insists
-each key a hint names resolves to the action the hint claims on that tab. That
+`the_hints_only_name_keys_that_do_something` walks every tab — following
+`AppTab::next` rather than a list, so a tab added tomorrow is checked tomorrow —
+and insists each key a hint names resolves to the action the hint claims on
+that tab. The same rule reached the Settings screen in v0.4.5: `CATEGORIES` is
+one list of the categories, their captions and the letter that opens each, and
+the `[A/S/D/F/G/H]` line is built from it. That
 test exists because the Setup tab promised `'D' - Download` on a screen where
 `D` reached no handler.
 

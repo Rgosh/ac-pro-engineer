@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.5] - 2026-08-28
+
+The release LAN was the point of. Two people, two machines, one network: one
+drives and the other watches — every screen, not a summary — and it works
+between the terminal and the window in any combination.
+
+Numbered 0.4.5 rather than 0.4.3: the version this jumps over is the one where
+the two front ends spoke different protocols, and nothing was released from it.
+
+**The frame does not change.** Every `shm-bridge.exe` and every installed panel
+from v0.4.0 onward keeps working, and nobody has to fetch a bridge.
+
+### Added
+
+- **Watch somebody else's session, on your own screens.** `LAN` is the tenth
+  tab (`0`): `S` shares this session, `W` watches, `Enter` aims at whoever the
+  cursor is on in the list of machines, `O` switches everything off keeping the
+  addresses. Nothing else is asked — the port, the rate and being findable are
+  chosen, and the one thing left is who to send to.
+
+  What arrives is the **whole reading**, so the watching machine finds the laps,
+  builds the traces, draws the map's line and runs its own engineer. A spectator
+  gets every tab, in their own units and their own language, rather than four
+  sentences written on somebody else's machine.
+- **The copies find each other.** A couple of hundred bytes every two seconds
+  on a multicast group everybody joins, carrying a name, a role, a port, the car
+  and the track — and nothing about the driving. Nobody reads an IP address out
+  loud unless the network refuses multicast, and typing one still works.
+  Announcing is a switch of its own: off does not stop you seeing anybody.
+- **The terminal and the window speak one protocol.** Either can watch either.
+  Both magic strings from v0.4.2 are still accepted, so a machine that updates
+  first keeps its link to one that has not.
+- **Settings → SHARING `[G]`** — readings a second, only-while-on-track, the
+  quiet timeout, being findable, and whether a session is accepted from the
+  whole network or only from this machine.
+- **`lan_probe`** — a probe that says which of the four halves of the network is
+  at fault: this machine's address, the port, the group, and whether anything is
+  arriving. `docs/lan.md` is the walkthrough, with its real output in it.
+
+### Fixed
+
+- **The camber advice no longer contradicts itself.** Told to add negative
+  camber on a car already at -3.5°, a driver would read the reason first — and
+  it said "the outer shoulder is not being loaded through corners", which is the
+  reason to take camber *out*. Too little negative camber means the tyre stands
+  up and the outer shoulder takes the load; that is what it says now, in the
+  same words the lap debrief has always used. The message names the edge as
+  well: "outer edge hotter" or "heated too evenly", rather than "contact patch
+  inefficient" beside a number the reader had to interpret.
+- **`engineer_probe` prints the tread it judged.** Inner, middle, outer, the
+  inner-minus-outer that every camber verdict is made of, and the camber the
+  wheel is running. When that advice was questioned there was no way to ask the
+  program what it had *read* — only what it had concluded.
+
+### Changed
+
+- **The summary receiver is gone from the terminal.** Two sockets cannot hold
+  one port, and of the two the session is the one worth having.
+  `broadcast::receiver` is untouched in the core for relays and for anything
+  outside this project, and `broadcast_to` still sends the summary alongside.
+- The settings categories, their captions and the letter that opens each are one
+  list now. The footer's `[A/S/D/F/G/H]` is built from it, so it cannot go stale
+  the way `[A/S/D]` did twice.
+
 ## [v0.4.2] - 2026-08-24
 
 A patch, and the frame does not change — every `shm-bridge.exe` and every

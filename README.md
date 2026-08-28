@@ -64,7 +64,8 @@ overlay app.
 | [Which simulator](#which-simulator-and-what-it-reports) | Assetto Corsa, Competizione, and what each one measures |
 | [Install](#install) | Windows, Linux, from source |
 | [The in-game overlay](#the-in-game-overlay) | the CSP panel window by window, and the Linux bridge |
-| [Every screen](#every-screen) | the terminal's nine tabs and the panel's five windows, with pictures |
+| [Every screen](#every-screen) | the terminal's ten tabs and the panel's five windows, with pictures |
+| [Sharing a session](#sharing-a-session) | two machines, one network |
 | [Keyboard](#keyboard) | defaults, and how to rebind them |
 | [Command line](#command-line) | every flag of every binary |
 | [Configuration file](#configuration-file) | every key, and where it lives |
@@ -95,6 +96,13 @@ overlay app.
   above the clip point.
 - **Driving style analysis.** Smoothness, aggression, trail braking, lockups,
   wheelspin, coasting and scrubbing, counted rather than guessed.
+
+- **Somebody else's session, on your screens.** One person drives; the other
+  presses `W` and watches — the dashboard, the traces, the map, the corner
+  table and the engineer, all of the driving happening on the other machine,
+  in your own units and your own language. It works between the terminal and
+  the window in any combination, and the two copies find each other on the
+  network rather than anybody reading an IP address out loud.
 
 **Between sessions:**
 
@@ -299,7 +307,7 @@ one as `shm-bridge.exe.previous`.
 
 ## Every screen
 
-Both faces of the application: the terminal's launcher and nine tabs first,
+Both faces of the application: the terminal's launcher and ten tabs first,
 then the in-game panel's five windows and every tab of its settings. The
 terminal pictures come from `cargo run --bin tui_tester` and the panel's from
 [`apps/lua/love/portraits.sh`](apps/lua/love/portraits.sh) — both draw with the
@@ -416,13 +424,15 @@ peaks barely touch yellow.
 
 ![Settings tab: system, display, engineer, overlay and key categories](screenshots/Settings.png)
 
-Five categories, `A` `S` `D` `F` `G` or `←/→`:
+Six categories, `A` `S` `D` `F` `G` `H` or `←/→`:
 
 - **SYSTEM** — language, update rate, history size, autosave
 - **DISPLAY** — pressure and temperature units
 - **ENGINEER** — every alert threshold, target hot pressures, ghost delta
 - **OVERLAY** — which blocks the overlay gets, how many advice lines,
   `[I]` install / `[U]` uninstall the panel, and `[C]` for diagnostics
+- **SHARING** — readings a second, only-while-on-track, the quiet timeout,
+  being findable, and whether a session is accepted from the whole network
 - **KEYS** — rebind anything
 
 ![Settings, KEYS category: every action with the key it is bound to, all rebindable](screenshots/Settings_Keys.png)
@@ -444,6 +454,21 @@ terminal.
 
 Sixteen chapters of setup and physics reference, from trail braking to wet
 setups to a troubleshooting index. `↑/↓` to move between them.
+
+### 10 — LAN
+
+![LAN tab: two switches, everybody on the network, and what the link is doing](screenshots/LAN.png)
+
+Sharing this session and watching somebody else's. Two switches — `S` and `W` —
+the list of every copy the network has heard from, and what the link is doing:
+who is sending, at what rate, how old the picture is, how many readings never
+came. `Enter` aims at whoever the cursor is on. Nothing on this screen opens a
+socket while you are looking at it: it writes down what you asked for, and the
+telemetry thread reconciles it on the next tick.
+
+The half nobody looks at twice — the rate, only-while-on-track, the quiet
+timeout, and whether a session is accepted from the whole network or only from
+this machine — is **Settings → SHARING `[G]`**.
 
 ### Help
 
@@ -644,11 +669,47 @@ sub-tabs, so one window answers "what is going on" instead of three.
 
 ---
 
+## Sharing a session
+
+Two people, two machines, one network. One drives; the other sees the
+dashboard, the traces, the map, the corner table and the engineer — of the
+driving happening on the other machine, in their own units and their own
+language. It works between **any two** of the front ends: the terminal
+watching the window, the window watching the terminal, or two of either.
+
+**Driving, and want to be watched:** open `LAN` (`0`), press `S`. That is
+sharing on — you are announced on the network, you are listening, and the port
+and the rate are chosen for you. The only thing left is who to send to.
+
+**Watching somebody:** open `LAN`, press `W`. Nothing else is asked. When the
+driver appears under `ON THIS NETWORK`, put the cursor on them and press
+`Enter` if you also want to send them yours.
+
+**Off:** `O`. Every address and name is kept.
+
+What travels is the **reading** — everything one tick of the simulator says,
+about two kilobytes, thirty times a second — so the watching machine finds the
+laps, builds the traces and draws the map's line itself, and its own engineer
+writes the advice. A separate, much smaller announcement carries a name, a
+role, a port, the car and the track, and **nothing about the driving**;
+switching `A` off stops sending it without stopping you seeing anybody.
+
+Two ports: **9001** for a session, **9002** for the group copies find each
+other on (`239.255.42.99`, which routers do not forward off the local
+network). Both are settable; neither has to be.
+
+When it does not work, `cargo run -p ac_core --example lan_probe` prints which
+of the four halves is at fault — this machine's address, the port, the group,
+and whether anything is arriving. [docs/lan.md](docs/lan.md) is the whole of
+it, including what to do on a network that blocks multicast.
+
+---
+
 ## Keyboard
 
 | Key | Where | What it does |
 |:---:|:---:|:---|
-| **1** – **9** | everywhere | Switch tabs — the digits, not the function keys |
+| **1** – **9**, **0** | everywhere | Switch tabs — the digits, not the function keys; `0` is LAN |
 | **Tab** / **Shift+Tab** | everywhere | Next / previous tab |
 | **F1** / **?** | everywhere | Help for the current tab |
 | **Esc** / **Q** | everywhere | Back to the launcher, then quit |
@@ -665,12 +726,17 @@ sub-tabs, so one window answers "what is going on" instead of three.
 | **B** | Setup | Open / close the Setup Cloud browser |
 | **D** | Setup | Download the selected setup, or open the browser |
 | **PgUp / PgDn** | Setup | Scroll the details pane |
-| **A S D F G** | Settings | Jump to a settings category |
+| **S** | LAN | Share this session, or stop |
+| **W** | LAN | Watch somebody, or stop |
+| **Enter** | LAN | Send my session to the machine the cursor is on |
+| **O** | LAN | Everything off, keeping the addresses |
+| **A** | LAN | Be findable on the network, or stop being |
+| **A S D F G H** | Settings | Jump to a settings category |
 | **I** / **U** | Settings → OVERLAY | Install / remove the in-game panel |
 | **C** | Settings → OVERLAY | Overlay diagnostics — why the panel is blank |
 | **O** / **H** | Launcher | Open the review page / hide that banner |
 
-**All of these are defaults.** **Settings → KEYS `[G]`** rebinds any of them:
+**All of these are defaults.** **Settings → KEYS `[H]`** rebinds any of them:
 `ENTER` arms the capture, the next key you press becomes the binding, `DEL`
 restores the default and `ESC` cancels. A key another action already holds is
 refused with the name of the action holding it, rather than silently shadowing
@@ -778,10 +844,15 @@ a config from an older version keeps working.
 | `overlay.show_telemetry` / `_engineer` / `_session` / `_timing` / `_fuel` | `true` | Which blocks the overlay is allowed to draw. |
 | `overlay.engineer_lines` | `4` | How many advice lines reach the overlay, 0 to 8. |
 | `overlay.debrief_lines` | `8` | Lines of each finished lap's debrief that reach the overlay, 0 to 8. Zero stops publishing one. |
-| `overlay.broadcast_to` | `""` | Also send the computed frame here as JSON over UDP, `host:port`. Empty is off. |
-| `overlay.broadcast_hz` | `10` | How many times a second to send there. |
-| `overlay.broadcast_name` | `""` | The name that travels with it, so a receiver watching several drivers can tell them apart. |
-| `overlay.receive_from` | `""` | Listen here for another machine's frames, `ip:port`. Empty is off. |
+| `overlay.broadcast_to` | `""` | Where a session is sent, `host:port`. Empty is off. Set from the LAN tab. |
+| `overlay.broadcast_hz` | `10` | How many times a second the *summary* frame is sent — the one for the panel and for anything outside this project. A whole session goes at `lan.share_hz`. |
+| `overlay.broadcast_name` | `""` | The name that travels with it, so somebody watching several drivers can tell them apart. |
+| `overlay.receive_from` | `""` | Where a session is listened for, `ip:port`. `0.0.0.0:9001` is the whole network, `127.0.0.1:9001` only this machine. |
+| `lan.mode` | `"Off"` | `Off`, `Share`, `OnAir`, `Watch` or `Both`. The LAN tab writes it. |
+| `lan.share_hz` | `30` | Readings a second sent to another copy of this program. Their map and traces are drawn from these, so it is how finely their picture is drawn. |
+| `lan.only_on_track` | `false` | Only send while the car is on track, not in the menus. |
+| `lan.quiet_after_s` | `3` | How long a link may be silent before the screen says so. |
+| `lan.announce` | `true` | Say on the network that this copy is here, so others can find it without an address being read out. |
 | `overlay.startup_card` | `true` | Show the install card when the application starts. |
 | `keys.*` | see [Keyboard](#keyboard) | One key per action, as text. |
 | `data_path` | config directory | Where laps, exports, screenshots and records go. |
