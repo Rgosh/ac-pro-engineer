@@ -384,9 +384,7 @@ impl SettingsState {
                     let next = config.lan.share_hz + delta;
                     config.lan.share_hz = next.clamp(5.0, 120.0);
                 }
-                1 if delta.abs() > 0.0 => {
-                    config.lan.only_on_track = !config.lan.only_on_track
-                }
+                1 if delta.abs() > 0.0 => config.lan.only_on_track = !config.lan.only_on_track,
                 2 => {
                     let next = config.lan.quiet_after_s + delta * 0.5;
                     config.lan.quiet_after_s = next.clamp(1.0, 30.0);
@@ -460,11 +458,15 @@ impl SettingsState {
                 _ => "",
             },
             SettingsCategory::Sharing => match self.selected_index {
-                0 => "Readings a second sent to a watcher. Their map is drawn from these.".tr(is_ru),
+                0 => {
+                    "Readings a second sent to a watcher. Their map is drawn from these.".tr(is_ru)
+                }
                 1 => "Only send while the car is on track, not in the menus.".tr(is_ru),
                 2 => "How long a link may be silent before the screen says so.".tr(is_ru),
                 3 => "Say on the network that this copy is here, so others can find it.".tr(is_ru),
-                4 => "Accept a session from the whole network, or only from this machine.".tr(is_ru),
+                4 => {
+                    "Accept a session from the whole network, or only from this machine.".tr(is_ru)
+                }
                 _ => "",
             },
             SettingsCategory::Overlay => match self.selected_index {

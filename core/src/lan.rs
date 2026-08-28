@@ -381,7 +381,10 @@ mod tests {
 
         assert_eq!(wish.mode, Mode::Share);
         assert_eq!(wish.share_as, "Kimi");
-        assert!(wish.announce, "a driver nobody can find is a driver nobody watches");
+        assert!(
+            wish.announce,
+            "a driver nobody can find is a driver nobody watches"
+        );
         assert_eq!(
             wish.listen_on,
             format!("0.0.0.0:{PORT}"),

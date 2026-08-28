@@ -445,9 +445,17 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
         ("tab_settings", "Go to Settings", keys.tab_settings.as_str()),
         ("tab_guide", "Go to Guide", keys.tab_guide.as_str()),
         ("tab_lan", "Go to LAN", keys.tab_lan.as_str()),
-        ("lan_share", "LAN: share this session", keys.lan_share.as_str()),
+        (
+            "lan_share",
+            "LAN: share this session",
+            keys.lan_share.as_str(),
+        ),
         ("lan_watch", "LAN: watch somebody", keys.lan_watch.as_str()),
-        ("lan_pick", "LAN: send to the one chosen", keys.lan_pick.as_str()),
+        (
+            "lan_pick",
+            "LAN: send to the one chosen",
+            keys.lan_pick.as_str(),
+        ),
         ("lan_off", "LAN: everything off", keys.lan_off.as_str()),
         (
             "lan_announce",

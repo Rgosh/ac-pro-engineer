@@ -1047,14 +1047,12 @@ async fn main() -> Result<(), anyhow::Error> {
                                     }
                                 }
                                 (Some(keys::Action::LanPick), _) => {
-                                    if let Some(peer) =
-                                        app_lock.peers.get(app_lock.peer_cursor)
+                                    if let Some(peer) = app_lock.peers.get(app_lock.peer_cursor)
                                         && peer.reachable()
                                     {
                                         wish.send_to_peer(peer);
                                         if wish.share_as.trim().is_empty() {
-                                            let name =
-                                                app_lock.session_info.player_name.clone();
+                                            let name = app_lock.session_info.player_name.clone();
                                             wish.share_simply(&name);
                                         }
                                     }
@@ -1064,13 +1062,11 @@ async fn main() -> Result<(), anyhow::Error> {
                                     wish.announce = !wish.announce;
                                 }
                                 (_, KeyCode::Up) => {
-                                    app_lock.peer_cursor =
-                                        app_lock.peer_cursor.saturating_sub(1);
+                                    app_lock.peer_cursor = app_lock.peer_cursor.saturating_sub(1);
                                 }
                                 (_, KeyCode::Down) => {
                                     let last = app_lock.peers.len().saturating_sub(1);
-                                    app_lock.peer_cursor =
-                                        (app_lock.peer_cursor + 1).min(last);
+                                    app_lock.peer_cursor = (app_lock.peer_cursor + 1).min(last);
                                 }
                                 _ => {}
                             }

@@ -431,7 +431,10 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
 
-        let heard = arrived.into_iter().next().expect("the reading that was sent");
+        let heard = arrived
+            .into_iter()
+            .next()
+            .expect("the reading that was sent");
         assert_eq!(
             heard, reading,
             "a watcher's screens are only as good as this"
@@ -546,8 +549,16 @@ mod tests {
     /// to report on a screen.
     #[test]
     fn nothing_listens_unless_an_address_was_given() {
-        assert!(Listener::open("", 3.0).expect("empty is not an error").is_none());
-        assert!(Listener::open("   ", 3.0).expect("blank is blank").is_none());
+        assert!(
+            Listener::open("", 3.0)
+                .expect("empty is not an error")
+                .is_none()
+        );
+        assert!(
+            Listener::open("   ", 3.0)
+                .expect("blank is blank")
+                .is_none()
+        );
     }
 
     /// A datagram from something else on the port is thrown away with a reason
@@ -562,7 +573,9 @@ mod tests {
             .parse()
             .expect("the address it bound");
         let noise = UdpSocket::bind("0.0.0.0:0").expect("a socket to be a nuisance from");
-        noise.send_to(b"{\"hello\":1}", to).expect("one datagram of nonsense");
+        noise
+            .send_to(b"{\"hello\":1}", to)
+            .expect("one datagram of nonsense");
 
         for _ in 0..50 {
             if listener.link().trouble.is_some() {
@@ -571,7 +584,10 @@ mod tests {
             let _ = listener.poll();
             std::thread::sleep(Duration::from_millis(2));
         }
-        assert!(listener.link().trouble.is_some(), "and it says what happened");
+        assert!(
+            listener.link().trouble.is_some(),
+            "and it says what happened"
+        );
         assert_eq!(listener.link().seen, 0);
     }
 }

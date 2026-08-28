@@ -2998,7 +2998,9 @@ mod tests {
 
         let mut recs = Vec::new();
         engineer.analyze_camber(&car, &mut recs);
-        let advice = recs.first().expect("an outer edge six degrees hot is advice");
+        let advice = recs
+            .first()
+            .expect("an outer edge six degrees hot is advice");
 
         assert!(
             advice.action.contains("More neg. camber"),

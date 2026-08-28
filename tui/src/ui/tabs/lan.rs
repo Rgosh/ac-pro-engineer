@@ -158,10 +158,7 @@ fn render_switches(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Span::styled(format!("{:<14}", "from".tr_lang(lang)), label),
             Span::styled(who.clone(), Style::default().fg(Color::Green)),
             Span::styled(
-                format!(
-                    "  {:.0}/s  {} ms",
-                    app.link.rate_hz, app.link.age_ms
-                ),
+                format!("  {:.0}/s  {} ms", app.link.rate_hz, app.link.age_ms),
                 Style::default().fg(Color::Cyan),
             ),
         ]),
@@ -203,9 +200,7 @@ fn render_switches(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         ]));
     }
     f.render_widget(
-        Paragraph::new(lines).block(
-            Block::default().title(format!(" {} ", "WATCH".tr_lang(lang))),
-        ),
+        Paragraph::new(lines).block(Block::default().title(format!(" {} ", "WATCH".tr_lang(lang)))),
         halves[1],
     );
 }
@@ -214,15 +209,13 @@ fn render_switches(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let lang = &app.config.language;
     let keys = &app.config.keys;
-    let block = Block::default()
-        .borders(Borders::TOP)
-        .title(format!(
-            " {}   [{}] {}   [↑↓] {} ",
-            "ON THIS NETWORK".tr_lang(lang),
-            crate::keys::describe(&keys.lan_pick),
-            "send to them".tr_lang(lang),
-            "choose".tr_lang(lang),
-        ));
+    let block = Block::default().borders(Borders::TOP).title(format!(
+        " {}   [{}] {}   [↑↓] {} ",
+        "ON THIS NETWORK".tr_lang(lang),
+        crate::keys::describe(&keys.lan_pick),
+        "send to them".tr_lang(lang),
+        "choose".tr_lang(lang),
+    ));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -246,10 +239,7 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             ),
         };
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                text,
-                Style::default().fg(colour),
-            ))),
+            Paragraph::new(Line::from(Span::styled(text, Style::default().fg(colour)))),
             inner,
         );
         return;
@@ -286,7 +276,9 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Row::new(vec![
                 Cell::from(mark),
                 Cell::from(peer.name.clone()).style(if chosen {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 }),
@@ -332,16 +324,16 @@ fn render_deeper(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             format!("[{}] ", crate::keys::describe(&keys.lan_announce)),
             Style::default().fg(Color::Yellow),
         ),
-        Span::styled(format!("{} ", "findable on the network".tr_lang(lang)), label),
+        Span::styled(
+            format!("{} ", "findable on the network".tr_lang(lang)),
+            label,
+        ),
         Span::styled(yes_no(wish.announce), value),
         Span::styled("   ", label),
         Span::styled(format!("{} ", "rate".tr_lang(lang)), label),
         Span::styled(format!("{:.0}/s", wish.share_hz), value),
         Span::styled("   ", label),
-        Span::styled(
-            format!("{} ", "only while on track".tr_lang(lang)),
-            label,
-        ),
+        Span::styled(format!("{} ", "only while on track".tr_lang(lang)), label),
         Span::styled(yes_no(wish.only_on_track), value),
     ])];
 

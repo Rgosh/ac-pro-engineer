@@ -219,7 +219,15 @@ not name a simulator, then the boundary tests. `ac`, `acc`, `core` and `all`.
 **It is not the full run** and says so — the other game, the terminal, the
 translations and the screenshots are not in it.
 
-And the whole suite, on both targets, before pushing:
+And the whole suite, on both targets, before pushing — **with the formatter,
+which CI checks and nothing local will tell you about**. `cargo test` and
+`cargo clippy` both pass on unformatted code; `cargo fmt --all --check` is a
+separate job in CI and it is the one that has failed a push that was otherwise
+green:
+
+```bash
+cargo fmt --all
+```
 
 ```bash
 cargo test --workspace

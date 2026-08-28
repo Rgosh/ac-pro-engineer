@@ -106,7 +106,9 @@ fn announcement(id: &str, role: Role, port: u16) -> Announcement {
 fn main() {
     let mut arguments = std::env::args().skip(1);
     if let Some(first) = arguments.next() {
-        let target = arguments.next().unwrap_or_else(|| format!("127.0.0.1:{PORT}"));
+        let target = arguments
+            .next()
+            .unwrap_or_else(|| format!("127.0.0.1:{PORT}"));
         if first == "send" {
             send_to(&target);
             return;
