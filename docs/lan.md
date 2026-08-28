@@ -111,6 +111,85 @@ The three things that actually go wrong:
 * **A name appears but says `not listening`.** They have not pressed `W`, so
   there is nowhere to send. That is a state, not a fault, and the list says so
   rather than offering a link that would carry nothing.
+* **"that copy is older than v0.4.5 — both sides need updating."** A window
+  from v0.4.2 speaks a shape this cannot read. It is recognised by name so the
+  screen can say so; there is no half-working mode, and both machines have to
+  be on 0.4.5.
+
+## Watching somebody in another city
+
+Everything above is one network. Two houses behind two routers cannot dial
+each other — that is NAT, not a limitation of this program — so the usual
+answers are a forwarded port or a relay somebody has to run. There is a third,
+and it needs neither.
+
+**A mesh VPN puts both machines on one private network wherever they are.**
+[Tailscale](https://tailscale.com) and [ZeroTier](https://www.zerotier.com)
+are both free for a handful of machines, and both give every computer a
+permanent address it keeps when it moves.
+
+1. Install it on both machines and sign both into the same network. Tailscale
+   calls it a tailnet; ZeroTier calls it a network you join by its id.
+2. Read the address it gives each machine — Tailscale's are `100.x.y.z`,
+   ZeroTier's are usually `10.x.y.z` or `192.168.x.y` on the range you chose.
+3. **The watcher** presses `W`, and leaves the listening address as
+   `0.0.0.0:9001`. That means every interface this machine has, which includes
+   the mesh one. There is nothing else to set.
+4. **The driver** presses `S`, and types the watcher's mesh address into
+   `sending to` — `100.64.0.2:9001`. It will not appear in the list, and that
+   is expected: see below.
+
+Nothing else about the program changes, and there is no server of ours in the
+middle because there is no server at all.
+
+### The list stays empty, and that is not a fault
+
+Discovery is multicast, and **a mesh VPN does not carry multicast**. Neither
+does most guest Wi-Fi, and neither do some office switches. So across a mesh
+the two copies never see each other in `ON THIS NETWORK`, and the address has
+to be typed — which is the case that box has always existed for.
+
+Everything else works exactly as it does on a LAN. Announcing is only how you
+are *found*; it has nothing to do with how a session travels.
+
+### What it costs
+
+A full reading is **1917 bytes** — measured, and a test keeps it that way —
+and they go thirty times a second: **roughly half a megabit per second**, one
+way, per watcher. That is less than a video call and far less than streaming
+your screen, which is the alternative people reach for and which sends a
+picture of your telemetry rather than the telemetry.
+
+One thing to know about that number: it is larger than a single Ethernet
+frame, so IP splits each reading into two and losing either half discards the
+whole one. On a switched LAN that is nothing. Over a mesh VPN, with real loss
+on the path, it is why the `lost` count on the LAN screen is worth a glance and
+why the rate is a setting.
+
+If the link is poor, `Settings → SHARING` lowers the rate. Ten a second is
+still a map drawn from a sample every five metres at racing speed. The LAN
+screen reports what is actually arriving — the rate, how old the picture is,
+the worst it has been, and how many readings never came — so the answer to "is
+it the link" is on the screen rather than a guess.
+
+### Check it before anybody is waiting
+
+The probe takes an address, so it tests the real path:
+
+```bash
+# on the watching machine
+cargo run -p ac_core --example lan_probe
+```
+
+```bash
+# on the driving machine, aimed at the watcher's mesh address
+cargo run -p ac_core --example lan_probe -- send 100.64.0.2:9001
+```
+
+If readings arrive there and not in the program, the difference is a setting.
+If they do not arrive at all, it is the mesh — check both machines are up in
+its own admin page, and that the watcher's firewall lets UDP 9001 in on the
+mesh interface.
 
 ## Two copies on one machine
 

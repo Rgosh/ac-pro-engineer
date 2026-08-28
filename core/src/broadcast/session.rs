@@ -53,9 +53,12 @@ pub const WHAT: &str = "pro-engineer/session";
 
 /// What the window called this before the two programs shared one protocol.
 ///
-/// Accepted on the way in and never sent. A copy of the window from v0.4.2
-/// speaks it, and a driver who updates one machine before the other should not
-/// find that they have stopped being able to see each other.
+/// **Recognised, not understood.** v0.4.2's window put the reading's three
+/// parts at the top level rather than under one key, so a datagram of its is
+/// not an `Envelope` and cannot be made into one — the shape changed, not just
+/// the name. Knowing the name is still worth it: a screen can say "that copy
+/// is older" instead of "something arrived that is not a session", which is
+/// the difference between updating the other machine and hunting a firewall.
 pub const WHAT_WAS: &str = "rg-pro-engineer/reading";
 
 /// Bumped when the shape below changes. A copy speaking another number is told
@@ -68,6 +71,19 @@ pub const SCHEMA: u32 = 1;
 /// not ours. Not the fragmentation threshold: a reading crosses one Ethernet
 /// frame comfortably and IP would reassemble it if it did not.
 const MAX_DATAGRAM: usize = 64 * 1024;
+
+/// Just enough of a datagram to say whose it is.
+///
+/// **Read when the whole thing will not parse.** A copy of the window from
+/// v0.4.2 sends its own shape — the reading's three parts at the top level
+/// rather than under one key — so it fails as an `Envelope`, and "something
+/// arrived on this port that is not a session" is a true sentence that sends
+/// somebody looking in the wrong place. This is how the screen can say the
+/// useful thing instead: *that is an older copy*.
+#[derive(Deserialize)]
+struct Header {
+    what: String,
+}
 
 /// One tick, addressed and numbered.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -284,7 +300,15 @@ impl Listener {
         while let Ok((size, _)) = self.socket.recv_from(&mut self.buffer) {
             let datagram = &self.buffer[..size];
             let Ok(envelope) = serde_json::from_slice::<Envelope>(datagram) else {
-                self.trouble = Some("something arrived on this port that is not a session");
+                // Whose it was, if it says. An older copy of this program is a
+                // different answer from a stranger's datagram, and only one of
+                // the two is worth doing something about.
+                self.trouble = match serde_json::from_slice::<Header>(datagram) {
+                    Ok(header) if header.what == WHAT_WAS => {
+                        Some("that copy is older than v0.4.5 — both sides need updating")
+                    }
+                    _ => Some("something arrived on this port that is not a session"),
+                };
                 continue;
             };
             if envelope.what != WHAT && envelope.what != WHAT_WAS {
@@ -373,6 +397,7 @@ impl Listener {
 
 #[cfg(test)]
 mod tests {
+    use super::super::udp::ETHERNET_PAYLOAD;
     use super::*;
 
     /// **The whole feature, end to end, over a real socket**: a driver's
@@ -447,8 +472,66 @@ mod tests {
         assert!((heard.session.track_position - 0.42).abs() < f32::EPSILON);
     }
 
+    /// **What this costs on somebody's connection**, held against the number
+    /// the documentation quotes.
+    ///
+    /// Half a megabit a second at thirty readings a second is the figure in
+    /// `docs/lan.md` and on the site, and it is what decides whether somebody
+    /// tries this across a mesh VPN at all. A field added carelessly would
+    /// make it a lie quietly — the feature would still work, and the answer to
+    /// "will this fit down my line" would be wrong.
+    #[test]
+    fn a_reading_costs_what_the_documentation_says_it_does() {
+        // A full one: every array filled, the compound named, a driver and a
+        // track. An empty `Reading` would flatter the number.
+        let mut reading = Reading::default();
+        reading.car.tyre_temp_inner_c = [95.5; 4];
+        reading.car.tyre_temp_middle_c = [94.5; 4];
+        reading.car.tyre_temp_outer_c = [93.5; 4];
+        reading.car.tyre_wear = [88.125; 4];
+        reading.car.brake_temp_c = [512.75; 4];
+        reading.car.suspension_travel = [0.0321; 4];
+        reading.car.camber_rad = [-0.0612; 4];
+        reading.session.compound = "semislick".into();
+        reading.fixed.car_model = "ks_lamborghini_huracan_gt3_evo".to_string();
+        reading.fixed.track = "ks_nordschleife".to_string();
+        reading.fixed.driver_name = "Somebody With A Long Name".to_string();
+
+        let envelope = Envelope {
+            what: WHAT.to_string(),
+            schema: SCHEMA,
+            from: "MartialArts".to_string(),
+            sequence: 123_456,
+            reading,
+        };
+        let bytes = serde_json::to_vec(&envelope).expect("serialise").len();
+
+        assert!(
+            bytes < 3_000,
+            "a reading is {bytes} bytes; the documented cost of half a megabit \
+             a second at 30 Hz assumes about two thousand"
+        );
+        // **It does not fit one Ethernet frame, and that is worth knowing
+        // rather than hiding.** At about 1900 bytes IP splits it in two, and
+        // losing either half discards the whole reading — on a switched LAN
+        // that is nothing, and over a mesh VPN it is why the rate is a
+        // setting and why the LAN screen counts what never came. The frame
+        // `broadcast::udp` sends *does* fit one, which is the trade: a panel's
+        // worth of finished numbers against everything the game said.
+        assert!(
+            bytes > ETHERNET_PAYLOAD,
+            "a reading now fits one Ethernet frame at {bytes} bytes — good \
+             news, and `docs/lan.md` says it takes two"
+        );
+        assert!(
+            bytes < ETHERNET_PAYLOAD * 2,
+            "a reading is {bytes} bytes, which is three fragments rather than two"
+        );
+        println!("a full reading is {bytes} bytes on the wire");
+    }
+
     /// A rate is a rate: at ten a second, a tick every couple of milliseconds
-    /// must not put out five hundred.
+    /// must not put out five hundred."""
     #[test]
     fn the_rate_is_honoured() {
         let mut sender = Sender::open("127.0.0.1:9199", "x", 10.0).expect("a sender");

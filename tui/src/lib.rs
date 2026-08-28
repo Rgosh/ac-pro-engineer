@@ -1759,7 +1759,13 @@ impl AppState {
         // built out of the readings themselves, so one skipped because a newer
         // had arrived is a hole in the picture.
         for reading in arrived {
-            self.is_connected = true;
+            // The same rule the local game gets: a reading with no car loaded
+            // is somebody whose game is not up, and the screens should say
+            // they are waiting rather than draw a nameless car at 0 km/h.
+            // Their link is still live — `link.from` says who it is — which is
+            // the distinction between "nobody is sending" and "they have not
+            // started yet".
+            self.is_connected = reading.car_is_loaded();
             self.process_tick_logic(reading);
         }
         true

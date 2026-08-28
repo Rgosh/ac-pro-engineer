@@ -549,6 +549,7 @@
   "starts when you press START": "запустится, когда нажмёте START",
   "target": "цель",
   "temp": "темп.",
+  "that copy is older than v0.4.5 — both sides need updating": "та копия старше v0.4.5 — обновить нужно обе",
   "the I/M/O spread on {0} next run out: {1} is the window": "разброс I/M/O на {0} в следующем стинте: цель {1}",
   "the bottoming count on {0} over the same lap, once it is raised": "пробои на {0} в том же круге после подъёма",
   "the brakes are putting more heat in per lap than the ducting takes out": "тормоза за круг выделяют больше тепла, чем уносит воздуховод",

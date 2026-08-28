@@ -32,8 +32,12 @@ from v0.4.0 onward keeps working, and nobody has to fetch a bridge.
   loud unless the network refuses multicast, and typing one still works.
   Announcing is a switch of its own: off does not stop you seeing anybody.
 - **The terminal and the window speak one protocol.** Either can watch either.
-  Both magic strings from v0.4.2 are still accepted, so a machine that updates
-  first keeps its link to one that has not.
+  **Both machines have to be on 0.4.5**: v0.4.2's window put a reading's parts
+  at the top level rather than under one key, so its datagrams cannot be read —
+  the shape changed, not just the name. The name is still recognised, which is
+  what lets the screen say "that copy is older" instead of "something arrived
+  that is not a session". Discovery *is* compatible: an older copy still shows
+  up in the list.
 - **Settings → SHARING `[G]`** — readings a second, only-while-on-track, the
   quiet timeout, being findable, and whether a session is accepted from the
   whole network or only from this machine.

@@ -64,8 +64,11 @@ const SAFE_DATAGRAM_BYTES: usize = 8192;
 
 /// What a datagram may be and still cross one Ethernet frame: 1500 less 20 of
 /// IP header and 8 of UDP.
+///
+/// `pub(super)` so [`super::session`] holds its own messages against the same
+/// number rather than writing 1472 down twice.
 #[cfg(test)]
-const ETHERNET_PAYLOAD: usize = 1472;
+pub(super) const ETHERNET_PAYLOAD: usize = 1472;
 
 /// The same for a mesh VPN, which tunnels and so has less room: Tailscale and
 /// ZeroTier both default to a 1280-byte MTU.
