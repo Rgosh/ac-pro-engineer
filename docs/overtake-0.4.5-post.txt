@@ -1,8 +1,10 @@
 🌐 v0.4.5 — Watch Somebody Else's Session
 
 v0.4.5 lets one person drive and another person watch — not a summary of it, the
-whole session, on every screen. Plus the fix a driver reported last week, and
-two more found while chasing it. Website: https://proengineer.app
+whole session, on every screen. Plus everything reported since the last release:
+the tyre pressure the advice judged you against, the wing it recommended to cars
+that have not got one, and the camber reason that argued the opposite of its own
+advice. Website: https://proengineer.app
 
 
 🌐 Somebody Else's Session, On Your Screens
@@ -54,6 +56,22 @@ link is bad, you can see that it is the link.
 
 🔧 Fixed
 
+* The engineer now knows what car it is talking about. From a review here: "this
+  app will always give you false information ... esp when it comes to tyre
+  pressure". It was right, and here is why. Every car was judged against one
+  target — 27.5 psi, which is a GT3's number — and against one alert band. A
+  single-seater works at 21 psi. So a Formula driver sitting exactly on the
+  pressure the car is meant to run at was told to inflate all four, on every
+  lap. The class table has known each class's hot pressure since v0.4.0; the
+  advice was the half that was not reading it. It is now, the alert band moves
+  with it, and a number you have typed yourself still wins over the table.
+* And it no longer tells a road car to add downforce. From the same review: "I'm
+  setting up a road car, and its telling me to adjust front downforce." High
+  speed understeer answered "More Front Wing" to everything with four wheels.
+  Road and vintage cars get the mechanical half of the same fix now — softer
+  front springs or anti-roll bar, softer rear for oversteer — and nothing
+  invented to fill the gap. Advice about a part your car does not have is worse
+  than no advice.
 * The camber advice no longer argues with itself. Told to add negative camber on
   a car already at -3.5°, you would read the reason first — and it said "the
   outer shoulder is not being loaded through corners", which is the argument for
