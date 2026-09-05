@@ -187,6 +187,23 @@ impl CarClass {
         !matches!(self, CarClass::Unknown)
     }
 
+    /// Whether this car has a wing worth being told to adjust.
+    ///
+    /// **The reason this exists is a review.** A driver setting up a road car
+    /// was told by the engineer to add front downforce, which is advice about
+    /// a part the car does not have — and being told to change something that
+    /// is not there is worse than being told nothing, because it is the line
+    /// that makes somebody stop believing the other seven.
+    ///
+    /// `Unknown` is deliberately on the *true* side, unlike everywhere else in
+    /// this type. A mod nobody has seen is far more often a race car than a
+    /// road car, and the cost of the two mistakes is not symmetric: advice
+    /// about a wing that is not there is a line to ignore, and silence about
+    /// one that is there is a change nobody makes.
+    pub const fn has_adjustable_aero(self) -> bool {
+        !matches!(self, CarClass::Road | CarClass::Vintage)
+    }
+
     /// Work out the class from the car's id and, where a game supplies them,
     /// its own tags.
     ///
@@ -453,5 +470,41 @@ mod tests {
         }
         assert!(519.7 < window.brake_front_max_c, "the fronts peaked at 520");
         assert!(257.2 < window.brake_rear_max_c, "and the rears at 257");
+    }
+
+    /// Which cars have a wing to be told about.
+    ///
+    /// The list is short enough to be written out, and writing it out is the
+    /// point: adding a class tomorrow without deciding this leaves it on the
+    /// `true` side by default, and that is the safe side only if somebody
+    /// chose it.
+    #[test]
+    fn only_the_cars_with_a_wing_are_told_about_one() {
+        for class in [
+            CarClass::Formula,
+            CarClass::Prototype,
+            CarClass::GrandTouringPro,
+            CarClass::Gt3,
+            CarClass::Gt4,
+            CarClass::TouringCar,
+            // A mod nobody recognised is far more often a race car than a
+            // road one, and silence about a wing that is there costs more
+            // than a line to ignore about one that is not.
+            CarClass::Unknown,
+        ] {
+            assert!(
+                class.has_adjustable_aero(),
+                "{} has a wing worth advising about",
+                class.label()
+            );
+        }
+        for class in [CarClass::Road, CarClass::Vintage] {
+            assert!(
+                !class.has_adjustable_aero(),
+                "{} has no wing, and advice about one is what the review \
+                 reported",
+                class.label()
+            );
+        }
     }
 }

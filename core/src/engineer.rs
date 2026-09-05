@@ -328,6 +328,85 @@ pub fn brake_ceiling(alerts: &crate::config::AlertsConfig, class: CarClass, whee
     }
 }
 
+/// The hot pressure this corner should be at, in psi.
+///
+/// **The third of the class-aware bands, and the one that was missing.** A
+/// Formula car works at 21 psi and a touring car at 28; until this existed the
+/// advice judged both against one figure — the 27.5 psi default, which is a
+/// GT3's number — so a single-seater was told to deflate six and a half psi
+/// below the pressure it is meant to run at. That is the "false information
+/// about tyre pressure" in the review that prompted this, and the window
+/// already knew better: its PRESSURES view had been reading
+/// [`ClassWindow::hot_pressure_psi`] while the engineer beside it read the
+/// configuration. One rule in two places is two answers, which is the whole
+/// reason [`tyre_window`] is public.
+///
+/// The order of precedence is the same as the other two, with one extra step
+/// because there are two settings rather than one:
+///
+/// 1. the per-axle target, if the driver has moved it — the terminal's
+///    Settings screen is where that happens;
+/// 2. the single target, if they have moved that one — the window's slider;
+/// 3. the class's own figure, when the class is recognised;
+/// 4. the per-axle default, which is where a car nobody recognises lands.
+///
+/// A number somebody typed always outranks the table. A default is not a
+/// preference.
+///
+/// [`ClassWindow::hot_pressure_psi`]: crate::games::ClassWindow::hot_pressure_psi
+pub fn hot_pressure(config: &AppConfig, class: CarClass, wheel: usize) -> f32 {
+    let defaults = AppConfig::default();
+    let (mine, its_default) = if wheel < 2 {
+        (
+            config.target_hot_pressure_front,
+            defaults.target_hot_pressure_front,
+        )
+    } else {
+        (
+            config.target_hot_pressure_rear,
+            defaults.target_hot_pressure_rear,
+        )
+    };
+
+    if (mine - its_default).abs() >= 0.01 {
+        return mine;
+    }
+    if (config.target_tyre_pressure - defaults.target_tyre_pressure).abs() >= 0.01 {
+        return config.target_tyre_pressure;
+    }
+    if class.is_known() {
+        return class.window().hot_pressure_psi;
+    }
+    mine
+}
+
+/// The band outside which a corner's pressure is worth saying out loud.
+///
+/// Centred on [`hot_pressure`] and as wide as the driver's own alert band, so
+/// that moving the class also moves the alert with it. Without this the band
+/// stayed at the configuration's 26.0–28.5 — a Formula car correctly at 21 psi
+/// tripped the under-pressure alert on every corner of every lap, and the one
+/// reading that was right was the one being complained about.
+///
+/// The driver's own numbers win the moment they touch either end, exactly as
+/// in [`tyre_window`].
+pub fn pressure_window(config: &AppConfig, class: CarClass, wheel: usize) -> (f32, f32) {
+    let alerts = &config.alerts;
+    let low = alerts.tyre_pressure_min.min(alerts.tyre_pressure_max);
+    let high = alerts.tyre_pressure_min.max(alerts.tyre_pressure_max);
+
+    let defaults = crate::config::AlertsConfig::default();
+    let untouched = (alerts.tyre_pressure_min - defaults.tyre_pressure_min).abs() < 0.01
+        && (alerts.tyre_pressure_max - defaults.tyre_pressure_max).abs() < 0.01;
+    if !untouched {
+        return (low, high);
+    }
+
+    let half = (defaults.tyre_pressure_max - defaults.tyre_pressure_min) / 2.0;
+    let target = hot_pressure(config, class, wheel);
+    (target - half, target + half)
+}
+
 impl Engineer {
     pub fn new(config: &AppConfig) -> Self {
         info!("Engineer module initialized.");
@@ -856,6 +935,11 @@ impl Engineer {
     pub fn get_wizard_advice(&self) -> Vec<String> {
         let is_ru = self.config.language == Language::Russian;
         let mut advice = Vec::new();
+        // A car with no wing is given the mechanical lines and not a fourth
+        // one about a part it does not have — the same rule the balance
+        // findings above follow. Nothing is invented to replace it: two real
+        // changes are worth more than three with one that cannot be made.
+        let aero = self.car_class.has_adjustable_aero();
 
         match (&self.wizard_phase, &self.wizard_problem) {
             (WizardPhase::Entry, WizardProblem::Understeer) => {
@@ -866,7 +950,9 @@ impl Engineer {
             (WizardPhase::Entry, WizardProblem::Oversteer) => {
                 advice.push("Increase Front Rebound".tr(is_ru).to_string());
                 advice.push("Move Brake Bias Forwards".tr(is_ru).to_string());
-                advice.push("Increase Front Wing".tr(is_ru).to_string());
+                if aero {
+                    advice.push("Increase Front Wing".tr(is_ru).to_string())
+                };
             }
             (WizardPhase::Apex, WizardProblem::Understeer) => {
                 advice.push("Softer Front Springs".tr(is_ru).to_string());
@@ -890,7 +976,9 @@ impl Engineer {
                 advice.push("Increase TC".tr(is_ru).to_string());
             }
             (_, WizardProblem::Instability) => {
-                advice.push("Increase Downforce (Wings)".tr(is_ru).to_string());
+                if aero {
+                    advice.push("Increase Downforce (Wings)".tr(is_ru).to_string())
+                };
                 advice.push("More Rear Toe-In".tr(is_ru).to_string());
                 advice.push("Stiffer Suspension Overall".tr(is_ru).to_string());
             }
@@ -1070,21 +1158,6 @@ impl Engineer {
         let compound_name = session.compound.to_string().to_lowercase();
 
         let class_name = compound_band(&compound_name);
-        let pressure_min = self
-            .config
-            .alerts
-            .tyre_pressure_min
-            .min(self.config.alerts.tyre_pressure_max);
-        let pressure_max = self
-            .config
-            .alerts
-            .tyre_pressure_min
-            .max(self.config.alerts.tyre_pressure_max);
-        let base_optimal = if self.config.target_tyre_pressure > 0.0 {
-            self.config.target_tyre_pressure
-        } else {
-            (pressure_min + pressure_max) / 2.0
-        };
 
         // A green track needs a little more pressure to reach the same
         // working range, and this is where that is added. It is gated,
@@ -1097,13 +1170,21 @@ impl Engineer {
         } else {
             0.0
         };
-        let optimal_pressure = base_optimal + grip_compensation;
+        // **Per corner, because the target is.** A GT3 runs the same figure at
+        // both ends and a touring car does not, and the front axle of a car
+        // whose driver has typed a front number of their own has nothing to do
+        // with what the rear should be at. The grip allowance is the same at
+        // all four: it is a property of the track, not of the axle.
+        let target: [f32; 4] = std::array::from_fn(|i| {
+            hot_pressure(&self.config, self.car_class, i) + grip_compensation
+        });
 
         let mut low: Vec<usize> = Vec::new();
         let mut high: Vec<usize> = Vec::new();
 
-        for i in 0..4 {
+        for (i, want) in target.iter().enumerate() {
             let pressure = car.tyre_pressure_psi[i];
+            let (pressure_min, pressure_max) = pressure_window(&self.config, self.car_class, i);
             let is_error = pressure < pressure_min || pressure > pressure_max;
 
             let key = format!("pres_{}", i);
@@ -1111,7 +1192,7 @@ impl Engineer {
                 continue;
             }
 
-            if pressure < optimal_pressure {
+            if pressure < *want {
                 low.push(i);
             } else {
                 high.push(i);
@@ -1133,6 +1214,10 @@ impl Engineer {
                 .map(|i| car.tyre_pressure_psi[*i])
                 .sum::<f32>()
                 / corners.len() as f32;
+            // The group's target, which is one number when the group is one
+            // axle and the mean of two when a finding spans both.
+            let optimal_pressure =
+                corners.iter().map(|i| target[*i]).sum::<f32>() / corners.len() as f32;
             let difference = (average - optimal_pressure).abs();
 
             recs.push(Recommendation {
@@ -1164,7 +1249,7 @@ impl Engineer {
                     .map(|i| Parameter {
                         name: CORNER_NAMES[*i].to_string(),
                         current: car.tyre_pressure_psi[*i],
-                        target: optimal_pressure,
+                        target: target[*i],
                         unit: formatter.pressure_symbol().to_string(),
                     })
                     .collect(),
@@ -1204,7 +1289,7 @@ impl Engineer {
                     evidence: crate::confidence::Evidence::from_values(
                         corners
                             .iter()
-                            .map(|i| car.tyre_pressure_psi[*i] - optimal_pressure),
+                            .map(|i| car.tyre_pressure_psi[*i] - target[*i]),
                     ),
                 }),
             });
@@ -2037,7 +2122,17 @@ impl Engineer {
                 category: "Understeer".to_string(),
                 severity: Severity::Warning,
                 message: "High Speed Understeer".tr(ru).to_string(),
-                action: "More Front Wing / Softer Front".tr(ru).to_string(),
+                // **Only a car with a wing is told about its wing.** See
+                // `CarClass::has_adjustable_aero`: this line told a driver
+                // setting up a road car to add front downforce, and the
+                // mechanical half of the same fix is what is left when there
+                // is no wing to add.
+                action: if self.car_class.has_adjustable_aero() {
+                    "More Front Wing / Softer Front".tr(ru)
+                } else {
+                    "Softer Front Springs or ARB".tr(ru)
+                }
+                .to_string(),
                 parameters: vec![],
                 confidence: 0.85,
                 chain: Some(Chain {
@@ -2066,7 +2161,12 @@ impl Engineer {
                 category: "Oversteer".to_string(),
                 severity: Severity::Warning,
                 message: "High Speed Oversteer".tr(ru).to_string(),
-                action: "More Rear Wing".tr(ru).to_string(),
+                action: if self.car_class.has_adjustable_aero() {
+                    "More Rear Wing".tr(ru)
+                } else {
+                    "Softer Rear Springs or ARB".tr(ru)
+                }
+                .to_string(),
                 parameters: vec![],
                 confidence: 0.85,
                 chain: Some(Chain {
@@ -2318,9 +2418,9 @@ mod tests {
             "the worn corner is reported once there is data: {recs:?}"
         );
     }
-    use super::{Engineer, Severity};
+    use super::{Engineer, Severity, WizardProblem, hot_pressure, pressure_window};
     use crate::config::{AppConfig, PressureUnit};
-    use crate::games::{Capabilities, Car, Session};
+    use crate::games::{Capabilities, Car, CarClass, Session};
 
     /// Age every alert timer past the one-second hold, so a test does not have
     /// to sleep through it.
@@ -2905,6 +3005,150 @@ mod tests {
         for _ in 0..ticks {
             engineer.update(car, &session, &info);
         }
+    }
+
+    /// The pressure a car is judged against is its class's, not a GT3's.
+    ///
+    /// Reported on Overtake as "this app will always give you false
+    /// information ... esp when it comes to tyre pressure". A single-seater
+    /// works at 21 psi; the advice held every car to the 27.5 psi default, so
+    /// a Formula driver sitting exactly on the number was told, on every lap,
+    /// to inflate all four.
+    #[test]
+    fn a_formula_car_at_its_own_pressure_is_not_told_to_inflate() {
+        let config = AppConfig::default();
+        let session = Session::default();
+        let car = Car {
+            tyre_pressure_psi: [21.0; 4],
+            speed_kmh: 180.0,
+            ..Default::default()
+        };
+
+        let complaints = |class: CarClass| {
+            let mut engineer = engineer_reading_a_complete_game(&config);
+            engineer.update_car_class(class);
+            age_the_alerts(&mut engineer);
+            let mut recs = Vec::new();
+            engineer.analyze_tyre_pressure(&car, &session, &mut recs);
+            recs
+        };
+
+        assert!(
+            complaints(CarClass::Formula).is_empty(),
+            "a Formula car on 21 psi is on its target: {:?}",
+            complaints(CarClass::Formula)
+        );
+        // The other half of the same test: the rule still fires when the
+        // pressure really is wrong for the car. A GT3 wants 27.5.
+        assert!(
+            !complaints(CarClass::Gt3).is_empty(),
+            "a GT3 six and a half psi under its target has a finding to make"
+        );
+    }
+
+    /// A number somebody typed outranks the table; a default is not a
+    /// preference.
+    #[test]
+    fn the_drivers_own_pressure_outranks_the_class() {
+        let untouched = AppConfig::default();
+        assert_eq!(hot_pressure(&untouched, CarClass::Formula, 0), 21.0);
+        assert_eq!(hot_pressure(&untouched, CarClass::Gt3, 0), 27.5);
+        // Nothing recognised: the driver's own default, which is where every
+        // car sat before the class table existed.
+        assert_eq!(
+            hot_pressure(&untouched, CarClass::Unknown, 0),
+            untouched.target_hot_pressure_front
+        );
+
+        // The window's single slider.
+        let single = AppConfig {
+            target_tyre_pressure: 24.0,
+            ..AppConfig::default()
+        };
+        assert_eq!(hot_pressure(&single, CarClass::Formula, 0), 24.0);
+
+        // The terminal's per-axle pair, which is more specific still.
+        let per_axle = AppConfig {
+            target_tyre_pressure: 24.0,
+            target_hot_pressure_rear: 25.0,
+            ..AppConfig::default()
+        };
+        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, 0), 24.0);
+        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, 2), 25.0);
+    }
+
+    /// The alert band moves with the target, or the one reading that is right
+    /// is the one being complained about.
+    #[test]
+    fn the_pressure_band_follows_the_class() {
+        let untouched = AppConfig::default();
+        let (low, high) = pressure_window(&untouched, CarClass::Formula, 0);
+        assert!(
+            low < 21.0 && high > 21.0,
+            "a Formula car's own 21 psi fell outside its own band: {low}–{high}"
+        );
+        let width = high - low;
+        let (gt3_low, gt3_high) = pressure_window(&untouched, CarClass::Gt3, 0);
+        assert!(
+            (width - (gt3_high - gt3_low)).abs() < 0.01,
+            "the band is as wide as the driver's own, wherever it is centred"
+        );
+
+        // Touch either end and it is the driver's band again, unchanged.
+        let mut mine = AppConfig::default();
+        mine.alerts.tyre_pressure_min = 20.0;
+        assert_eq!(pressure_window(&mine, CarClass::Formula, 0), (20.0, 28.5));
+    }
+
+    /// A car with no wing is never told to change one.
+    ///
+    /// From the same review: "I'm setting up a road car, and its telling me to
+    /// adjust front downforce." Advice about a part the car does not have is
+    /// worse than no advice — it is the line that makes somebody stop
+    /// believing the other seven.
+    #[test]
+    fn a_road_car_is_not_told_about_a_wing_it_does_not_have() {
+        let config = AppConfig::default();
+
+        let balance = |class: CarClass| {
+            let mut engineer = engineer_reading_a_complete_game(&config);
+            engineer.update_car_class(class);
+            engineer.stats.understeer_frames = 40;
+            engineer.stats.oversteer_frames = 40;
+            let mut recs = Vec::new();
+            engineer.analyze_driving_errors(&mut recs);
+            recs.iter()
+                .map(|rec| rec.action.clone())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        };
+
+        let road = balance(CarClass::Road);
+        assert!(
+            !road.to_lowercase().contains("wing"),
+            "a road car was told about a wing: {road}"
+        );
+        assert!(
+            road.contains("Softer Front Springs or ARB")
+                && road.contains("Softer Rear Springs or ARB"),
+            "the mechanical half of the same fix is what is left: {road}"
+        );
+        assert!(
+            balance(CarClass::Gt3).to_lowercase().contains("wing"),
+            "a GT3 has a wing and is still told about it"
+        );
+
+        // The wizard's lists, the other place a wing is named.
+        let wizard = |class: CarClass| {
+            let mut engineer = engineer_reading_a_complete_game(&config);
+            engineer.update_car_class(class);
+            engineer.wizard_problem = WizardProblem::Instability;
+            engineer.get_wizard_advice().join(" | ")
+        };
+        assert!(!wizard(CarClass::Road).to_lowercase().contains("wing"));
+        assert!(wizard(CarClass::Formula).to_lowercase().contains("wing"));
+        // Dropping a line is not the same as leaving a driver with nothing.
+        assert!(!wizard(CarClass::Road).is_empty());
     }
 
     /// A tyre says nothing about camber while the car is upright: both edges
@@ -3550,7 +3794,12 @@ pub struct TyrePressureOptimizer {
 }
 
 impl TyrePressureOptimizer {
-    pub fn calculate(car: &Car, target_psi: f32) -> Self {
+    /// **One target per corner**, because the driver can set the two axles
+    /// apart and a class's figure has to reach here the same way it reaches
+    /// the advice — through [`hot_pressure`]. This took a single number until
+    /// v0.4.5, which is how a screen headed PER-CORNER ADJUSTMENT came to
+    /// measure all four against one.
+    pub fn calculate(car: &Car, target_psi: [f32; 4]) -> Self {
         let labels = ["FL", "FR", "RL", "RR"];
         let mut corners = Vec::with_capacity(4);
 
@@ -3559,7 +3808,7 @@ impl TyrePressureOptimizer {
             let t_i = car.tyre_temp_inner_c[i];
             let t_o = car.tyre_temp_outer_c[i];
             let spread = t_i - t_o;
-            let p_delta = target_psi - p_psi;
+            let p_delta = target_psi[i] - p_psi;
 
             let rec_delta = if p_delta.abs() > 0.5 {
                 (p_delta * 10.0).round() / 10.0

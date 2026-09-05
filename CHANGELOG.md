@@ -47,6 +47,22 @@ from v0.4.0 onward keeps working, and nobody has to fetch a bridge.
 
 ### Fixed
 
+- **The tyre pressure a car is judged against is its own class's.** Reported on
+  Overtake: "this app will always give you false information ... esp when it
+  comes to tyre pressure". Every car was held to one figure — 27.5 psi, which is
+  a GT3's — so a single-seater sitting exactly on its own 21 psi was told to
+  inflate all four, on every lap, and the alert band it was outside was a band
+  it should never have been inside. The class table has carried a hot pressure
+  per class since v0.4.0 and the window's PRESSURES view was already reading it;
+  the advice was the half that was not. The alert band moves with the target,
+  and a number the driver typed still outranks the table.
+- **A car with no wing is no longer told to change one.** From the same report:
+  "I'm setting up a road car, and its telling me to adjust front downforce."
+  Road and vintage cars now get the mechanical half of the same fix — softer
+  front springs or anti-roll bar for understeer, softer rear for oversteer —
+  and nothing is invented to fill the gap. Advice about a part the car does not
+  have is worse than no advice: it is the line that makes somebody stop
+  believing the other seven.
 - **The camber advice no longer contradicts itself.** Told to add negative
   camber on a car already at -3.5°, a driver would read the reason first — and
   it said "the outer shoulder is not being loaded through corners", which is the

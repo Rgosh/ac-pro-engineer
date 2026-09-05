@@ -1379,7 +1379,10 @@ impl AppState {
                         self.current_lap_sectors,
                         self.session_info.car_name.clone(),
                         self.session_info.track_name.clone(),
-                        self.config.target_tyre_pressure,
+                        // The class's own figure where there is one, so a lap's
+                        // pressure deviation is measured against the pressure
+                        // the car is meant to run at rather than a GT3's.
+                        ac_core::engineer::hot_pressure(&self.config, self.car_class(), 0),
                         self.config.update_rate,
                     );
                     // The lap the analyser has just closed is the one the panel
@@ -1628,8 +1631,12 @@ impl AppState {
 
         let mut frame = OverlayFrame::empty();
 
-        frame.target_pressure_front = self.config.target_hot_pressure_front;
-        frame.target_pressure_rear = self.config.target_hot_pressure_rear;
+        // Class-aware, so the in-game panel colours a corner against the same
+        // target the engineer is advising towards. See
+        // `ac_core::engineer::hot_pressure`.
+        let class = self.car_class();
+        frame.target_pressure_front = ac_core::engineer::hot_pressure(&self.config, class, 0);
+        frame.target_pressure_rear = ac_core::engineer::hot_pressure(&self.config, class, 2);
 
         frame.set_flag(flags::CONNECTED, self.is_connected);
         // What the driver asked for in the Settings tab, and nothing else.

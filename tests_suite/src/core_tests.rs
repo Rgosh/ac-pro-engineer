@@ -351,7 +351,7 @@ fn test_22_tyre_pressure_optimizer() {
         ..Default::default()
     };
 
-    let opt = TyrePressureOptimizer::calculate(&car, 27.5);
+    let opt = TyrePressureOptimizer::calculate(&car, [27.5; 4]);
     assert_eq!(opt.corners[0].corner_name, "FL");
     assert!(opt.corners[0].recommended_delta_psi > 0.0);
 }
