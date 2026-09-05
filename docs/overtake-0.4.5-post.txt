@@ -130,8 +130,10 @@ wrong. Fetch the matching one if you would rather have them in step.
 For LAN: update both machines. Open LAN (key 0), one of you presses S and the
 other W, and pick each other out of the list.
 
-Prefer a clean install? The archive contains the Windows and Linux builds,
-shm-bridge.exe, and a loose copy of the overlay.
+Prefer a clean install? The archive attached here contains both the Windows and
+Linux builds, shm-bridge.exe, and a loose copy of the overlay. The same release
+is on GitHub with a checksum beside every file:
+https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.5
 
 Not sure whether the panel is working? Press the diagnostics key on the launcher
 for a full report: it names the application, the panel and the bridge, and tells
