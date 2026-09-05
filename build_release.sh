@@ -26,7 +26,7 @@ echo "[2/5] Building Linux TUI (ac_pro_engineer)..."
 cargo build -p ac_tui --release
 
 echo ""
-echo "[3/5] Building shm-bridge for Wine/Proton (x86_64-pc-windows-gnu)..."
+echo "[3/5] Building the Windows binaries (x86_64-pc-windows-gnu)..."
 # Deliberately non-fatal. The Linux binary is already built by this point, and
 # the cross-build needs a mingw toolchain (`x86_64-w64-mingw32-dlltool`) that a
 # Linux box will not have unless someone installed it on purpose. Under `set
@@ -36,6 +36,18 @@ echo "[3/5] Building shm-bridge for Wine/Proton (x86_64-pc-windows-gnu)..."
 # this script is for producing a local bundle.
 BRIDGE_BUILT=0
 if rustup target list | grep -q "x86_64-pc-windows-gnu (installed)"; then
+    # **The terminal itself, not only the bridge.** This bundle's own README
+    # says it holds both builds, and for three releases it did not: nothing
+    # here ever cross-built `ac_tui`, so `Windows/` went out with a README in
+    # it and nothing to run. The bridge needs the same toolchain, so a machine
+    # that can produce one can produce the other.
+    if cargo build -p ac_tui --target x86_64-pc-windows-gnu --release; then
+        echo "  - ac_pro_engineer.exe built."
+    else
+        echo ""
+        echo "  WARNING: could not cross-build ac_pro_engineer.exe."
+        echo "  The Windows folder will hold its README and nothing else."
+    fi
     if cargo build -p shm-bridge --target x86_64-pc-windows-gnu --release; then
         BRIDGE_BUILT=1
     else
@@ -67,8 +79,14 @@ if [ -f "target/release/ac_pro_engineer" ]; then
     echo "  - Linux ac_pro_engineer binary copied."
 fi
 
-if [ -f "target/release/ac_pro_engineer.exe" ]; then
+WINDOWS_BUILT=0
+if [ -f "target/x86_64-pc-windows-gnu/release/ac_pro_engineer.exe" ]; then
+    cp "target/x86_64-pc-windows-gnu/release/ac_pro_engineer.exe" "${WIN_DIR}/"
+    WINDOWS_BUILT=1
+    echo "  - Windows ac_pro_engineer.exe binary copied."
+elif [ -f "target/release/ac_pro_engineer.exe" ]; then
     cp "target/release/ac_pro_engineer.exe" "${WIN_DIR}/"
+    WINDOWS_BUILT=1
     echo "  - Windows ac_pro_engineer.exe binary copied."
 fi
 
@@ -118,9 +136,37 @@ if [ -f "packaging/ac-pro-engineer.desktop" ]; then
 fi
 
 echo ""
-echo "[5/5] Packaging tar.gz release archive..."
+echo "[5/5] Packaging the release archives..."
 cd "${RELEASE_DIR}"
 tar -czf "${BUNDLE_NAME}_linux.tar.gz" "${BUNDLE_NAME}"
+# **A zip as well, when both builds are in it.** The forum listing takes one
+# attachment and its readers are mostly on Windows, where a `.tar.gz` is a
+# second program to install before the first one can be run. Same tree, same
+# name the v0.3.5 bundle used.
+if [ "${WINDOWS_BUILT}" -eq 1 ]; then
+    # `zip` is not on a stock Arch install and this script is otherwise
+    # dependency-free, so python's zipfile is the fallback — with the mode
+    # bits written by hand, because the module drops them and a Linux binary
+    # that arrives without its execute bit is a bug report.
+    if command -v zip >/dev/null; then
+        zip -qr "${BUNDLE_NAME}_lin_win.zip" "${BUNDLE_NAME}"
+    else
+        python3 - "${BUNDLE_NAME}" <<'ZIP'
+import os, sys, zipfile
+root = sys.argv[1]
+with zipfile.ZipFile(f"{root}_lin_win.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    for base, _, names in os.walk(root):
+        for name in sorted(names):
+            path = os.path.join(base, name)
+            info = zipfile.ZipInfo.from_file(path, path)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (os.stat(path).st_mode & 0xFFFF) << 16
+            with open(path, "rb") as handle:
+                archive.writestr(info, handle.read())
+ZIP
+    fi
+    echo "  - ${BUNDLE_NAME}_lin_win.zip"
+fi
 cd ..
 
 echo ""
@@ -137,4 +183,10 @@ else
 fi
 echo ""
 echo "Archive: ${RELEASE_DIR}/${BUNDLE_NAME}_linux.tar.gz"
+if [ "${WINDOWS_BUILT}" -eq 1 ]; then
+    echo "Archive: ${RELEASE_DIR}/${BUNDLE_NAME}_lin_win.zip"
+else
+    echo "No Windows binary: this bundle is Linux only, and its README says"
+    echo "otherwise. Install a mingw-w64 toolchain and re-run before shipping it."
+fi
 echo "=========================================="
