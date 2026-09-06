@@ -645,7 +645,7 @@ impl Default for KeyBindings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Theme {
     pub background: ColorTuple,
     pub text: ColorTuple,
@@ -654,9 +654,25 @@ pub struct Theme {
     pub border: ColorTuple,
     pub warning: ColorTuple,
     pub critical: ColorTuple,
+    /// A reading that is where it should be.
+    ///
+    /// **Late to the struct, and it should not have been.** Every front end
+    /// needed a green and every front end invented its own, which is the one
+    /// thing this type exists to prevent. `#[serde(default)]` so a config file
+    /// written before this field still reads.
+    #[serde(default = "default_good")]
+    pub good: ColorTuple,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn default_good() -> ColorTuple {
+    ColorTuple {
+        r: 63,
+        g: 208,
+        b: 127,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ColorTuple {
     pub r: u8,
     pub g: u8,
@@ -701,7 +717,127 @@ impl Default for Theme {
                 g: 50,
                 b: 50,
             },
+            good: default_good(),
         }
+    }
+}
+
+/// A colour, written the short way.
+///
+/// The palettes below are forty-eight colours; spelled out as struct literals
+/// they are four hundred lines of `r:`, `g:` and `b:` with the actual choice
+/// buried in them.
+const fn c(r: u8, g: u8, b: u8) -> ColorTuple {
+    ColorTuple { r, g, b }
+}
+
+/// A palette, with the name a person picks it by.
+///
+/// **Here rather than in a front end.** There are three programs over this
+/// core, and a driver who sets the window to a light palette and then opens the
+/// terminal to the dark one is looking at two products. A named set means all
+/// three offer the same names and the same colours, and a fourth front end gets
+/// them for nothing.
+pub struct NamedTheme {
+    /// What it is called in a menu.
+    pub name: &'static str,
+    /// One line on who it is for.
+    pub about: &'static str,
+    pub theme: Theme,
+}
+
+impl Theme {
+    /// Every palette that ships, the default first.
+    pub fn all() -> Vec<NamedTheme> {
+        vec![
+            NamedTheme {
+                name: "Terminal",
+                about: "The default. Cyan leads, orange is rare, on near-black.",
+                theme: Theme::default(),
+            },
+            NamedTheme {
+                name: "Amber",
+                about: "One colour, the way a monochrome monitor had one colour.",
+                theme: Theme {
+                    background: c(14, 10, 6),
+                    text: c(226, 186, 120),
+                    highlight: c(255, 176, 46),
+                    accent: c(255, 236, 168),
+                    border: c(92, 66, 30),
+                    warning: c(255, 214, 92),
+                    critical: c(255, 92, 60),
+                    good: c(168, 214, 96),
+                },
+            },
+            NamedTheme {
+                name: "Ice",
+                about: "Cooler and quieter, for a long stint on a bright desk.",
+                theme: Theme {
+                    background: c(9, 14, 22),
+                    text: c(214, 226, 240),
+                    highlight: c(122, 196, 255),
+                    accent: c(140, 224, 214),
+                    border: c(48, 68, 92),
+                    warning: c(240, 208, 122),
+                    critical: c(240, 108, 118),
+                    good: c(112, 214, 168),
+                },
+            },
+            NamedTheme {
+                name: "Paper",
+                about: "Light. For a daytime desk, a stream overlay or a projector.",
+                theme: Theme {
+                    background: c(244, 244, 240),
+                    text: c(28, 30, 36),
+                    highlight: c(0, 92, 168),
+                    accent: c(190, 92, 0),
+                    border: c(186, 188, 196),
+                    warning: c(158, 116, 0),
+                    critical: c(186, 32, 40),
+                    good: c(22, 122, 78),
+                },
+            },
+            NamedTheme {
+                name: "Contrast",
+                about: "Black, white and the loudest verdicts, for a small screen.",
+                theme: Theme {
+                    background: c(0, 0, 0),
+                    text: c(255, 255, 255),
+                    highlight: c(0, 214, 255),
+                    accent: c(255, 190, 0),
+                    border: c(120, 120, 130),
+                    warning: c(255, 232, 0),
+                    critical: c(255, 40, 40),
+                    good: c(0, 235, 130),
+                },
+            },
+        ]
+    }
+
+    /// The palette with that name, or the default.
+    ///
+    /// **Never `None`.** A config naming a palette a later release removed has
+    /// to open in *something*, and a program that refuses to start because it
+    /// does not recognise a colour scheme is a program with its priorities the
+    /// wrong way round.
+    pub fn named(name: &str) -> Theme {
+        Self::all()
+            .into_iter()
+            .find(|entry| entry.name.eq_ignore_ascii_case(name))
+            .map(|entry| entry.theme)
+            .unwrap_or_default()
+    }
+
+    /// Whether text on this background is dark on light.
+    ///
+    /// A front end that draws its own shading needs to know which way round the
+    /// palette is: the same 12 % white wash that lifts a panel off black sinks
+    /// out of sight on paper.
+    pub fn is_light(&self) -> bool {
+        let ColorTuple { r, g, b } = self.background;
+        // Rec. 601 luma, which is close enough for "is this light" and needs no
+        // floating point to justify.
+        (r as u32 * 299 + g as u32 * 587 + b as u32 * 114) / 1000 > 128
     }
 }
 
@@ -1383,5 +1519,98 @@ mod tests {
         let fmt = restored.formatter();
         assert_eq!(fmt.format_pressure(27.5), "1.90 bar");
         assert_eq!(fmt.format_temp(100.0), "212°F");
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    /// Every palette is complete, distinct and readable.
+    ///
+    /// **A palette is a promise that a screen can be read**, and the way one
+    /// goes wrong is not a compile error: it is a border the same colour as the
+    /// background, or text the same colour as what it sits on. Nothing else in
+    /// this workspace would catch either.
+    #[test]
+    fn every_palette_can_be_read() {
+        let all = Theme::all();
+        assert!(all.len() >= 5, "the set is worth offering");
+        assert_eq!(all[0].name, "Terminal", "the default comes first");
+        assert_eq!(all[0].theme, Theme::default());
+
+        for entry in &all {
+            assert!(!entry.about.is_empty(), "{} says nothing", entry.name);
+            let theme = &entry.theme;
+            let apart = |a: &ColorTuple, b: &ColorTuple| {
+                (a.r as i32 - b.r as i32).abs()
+                    + (a.g as i32 - b.g as i32).abs()
+                    + (a.b as i32 - b.b as i32).abs()
+            };
+            assert!(
+                apart(&theme.text, &theme.background) > 200,
+                "{}: text is too close to its background to read",
+                entry.name
+            );
+            for (what, colour) in [
+                ("highlight", &theme.highlight),
+                ("accent", &theme.accent),
+                ("warning", &theme.warning),
+                ("critical", &theme.critical),
+                ("good", &theme.good),
+                ("border", &theme.border),
+            ] {
+                assert!(
+                    apart(colour, &theme.background) > 60,
+                    "{}: {what} disappears into the background",
+                    entry.name
+                );
+            }
+            assert!(
+                apart(&theme.critical, &theme.good) > 120,
+                "{}: a warning and an all-clear look the same",
+                entry.name
+            );
+        }
+    }
+
+    /// A name nobody recognises opens in the default rather than not opening.
+    #[test]
+    fn an_unknown_palette_falls_back_rather_than_failing() {
+        assert_eq!(Theme::named("Amber"), Theme::all()[1].theme);
+        assert_eq!(
+            Theme::named("amber"),
+            Theme::all()[1].theme,
+            "case is not it"
+        );
+        assert_eq!(
+            Theme::named("whatever a later release removed"),
+            Theme::default()
+        );
+    }
+
+    /// Which way round the palette is, so a front end can shade correctly.
+    #[test]
+    fn light_and_dark_are_told_apart() {
+        assert!(!Theme::default().is_light());
+        assert!(Theme::named("Paper").is_light());
+        assert!(!Theme::named("Contrast").is_light());
+    }
+
+    /// A config written before `good` existed still reads.
+    #[test]
+    fn an_older_config_still_loads() {
+        let older = r#"{
+            "background": {"r":10,"g":10,"b":15},
+            "text": {"r":220,"g":220,"b":230},
+            "highlight": {"r":0,"g":180,"b":255},
+            "accent": {"r":255,"g":165,"b":0},
+            "border": {"r":60,"g":70,"b":90},
+            "warning": {"r":255,"g":220,"b":50},
+            "critical": {"r":255,"g":50,"b":50}
+        }"#;
+        let theme: Theme =
+            serde_json::from_str(older).expect("a config with no `good` still reads");
+        assert_eq!(theme, Theme::default());
     }
 }
