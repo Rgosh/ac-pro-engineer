@@ -1,0 +1,83 @@
+🔧 v0.4.6 — Three Fixes From One Bug Report
+
+A patch, and all three came from one driver taking the time to write down what
+he was seeing and to post a screenshot of his game beside this program. Two of
+them were in what the engineer was telling people about their tyres.
+Website: https://proengineer.app
+
+
+🛞 The Left Of The Car Had Its Tread Reversed
+
+Assetto Corsa fills the inner and outer tread temperatures across the contact
+patch in the *wheel's* frame, not the car's — so the array that is the inner
+edge on the right of the car is the outer edge on the left. This program read
+them as named, which turned every left-hand tyre's two shoulders round.
+
+That is not a display fault. Every camber verdict is inner minus outer, so on
+the left of the car the advice was the exact opposite of the right thing to do:
+told to add negative camber when it should have said take it out, with the
+reason sentence naming the wrong edge.
+
+The proof is in the report. On one lap his game's own tyre app read
+
+    FL  O 96  M 98  I 102        FR  I 71  M 69  O 69
+    RL  O 82  M 82  I 83         RR  I 70  M 69  O 68
+
+— inner hottest on all four, which is what a cambered tyre does — while this
+read the front-left's inner as 96 and the front-right's as 71. One side agreed
+and one was reversed, on the same car on the same lap. That frame is now the
+test that keeps it fixed.
+
+
+🔧 Your Car's Own Tyre Pressure, Out Of Your Car's Own Files
+
+v0.4.5 gave each class its own hot pressure, and it was not enough: GT3, road
+and unrecognised cars all carry 27.5 psi, so a car that wants 21 got the same
+wrong number it got before. The driver who reported it also said where the right
+one lives — Assetto Corsa ships it, per car and per axle, in the car's own
+tyres.ini.
+
+So that is read now, out of the data folder and out of data.acd for the cars
+that ship it packed. A number the car states beats any table anyone could write,
+and it is the only thing that works for a mod nobody has classified. A figure
+you have set yourself still beats both, and anything that cannot be read falls
+back to the class rather than being guessed at.
+
+
+🌐 LAN Found Only One Of Your Machine's Addresses
+
+Sharing worked every time on one machine and only sometimes on a real network.
+At least one reason: which interfaces to announce on came from probing three
+destinations and reading back whichever address the routing table picked — one
+address per destination. A machine with two ways onto the same network revealed
+only one of them, and which one could change between runs.
+
+On Linux and the Steam Deck the addresses are asked of the system now. On the
+machine this was fixed on that is the difference between one address and two —
+the second being a mesh VPN interface that this program could not see at all,
+on the very feature the last release recommended a mesh for. On Windows the
+probe covers all four private ranges instead of two, which closes the 172.16/12
+and default-route-is-a-VPN holes there.
+
+
+💾 How to Update
+
+Windows: launch your current version and let the Auto-Updater install v0.4.6.
+Restart Assetto Corsa afterwards so it picks up the new panel.
+
+Linux & Steam Deck: let the Auto-Updater install v0.4.6, then restart Assetto
+Corsa. The telemetry frame did not change, so the bridge you already have keeps
+working.
+
+Prefer a clean install? The archive attached here contains both the Windows and
+Linux builds, shm-bridge.exe, and a loose copy of the overlay. The same release
+is on GitHub with a checksum beside every file:
+https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.6
+
+
+If something this program tells you does not match what your game is showing,
+please say so — a screenshot of the two side by side is what found all three of
+these, and none of them could have been found from the inside.
+
+https://proengineer.app
+https://github.com/Rgosh/ac-pro-engineer

@@ -5,7 +5,7 @@ program. The window has its own copy of this in `RGProEngineer/docs/`, and the
 two listings are separate pages that point at each other.
 
 The description itself is `overtake-listing.bbcode` beside this; the post for a
-new release is `overtake-0.4.5-post.txt`, which is plain text rather than
+new release is `overtake-0.4.6-post.txt`, which is plain text rather than
 BBCode — see below.
 
 | Field | What to put |
@@ -13,7 +13,7 @@ BBCode — see below.
 | **Title** | `Pro Engineer — telemetry and a race engineer for AC and ACC` |
 | **Tag line** | `A race engineer that says what to change, and where. Free, open source, no account.` |
 | **Type** | Link to an external site — `https://github.com/Rgosh/ac-pro-engineer/releases/latest` |
-| **Version number** | `0.4.5` |
+| **Version number** | `0.4.6` |
 | **Description** | paste `overtake-listing.bbcode` |
 | **Tags** | `telemetry, race engineer, acc, analysis, setup, tyres, overlay, csp, linux, windows, free, open source` |
 | **Terms of Service** | *I am the sole creator* |
@@ -32,7 +32,7 @@ after an update would be the stale one.
    out of it rather than letting two accumulate.
 2. **The version field** — the number alone, and it is what people see in the
    "updated" column.
-3. **The post** — `overtake-0.4.5-post.txt` in the mod's own update thread.
+3. **The post** — `overtake-0.4.6-post.txt` in the mod's own update thread.
    That is what reaches everybody who is watching it.
 
 **The post is plain text and carries no pictures.** The listing is the page
