@@ -27,6 +27,7 @@ pub mod driver_vs_car;
 pub mod engineer;
 /// The handbook both front ends draw. The words live here; the styling does
 /// not — see the module note.
+pub mod grip;
 pub mod guide;
 pub mod i18n;
 /// Where a saved lap lives. One folder, found the same way from any
@@ -43,6 +44,7 @@ pub mod repeatability;
 pub mod ring_buffer;
 pub mod session_info;
 pub mod setup_manager;
+pub mod shifts;
 pub mod steam;
 pub mod track;
 pub mod updater;

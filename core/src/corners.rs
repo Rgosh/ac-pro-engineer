@@ -725,6 +725,47 @@ impl CornerComparison {
         Some(mine - theirs)
     }
 
+    /// Where inside the corner the time went: braking, turning, and getting
+    /// out of it.
+    ///
+    /// **A section's delta says how much; this says where.** "T7 cost you
+    /// 0.28" sends a driver to a corner. "0.19 of it was between the apex and
+    /// the exit" sends them to the throttle, which is a thing they can change
+    /// on the next lap.
+    ///
+    /// The three add up to the section's own delta by construction, because
+    /// they are the same clock read at four places: this corner's entry, its
+    /// apex, its exit, and where the next one begins. The last of those is why
+    /// "exit" is worth the most on most corners — the straight that follows is
+    /// charged here, which is where a bad exit is actually paid for.
+    ///
+    /// `None` when the reference has no corner here, or when either trace does
+    /// not reach the distances involved. Not a zero: a corner the reference
+    /// never drove is no comparison at all.
+    pub fn inside(
+        &self,
+        lap: &[TelemetryPoint],
+        reference: &[TelemetryPoint],
+        section_end: f32,
+    ) -> Option<Inside> {
+        let theirs = self.reference.as_ref()?;
+        // How far behind the reference this lap is at one place on the track.
+        let behind = |mine: f32, theirs: f32| -> Option<i32> {
+            Some(time_at(lap, mine)? - time_at(reference, theirs)?)
+        };
+
+        let at_entry = behind(self.corner.entry, theirs.entry)?;
+        let at_apex = behind(self.corner.apex, theirs.apex)?;
+        let at_exit = behind(self.corner.exit, theirs.exit)?;
+        let at_end = behind(section_end, section_end)?;
+
+        Some(Inside {
+            braking_ms: at_apex - at_entry,
+            turning_ms: at_exit - at_apex,
+            exit_ms: at_end - at_exit,
+        })
+    }
+
     /// Entry, minimum and exit speed against the reference, in km/h.
     pub fn speed_deltas(&self) -> Option<(f32, f32, f32)> {
         let reference = self.reference.as_ref()?;
@@ -733,6 +774,47 @@ impl CornerComparison {
             self.corner.min_speed - reference.min_speed,
             self.corner.exit_speed - reference.exit_speed,
         ))
+    }
+}
+
+/// A corner's delta split into the three things a driver does in one.
+///
+/// Positive is slower than the reference, everywhere, and the three sum to the
+/// section's delta.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Inside {
+    /// Entry to apex: how the car was slowed and how late.
+    pub braking_ms: i32,
+    /// Apex to exit: how much speed was carried through the middle.
+    pub turning_ms: i32,
+    /// Exit to the next corner: getting back on the power, and the straight
+    /// that follows, which is where a bad exit is paid for.
+    pub exit_ms: i32,
+}
+
+impl Inside {
+    /// The whole corner, which is what the section's delta already said.
+    pub fn total_ms(&self) -> i32 {
+        self.braking_ms + self.turning_ms + self.exit_ms
+    }
+
+    /// The part that cost the most, and what it cost — when one of them
+    /// clearly did.
+    ///
+    /// **Only when it is worth a sentence.** A corner losing four hundredths
+    /// spread evenly over three phases has no culprit, and naming one would be
+    /// reading noise aloud.
+    pub fn worst(&self) -> Option<(&'static str, i32)> {
+        let parts = [
+            ("braking", self.braking_ms),
+            ("through the middle", self.turning_ms),
+            ("on the exit", self.exit_ms),
+        ];
+        let worst = parts.iter().max_by_key(|part| part.1)?;
+        // Half of the corner's own loss, so "it was the exit" means the exit
+        // and not "the exit plus two other thirds".
+        let total = self.total_ms().max(1);
+        (worst.1 >= 50 && worst.1 * 2 >= total).then_some(*worst)
     }
 }
 
@@ -1455,5 +1537,113 @@ mod tests {
         // Halfway between sample 10 (1000 ms) and sample 11 (1100 ms).
         let time = time_at(&trace, 0.0105).expect("inside the trace");
         assert!((time - 1050).abs() <= 1, "{time}");
+    }
+
+    /// The three parts of a corner's loss add up to the corner's own loss, and
+    /// the one that cost the most is named.
+    #[test]
+    fn where_inside_the_corner_the_time_went() {
+        // A reference lap at an even second per tenth of a lap, and a lap that
+        // loses two tenths between the apex and the exit and nowhere else.
+        let reference: Vec<TelemetryPoint> = (0..=10)
+            .map(|step| point(step as f32 / 10.0, step * 1_000, 200.0))
+            .collect();
+        let mine: Vec<TelemetryPoint> = (0..=10)
+            .map(|step| {
+                let late = if step >= 5 { 200 } else { 0 };
+                point(step as f32 / 10.0, step * 1_000 + late, 200.0)
+            })
+            .collect();
+
+        let comparison = CornerComparison {
+            corner: Corner {
+                entry: 0.3,
+                apex: 0.4,
+                exit: 0.6,
+                ..bare_corner()
+            },
+            reference: Some(Corner {
+                entry: 0.3,
+                apex: 0.4,
+                exit: 0.6,
+                ..bare_corner()
+            }),
+            delta_ms: 200,
+        };
+
+        let inside = comparison
+            .inside(&mine, &reference, 0.8)
+            .expect("both laps reach these distances");
+        assert_eq!(inside.total_ms(), 200, "the parts sum to the corner's loss");
+        assert_eq!(inside.braking_ms, 0, "nothing was lost before the apex");
+        assert_eq!(inside.turning_ms, 200, "it all went between apex and exit");
+        assert_eq!(inside.exit_ms, 0);
+        assert_eq!(inside.worst(), Some(("through the middle", 200)));
+    }
+
+    /// A corner with no culprit is not given one.
+    #[test]
+    fn a_loss_spread_evenly_has_no_culprit() {
+        let inside = Inside {
+            braking_ms: 30,
+            turning_ms: 30,
+            exit_ms: 30,
+        };
+        assert_eq!(inside.worst(), None);
+    }
+
+    /// A corner the reference never drove is no comparison, not a zero.
+    #[test]
+    fn no_reference_corner_is_no_answer() {
+        let trace: Vec<TelemetryPoint> = (0..=10)
+            .map(|step| point(step as f32 / 10.0, step * 1_000, 200.0))
+            .collect();
+        let comparison = CornerComparison {
+            corner: bare_corner(),
+            reference: None,
+            delta_ms: 200,
+        };
+        assert!(comparison.inside(&trace, &trace, 0.8).is_none());
+    }
+
+    /// One sample, for the three tests above.
+    fn point(distance: f32, time_ms: i32, speed: f32) -> TelemetryPoint {
+        TelemetryPoint {
+            distance,
+            time_ms,
+            speed,
+            gas: 1.0,
+            brake: 0.0,
+            gear: 4,
+            steer: 0.0,
+            lat_g: 0.0,
+            lon_g: 0.0,
+            slip_avg: 0.0,
+            x: 0.0,
+            y: 0.0,
+            rpms: 6000,
+            detail: crate::analyzer::Detail::default(),
+        }
+    }
+
+    /// A corner with nothing but zeros in it, for the tests above to fill in.
+    fn bare_corner() -> Corner {
+        Corner {
+            number: 7,
+            direction: Direction::Left,
+            entry: 0.0,
+            apex: 0.0,
+            exit: 0.0,
+            entry_speed: 0.0,
+            min_speed: 0.0,
+            exit_speed: 0.0,
+            peak_lat_g: 0.0,
+            brake_point: None,
+            braking: None,
+            throttle_point: None,
+            throttle_delay_ms: None,
+            entry_time_ms: 0,
+            exit_time_ms: 0,
+        }
     }
 }
