@@ -6,7 +6,44 @@
 //! file none of that is true of anything.
 
 use super::structs::{AcGraphics, AcPhysics, AcStatic};
-use crate::games::reading::{Car, Fixed, Name, Reading, Session, SessionKind, Status};
+use crate::games::reading::{Car, FL, Fixed, Name, RL, Reading, Session, SessionKind, Status};
+
+/// AC's tread temperatures, put on the car's own inner/outer scale.
+///
+/// **The two sides of the car are mirrored, and only one of them arrives the
+/// way the field names read.** `tyreTempI` and `tyreTempO` are filled across
+/// the contact patch in the *wheel's* frame, so the array that is the inner
+/// edge on the right of the car is the outer edge on the left. Passed through
+/// as named, every left-hand tyre had its two shoulders the wrong way round.
+///
+/// This is the same property of Assetto Corsa that
+/// [`Engineer::camber_degrees`] already compensates for — it negates the
+/// right-hand corners because the same setting reads -0.023 rad on the left
+/// and +0.021 on the right. A quantity that has a direction across the car is
+/// mirrored between the sides; the camber reader knew and this one did not.
+///
+/// What it cost, and it is not a display fault: every camber verdict is inner
+/// minus outer, so on the left of the car the advice was the exact opposite of
+/// the right thing to do. A driver reported it as "left side tyres have their
+/// zones swapped, so inner is outer" and it survived the v0.4.5 fix to the car
+/// drawing, which was a second and unrelated mirror.
+///
+/// The evidence is in the report: on one frame the game's own tyre app read
+/// FL 96/98/102 outer-to-inner and FR 71/69/69 inner-to-outer — inner hottest
+/// on both, which is what a cambered tyre does — while this read FL as inner
+/// 96 and FR as inner 71. One side agreed and one was reversed.
+///
+/// Competizione needs none of this: it publishes zeros for all three, which
+/// `Capabilities::tyre_edge_temps` already says.
+///
+/// [`Engineer::camber_degrees`]: crate::engineer::Engineer::camber_degrees
+fn tread_across_the_car(inner: [f32; 4], outer: [f32; 4]) -> ([f32; 4], [f32; 4]) {
+    let (mut inner, mut outer) = (inner, outer);
+    for wheel in [FL, RL] {
+        std::mem::swap(&mut inner[wheel], &mut outer[wheel]);
+    }
+    (inner, outer)
+}
 
 /// AC's `AC_STATUS`.
 fn status_of(raw: i32) -> Status {
@@ -42,6 +79,7 @@ fn session_kind_of(raw: i32) -> SessionKind {
 
 impl From<&AcPhysics> for Car {
     fn from(p: &AcPhysics) -> Self {
+        let (tread_inner, tread_outer) = tread_across_the_car(p.tyre_temp_i, p.tyre_temp_o);
         Self {
             speed_kmh: p.speed_kmh,
             rpm: p.rpms,
@@ -60,9 +98,9 @@ impl From<&AcPhysics> for Car {
             tyre_pressure_psi: p.wheels_pressure,
             tyre_wear: p.tyre_wear,
             tyre_core_temp_c: p.tyre_core_temp,
-            tyre_temp_inner_c: p.tyre_temp_i,
+            tyre_temp_inner_c: tread_inner,
             tyre_temp_middle_c: p.tyre_temp_m,
-            tyre_temp_outer_c: p.tyre_temp_o,
+            tyre_temp_outer_c: tread_outer,
             brake_temp_c: p.brake_temp,
             // Not published by this game; `brake_wear` says so.
             brake_pad_mm: [0.0; 4],
@@ -163,7 +201,61 @@ pub fn reading_of(physics: &AcPhysics, graphics: &AcGraphics, stat: &AcStatic) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::games::reading::FL;
+    use crate::games::reading::{FL, FR, RR};
+
+    /// The left of the car has its shoulders the right way round.
+    ///
+    /// **The frame is a real one**, from the report that found this: the
+    /// game's own tyre app, on the same lap, printed the left tyres
+    /// outer-to-inner and the right ones inner-to-outer, and read
+    ///
+    /// ```text
+    ///   FL  O 96  M 98  I 102        FR  I 71  M 69  O 69
+    ///   RL  O 82  M 82  I 83         RR  I 70  M 69  O 68
+    /// ```
+    ///
+    /// so the arrays AC had filled were `tyre_temp_i = [96, 71, 82, 70]` and
+    /// `tyre_temp_o = [102, 69, 83, 68]`. Passed through as named, this made
+    /// the front-left's inner edge 96 °C and its outer 102 — the opposite of
+    /// what the game was showing beside it, and the opposite of the
+    /// front-right on the same car on the same lap.
+    ///
+    /// The assertion that matters is the last one: a tyre with negative camber
+    /// runs its **inner** edge hotter, and it does so on both sides of the
+    /// car. One side saying otherwise is the signature of this bug and the
+    /// only thing here that would survive the numbers being replaced.
+    #[test]
+    fn the_left_of_the_car_has_its_shoulders_the_right_way_round() {
+        let car = Car::from(&AcPhysics {
+            tyre_temp_i: [96.0, 71.0, 82.0, 70.0],
+            tyre_temp_m: [98.0, 69.0, 82.0, 69.0],
+            tyre_temp_o: [102.0, 69.0, 83.0, 68.0],
+            ..Default::default()
+        });
+
+        assert_eq!(car.tyre_temp_inner_c, [102.0, 71.0, 83.0, 70.0]);
+        assert_eq!(car.tyre_temp_outer_c, [96.0, 69.0, 82.0, 68.0]);
+        // The middle is the middle whichever way round the shoulders are.
+        assert_eq!(car.tyre_temp_middle_c, [98.0, 69.0, 82.0, 69.0]);
+
+        for corner in [FL, FR, crate::games::reading::RL, RR] {
+            assert!(
+                car.tyre_temp_inner_c[corner] > car.tyre_temp_outer_c[corner],
+                "corner {corner} came out with its outer edge hotter, which is \
+                 what a mirrored side looks like: inner {}, outer {}",
+                car.tyre_temp_inner_c[corner],
+                car.tyre_temp_outer_c[corner]
+            );
+        }
+    }
+
+    /// The swap is the two left-hand corners and nothing else.
+    #[test]
+    fn only_the_left_hand_corners_are_turned_round() {
+        let (inner, outer) = tread_across_the_car([1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0]);
+        assert_eq!(inner, [10.0, 2.0, 30.0, 4.0]);
+        assert_eq!(outer, [1.0, 20.0, 3.0, 40.0]);
+    }
 
     /// The one translation a reader is most likely to forget, and the one that
     /// puts a wrong number on the screen rather than crashing: AC's neutral is

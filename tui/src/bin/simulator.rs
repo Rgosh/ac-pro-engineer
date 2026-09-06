@@ -466,17 +466,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lon_g,
             wheel_slip,
             tyre_core: [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base],
+            // **The left-hand pair is written the other way round on purpose.**
+            // AC fills these across the contact patch in the wheel's own
+            // frame, so the array named `I` is the *outer* shoulder on the
+            // left of the car — the same mirroring the camber field below has
+            // always had, and what `tread_across_the_car` turns back. Writing
+            // a hotter inner edge on all four made this simulator the only car
+            // in the world whose left side did not mirror, and a reader that
+            // corrects for the game would have shown its left tyres wrong.
+            //
+            // So: inner hotter on all four *as a driver sees it*, which on the
+            // wire means i < o on the left and i > o on the right.
             tyre_i: [
-                temp_base + 4.0,
+                temp_base - 3.0,
                 temp_base + 3.0,
-                temp_base + 2.0,
+                temp_base - 4.0,
                 temp_base + 2.0,
             ],
             tyre_m: [temp_base + 1.0, temp_base, temp_base - 1.0, temp_base],
             tyre_o: [
-                temp_base - 3.0,
+                temp_base + 4.0,
                 temp_base - 2.0,
-                temp_base - 4.0,
+                temp_base + 2.0,
                 temp_base - 3.0,
             ],
             pressures: [27.4, 27.6, 27.2, 27.4],
