@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.6] - 2026-09-06
+
+A patch for three faults a driver found and reported, two of them in what the
+engineer was telling people about their tyres.
+
+### Fixed
+
+- **The left of the car had its tread shoulders the wrong way round.** Assetto
+  Corsa fills `tyreTempI` and `tyreTempO` across the contact patch in the
+  *wheel's* frame, so the array that is the inner edge on the right of the car
+  is the outer edge on the left. Read as named, every left-hand tyre came out
+  reversed — and because a camber verdict is inner minus outer, the advice for
+  that side of the car was the opposite of the right thing to do. The reporter's
+  own frame is the regression test: their game showed the inner edge hotter on
+  all four, and this program agreed on the right and disagreed on the left.
+- **The tyre pressure a car is judged against is the one the car states.** The
+  class table added in v0.4.5 could not help most of Assetto Corsa's grid — GT3,
+  road and unrecognised all carry 27.5 psi — so a single-seater that wants 21
+  was still told to inflate. Every car's own `PRESSURE_IDEAL` is read now, per
+  axle, out of `data/tyres.ini` and out of `data.acd` for the cars that ship it
+  packed. A figure the car states beats any table; a figure the driver typed
+  still beats both; anything unreadable falls back to the class rather than
+  guessing.
+- **LAN found only one of this machine's addresses.** Which interfaces to
+  announce on came from probing three destinations and reading back what the
+  routing table chose — one address per destination, so a machine with two ways
+  onto the same network revealed only one of them, and which one could change
+  between runs. That is the shape of "sharing works sometimes". On Linux and the
+  Steam Deck the addresses are now asked of the system; on Windows the probe
+  covers all four private ranges instead of two, which closes the `172.16/12`
+  and default-route-is-a-VPN holes there.
+
 ## [v0.4.5] - 2026-08-28
 
 The release LAN was the point of. Two people, two machines, one network: one
