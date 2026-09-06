@@ -27,6 +27,7 @@ directories-next = "2.0"
 # dependency gets. A caret on "0.9" would let a fresh resolve pick it again.
 memmap2 = "0.9.11"
 nix = "0.31.1"
+libc = "0.2"
 ratatui = "0.26"
 serde = "1.0"
 # Multicast wants one option `std` has never exposed: which interface a

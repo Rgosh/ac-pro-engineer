@@ -339,20 +339,107 @@ impl Discovery {
 /// answer is the interface a home network actually uses rather than whichever
 /// happens to be listed first.
 pub fn local_addresses() -> Vec<String> {
-    ["10.255.255.255:1", "192.168.255.255:1", "8.8.8.8:80"]
-        .iter()
-        .filter_map(|probe| {
-            let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
-            socket.connect(probe).ok()?;
-            let address = socket.local_addr().ok()?.ip();
-            (!address.is_loopback() && !address.is_unspecified()).then(|| address.to_string())
-        })
-        .fold(Vec::new(), |mut found, address| {
-            if !found.contains(&address) {
-                found.push(address);
+    let enumerated = enumerated_addresses();
+    if !enumerated.is_empty() {
+        return enumerated;
+    }
+    probed_addresses()
+}
+
+/// Every IPv4 address this machine actually has, asked of the system.
+///
+/// **Asking beats guessing, and [`probed_addresses`] is a guess.** A probe
+/// returns one address per destination — whichever the routing table picks —
+/// so a machine with two ways onto the same network reveals only one of them,
+/// and which one it reveals can change between runs. That is exactly the shape
+/// of "it works sometimes" on a desktop with Wi-Fi and Ethernet both up.
+///
+/// Measured on the machine this was written on: it has `192.168.1.15` on
+/// wireless and `100.124.46.50` on a Tailscale interface, and the probes found
+/// only the first — so a friend on the same mesh could not be discovered at
+/// all, on the very feature the release notes recommend a mesh for.
+///
+/// Loopback is left out here and added by [`interfaces`], which wants it first.
+#[cfg(unix)]
+fn enumerated_addresses() -> Vec<String> {
+    let mut found = Vec::new();
+    // `getifaddrs` is the POSIX way and `libc` is already in this tree. The
+    // pointer walk is the whole of the unsafety: every dereference is of a
+    // node the list itself linked, the family is checked before the cast, and
+    // the list is freed on the one exit.
+    unsafe {
+        let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+        if libc::getifaddrs(&mut list) != 0 {
+            return found;
+        }
+        let mut at = list;
+        while !at.is_null() {
+            let entry = &*at;
+            at = entry.ifa_next;
+
+            if entry.ifa_addr.is_null()
+                || (*entry.ifa_addr).sa_family != libc::AF_INET as libc::sa_family_t
+                || entry.ifa_flags & libc::IFF_UP as u32 == 0
+                || entry.ifa_flags & libc::IFF_LOOPBACK as u32 != 0
+            {
+                continue;
             }
-            found
-        })
+            let sin = &*(entry.ifa_addr as *const libc::sockaddr_in);
+            let address = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+            if address.is_unspecified() || address.is_loopback() {
+                continue;
+            }
+            let text = address.to_string();
+            if !found.contains(&text) {
+                found.push(text);
+            }
+        }
+        libc::freeifaddrs(list);
+    }
+    found
+}
+
+/// Windows has no `getifaddrs`, and the call that replaces it —
+/// `GetAdaptersAddresses` — is unsafe code that cannot be run from here.
+/// Guessing with a wider net is the honest half of the fix until it can be
+/// written and driven on the system it is for.
+#[cfg(not(unix))]
+fn enumerated_addresses() -> Vec<String> {
+    Vec::new()
+}
+
+/// One address per destination, from the routing table.
+///
+/// The fallback, and what this used to be on its own. Each probe connects
+/// nothing — a connected UDP socket sends no packet — and reports which of
+/// this machine's addresses the kernel would send from.
+///
+/// **All three private ranges, and the link-local one.** The list was missing
+/// `172.16/12` entirely, which is a range Docker's default bridge and plenty
+/// of routers use: on such a network the only answer came from the public
+/// probe, so a machine whose default route is a VPN announced on the VPN and
+/// was never seen on the LAN it was sitting on.
+fn probed_addresses() -> Vec<String> {
+    [
+        "10.255.255.255:1",
+        "172.31.255.255:1",
+        "192.168.255.255:1",
+        "169.254.255.255:1",
+        "8.8.8.8:80",
+    ]
+    .iter()
+    .filter_map(|probe| {
+        let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+        socket.connect(probe).ok()?;
+        let address = socket.local_addr().ok()?.ip();
+        (!address.is_loopback() && !address.is_unspecified()).then(|| address.to_string())
+    })
+    .fold(Vec::new(), |mut found, address| {
+        if !found.contains(&address) {
+            found.push(address);
+        }
+        found
+    })
 }
 
 /// Which interfaces to join and announce on.

@@ -41,6 +41,10 @@ zip = { workspace = true }
 [target.'cfg(not(target_os="windows"))'.dependencies]
 tar = { workspace = true }
 flate2 = { workspace = true }
+# `getifaddrs`, for the addresses this machine actually has — see
+# `broadcast::discovery::local_addresses`. Already in the tree through several
+# dependencies; named here because this crate calls it directly.
+libc = { workspace = true }
 
 [target.'cfg(target_os="windows")'.dependencies]
 # Shared memory and the process check, and nothing else. The window, menu and
