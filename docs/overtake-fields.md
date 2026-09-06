@@ -25,6 +25,20 @@ tag and published on GitHub with a checksum beside each; a copy attached here
 would be a second thing to remember to replace, and the one people download
 after an update would be the stale one.
 
+## When a release gets a post
+
+**Every fifth patch, and not the ones in between** — `x.y.0` and `x.y.5`.
+0.4.5 had a post, 0.5.0 will have the next one, and 0.4.6 ships without one.
+
+A patch a week on a listing reads as churn, and a thread nobody can keep up
+with is a thread people mute. So an intermediate patch goes out through the
+in-app updater and the site's changelog, and what it fixed is folded into the
+next post rather than dropped: `overtake-0.4.6-post.txt` is written and
+unposted, and its three sections belong in 0.5.0's.
+
+The **version field** on the listing still follows every release, because that
+is what somebody compares against what they have installed.
+
 ## Updating it for a release
 
 1. **The listing** — `overtake-listing.bbcode`, pasted over the old
