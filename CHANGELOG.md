@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.7] - 2026-09-06
+
+**Nothing changed in the terminal or the core.** The number moves because the
+two front ends are released together and carry the same version — a bug report
+that says "0.4.7" has to mean one build of everything, not a guess about which
+half. The work in this release is all in the window; see
+[its changelog](https://proengineer.app/changelog/#window).
+
 ## [v0.4.6] - 2026-09-06
 
 A patch for three faults a driver found and reported, two of them in what the
