@@ -639,6 +639,22 @@ impl AppState {
     /// names exhaustively and Assetto Corsa names well enough. An unrecognised
     /// car comes back `Unknown`, and the engineer then keeps the driver's own
     /// thresholds rather than pressing a mod into a class it may not be in.
+    /// What the car says its own hot pressure is, front and rear.
+    ///
+    /// Off the same catalogue entry the class comes from, so the two always
+    /// describe one car. `None` on Competizione, which ships no such file, and
+    /// for a car whose data could not be read.
+    pub fn car_tyres(&self) -> Option<(f32, f32)> {
+        let id = self
+            .reading
+            .as_ref()
+            .map(|reading| reading.fixed.car_model.clone())
+            .unwrap_or_default();
+        self.content_manager
+            .get_car_specs(&id)
+            .and_then(|specs| specs.ideal_pressure)
+    }
+
     pub fn car_class(&self) -> ac_core::games::CarClass {
         let id = self
             .reading
@@ -1317,6 +1333,7 @@ impl AppState {
         // Assetto Corsa ships them beside each car — and the car's id
         // otherwise, which is descriptive in both games.
         self.engineer.update_car_class(self.car_class());
+        self.engineer.update_car_tyres(self.car_tyres());
         self.engineer.update(&car, &session, &self.session_info);
 
         // The engineer sets `current_delta` from AC's own performance meter,
@@ -1382,7 +1399,12 @@ impl AppState {
                         // The class's own figure where there is one, so a lap's
                         // pressure deviation is measured against the pressure
                         // the car is meant to run at rather than a GT3's.
-                        ac_core::engineer::hot_pressure(&self.config, self.car_class(), 0),
+                        ac_core::engineer::hot_pressure(
+                            &self.config,
+                            self.car_class(),
+                            self.car_tyres(),
+                            0,
+                        ),
                         self.config.update_rate,
                     );
                     // The lap the analyser has just closed is the one the panel
@@ -1634,9 +1656,9 @@ impl AppState {
         // Class-aware, so the in-game panel colours a corner against the same
         // target the engineer is advising towards. See
         // `ac_core::engineer::hot_pressure`.
-        let class = self.car_class();
-        frame.target_pressure_front = ac_core::engineer::hot_pressure(&self.config, class, 0);
-        frame.target_pressure_rear = ac_core::engineer::hot_pressure(&self.config, class, 2);
+        let (class, own) = (self.car_class(), self.car_tyres());
+        frame.target_pressure_front = ac_core::engineer::hot_pressure(&self.config, class, own, 0);
+        frame.target_pressure_rear = ac_core::engineer::hot_pressure(&self.config, class, own, 2);
 
         frame.set_flag(flags::CONNECTED, self.is_connected);
         // What the driver asked for in the Settings tab, and nothing else.

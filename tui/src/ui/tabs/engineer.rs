@@ -844,15 +844,15 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     )));
     lines.push(Line::from(""));
 
-    let class = app.car_class();
+    let (class, own) = (app.car_class(), app.car_tyres());
     for (label, target) in [
         (
             "Front".tr(is_ru),
-            ac_core::engineer::hot_pressure(&app.config, class, 0),
+            ac_core::engineer::hot_pressure(&app.config, class, own, 0),
         ),
         (
             "Rear".tr(is_ru),
-            ac_core::engineer::hot_pressure(&app.config, class, 2),
+            ac_core::engineer::hot_pressure(&app.config, class, own, 2),
         ),
     ] {
         let estimate = ColdPressureCalculator::calculate(target, ambient, grip);
@@ -899,7 +899,9 @@ fn render_pressures(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let optimizer = TyrePressureOptimizer::calculate(
         phys,
-        std::array::from_fn(|wheel| ac_core::engineer::hot_pressure(&app.config, class, wheel)),
+        std::array::from_fn(|wheel| {
+            ac_core::engineer::hot_pressure(&app.config, class, own, wheel)
+        }),
     );
     for corner in &optimizer.corners {
         let delta = corner.recommended_delta_psi;

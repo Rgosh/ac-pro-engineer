@@ -74,6 +74,11 @@ pub fn scan_cars(ac_root: &Path) -> Vec<CarSpecs> {
                 year: json_val["year"].as_i64().map(|y| y as i32),
                 power_hp: power_clean,
                 weight_kg: weight_clean,
+                // The car's own answer to the question the class table only
+                // guesses at. Read here because this is the one walk of the
+                // content folder, and skipped over in the archive without
+                // decrypting anything but the one file it wants.
+                ideal_pressure: super::car_data::ideal_pressures(entry.path()),
             });
         }
     }

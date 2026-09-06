@@ -148,6 +148,13 @@ pub struct Engineer {
     /// `Unknown` — the default — means the driver's own thresholds are used
     /// unchanged, which is what a mod nobody has classified deserves.
     car_class: crate::games::CarClass,
+    /// The hot pressure this car states for itself, front and rear, psi.
+    ///
+    /// Out of the car's own `tyres.ini`, handed in by whoever read the
+    /// catalogue — the engineer does no I/O. `None` is the normal answer for
+    /// Competizione, for a car whose data could not be read, and for every
+    /// session before the catalogue has been walked.
+    car_tyres: Option<(f32, f32)>,
     history_size: usize,
     pub stats: EngineerStats,
     pub driving_style: DrivingStyle,
@@ -347,14 +354,26 @@ pub fn brake_ceiling(alerts: &crate::config::AlertsConfig, class: CarClass, whee
 /// 1. the per-axle target, if the driver has moved it — the terminal's
 ///    Settings screen is where that happens;
 /// 2. the single target, if they have moved that one — the window's slider;
-/// 3. the class's own figure, when the class is recognised;
-/// 4. the per-axle default, which is where a car nobody recognises lands.
+/// 3. **the car's own figure**, out of its `tyres.ini`, when the game shipped
+///    one this could read;
+/// 4. the class's own figure, when the class is recognised;
+/// 5. the per-axle default, which is where a car nobody recognises lands.
 ///
 /// A number somebody typed always outranks the table. A default is not a
-/// preference.
+/// preference. And a number the *car* states outranks any table at all — a
+/// class is a group of cars that mostly agree, and `own` is this one saying
+/// what it actually wants. It is what makes a mod nobody has classified come
+/// out right, and it is why a single-seater on 21 psi stopped being told to
+/// inflate: GT3, road and unrecognised all carry 27.5 in the class table, so
+/// for most of Assetto Corsa's grid the table changed nothing.
 ///
 /// [`ClassWindow::hot_pressure_psi`]: crate::games::ClassWindow::hot_pressure_psi
-pub fn hot_pressure(config: &AppConfig, class: CarClass, wheel: usize) -> f32 {
+pub fn hot_pressure(
+    config: &AppConfig,
+    class: CarClass,
+    own: Option<(f32, f32)>,
+    wheel: usize,
+) -> f32 {
     let defaults = AppConfig::default();
     let (mine, its_default) = if wheel < 2 {
         (
@@ -374,6 +393,9 @@ pub fn hot_pressure(config: &AppConfig, class: CarClass, wheel: usize) -> f32 {
     if (config.target_tyre_pressure - defaults.target_tyre_pressure).abs() >= 0.01 {
         return config.target_tyre_pressure;
     }
+    if let Some((front, rear)) = own {
+        return if wheel < 2 { front } else { rear };
+    }
     if class.is_known() {
         return class.window().hot_pressure_psi;
     }
@@ -390,7 +412,12 @@ pub fn hot_pressure(config: &AppConfig, class: CarClass, wheel: usize) -> f32 {
 ///
 /// The driver's own numbers win the moment they touch either end, exactly as
 /// in [`tyre_window`].
-pub fn pressure_window(config: &AppConfig, class: CarClass, wheel: usize) -> (f32, f32) {
+pub fn pressure_window(
+    config: &AppConfig,
+    class: CarClass,
+    own: Option<(f32, f32)>,
+    wheel: usize,
+) -> (f32, f32) {
     let alerts = &config.alerts;
     let low = alerts.tyre_pressure_min.min(alerts.tyre_pressure_max);
     let high = alerts.tyre_pressure_min.max(alerts.tyre_pressure_max);
@@ -403,7 +430,7 @@ pub fn pressure_window(config: &AppConfig, class: CarClass, wheel: usize) -> (f3
     }
 
     let half = (defaults.tyre_pressure_max - defaults.tyre_pressure_min) / 2.0;
-    let target = hot_pressure(config, class, wheel);
+    let target = hot_pressure(config, class, own, wheel);
     (target - half, target + half)
 }
 
@@ -414,6 +441,7 @@ impl Engineer {
             config: config.clone(),
             capabilities: Capabilities::default(),
             car_class: crate::games::CarClass::default(),
+            car_tyres: None,
             history_size: 600,
             stats: EngineerStats::new(),
             driving_style: DrivingStyle::new(),
@@ -450,6 +478,18 @@ impl Engineer {
     /// What kind of car the numbers are being read against.
     pub fn car_class(&self) -> crate::games::CarClass {
         self.car_class
+    }
+
+    /// What the car says its own hot pressure is, front and rear.
+    ///
+    /// Set beside [`Self::update_car_class`] and from the same catalogue, so
+    /// the two cannot describe different cars.
+    pub fn update_car_tyres(&mut self, ideal: Option<(f32, f32)>) {
+        self.car_tyres = ideal;
+    }
+
+    pub fn car_tyres(&self) -> Option<(f32, f32)> {
+        self.car_tyres
     }
 
     /// The tyre temperature window this engineer is judging against.
@@ -1176,7 +1216,7 @@ impl Engineer {
         // with what the rear should be at. The grip allowance is the same at
         // all four: it is a property of the track, not of the axle.
         let target: [f32; 4] = std::array::from_fn(|i| {
-            hot_pressure(&self.config, self.car_class, i) + grip_compensation
+            hot_pressure(&self.config, self.car_class, self.car_tyres, i) + grip_compensation
         });
 
         let mut low: Vec<usize> = Vec::new();
@@ -1184,7 +1224,8 @@ impl Engineer {
 
         for (i, want) in target.iter().enumerate() {
             let pressure = car.tyre_pressure_psi[i];
-            let (pressure_min, pressure_max) = pressure_window(&self.config, self.car_class, i);
+            let (pressure_min, pressure_max) =
+                pressure_window(&self.config, self.car_class, self.car_tyres, i);
             let is_error = pressure < pressure_min || pressure > pressure_max;
 
             let key = format!("pres_{}", i);
@@ -3051,12 +3092,12 @@ mod tests {
     #[test]
     fn the_drivers_own_pressure_outranks_the_class() {
         let untouched = AppConfig::default();
-        assert_eq!(hot_pressure(&untouched, CarClass::Formula, 0), 21.0);
-        assert_eq!(hot_pressure(&untouched, CarClass::Gt3, 0), 27.5);
+        assert_eq!(hot_pressure(&untouched, CarClass::Formula, None, 0), 21.0);
+        assert_eq!(hot_pressure(&untouched, CarClass::Gt3, None, 0), 27.5);
         // Nothing recognised: the driver's own default, which is where every
         // car sat before the class table existed.
         assert_eq!(
-            hot_pressure(&untouched, CarClass::Unknown, 0),
+            hot_pressure(&untouched, CarClass::Unknown, None, 0),
             untouched.target_hot_pressure_front
         );
 
@@ -3065,7 +3106,7 @@ mod tests {
             target_tyre_pressure: 24.0,
             ..AppConfig::default()
         };
-        assert_eq!(hot_pressure(&single, CarClass::Formula, 0), 24.0);
+        assert_eq!(hot_pressure(&single, CarClass::Formula, None, 0), 24.0);
 
         // The terminal's per-axle pair, which is more specific still.
         let per_axle = AppConfig {
@@ -3073,8 +3114,38 @@ mod tests {
             target_hot_pressure_rear: 25.0,
             ..AppConfig::default()
         };
-        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, 0), 24.0);
-        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, 2), 25.0);
+        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, None, 0), 24.0);
+        assert_eq!(hot_pressure(&per_axle, CarClass::Formula, None, 2), 25.0);
+    }
+
+    /// The car's own number beats the class table, and a typed one beats both.
+    ///
+    /// The class table cannot help most of Assetto Corsa's grid: GT3, road and
+    /// unrecognised all carry 27.5 psi, so a car that wants 21 got the same
+    /// wrong figure whether it was classified or not. Its own `tyres.ini` is
+    /// the answer, and this is where it enters.
+    #[test]
+    fn the_car_states_its_own_pressure_and_that_wins() {
+        let untouched = AppConfig::default();
+        let own = Some((21.5, 20.5));
+
+        assert_eq!(hot_pressure(&untouched, CarClass::Gt3, own, 0), 21.5);
+        assert_eq!(hot_pressure(&untouched, CarClass::Gt3, own, 2), 20.5);
+        // Including for a car nobody classified, which is the case the class
+        // table has nothing at all to say about.
+        assert_eq!(hot_pressure(&untouched, CarClass::Unknown, own, 0), 21.5);
+
+        // A number the driver typed still outranks the car.
+        let mine = AppConfig {
+            target_tyre_pressure: 24.0,
+            ..AppConfig::default()
+        };
+        assert_eq!(hot_pressure(&mine, CarClass::Gt3, own, 0), 24.0);
+
+        // And the band goes with it, or the car sitting on its own pressure
+        // trips the alert it should never have been near.
+        let (low, high) = pressure_window(&untouched, CarClass::Gt3, own, 0);
+        assert!(low < 21.5 && high > 21.5, "{low}–{high} excludes 21.5");
     }
 
     /// The alert band moves with the target, or the one reading that is right
@@ -3082,13 +3153,13 @@ mod tests {
     #[test]
     fn the_pressure_band_follows_the_class() {
         let untouched = AppConfig::default();
-        let (low, high) = pressure_window(&untouched, CarClass::Formula, 0);
+        let (low, high) = pressure_window(&untouched, CarClass::Formula, None, 0);
         assert!(
             low < 21.0 && high > 21.0,
             "a Formula car's own 21 psi fell outside its own band: {low}–{high}"
         );
         let width = high - low;
-        let (gt3_low, gt3_high) = pressure_window(&untouched, CarClass::Gt3, 0);
+        let (gt3_low, gt3_high) = pressure_window(&untouched, CarClass::Gt3, None, 0);
         assert!(
             (width - (gt3_high - gt3_low)).abs() < 0.01,
             "the band is as wide as the driver's own, wherever it is centred"
@@ -3097,7 +3168,10 @@ mod tests {
         // Touch either end and it is the driver's band again, unchanged.
         let mut mine = AppConfig::default();
         mine.alerts.tyre_pressure_min = 20.0;
-        assert_eq!(pressure_window(&mine, CarClass::Formula, 0), (20.0, 28.5));
+        assert_eq!(
+            pressure_window(&mine, CarClass::Formula, None, 0),
+            (20.0, 28.5)
+        );
     }
 
     /// A car with no wing is never told to change one.

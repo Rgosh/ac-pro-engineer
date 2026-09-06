@@ -26,4 +26,13 @@ pub struct CarSpecs {
     pub year: Option<i32>,
     pub power_hp: f32,
     pub weight_kg: f32,
+    /// The hot pressure the car itself was built around, front and rear, psi.
+    ///
+    /// Out of the car's own `tyres.ini` — see
+    /// [`assetto_corsa::car_data`](crate::games::assetto_corsa::car_data).
+    /// `None` where the game does not ship one, or ships it in a form this
+    /// could not read: the class table answers then, exactly as before this
+    /// field existed.
+    #[serde(default)]
+    pub ideal_pressure: Option<(f32, f32)>,
 }

@@ -6,6 +6,7 @@
 //! `shm-bridge.exe` runs inside the prefix and mirrors them out to `/dev/shm`.
 //! Either way what arrives here is the same bytes in the same layout.
 
+pub mod car_data;
 pub mod content;
 pub mod paths;
 pub mod reading;
