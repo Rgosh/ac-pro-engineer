@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.8] - 2026-09-07
+
+### Added
+
+- **Named palettes, and a green that is not invented three times.** `Theme`
+  had one value, so a front end offering a driver a choice of colours had to
+  invent the alternatives — and three front ends inventing them separately is
+  how a family of programs stops looking like one. `Theme::all()` is five
+  complete palettes with a name and a line each: Terminal (the default,
+  unchanged), Amber, Ice, Paper — light, for a daytime desk or a stream
+  overlay — and Contrast. `Theme::named` falls back to the default rather than
+  failing, because a config naming a palette a later release removed still has
+  to open, and `Theme::is_light` comes with them so a front end knows which way
+  round to shade its own panels.
+- `Theme::good` is a field. Every front end needed a colour for "this reading
+  is where it should be" and every one of them picked its own, which is the
+  single thing this type exists to prevent. `#[serde(default)]`, so a config
+  written before today still reads.
+
 ## [v0.4.7] - 2026-09-06
 
 **Nothing changed in the terminal or the core.** The number moves because the

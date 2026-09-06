@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/rgosh/projects/RaceEngineer/.claude/worktrees/content-manager-dotnet-proton-237e79 log --oneline -3)",
+      "Bash(flatpak list *)",
+      "mcp__codebase-memory-mcp__index_repository"
+    ]
+  }
+}
