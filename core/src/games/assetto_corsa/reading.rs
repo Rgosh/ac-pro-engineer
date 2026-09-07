@@ -201,7 +201,63 @@ pub fn reading_of(physics: &AcPhysics, graphics: &AcGraphics, stat: &AcStatic) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::games::reading::{FL, FR, RR};
+    use crate::games::reading::{FL, FR, RL, RR};
+
+    /// The same fault, a second time, from a different car and a different
+    /// circuit — and the reason this test exists beside the one below it.
+    ///
+    /// **One report can be a coincidence of one car's setup.** The first frame
+    /// came off a GT3 whose left tyres happened to read one way; somebody could
+    /// reasonably ask whether the swap was fitting a single lap rather than the
+    /// game's layout. This one is a Cupra TCR at Shanghai, a front-wheel-drive
+    /// touring car with a different camber regime, and it shows the identical
+    /// signature: the two left corners disagreeing with the two right ones
+    /// about which shoulder is hotter.
+    ///
+    /// ```text
+    ///   FL  I  97  M 101  O 106   Δ -9      FR  I 96  M 90  O 85   Δ +11
+    ///   RL  I  68  M  73  O  78   Δ -10     RR  I 64  M 60  O 56   Δ  +8
+    /// ```
+    ///
+    /// Every Δ on the left is negative and every Δ on the right is positive,
+    /// which no real car does: a tyre does not change which edge it overheats
+    /// depending on which side of the car it is bolted to. Corrected, all four
+    /// read inner-hotter — +9, +11, +10, +8 — which is what a cambered tyre
+    /// does and what the driver's own screenshot of the game's tyre app showed.
+    #[test]
+    fn a_second_car_on_a_second_circuit_shows_the_same_mirror() {
+        let car = Car::from(&AcPhysics {
+            tyre_temp_i: [97.0, 96.0, 68.0, 64.0],
+            tyre_temp_m: [101.0, 90.0, 73.0, 60.0],
+            tyre_temp_o: [106.0, 85.0, 78.0, 56.0],
+            ..Default::default()
+        });
+
+        // The front left is the corner the report named, and the one the
+        // numbers are quoted for: 106 inner, 97 outer, not the other way round.
+        assert_eq!(car.tyre_temp_inner_c[FL], 106.0);
+        assert_eq!(car.tyre_temp_outer_c[FL], 97.0);
+        assert_eq!(car.tyre_temp_middle_c[FL], 101.0);
+
+        // And the whole car agrees with itself afterwards. The spread on each
+        // corner is preserved in size and only its sign is put right — a swap
+        // that also changed a number would be a different bug wearing this
+        // one's clothes.
+        for corner in [FL, FR, RL, RR] {
+            let inner = car.tyre_temp_inner_c[corner];
+            let outer = car.tyre_temp_outer_c[corner];
+            assert!(
+                inner > outer,
+                "corner {corner} still reads outer-hotter: inner {inner}, \
+                 outer {outer}"
+            );
+            assert!(
+                (8.0..=12.0).contains(&(inner - outer)),
+                "corner {corner}'s spread changed size: {}",
+                inner - outer
+            );
+        }
+    }
 
     /// The left of the car has its shoulders the right way round.
     ///
@@ -238,7 +294,7 @@ mod tests {
         // The middle is the middle whichever way round the shoulders are.
         assert_eq!(car.tyre_temp_middle_c, [98.0, 69.0, 82.0, 69.0]);
 
-        for corner in [FL, FR, crate::games::reading::RL, RR] {
+        for corner in [FL, FR, RL, RR] {
             assert!(
                 car.tyre_temp_inner_c[corner] > car.tyre_temp_outer_c[corner],
                 "corner {corner} came out with its outer edge hotter, which is \

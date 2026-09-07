@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Findings that hold still long enough to be read.** A verdict is recomputed
+  on every reading and a threshold has two sides, so a tyre resting on its
+  limit crossed it several times a second: every frame of the advice was
+  honest and the panel flickered. `steady::Steady` holds a finding until it has
+  been continuously true for two and a half seconds and keeps it for four after
+  it stops — the asymmetry is the point, because equal timings just move the
+  flicker. It changes no verdict, invents none and reorders none; the wording
+  it shows is the latest one, so a temperature that is still climbing keeps
+  counting up while the line holds still. **In the core because it is a rule**,
+  and three front ends smoothing the same list differently would show different
+  advice about the same lap.
+
 - **Named palettes, and a green that is not invented three times.** `Theme`
   had one value, so a front end offering a driver a choice of colours had to
   invent the alternatives — and three front ends inventing them separately is
