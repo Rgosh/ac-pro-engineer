@@ -33,6 +33,14 @@ All notable changes to this project will be documented in this file.
   single thing this type exists to prevent. `#[serde(default)]`, so a config
   written before today still reads.
 
+### Thanks
+
+- **[@1sad](https://github.com/1sad)**, who read the tyre table against the
+  game's own app and would not let it go. The tread mirror in v0.4.6 was found
+  from a frame he sent, and reading each car's own `PRESSURE_IDEAL` — which is
+  the only thing that works for mods — was his suggestion. Named here with his
+  permission.
+
 ## [v0.4.7] - 2026-09-06
 
 **Nothing changed in the terminal or the core.** The number moves because the
