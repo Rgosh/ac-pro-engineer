@@ -72,6 +72,43 @@ and no other.
 
 The one answer that is certain in advance is the answer to not asking.
 
+## RG Pro Engineer, the window
+
+There is one closed-source program built on this core, and it is the
+maintainer's own: **RG Pro Engineer**, the graphical front end. Its binaries
+are distributed without source, and that is deliberate and licensed — so it is
+written down here rather than left to look like the thing this file spends the
+rest of its length refusing.
+
+The AGPL binds everyone who receives the code. It does not bind the person who
+holds the copyright in it: a copyright holder may license their own work under
+as many sets of terms as they like, and licensing it to themselves for a closed
+product is one of them. That is the whole of the mechanism, and it rests on one
+fact — **every line of this core is the maintainer's own or arrived under MIT.**
+
+- The maintainer, Rgosh, wrote it and holds the copyright. That covers `core/`
+  and the crates beside it that it uses, `kn5/` among them: they are AGPL here
+  for the same reason and by the same hand.
+- The one other contributor's commits all predate the change to the AGPL, and
+  were made under the MIT terms this project carried then.
+  `LICENSE-MIT-HISTORICAL` keeps those terms, and MIT permits exactly this use.
+- `shm-bridge/` is a fork of Damir Jelić's
+  [shm-bridge](https://github.com/poljar/shm-bridge) and stays MIT.
+- **No third-party dependency is copyleft.** The window's whole tree is 473
+  packages; the only copyleft licences in it are this project's own. Two
+  crates offer copyleft as one of several choices — `r-efi` is "MIT OR
+  Apache-2.0 OR LGPL-2.1-or-later" and `self_cell` is "Apache-2.0 OR
+  GPL-2.0-only" — and in both the permissive arm is the one taken. Any future
+  dependency that is copyleft outright has to be refused or replaced before it
+  can ship in the window.
+
+So: the window links this core under the maintainer's own separate grant, not
+under the AGPL, and its source is not owed to anybody. **This changes nothing
+for you.** The core you receive is AGPL and stays AGPL; the sections above and
+below apply to your use of it exactly as written. If you want the same
+arrangement for your own product, the two sections either side of this one are
+how to ask.
+
 ## Commercial licensing
 
 If you want to build a product on this core and sell it, that is welcome, and
