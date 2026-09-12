@@ -541,6 +541,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // had no ACC picture until now — which is why four zeros where a tread
     // readout goes, and 0 mm of ride height, went unreviewed through a whole
     // release.
+    // A session for this one to be compared against. The store is read from
+    // the driver's own directory, which under the harness is either empty or
+    // somebody else's evening — so the picture is posed, the same way the
+    // stint itself is, or the follow-up panel could only ever photograph its
+    // empty state.
+    app.last_time = Some(ac_core::followup::store::Remembered {
+        started: "2026-09-06 21:14".to_string(),
+        car: "Ferrari SF70H".to_string(),
+        track: "Autodromo Nazionale Monza".to_string(),
+        laps: 11,
+        best_ms: 83_133,
+        findings: vec![
+            ac_core::followup::Said {
+                component: "Tyres".to_string(),
+                category: "Pressure".to_string(),
+                severity: Severity::Warning,
+                message: "Front Right 1.1 PSI over its window".to_string(),
+                parameters: vec![ac_core::engineer::Parameter {
+                    name: "FR cold pressure".to_string(),
+                    current: 28.6,
+                    target: 27.5,
+                    unit: "psi".to_string(),
+                }],
+            },
+            ac_core::followup::Said {
+                component: "Dampers".to_string(),
+                category: "Bump".to_string(),
+                severity: Severity::Warning,
+                message: "the front is riding the kerbs rather than absorbing them".to_string(),
+                parameters: vec![ac_core::engineer::Parameter {
+                    name: "front bump".to_string(),
+                    current: 9.0,
+                    target: 7.0,
+                    unit: "clicks".to_string(),
+                }],
+            },
+        ],
+    });
+
     app.active_tab = AppTab::Engineer;
     app.ui_state.engineer.active_sub_tab = 1;
     terminal.draw(|f| renderer.render(f, &app))?;

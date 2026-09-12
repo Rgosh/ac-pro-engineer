@@ -327,6 +327,19 @@ pub struct AppState {
     /// data" and so never produced a result on those tracks.
     pub track_sector_count: i32,
     pub recommendations: Vec<Recommendation>,
+    /// What the engineer said last session in this car at this track, so it
+    /// can follow up on itself. `None` until there is one.
+    pub last_time: Option<ac_core::followup::store::Remembered>,
+    /// Where that is kept, and where this session is written down for the next
+    /// one. In the core, so the window and the terminal answer the question
+    /// the same way rather than each having their own idea of it.
+    pub followup: ac_core::followup::store::Store,
+    /// The car and track the lookup was done for, so it happens once and not
+    /// on every reading.
+    looked_back: Option<(String, String)>,
+    /// When this session started, as it is written down. Its first lap sets
+    /// it, which is also when there is anything worth remembering.
+    session_started: String,
     pub analysis_results: Vec<AnalysisResult>,
     pub last_update: Instant,
     pub config: AppConfig,
@@ -555,6 +568,10 @@ impl AppState {
             last_sector_index: 0,
             track_sector_count: DEFAULT_SECTOR_COUNT,
             recommendations: Vec::new(),
+            last_time: None,
+            followup: ac_core::followup::store::Store::new(),
+            looked_back: None,
+            session_started: String::new(),
             analysis_results: Vec::new(),
             last_update: Instant::now(),
             config,
@@ -1487,6 +1504,64 @@ impl AppState {
         self.recommendations = self
             .engineer
             .analyze_live(&car, &session, active_setup.as_ref());
+        self.follow_up();
+    }
+
+    /// Read what the engineer said last time, and write down what it says now.
+    ///
+    /// **The lookup happens once per car and track**, because it opens a file;
+    /// the write happens whenever a lap finishes, because a program that is
+    /// killed should keep what it knew up to the last lap, and the session
+    /// most worth remembering is the one where something went wrong.
+    fn follow_up(&mut self) {
+        let Some(reading) = self.reading.as_ref() else {
+            return;
+        };
+        let (car, track) = (reading.fixed.car_model.clone(), reading.fixed.track.clone());
+        if car.is_empty() || track.is_empty() {
+            return;
+        }
+
+        // The first finished lap stamps the session, the same way the window
+        // does: before that there is nothing to write and nothing to be told
+        // apart from.
+        if self.session_started.is_empty()
+            && let Some(first) = self.analyzer.laps.first()
+        {
+            self.session_started = format!(
+                "{} {}",
+                first.save_date,
+                first.timestamp.chars().take(5).collect::<String>()
+            );
+        }
+
+        let here = (car.clone(), track.clone());
+        if self.looked_back.as_ref() != Some(&here) {
+            self.looked_back = Some(here);
+            self.last_time = self.followup.last_time(&car, &track, &self.session_started);
+        }
+
+        if self.session_started.is_empty() {
+            return;
+        }
+        let best_ms = self
+            .analyzer
+            .laps
+            .iter()
+            .map(|lap| lap.lap_time_ms)
+            .filter(|ms| *ms > 0)
+            .min()
+            .unwrap_or(0);
+        let _ = self
+            .followup
+            .remember(&ac_core::followup::store::Remembered {
+                started: self.session_started.clone(),
+                car,
+                track,
+                laps: self.analyzer.laps.len(),
+                best_ms,
+                findings: ac_core::followup::worst_of(&self.recommendations),
+            });
     }
 
     pub fn tick(&mut self) {

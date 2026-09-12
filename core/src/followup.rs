@@ -457,6 +457,85 @@ mod tests {
         assert_eq!(report.unchanged(), 1);
     }
 
+    /// A car model is whatever the game calls it, and mod authors call them
+    /// anything at all — including things with slashes in, which is a path
+    /// escaping the directory it was meant to be in.
+    #[test]
+    fn a_car_that_names_itself_a_path_stays_in_its_own_directory() {
+        let root = std::env::temp_dir().join("rg-followup-path-test");
+        let store = store::Store::in_dir(root.clone());
+        let session = store::Remembered {
+            started: "2026-09-12 10:00".to_string(),
+            car: "../../etc/passwd".to_string(),
+            track: "../../../root".to_string(),
+            laps: 1,
+            best_ms: 90_000,
+            findings: vec![said("TYRES", Severity::Warning)],
+        };
+        store.remember(&session).expect("it writes");
+
+        let inside: Vec<_> = std::fs::read_dir(store.at())
+            .expect("the directory exists")
+            .flatten()
+            .collect();
+        assert_eq!(inside.len(), 1, "one file, and it is in here");
+        assert_eq!(
+            store.last_time("../../etc/passwd", "../../../root", "now"),
+            Some(session)
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Handing back the session being driven now makes every finding compare
+    /// against itself, which reads as a driver who has changed nothing.
+    #[test]
+    fn the_session_being_driven_is_not_its_own_reference() {
+        let root = std::env::temp_dir().join("rg-followup-self-test");
+        let store = store::Store::in_dir(root.clone());
+        let session = store::Remembered {
+            started: "2026-09-12 10:00".to_string(),
+            car: "bmw_z4_gt3".to_string(),
+            track: "spa".to_string(),
+            laps: 4,
+            best_ms: 90_000,
+            findings: vec![said("TYRES", Severity::Warning)],
+        };
+        store.remember(&session).expect("it writes");
+
+        assert_eq!(
+            store.last_time("bmw_z4_gt3", "spa", "2026-09-12 10:00"),
+            None,
+            "this is the session in progress"
+        );
+        assert!(
+            store
+                .last_time("bmw_z4_gt3", "spa", "2026-09-12 21:30")
+                .is_some(),
+            "a later session compares against it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A session with nothing wrong in it has nothing for the next one to
+    /// follow up on, and offering it would make everything read as new.
+    #[test]
+    fn a_session_with_no_findings_is_no_reference() {
+        let root = std::env::temp_dir().join("rg-followup-empty-test");
+        let store = store::Store::in_dir(root.clone());
+        store
+            .remember(&store::Remembered {
+                started: "2026-09-12 10:00".to_string(),
+                car: "bmw_z4_gt3".to_string(),
+                track: "spa".to_string(),
+                laps: 4,
+                best_ms: 90_000,
+                findings: Vec::new(),
+            })
+            .expect("it writes");
+        assert_eq!(store.last_time("bmw_z4_gt3", "spa", "later"), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A session with no valid lap is not a session that went equally well,
     /// and "+0.000 s" would say that it was.
     #[test]
@@ -502,5 +581,128 @@ mod tests {
         assert_eq!(report.changes[0].outcome, Outcome::Gone);
         assert_eq!(report.changes[0].was_asked().len(), 1);
         assert_eq!(report.changes[0].was_asked()[0].target, 27.2);
+    }
+}
+
+/// Where what the engineer said is kept between sessions.
+///
+/// **In the core, so all three front ends answer the question the same way.**
+/// The window grew this first, keeping the findings inside its own session
+/// folders; the terminal has no such folders, and a second implementation of
+/// "what did it say last time" is a second set of answers to one question.
+/// This is the one place, and it is the same shape as [`crate::records`] next
+/// door: a small JSON file per car and track under the application's own
+/// directory.
+///
+/// One session per car and track — the last one. A history is a different
+/// feature and this is not it: the question is "did what I changed work", and
+/// the answer comes from the session before this one.
+pub mod store {
+    use super::Said;
+    use serde::{Deserialize, Serialize};
+    use std::path::{Path, PathBuf};
+
+    /// What one finished session is remembered by.
+    #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Remembered {
+        /// When it started, as the front end writes it. Compared, never
+        /// parsed: it is how a session tells itself apart from the one being
+        /// driven now.
+        pub started: String,
+        pub car: String,
+        pub track: String,
+        pub laps: usize,
+        /// The quickest lap, in milliseconds. Zero when none was valid.
+        pub best_ms: i32,
+        pub findings: Vec<Said>,
+    }
+
+    impl Remembered {
+        /// The best lap as a driver reads it, or a dash where there was none.
+        pub fn best(&self) -> String {
+            if self.best_ms <= 0 {
+                return "—".to_string();
+            }
+            let seconds = self.best_ms as f32 / 1000.0;
+            format!(
+                "{}:{:06.3}",
+                (seconds / 60.0).floor() as i32,
+                seconds % 60.0
+            )
+        }
+    }
+
+    /// One file per car and track, under the application's own directory.
+    pub struct Store {
+        at: PathBuf,
+    }
+
+    impl Default for Store {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl Store {
+        pub fn new() -> Self {
+            Self::in_dir(crate::config::app_dir())
+        }
+
+        /// For the tests, which must not write where a driver's own sessions
+        /// are — and for anything that wants to keep this somewhere else.
+        pub fn in_dir(data_dir: PathBuf) -> Self {
+            Self {
+                at: data_dir.join("followup"),
+            }
+        }
+
+        /// The file one car at one track is kept in.
+        ///
+        /// **Named by a digest and not by the car.** A car model is whatever
+        /// the game calls it and mod authors call them anything at all —
+        /// including things with slashes in, which is a path escaping its own
+        /// directory. The names are inside the file, where they cannot be a
+        /// path.
+        fn file_for(&self, car: &str, track: &str) -> PathBuf {
+            let mut digest: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in car.as_bytes().iter().chain(b"\x1f").chain(track.as_bytes()) {
+                digest ^= *byte as u64;
+                digest = digest.wrapping_mul(0x100_0000_01b3);
+            }
+            self.at.join(format!("{digest:016x}.json"))
+        }
+
+        /// Write this session down as the one the next will compare against.
+        ///
+        /// **Called on every lap and not at the end.** A program that is killed
+        /// keeps what it knew up to the last lap, and the session most worth
+        /// remembering is the one where something went wrong.
+        pub fn remember(&self, session: &Remembered) -> std::io::Result<()> {
+            if session.car.is_empty() || session.track.is_empty() {
+                return Ok(());
+            }
+            std::fs::create_dir_all(&self.at)?;
+            let written = serde_json::to_vec_pretty(session)
+                .map_err(|why| std::io::Error::other(why.to_string()))?;
+            crate::atomic_file::write_atomic(&self.file_for(&session.car, &session.track), &written)
+        }
+
+        /// The last session in this car at this track, if it is not the one
+        /// being driven now.
+        ///
+        /// `started_now` is this session's own stamp: without it the store
+        /// would hand back the session in progress and every finding would
+        /// compare against itself, which reads as a driver who has changed
+        /// nothing all evening.
+        pub fn last_time(&self, car: &str, track: &str, started_now: &str) -> Option<Remembered> {
+            let bytes = std::fs::read(self.file_for(car, track)).ok()?;
+            let kept: Remembered = serde_json::from_slice(&bytes).ok()?;
+            (kept.started != started_now && !kept.findings.is_empty()).then_some(kept)
+        }
+
+        /// Where the files are, for a front end that wants to say so.
+        pub fn at(&self) -> &Path {
+            &self.at
+        }
     }
 }

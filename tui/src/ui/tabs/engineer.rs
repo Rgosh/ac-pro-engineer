@@ -263,16 +263,157 @@ fn render_debrief(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(0)])
+        .constraints([
+            // First, because it is the question somebody opens this sub-tab to
+            // ask. "Did what I changed last time work" comes before "what
+            // should I change now": the second is worth nothing if the first
+            // is never answered.
+            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Min(0),
+        ])
         .split(area);
+
+    render_since_last_time(f, layout[0], app, is_ru);
 
     let total_laps = app.analyzer.laps.len();
     let default_idx = total_laps.saturating_sub(1);
     let selected_idx = app.ui_state.engineer.selected_lap_index.min(default_idx);
     let lap = app.analyzer.laps.get(selected_idx);
 
-    render_debrief_header(f, layout[0], app, lap, total_laps, selected_idx, is_ru);
-    render_sector_advice(f, layout[1], app, lap, is_ru);
+    render_debrief_header(f, layout[1], app, lap, total_laps, selected_idx, is_ru);
+    render_sector_advice(f, layout[2], app, lap, is_ru);
+}
+
+/// Whether what the driver changed last time worked.
+///
+/// **The half of the engineer that was missing.** Every recommendation carries
+/// a chain saying what to look at next run to know whether the change did
+/// anything, and until now nothing ever looked. `ac_core::followup` compares
+/// what was said last session with what is said now; nothing here decides.
+///
+/// It never claims the change *caused* the improvement — track temperature
+/// moves and a driver on their second evening is a better driver than on their
+/// first. The wording is what was observed.
+fn render_since_last_time(f: &mut Frame<'_>, area: Rect, app: &AppState, is_ru: bool) {
+    use ac_core::followup::Outcome;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(" SINCE LAST TIME ".tr(is_ru))
+        .title_alignment(Alignment::Center);
+
+    let Some(before) = app.last_time.as_ref() else {
+        // A first session in a car has nothing to compare against, and saying
+        // so is the answer rather than an empty box.
+        f.render_widget(
+            Paragraph::new(
+                "This is the first session kept in this car at this track — the next one will \
+                 say what changed."
+                    .tr(is_ru)
+                    .to_string(),
+            )
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
+            .block(block),
+            area,
+        );
+        return;
+    };
+
+    let now = ac_core::followup::worst_of(&app.recommendations);
+    let best_ms = app
+        .analyzer
+        .laps
+        .iter()
+        .map(|lap| lap.lap_time_ms)
+        .filter(|ms| *ms > 0)
+        .min()
+        .unwrap_or(0);
+    let report = ac_core::followup::compare(&before.findings, &now, before.best_ms, best_ms);
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled(
+            report.headline(),
+            Style::default()
+                .fg(if report.any_progress() {
+                    Color::Green
+                } else {
+                    Color::Cyan
+                })
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            match report.pace() {
+                Some(pace) => format!("   best lap {pace}"),
+                None => String::new(),
+            },
+            Style::default().fg(match report.lap_delta_ms {
+                Some(delta) if delta < 0 => Color::Green,
+                Some(delta) if delta > 0 => Color::Yellow,
+                _ => Color::DarkGray,
+            }),
+        ),
+    ])];
+    lines.push(Line::from(Span::styled(
+        tr_fmt(
+            "against {0} · {1} laps · best {2}",
+            is_ru,
+            &[&before.started, &before.laps.to_string(), &before.best()],
+        ),
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let moved = report.moved();
+    if moved.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Nothing the engineer says has changed since last time."
+                .tr(is_ru)
+                .to_string(),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    for change in moved {
+        let (colour, mark) = match change.outcome {
+            Outcome::Gone | Outcome::Eased => (Color::Green, "·"),
+            Outcome::New => (Color::Yellow, "●"),
+            Outcome::Worse => (Color::Red, "▲"),
+            Outcome::Same => (Color::DarkGray, "·"),
+        };
+        // The component names itself and the verdict follows it: a sentence
+        // built round the name gave "the tyres is a new finding".
+        lines.push(Line::from(vec![
+            Span::styled(format!("{mark} "), Style::default().fg(colour)),
+            Span::styled(
+                change.component.clone(),
+                Style::default().fg(colour).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!(" {}", change.said()), Style::default().fg(colour)),
+        ]));
+        // **What was asked for, beside what happened to it.** This is the loop
+        // closing, and the only line in the program that tells a driver their
+        // own change did something.
+        if change.outcome.is_progress() {
+            for parameter in change.was_asked() {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "    you were asked for {} {:.2} → {:.2} {}",
+                        parameter.name, parameter.current, parameter.target, parameter.unit
+                    ),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
+    }
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block),
+        area,
+    );
 }
 
 fn render_debrief_header(
