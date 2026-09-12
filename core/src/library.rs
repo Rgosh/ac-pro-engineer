@@ -178,6 +178,40 @@ impl Default for Sharing {
     }
 }
 
+/// Whether the program shares a lap on its own, and what it waits for.
+///
+/// **Off until somebody says otherwise, and asked once rather than assumed.**
+/// The same shape as the crash reports: a program that started sending laps
+/// because it seemed helpful would have broken the one promise this whole
+/// project is built on, and "there is a setting" is not consent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Automatically {
+    /// Nobody has been asked yet.
+    #[default]
+    NotAsked,
+    /// Asked, and told no. Never asked again.
+    Never,
+    /// A lap that beats everything this machine has done in that car at that
+    /// circuit goes up by itself.
+    WhenItIsYourBest,
+}
+
+impl Automatically {
+    pub fn on(self) -> bool {
+        self == Automatically::WhenItIsYourBest
+    }
+
+    /// Whether this lap is one to send without being told.
+    ///
+    /// **Only a personal best, and only a real one.** Every lap would be a
+    /// firehose and most of them are worse than the one already up; an invalid
+    /// lap is not a lap; and a lap that ties the record is not an improvement,
+    /// it is the same lap driven again.
+    pub fn would_send(self, lap_time_ms: i32, best_before_ms: i32) -> bool {
+        self.on() && lap_time_ms > 0 && (best_before_ms <= 0 || lap_time_ms < best_before_ms)
+    }
+}
+
 impl Sharing {
     /// The name a list shows.
     pub fn shown_as(&self) -> &str {
@@ -436,5 +470,36 @@ mod tests {
         assert_eq!(listed.lap_time(), "2:11.402");
         listed.lap_time_ms = 0;
         assert_eq!(listed.lap_time(), "—");
+    }
+}
+
+#[cfg(test)]
+mod automatic {
+    use super::*;
+
+    /// **Nothing goes anywhere until somebody has said so.** The default is
+    /// the one place that decision is actually made, and a default that
+    /// changed by accident would be the program breaking its own promise
+    /// quietly.
+    #[test]
+    fn nothing_is_sent_before_anybody_is_asked() {
+        assert_eq!(Automatically::default(), Automatically::NotAsked);
+        assert!(!Automatically::default().on());
+        assert!(!Automatically::default().would_send(90_000, 0));
+        assert!(!Automatically::Never.would_send(90_000, 0));
+    }
+
+    /// A personal best, and only a real one.
+    #[test]
+    fn only_a_lap_that_beat_the_last_one_goes_by_itself() {
+        let on = Automatically::WhenItIsYourBest;
+        assert!(on.would_send(90_000, 91_500), "quicker than before");
+        assert!(on.would_send(90_000, 0), "and the first one there is");
+        assert!(!on.would_send(91_500, 90_000), "slower");
+        assert!(
+            !on.would_send(90_000, 90_000),
+            "the same time is the same lap driven again, not an improvement"
+        );
+        assert!(!on.would_send(0, 91_500), "a lap with no time is not a lap");
     }
 }

@@ -48,6 +48,7 @@ pub mod ring_buffer;
 pub mod session_info;
 pub mod setup_manager;
 pub mod shifts;
+pub mod slips;
 pub mod steady;
 pub mod steam;
 pub mod track;
