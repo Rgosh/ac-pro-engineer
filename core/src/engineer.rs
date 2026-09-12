@@ -76,7 +76,10 @@ impl Recommendation {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Default)]
+/// `Deserialize` and `PartialEq` because a parameter is now written down and
+/// read back: `followup` keeps what the driver was asked to change so the next
+/// session can say whether it was.
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 pub struct Parameter {
     pub name: String,
     pub current: f32,
@@ -90,7 +93,7 @@ pub struct Parameter {
 /// is six places to get the order wrong.
 pub const CORNER_NAMES: [&str; 4] = ["FL", "FR", "RL", "RR"];
 
-#[derive(Debug, Serialize, Clone, PartialEq, PartialOrd, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Default)]
 pub enum Severity {
     #[default]
     Info,
