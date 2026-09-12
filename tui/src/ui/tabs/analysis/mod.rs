@@ -4,6 +4,7 @@ use ac_core::i18n::{Translate, tr_fmt};
 use ratatui::{prelude::*, widgets::*};
 use std::cell::RefCell;
 
+pub mod braking;
 pub mod corners;
 pub mod dynamics;
 pub mod engine;
@@ -15,6 +16,7 @@ pub mod traction;
 pub enum AnalysisSubTab {
     Overview,
     Corners,
+    Braking,
     Graphs,
     Dynamics,
     Engine,
@@ -81,37 +83,70 @@ pub struct CornerCache {
     /// not enough on its own to say two laps are the same two laps.
     key: Option<(i32, i32, i32, i32)>,
     decomposition: ac_core::corners::Decomposition,
+    /// The braking verdicts for the same pair, from the same walk.
+    ///
+    /// `braking::look` reads the decomposition that was just built, so keeping
+    /// it here costs one extra pass over the corners and saves the BRAKING
+    /// sub-tab detecting and decomposing all over again for the same answer.
+    braking: ac_core::braking::Report,
 }
 
 impl CornerCache {
-    pub fn get_or_compute(
+    /// Walk both laps, once, if this is not the pair already walked.
+    fn refresh(
         &mut self,
         lap: &ac_core::analyzer::LapData,
         reference: &ac_core::analyzer::LapData,
-    ) -> ac_core::corners::Decomposition {
+    ) {
         let key = (
             lap.lap_number,
             lap.lap_time_ms,
             reference.lap_number,
             reference.lap_time_ms,
         );
-        if self.key != Some(key) {
-            let mine = ac_core::corners::detect(&lap.telemetry_trace);
-            let theirs = ac_core::corners::detect(&reference.telemetry_trace);
-            self.decomposition = ac_core::corners::decompose(
-                &lap.telemetry_trace,
-                &reference.telemetry_trace,
-                &mine,
-                &theirs,
-            );
-            self.key = Some(key);
+        if self.key == Some(key) {
+            return;
         }
+        let mine = ac_core::corners::detect(&lap.telemetry_trace);
+        let theirs = ac_core::corners::detect(&reference.telemetry_trace);
+        self.decomposition = ac_core::corners::decompose(
+            &lap.telemetry_trace,
+            &reference.telemetry_trace,
+            &mine,
+            &theirs,
+        );
+        self.braking = ac_core::braking::look(
+            &self.decomposition,
+            &lap.telemetry_trace,
+            &reference.telemetry_trace,
+            lap.track_length_m,
+        );
+        self.key = Some(key);
+    }
+
+    pub fn get_or_compute(
+        &mut self,
+        lap: &ac_core::analyzer::LapData,
+        reference: &ac_core::analyzer::LapData,
+    ) -> ac_core::corners::Decomposition {
+        self.refresh(lap, reference);
         self.decomposition.clone()
+    }
+
+    /// What the brake pedal did wrong, for the same pair of laps.
+    pub fn braking(
+        &mut self,
+        lap: &ac_core::analyzer::LapData,
+        reference: &ac_core::analyzer::LapData,
+    ) -> ac_core::braking::Report {
+        self.refresh(lap, reference);
+        self.braking.clone()
     }
 
     pub fn clear(&mut self) {
         self.key = None;
         self.decomposition = ac_core::corners::Decomposition::default();
+        self.braking = ac_core::braking::Report::default();
     }
 }
 
@@ -159,7 +194,8 @@ impl AnalysisState {
         }
         self.current_tab = match self.current_tab {
             AnalysisSubTab::Overview => AnalysisSubTab::Corners,
-            AnalysisSubTab::Corners => AnalysisSubTab::Graphs,
+            AnalysisSubTab::Corners => AnalysisSubTab::Braking,
+            AnalysisSubTab::Braking => AnalysisSubTab::Graphs,
             AnalysisSubTab::Graphs => AnalysisSubTab::Dynamics,
             AnalysisSubTab::Dynamics => AnalysisSubTab::Engine,
             AnalysisSubTab::Engine => AnalysisSubTab::Traction,
@@ -174,7 +210,8 @@ impl AnalysisState {
         self.current_tab = match self.current_tab {
             AnalysisSubTab::Overview => AnalysisSubTab::Traction,
             AnalysisSubTab::Corners => AnalysisSubTab::Overview,
-            AnalysisSubTab::Graphs => AnalysisSubTab::Corners,
+            AnalysisSubTab::Braking => AnalysisSubTab::Corners,
+            AnalysisSubTab::Graphs => AnalysisSubTab::Braking,
             AnalysisSubTab::Dynamics => AnalysisSubTab::Graphs,
             AnalysisSubTab::Engine => AnalysisSubTab::Dynamics,
             AnalysisSubTab::Traction => AnalysisSubTab::Engine,
@@ -355,6 +392,9 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 AnalysisSubTab::Corners => {
                     corners::render(f, right_layout[1], app, selected_lap, reference)
                 }
+                AnalysisSubTab::Braking => {
+                    braking::render(f, right_layout[1], app, selected_lap, reference)
+                }
                 AnalysisSubTab::Graphs => {
                     graphs::render(f, right_layout[1], app, selected_lap, reference)
                 }
@@ -406,6 +446,7 @@ fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let titles: Vec<&str> = [
         "OVERVIEW",
         "CORNERS",
+        "BRAKING",
         "TELEMETRY",
         "DYNAMICS",
         "ENGINE",
@@ -418,10 +459,11 @@ fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     let selected_idx = match app.ui_state.analysis.current_tab {
         AnalysisSubTab::Overview => 0,
         AnalysisSubTab::Corners => 1,
-        AnalysisSubTab::Graphs => 2,
-        AnalysisSubTab::Dynamics => 3,
-        AnalysisSubTab::Engine => 4,
-        AnalysisSubTab::Traction => 5,
+        AnalysisSubTab::Braking => 2,
+        AnalysisSubTab::Graphs => 3,
+        AnalysisSubTab::Dynamics => 4,
+        AnalysisSubTab::Engine => 5,
+        AnalysisSubTab::Traction => 6,
     };
 
     let tabs = Tabs::new(titles)
