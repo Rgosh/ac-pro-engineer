@@ -555,14 +555,26 @@ impl Engineer {
             }
         }
 
-        let rake = car.ride_height_m[1] - car.ride_height_m[0];
+        // **Only where the game publishes a ride height.** Competizione does
+        // not: the field is zero for the whole recording, so the rake is zero
+        // at every speed and the aero rule was protected by nothing but a
+        // `!= 0.0` guard on its own accumulators. One frame of noise past that
+        // and a driver would be told to stiffen their rear springs because of
+        // a measurement their game never made.
+        //
+        // The same gate the camber rule has had since it was written, on the
+        // rule that needed it just as much and did not have it.
+        let rake = match self.capabilities.ride_height {
+            true => car.ride_height_m[1] - car.ride_height_m[0],
+            false => 0.0,
+        };
         let rake_mm = rake * 1000.0;
-        if car.speed_kmh > 50.0 && car.speed_kmh < 90.0 {
+        if self.capabilities.ride_height && car.speed_kmh > 50.0 && car.speed_kmh < 90.0 {
             if self.stats.low_speed_rake == 0.0 {
                 self.stats.low_speed_rake = rake_mm;
             }
             self.stats.low_speed_rake = self.stats.low_speed_rake * 0.98 + rake_mm * 0.02;
-        } else if car.speed_kmh > 160.0 {
+        } else if self.capabilities.ride_height && car.speed_kmh > 160.0 {
             if self.stats.high_speed_rake == 0.0 {
                 self.stats.high_speed_rake = rake_mm;
             }
@@ -843,7 +855,11 @@ impl Engineer {
         self.analyze_suspension(car, &mut recommendations);
         self.analyze_brakes(car, &mut recommendations);
         self.analyze_brake_bias(setup, &mut recommendations);
-        self.analyze_aero(car, &mut recommendations);
+        // Rake is front ride height minus rear, and a game that publishes
+        // neither has no rake — see where it is accumulated.
+        if self.capabilities.ride_height {
+            self.analyze_aero(car, &mut recommendations);
+        }
 
         self.analyze_driving_errors(&mut recommendations);
         self.analyze_strategy(car, session, &mut recommendations);
@@ -2702,6 +2718,45 @@ mod tests {
                     "{withheld} rests on a measurement this game does not make: {said:?}"
                 );
             }
+        }
+
+        /// **Rake is front ride height minus rear, and one game publishes
+        /// neither.**
+        ///
+        /// The aero rule was protected by nothing but a `!= 0.0` guard on its
+        /// own accumulators: with Competizione's zeros the rake is zero at
+        /// every speed, so the guard held — until one frame of noise, after
+        /// which a driver would be told to stiffen their rear springs because
+        /// of a measurement their game never made. The camber rule has had a
+        /// capability gate since it was written; this one needed it just as
+        /// much and did not have it, and was found when the window started
+        /// offering the second game.
+        #[test]
+        fn without_a_ride_height_there_is_no_rake_verdict() {
+            let config = AppConfig::default();
+            let mut car = a_car_in_trouble();
+            // A rear that has dropped two centimetres at speed, which is what
+            // the rule is looking for.
+            car.speed_kmh = 200.0;
+            car.ride_height_m = [0.050, 0.030];
+
+            let mut complete = engineer_reading_a_complete_game(&config);
+            // Twice, because the rule wants a low-speed reading and a
+            // high-speed one before it can compare them.
+            car.speed_kmh = 70.0;
+            let _ = advice_about(&mut complete, &car);
+            car.speed_kmh = 200.0;
+            let _ = advice_about(&mut complete, &car);
+
+            let mut blind = Engineer::new(&config);
+            car.speed_kmh = 70.0;
+            let _ = advice_about(&mut blind, &car);
+            car.speed_kmh = 200.0;
+            let said = advice_about(&mut blind, &car);
+            assert!(
+                !said.iter().any(|c| c.starts_with("Aerodynamics")),
+                "a game that publishes no ride height has no rake to judge: {said:?}"
+            );
         }
 
         /// Tyre wear alone. The rule reads a percentage that counts down from

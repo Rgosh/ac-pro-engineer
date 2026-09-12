@@ -186,7 +186,16 @@ impl Stint {
 }
 
 /// How this stint is going, or `None` while it is too early to say.
-pub fn look(laps: &[LapData]) -> Option<Stint> {
+///
+/// `wear_published` is the game's own answer, from
+/// [`Capabilities::tyre_wear`](crate::games::Capabilities). **Not inferred
+/// from the trace**: `Detail::measured` says a lap carried detail at all, not
+/// that every field in it was measured, so reading wear behind that flag gave
+/// "about 78 laps of tyre left" on a game that publishes none. It was safe by
+/// accident on a real session — unpublished wear is a flat line of zeros and
+/// the fit rejects it — and safe by accident is how the aero rule got through
+/// for a year.
+pub fn look(laps: &[LapData], wear_published: bool) -> Option<Stint> {
     // A lap somebody spun on is not a slower lap, it is not a lap.
     let valid: Vec<&LapData> = laps
         .iter()
@@ -236,21 +245,24 @@ pub fn look(laps: &[LapData]) -> Option<Stint> {
 
     // Wear, where the game publishes it: the difference between the first and
     // the last lap that carried a figure, over the laps between them.
-    let worn: Vec<(f32, f32)> = valid
-        .iter()
-        .filter_map(|lap| {
-            let point = lap.telemetry_trace.last()?;
-            point.detail.measured.then(|| {
-                let worst = point
-                    .detail
-                    .tyre_wear
-                    .iter()
-                    .copied()
-                    .fold(f32::MAX, f32::min);
-                (lap.lap_number as f32, worst)
+    let worn: Vec<(f32, f32)> = match wear_published {
+        false => Vec::new(),
+        true => valid
+            .iter()
+            .filter_map(|lap| {
+                let point = lap.telemetry_trace.last()?;
+                point.detail.measured.then(|| {
+                    let worst = point
+                        .detail
+                        .tyre_wear
+                        .iter()
+                        .copied()
+                        .fold(f32::MAX, f32::min);
+                    (lap.lap_number as f32, worst)
+                })
             })
-        })
-        .collect();
+            .collect(),
+    };
     // Wear in this game counts *down* from one, so a falling figure is rubber
     // going: the rate is the negated slope, and a rising one is a tyre change
     // rather than a tyre growing back.
@@ -355,7 +367,7 @@ mod tests {
     #[test]
     fn it_refuses_to_answer_before_there_is_a_stint() {
         let early: Vec<LapData> = (1..=4).map(|n| lap(n, 90_000 + n * 100, None)).collect();
-        assert!(look(&early).is_none());
+        assert!(look(&early, true).is_none());
     }
 
     /// A lap somebody spun on is not a slower lap, it is not a lap.
@@ -364,7 +376,7 @@ mod tests {
         let mut laps: Vec<LapData> = (1..=7).map(|n| lap(n, 90_000, None)).collect();
         laps[3].lap_time_ms = 120_000;
         laps[3].valid = false;
-        let stint = look(&laps).expect("six valid laps");
+        let stint = look(&laps, true).expect("six valid laps");
         assert_eq!(stint.laps, 6);
         assert!(
             stint.per_lap_s.abs() < FLAT,
@@ -380,7 +392,7 @@ mod tests {
         let laps: Vec<LapData> = (1..=10)
             .map(|n| lap(n, 90_000 + (n - 1) * 100, None))
             .collect();
-        let stint = look(&laps).expect("ten laps");
+        let stint = look(&laps, true).expect("ten laps");
         assert!((stint.per_lap_s - 0.1).abs() < 0.01, "{}", stint.per_lap_s);
         assert!(
             stint.agreement > 0.99,
@@ -424,7 +436,7 @@ mod tests {
             .map(|(at, ms)| lap(at as i32 + 1, *ms, None))
             .collect();
 
-        let stint = look(&laps).expect("eight laps");
+        let stint = look(&laps, true).expect("eight laps");
         assert_eq!(stint.turned_at, Some(4));
         assert!(
             stint.per_lap_s > 0.0,
@@ -451,7 +463,7 @@ mod tests {
         let laps: Vec<LapData> = (1..=10)
             .map(|n| lap(n, 90_000 + (n % 3) * 10, None))
             .collect();
-        let stint = look(&laps).expect("ten laps");
+        let stint = look(&laps, true).expect("ten laps");
         assert!(!stint.going_off());
         assert!(stint.advice().is_empty());
         assert!(
@@ -470,12 +482,12 @@ mod tests {
         let going: Vec<LapData> = (1..=10)
             .map(|n| lap(n, 90_000 - (n.min(4) * 100) + ((n - 4).max(0) * 150), None))
             .collect();
-        assert_eq!(look(&going).expect("ten laps").turned_at, Some(4));
+        assert_eq!(look(&going, true).expect("ten laps").turned_at, Some(4));
 
         // The same stint with the quickest lap last: nothing turned.
         let mut improving: Vec<LapData> = (1..=10).map(|n| lap(n, 91_000 - n * 50, None)).collect();
         improving.last_mut().expect("a last lap").lap_time_ms = 89_000;
-        assert_eq!(look(&improving).expect("ten laps").turned_at, None);
+        assert_eq!(look(&improving, true).expect("ten laps").turned_at, None);
     }
 
     /// **Wear needs no coefficient**, so where the game publishes it the
@@ -486,11 +498,35 @@ mod tests {
         let laps: Vec<LapData> = (1..=10)
             .map(|n| lap(n, 90_000, Some(1.0 - n as f32 * 0.01)))
             .collect();
-        let stint = look(&laps).expect("ten laps");
+        let stint = look(&laps, true).expect("ten laps");
         let rate = stint.wear_per_lap.expect("wear was published");
         assert!((rate - 0.01).abs() < 0.002, "{rate}");
         let left = stint.laps_left.expect("and therefore laps left");
         assert!((left - 90.0).abs() < 5.0, "{left}");
+    }
+
+    /// **The game's answer, not the trace's.** `Detail::measured` says a lap
+    /// carried detail at all, not that every field in it was measured — so
+    /// reading wear behind that flag offered "about 78 laps of tyre left" on a
+    /// game that publishes none. It was safe by accident on a real session,
+    /// where unpublished wear is a flat line of zeros the fit rejects, and
+    /// safe by accident is how the aero rule survived a year.
+    #[test]
+    fn a_game_that_withholds_wear_is_asked_rather_than_guessed() {
+        // Wear present in the trace, and the game saying it publishes none —
+        // which is exactly the demo's own Competizione mode, and exactly the
+        // shape of a lap recorded before a capability was declared.
+        let laps: Vec<LapData> = (1..=10)
+            .map(|n| lap(n, 90_000, Some(1.0 - n as f32 * 0.01)))
+            .collect();
+
+        let asked = look(&laps, false).expect("ten laps");
+        assert_eq!(asked.wear_per_lap, None);
+        assert_eq!(asked.laps_left, None);
+        assert!(asked.advice().iter().all(|one| one.category != "Wear"));
+
+        // And with the game saying it does, the same laps answer.
+        assert!(look(&laps, true).expect("ten laps").laps_left.is_some());
     }
 
     /// **`None` and never zero** where the game publishes no wear. Zero laps
@@ -499,7 +535,7 @@ mod tests {
     #[test]
     fn a_game_that_publishes_no_wear_is_not_a_tyre_about_to_fail() {
         let laps: Vec<LapData> = (1..=10).map(|n| lap(n, 90_000 + n * 90, None)).collect();
-        let stint = look(&laps).expect("ten laps");
+        let stint = look(&laps, true).expect("ten laps");
         assert_eq!(stint.wear_per_lap, None);
         assert_eq!(stint.laps_left, None);
         assert!(
