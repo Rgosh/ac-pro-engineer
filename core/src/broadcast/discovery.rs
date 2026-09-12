@@ -184,7 +184,19 @@ pub struct Discovery {
     /// find each other, and every address this machine has on the network.
     interfaces: Vec<Ipv4Addr>,
     to_group: SocketAddr,
-    peers: HashMap<String, Peer>,
+    /// Everybody heard from lately, **keyed by where they can be reached**.
+    ///
+    /// Not by [`Announcement::id`], which is what this was and which is fresh
+    /// on every run: a driver who restarted their program appeared in
+    /// everybody else's list twice, as two identical rows, until the older one
+    /// aged out seven seconds later. Restart it again and there were three.
+    ///
+    /// The address is what identifies somebody for every purpose this list has
+    /// — it is what a session is sent to, and two rows pointing at one address
+    /// are two rows that do the same thing. Two copies on one machine still
+    /// appear twice and should: they listen on different ports, because
+    /// otherwise only one of them works.
+    peers: HashMap<SocketAddr, Peer>,
     last_announced: Option<Instant>,
     id: String,
     buffer: Vec<u8>,
@@ -294,8 +306,16 @@ impl Discovery {
         // Their port, our idea of their address: the one the packet came from
         // is the one that reached us.
         let reachable_at = SocketAddr::new(from.ip(), heard.port);
+        // **And one row per machine, not per interface.** A machine with Wi-Fi
+        // and Ethernet — or a VPN, or a container bridge — announces out of
+        // each, and the datagrams arrive from different source addresses with
+        // the same id. Keyed by address alone that is one person listed twice
+        // again, by a different route. The newest arrival wins, which is the
+        // interface that most recently reached us.
+        self.peers
+            .retain(|at, peer| *at == reachable_at || peer.id != heard.id);
         self.peers.insert(
-            heard.id.clone(),
+            reachable_at,
             Peer {
                 id: heard.id,
                 name: heard.name,
@@ -513,6 +533,65 @@ mod tests {
         }
     }
 
+    /// The datagram one machine sends, as it arrives here.
+    fn heard_from(id: &str, name: &str, port: u16, at: &str) -> (Vec<u8>, SocketAddr) {
+        (
+            serde_json::to_vec(&announcement(id, name, Role::Driving, port))
+                .expect("an announcement serialises"),
+            at.parse().expect("a source address"),
+        )
+    }
+
+    /// A driver who restarts their program appeared in everybody else's list
+    /// twice — two identical rows, until the older aged out seven seconds
+    /// later. Restart again and there were three. The id is fresh on every run
+    /// and was the key; the address is what actually identifies somebody, and
+    /// it is what a session is sent to.
+    #[test]
+    fn somebody_who_restarted_replaces_themselves_rather_than_joining_twice() {
+        let mut discovery = quiet();
+        let (first, from) = heard_from("run-one", "Alex", 9001, "192.168.1.20:41000");
+        discovery.accept(&first, from);
+        // The same machine, the same listening port, a new process.
+        let (again, from) = heard_from("run-two", "Alex", 9001, "192.168.1.20:41733");
+        discovery.accept(&again, from);
+
+        assert_eq!(discovery.peers().len(), 1, "one person, one row");
+        assert_eq!(discovery.peers()[0].id, "run-two", "the live one");
+    }
+
+    /// A machine with two interfaces announces out of each, and the datagrams
+    /// arrive from different source addresses with one id. Keyed by address
+    /// alone that is the same person listed twice by a different route.
+    #[test]
+    fn one_machine_on_two_interfaces_is_one_row() {
+        let mut discovery = quiet();
+        let (wifi, from) = heard_from("one-run", "Alex", 9001, "192.168.1.20:41000");
+        discovery.accept(&wifi, from);
+        let (wired, from) = heard_from("one-run", "Alex", 9001, "10.0.0.7:41000");
+        discovery.accept(&wired, from);
+
+        assert_eq!(discovery.peers().len(), 1);
+        assert_eq!(
+            discovery.peers()[0].address(),
+            "10.0.0.7:9001",
+            "the interface that most recently reached us"
+        );
+    }
+
+    /// Two copies on one machine still appear twice, and should: they listen
+    /// on different ports, because otherwise only one of them works.
+    #[test]
+    fn two_copies_on_one_machine_are_two_rows() {
+        let mut discovery = quiet();
+        let (window, from) = heard_from("window", "Alex", 9001, "192.168.1.20:41000");
+        discovery.accept(&window, from);
+        let (terminal, from) = heard_from("terminal", "Alex", 9002, "192.168.1.20:41001");
+        discovery.accept(&terminal, from);
+
+        assert_eq!(discovery.peers().len(), 2);
+    }
+
     /// A discovery that never touches the group, for the half that decides
     /// things. The network is exercised by the round trip at the end.
     fn quiet() -> Discovery {
@@ -640,14 +719,19 @@ mod tests {
     #[test]
     fn the_list_puts_drivers_first() {
         let mut discovery = quiet();
-        for (id, name, role) in [
-            ("c", "Zoe", Role::Idle),
-            ("b", "Ann", Role::Watching),
-            ("a", "Yuri", Role::Driving),
+        // **Three people are three machines.** They shared one source address
+        // and one listening port here, which cannot happen: only one process
+        // on a machine can bind 9001. It passed while peers were keyed by an
+        // id that is fresh per run, and stopped the moment they were keyed by
+        // where a session is actually sent.
+        for (id, name, role, at) in [
+            ("c", "Zoe", Role::Idle, "192.168.1.42:51000"),
+            ("b", "Ann", Role::Watching, "192.168.1.43:51000"),
+            ("a", "Yuri", Role::Driving, "192.168.1.44:51000"),
         ] {
             discovery.accept(
                 &serde_json::to_vec(&announcement(id, name, role, 9001)).expect("serialise"),
-                from("192.168.1.42:51000"),
+                from(at),
             );
         }
         let names: Vec<String> = discovery.peers().into_iter().map(|p| p.name).collect();
