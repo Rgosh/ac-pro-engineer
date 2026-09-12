@@ -37,6 +37,7 @@ pub mod i18n;
 /// are two front ends that cannot see each other's laps.
 pub mod lan;
 pub mod laps;
+pub mod library;
 pub mod memory;
 pub mod net;
 pub mod overlay;

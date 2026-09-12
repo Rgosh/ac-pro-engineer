@@ -25,6 +25,7 @@ walkdir = { workspace = true }
 rust-ini = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 socket2 = { workspace = true }
+getrandom = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }

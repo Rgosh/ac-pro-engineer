@@ -34,6 +34,10 @@ serde = "1.0"
 # datagram leaves by. Two copies on one machine cannot find each other without
 # it — see `broadcast::discovery::set_interface`.
 socket2 = "0.6"
+# Already compiled in through rustls and ring; naming it directly adds no new
+# crate to the licence audit. For `library::Identity`, which needs an
+# unguessable secret and nothing else cryptographic.
+getrandom = "0.2"
 serde_json = "1.0"
 # **0.12, and the reason is the advisory list rather than a feature.** 0.11
 # pins hyper 0.14, which pins h2 0.3 (RUSTSEC-2026-0258) and rustls 0.21 with
