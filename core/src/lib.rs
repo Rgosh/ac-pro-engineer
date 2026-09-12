@@ -32,6 +32,7 @@ pub mod followup;
 pub mod grip;
 pub mod guide;
 pub mod i18n;
+pub mod ideal;
 /// Where a saved lap lives. One folder, found the same way from any
 /// working directory, because two front ends looking in `./saved_laps`
 /// are two front ends that cannot see each other's laps.
