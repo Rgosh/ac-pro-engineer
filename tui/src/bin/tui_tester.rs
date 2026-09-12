@@ -251,6 +251,10 @@ fn create_populated_app_state() -> AppState {
     // analyzer both drew a single dot in an empty box — a picture of a feature
     // not working. Five laps with a plausible spread: a slower first flying
     // lap, two quick ones, a scrappy one, then the best.
+    // How committed the driver was on the brake, on every lap but their best.
+    // Which is what makes a best lap a best lap.
+    const TENTATIVE: f32 = 0.72;
+
     for (number, delta_ms) in [(1, 1_480), (2, 320), (3, 640), (4, 2_050)] {
         let mut lap = mock_lap.clone();
         // Numbered from one, the way a driver counts them and the way the
@@ -284,6 +288,25 @@ fn create_populated_app_state() -> AppState {
                 lost += (concentrated as f32 * through) as i32;
             }
             point.time_ms += lost;
+
+            // **And the driver has to have done something differently.**
+            // Shifting `time_ms` alone makes a lap that is 1.5 s slower with
+            // an identical brake pedal, so the BRAKING sub-tab reported every
+            // zone matched on a car that was visibly losing time — the same
+            // empty answer the window's demo gave before its driver was given
+            // a habit.
+            //
+            // The habit is softness on the first squeeze, because that is what
+            // nearly every amateur actually does, and it is what
+            // `ac_core::braking::Fault::Soft` exists to name. Applied to the
+            // pedal **and** to the deceleration it produced: a light pedal
+            // that still stops the car at 1.2 g is not a lap anybody drove.
+            if fraction < 0.45 {
+                point.brake *= TENTATIVE;
+                if point.lon_g < 0.0 {
+                    point.lon_g *= TENTATIVE;
+                }
+            }
         }
         app.analyzer.laps.push(lap);
     }
@@ -593,6 +616,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4a. Analysis_Corners — where the lap actually went, and the same screen
     // again with the filter on, which is the half of the feature that decides
     // what a driver reads.
+    //
+    // **The tab, not only the sub-tab.** 3c above moves to ENGINEER and never
+    // moves back, so every shot in this block photographed the Engineer tab
+    // instead: `Analysis_Corners`, `Analysis_Corners_Losses` and the new
+    // braking one were byte-for-byte the same picture of LIVE FEED. The
+    // comment three blocks up warns about exactly this and was written about a
+    // sub-tab; the same mistake one level out went unnoticed for as long as
+    // the shots have existed.
+    app.active_tab = AppTab::Analysis;
     app.ui_state.analysis.current_tab = AnalysisSubTab::Corners;
     terminal.draw(|f| renderer.render(f, &app))?;
     capture(&terminal, width, height, screenshot_dir, "Analysis_Corners")?;
@@ -607,6 +639,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Analysis_Corners_Losses",
     )?;
     app.ui_state.analysis.corners_filter = false;
+
+    // 4a-ii. Analysis_Braking — the half of a lap time that nothing in this
+    // program looked at until now. Photographed because a table of deltas and
+    // a sentence telling a driver what to press are different features, and
+    // only the picture shows which one shipped.
+    app.ui_state.analysis.current_tab = AnalysisSubTab::Braking;
+    terminal.draw(|f| renderer.render(f, &app))?;
+    capture(&terminal, width, height, screenshot_dir, "Analysis_Braking")?;
+
     app.ui_state.analysis.current_tab = AnalysisSubTab::Overview;
 
     // 4b. Overlay_Diagnostics — the answer to "why is the panel blank",
