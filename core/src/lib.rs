@@ -16,6 +16,7 @@ pub mod games;
 // its own name.
 pub mod analyzer;
 pub mod atomic_file;
+pub mod braking;
 pub mod broadcast;
 pub mod confidence;
 pub mod config;
