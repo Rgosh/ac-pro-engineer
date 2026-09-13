@@ -1113,12 +1113,19 @@ impl Engineer {
                     &[&format!("{:.1}", clip_ratio * 100.0)],
                 ),
                 action: "Lower FFB Gain".tr(ru).to_string(),
-                parameters: vec![Parameter {
-                    name: "Clip Ratio".to_string(),
-                    current: clip_ratio * 100.0,
-                    target: 0.0,
-                    unit: "%".to_string(),
-                }],
+                // **No parameter, because a clip ratio is not a slider.**
+                //
+                // This offered `Clip Ratio 16.51 % → 0.00 %`, and a
+                // `Parameter` is the setting to change and the number to
+                // change it to. The setting is the wheel's gain, which lives
+                // in the driver's own software and is not a number this can
+                // know; the clip ratio is what happens *after* they move it,
+                // which is exactly what the chain's `confirm` already says.
+                //
+                // The same fault as the wear rule's `FL life 89.59 % →
+                // 100.00 %`: a measurement dressed as an instruction, and the
+                // more prominent half of the finding.
+                parameters: Vec::new(),
                 confidence: 1.0,
                 chain: Some(Chain {
                     cause: "the signal is hitting its ceiling, and everything above it never reaches the wheel".tr(ru)
@@ -1633,15 +1640,12 @@ impl Engineer {
                         &[&now_clause],
                     )
                 },
-                parameters: corners
-                    .iter()
-                    .map(|i| Parameter {
-                        name: format!("{} I-O", CORNER_NAMES[*i]),
-                        current: fmt.temp_delta_val(self.stats.camber_spread[*i]),
-                        target: fmt.temp_delta_val(ideal_spread),
-                        unit: fmt.temp_symbol().to_string(),
-                    })
-                    .collect(),
+                // The inner-outer spread is what is *measured*; the camber is
+                // what is turned, and this does not know it in degrees. The
+                // effect and the confirm below already carry the spread and
+                // the window it should land in, which is the same information
+                // without pretending to be a setting. See the wear rule.
+                parameters: Vec::new(),
                 confidence: if more_camber { 0.7 } else { 0.8 },
                 // The one rule that can say why, what it did, and how to know
                 // whether the change worked — and the one the plan names,
@@ -2032,22 +2036,26 @@ impl Engineer {
                 } else {
                     "Plan a stop".tr(ru).to_string()
                 },
-                parameters: corners
-                    .iter()
-                    .map(|i| Parameter {
-                        name: format!("{} {}", CORNER_NAMES[*i], if disc { "disc" } else { "pad" }),
-                        current: measure(i),
-                        target: floor,
-                        unit: "mm".to_string(),
-                    })
-                    .collect(),
+                // Pad and disc thickness is replaced, not set: the action is
+                // to stop. Every corner is named in the effect instead, where
+                // it is measurement — and all of them rather than the lowest,
+                // because one pad going and four going evenly are different
+                // problems.
+                parameters: Vec::new(),
                 confidence: 0.9,
                 chain: Some(Chain {
                     cause: "braking energy is worn off the friction material, and there \
                             is a finite amount of it"
                         .tr(ru)
                         .to_string(),
-                    effect: format!("{where_} {lowest:.1} mm"),
+                    effect: {
+                        let each = corners
+                            .iter()
+                            .map(|i| format!("{} {:.1} mm", CORNER_NAMES[*i], measure(i)))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("{where_} {lowest:.1} mm \u{2014} {each}")
+                    },
                     // Millimetres mean nothing to a driver deciding whether to
                     // stop; how fast they are going does. Two laps apart is
                     // the measurement that answers it, and it is one the
@@ -2734,6 +2742,51 @@ mod tests {
                     !said.iter().any(|c| c == withheld),
                     "{withheld} rests on a measurement this game does not make: {said:?}"
                 );
+            }
+        }
+
+        /// **A `Parameter` is a setting somebody can turn**, and four rules
+        /// used one to carry a measurement.
+        ///
+        /// The widget that draws them says so in its own comment — "the
+        /// numbers to change and what to change them to" — and CLAUDE.md says
+        /// it again. Tyre life, the clip ratio, the camber rule's inner-outer
+        /// spread and pad thickness are none of them settings: you pit, you
+        /// move the wheel's gain, you change camber in degrees, you replace
+        /// pads. Each was drawn as the most prominent half of its finding, and
+        /// each was an instruction nobody could follow.
+        ///
+        /// The two that remain are settings with numbers: a cold pressure and
+        /// litres of fuel.
+        #[test]
+        fn no_rule_offers_a_measurement_as_a_setting() {
+            let config = AppConfig::default();
+            let mut car = a_car_in_trouble();
+            car.tyre_wear = [89.6, 92.0, 93.7, 94.2];
+            car.brake_pad_mm = [3.1, 3.3, 4.0, 4.2];
+            car.force_feedback = 1.4;
+
+            let mut engineer = engineer_reading_a_complete_game(&config);
+            for _ in 0..4 {
+                let _ = advice_about(&mut engineer, &car);
+            }
+            let said = engineer.analyze_live(&car, &Session::default(), None);
+
+            for one in &said {
+                for parameter in &one.parameters {
+                    let name = parameter.name.to_lowercase();
+                    assert!(
+                        !(name.contains("life")
+                            || name.contains("clip")
+                            || name.contains("i-o")
+                            || name.contains("pad")
+                            || name.contains("disc")),
+                        "{}/{} offers `{}` as a setting, and it is a measurement",
+                        one.component,
+                        one.category,
+                        parameter.name
+                    );
+                }
             }
         }
 
