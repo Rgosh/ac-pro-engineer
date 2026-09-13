@@ -54,6 +54,17 @@ pub struct Section {
     pub spread_ms: i32,
     /// The quickest it was ever taken.
     pub best_ms: i32,
+    /// Which of the laps handed in that was, by position.
+    ///
+    /// **So "practise T16" becomes "watch your third lap through T16".** The
+    /// spread says a corner is worth an evening; this says which of the
+    /// driver's own laps to go and look at, and they have already driven it —
+    /// which is the difference between advice and a task.
+    ///
+    /// An index rather than a lap number, because this module is handed bare
+    /// traces and a lap number is the caller's own bookkeeping. Naming it
+    /// `best_on_lap` would be a field that lies about what it holds.
+    pub best_on: usize,
     /// What the average is losing to that best, per lap.
     pub to_gain_ms: i32,
     /// The spread of the speed at the section's entry, km/h.
@@ -138,12 +149,14 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
             .map(|next| next.entry)
             .unwrap_or(1.0);
 
+        // Which lap each time came from, so the quickest can be pointed at.
+        let mut from_lap = Vec::with_capacity(laps.len());
         let mut times = Vec::with_capacity(laps.len());
         let mut entries = Vec::with_capacity(laps.len());
         let mut apexes = Vec::with_capacity(laps.len());
         let mut brakes = Vec::with_capacity(laps.len());
 
-        for lap in laps {
+        for (which, lap) in laps.iter().enumerate() {
             let (Some(start), Some(end)) = (time_at(lap, from), time_at(lap, to)) else {
                 continue;
             };
@@ -151,6 +164,7 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
                 continue;
             }
             times.push(end - start);
+            from_lap.push(which);
 
             let inside: Vec<&TelemetryPoint> = lap
                 .iter()
@@ -172,7 +186,13 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
         if times.is_empty() {
             continue;
         }
-        let best = *times.iter().min().unwrap_or(&0);
+        let quickest = times
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, took)| **took)
+            .map(|(at, took)| (at, *took));
+        let (best_at, best) = quickest.unwrap_or((0, 0));
+        let best_on = from_lap.get(best_at).copied().unwrap_or(0);
         own_best_sum += best;
         sections.push(Section {
             number: corner.number,
@@ -180,6 +200,7 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
             mean_ms: mean(&times.iter().map(|ms| *ms as f32).collect::<Vec<_>>()) as i32,
             spread_ms: spread(&times.iter().map(|ms| *ms as f32).collect::<Vec<_>>()) as i32,
             best_ms: best,
+            best_on,
             to_gain_ms: (mean(&times.iter().map(|ms| *ms as f32).collect::<Vec<_>>()) as i32
                 - best)
                 .max(0),
@@ -241,6 +262,76 @@ fn spread(values: &[f32]) -> f32 {
 
 #[cfg(test)]
 mod tests {
+
+    /// **"Practise T16" is advice; "watch your third lap through T16" is a
+    /// task.** The index of the lap that did it best is the whole difference,
+    /// and it has to point at the lap that was actually quickest there rather
+    /// than at the quickest lap overall.
+    #[test]
+    fn a_section_names_the_lap_that_did_it_best() {
+        use crate::corners::Direction;
+        // Three laps. The second is slowest overall and quickest through the
+        // one corner, which is exactly the case the field exists for.
+        let lap = |slow_from: f32, slow_by: f32| -> Vec<TelemetryPoint> {
+            (0..=200)
+                .map(|step| {
+                    let at = step as f32 / 200.0;
+                    let late = if at > slow_from { slow_by } else { 0.0 };
+                    TelemetryPoint {
+                        distance: at,
+                        time_ms: (at * 90_000.0 + late) as i32,
+                        speed: 180.0,
+                        gas: 1.0,
+                        brake: 0.0,
+                        gear: 5,
+                        steer: 0.0,
+                        lat_g: 0.0,
+                        lon_g: 0.0,
+                        slip_avg: 0.0,
+                        x: at,
+                        y: at,
+                        rpms: 7_000,
+                        detail: Default::default(),
+                    }
+                })
+                .collect()
+        };
+        let corner = |number: usize, entry: f32| Corner {
+            number,
+            direction: Direction::Left,
+            entry,
+            apex: entry + 0.02,
+            exit: entry + 0.05,
+            entry_speed: 200.0,
+            min_speed: 90.0,
+            exit_speed: 150.0,
+            peak_lat_g: 1.4,
+            brake_point: Some(entry),
+            braking: None,
+            throttle_point: None,
+            throttle_delay_ms: None,
+            entry_time_ms: 0,
+            exit_time_ms: 1_000,
+        };
+
+        // Laps 0 and 2 lose time in the first corner's section; lap 1 does not
+        // and loses far more later, so it is the slowest lap overall.
+        let first = lap(0.12, 400.0);
+        let second = lap(0.60, 3_000.0);
+        let third = lap(0.12, 500.0);
+        let traces: Vec<&[TelemetryPoint]> = vec![&first, &second, &third];
+
+        let measured = measure(&traces, &[corner(1, 0.10), corner(2, 0.50)]);
+        let t1 = measured
+            .sections
+            .iter()
+            .find(|section| section.number == 1)
+            .expect("the first corner was measured");
+        assert_eq!(
+            t1.best_on, 1,
+            "the quickest through T1 is the slowest lap overall"
+        );
+    }
     use super::*;
     use crate::corners::Direction;
 
