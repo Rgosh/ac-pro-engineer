@@ -1429,15 +1429,18 @@ impl Engineer {
                 message: format!("{where_} {what}: {lowest:.1}%"),
                 action: "Box / Careful".tr(ru)
                 .to_string(),
-                parameters: corners
-                    .iter()
-                    .map(|i| Parameter {
-                        name: format!("{} life", CORNER_NAMES[*i]),
-                        current: car.tyre_wear[*i],
-                        target: 100.0,
-                        unit: "%".to_string(),
-                    })
-                    .collect(),
+                // **No parameters, because tyre life is not a setting.**
+                //
+                // This emitted one per corner — `FL life 89.59 % → 100.00 %` —
+                // and a `Parameter` is the setting to change and the number to
+                // change it to. Nobody can turn a tyre back to a hundred
+                // percent; they stop, which is what the action already says.
+                // The screen drew four rows of instruction that could not be
+                // followed, above an action that could.
+                //
+                // Which corner is worst is worth knowing and belongs below, in
+                // the effect, where it is an observation rather than an order.
+                parameters: Vec::new(),
                 confidence: 0.9,
                 // Wear is the one finding whose cause is simply time: this set
                 // has done these laps. What makes it worth chaining is the
@@ -1453,7 +1456,21 @@ impl Engineer {
                     } else {
                         "no complete lap on this set yet".tr(ru).to_string()
                     },
-                    effect: format!("{where_} {lowest:.1}%"),
+                    // Every corner in the group, not only the worst of them:
+                    // a set wearing evenly and a set with one corner going are
+                    // different problems, and the four numbers are the only
+                    // thing that tells them apart. They used to be four rows
+                    // of parameters; they are one line of measurement now.
+                    effect: {
+                        let each = corners
+                            .iter()
+                            .map(|i| {
+                                format!("{} {:.1} %", CORNER_NAMES[*i], car.tyre_wear[*i])
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("{where_} {lowest:.1}% \u{2014} {each}")
+                    },
                     confirm: {
                         // From the worst corner in the group, not the average:
                         // a set is finished when one corner is.
@@ -2717,6 +2734,39 @@ mod tests {
                     !said.iter().any(|c| c == withheld),
                     "{withheld} rests on a measurement this game does not make: {said:?}"
                 );
+            }
+        }
+
+        /// **A `Parameter` is a setting somebody can turn.**
+        ///
+        /// The wear rule emitted one per corner — `FL life 89.59 % → 100.00 %`
+        /// — and nobody can turn a tyre back to a hundred percent. The screen
+        /// drew four rows of instruction that could not be followed, above an
+        /// action that could: box. Which corner is worst is still said, in the
+        /// effect, where it is an observation rather than an order.
+        #[test]
+        fn wear_gives_no_setting_to_change_because_there_is_none() {
+            let config = AppConfig::default();
+            let mut car = a_car_in_trouble();
+            car.tyre_wear = [89.6, 92.0, 93.7, 94.2];
+
+            let mut engineer = engineer_reading_a_complete_game(&config);
+            let _ = advice_about(&mut engineer, &car);
+            let said = engineer.analyze_live(&car, &Session::default(), None);
+            let wear = said
+                .iter()
+                .find(|one| one.category.starts_with("Wear"))
+                .expect("a set this far down is worth saying something about");
+
+            assert!(
+                wear.parameters.is_empty(),
+                "nothing here is a setting: {:?}",
+                wear.parameters
+            );
+            // And the four corners are still there, as measurement.
+            let effect = &wear.chain.as_ref().expect("a chain").effect;
+            for corner in ["FL", "FR", "RL", "RR"] {
+                assert!(effect.contains(corner), "{corner} is missing from {effect}");
             }
         }
 
