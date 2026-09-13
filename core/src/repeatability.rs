@@ -104,10 +104,29 @@ pub struct Repeatability {
     /// the sum of the sections' bests plus the run to the first corner.
     pub own_best_lap_ms: i32,
     /// The quickest whole lap actually driven, for the gap to the above.
+    ///
+    /// **From the traces, and short by a sample.** A trace's last point is
+    /// before the line by however long the gap between samples is — nine
+    /// milliseconds on a sixty-hertz feed — so this is systematically a little
+    /// quick. Where the caller has the game's own figure, [`Self::against`]
+    /// replaces it: two screens quoting "your best lap" must not quote two
+    /// numbers.
     pub best_lap_ms: i32,
 }
 
 impl Repeatability {
+    /// Use the game's own lap time instead of the trace's last sample.
+    ///
+    /// The traces are all this module is given, and their last point is before
+    /// the line. A caller holding the lap's recorded time has the truth, and
+    /// the gap to the best-corners lap is measured from it.
+    pub fn against(mut self, best_lap_ms: i32) -> Self {
+        if best_lap_ms > 0 {
+            self.best_lap_ms = best_lap_ms;
+        }
+        self
+    }
+
     /// What a lap of their own best corners would save, in milliseconds.
     pub fn to_find_ms(&self) -> i32 {
         (self.best_lap_ms - self.own_best_lap_ms).max(0)
