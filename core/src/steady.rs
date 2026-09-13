@@ -44,6 +44,19 @@ use std::collections::HashMap;
 /// while the driver is still in the situation that caused it.
 pub const APPEAR_AFTER: f32 = 2.5;
 
+/// How often the wording inside a settled line may change, in seconds.
+///
+/// **A line that holds still with a number blurring inside it is still a
+/// flickering line.** The wording carries the reading that produced it — "FL
+/// 99.4 °C", "FL 99.7 °C", "FL 99.5 °C" — and it was replaced on every call,
+/// which at the rate telemetry arrives is sixty times a second. A driver
+/// glancing at it sees a smear rather than a number, which is the flicker this
+/// module exists to remove, one level further in than it was looking.
+///
+/// Half a second: slow enough to read a digit, fast enough that a temperature
+/// climbing through its window is visibly climbing.
+pub const REWORD_EVERY: f32 = 0.5;
+
 /// How long it stays after it stops being reported, in seconds.
 ///
 /// **Longer than [`APPEAR_AFTER`], and that asymmetry is the whole trick.**
@@ -66,6 +79,8 @@ struct Held {
     shown: bool,
     /// The most recent wording, so a number that is still moving keeps moving.
     what: Recommendation,
+    /// When that wording was last replaced.
+    worded_at: f32,
 }
 
 /// The findings that have earned their place on a screen.
@@ -79,6 +94,7 @@ pub struct Steady {
     last_call: Option<f32>,
     appear_after: f32,
     linger_for: f32,
+    reword_every: f32,
 }
 
 impl Default for Steady {
@@ -94,7 +110,16 @@ impl Steady {
             last_call: None,
             appear_after,
             linger_for,
+            reword_every: REWORD_EVERY,
         }
+    }
+
+    /// The same, with a rewording interval of its own — for the tests, which
+    /// would otherwise have to wait half a second of simulated time to see a
+    /// number move.
+    pub fn rewording_every(mut self, seconds: f32) -> Self {
+        self.reword_every = seconds;
+        self
     }
 
     /// What identifies a finding across frames.
@@ -114,6 +139,7 @@ impl Steady {
     pub fn settle(&mut self, now: f32, fresh: Vec<Recommendation>) -> Vec<Recommendation> {
         let previous = self.last_call;
         self.last_call = Some(now);
+        let reword_every = self.reword_every;
 
         for (rank, finding) in fresh.into_iter().enumerate() {
             let key = Self::key(&finding);
@@ -133,9 +159,25 @@ impl Steady {
                     }
                     held.last_seen = now;
                     held.rank = rank;
-                    // The latest wording, always: the line holds still, the
-                    // number inside it does not.
-                    held.what = finding;
+                    // **The latest wording, but not sixty times a second.**
+                    //
+                    // The line holds still and the number inside it moves —
+                    // that is the intent and it is right. Replacing it on
+                    // every call made the number a blur instead, which is the
+                    // same flicker one level in: a driver glancing at "FL
+                    // 99.4 °C" saw four digits changing and could read none of
+                    // them. It was reported as the engineer's panel flickering.
+                    //
+                    // Anything that is not the wording goes through at once: a
+                    // finding that becomes more serious, or whose action
+                    // changes, is a different thing to do and must not wait
+                    // half a second to say so.
+                    let different = finding.severity != held.what.severity
+                        || finding.action != held.what.action;
+                    if different || now - held.worded_at >= reword_every {
+                        held.worded_at = now;
+                        held.what = finding;
+                    }
                 }
                 None => {
                     self.seen.insert(
@@ -146,6 +188,7 @@ impl Steady {
                             rank,
                             shown: false,
                             what: finding,
+                            worded_at: now,
                         },
                     );
                 }
@@ -196,6 +239,97 @@ impl Steady {
 
 #[cfg(test)]
 mod tests {
+
+    /// **A line that holds still with a number blurring inside it is still a
+    /// flickering line.**
+    ///
+    /// The wording carries the reading that produced it, and it was replaced on
+    /// every call — sixty times a second at the rate telemetry arrives. A
+    /// driver glancing at "FL 99.4 °C" saw four digits changing and could read
+    /// none of them, and reported the engineer's panel as flickering.
+    #[test]
+    fn the_number_inside_a_settled_line_does_not_blur() {
+        let mut steady = Steady::new(0.1, 4.0).rewording_every(0.5);
+        let at = |degrees: f32| -> Vec<Recommendation> {
+            vec![Recommendation {
+                component: "Tyres".to_string(),
+                category: "Overheat".to_string(),
+                severity: Severity::Warning,
+                message: format!("FL {degrees:.1} °C"),
+                action: "Cool tyres".to_string(),
+                parameters: Vec::new(),
+                confidence: 0.9,
+                chain: None,
+            }]
+        };
+
+        // Settle it.
+        let mut now = 0.0;
+        while now < 0.3 {
+            let _ = steady.settle(now, at(99.4));
+            now += 0.05;
+        }
+        // Past the interval once, so the wording is fresh and the frames
+        // below are being measured from a known moment rather than from
+        // whenever the last reword happened to fall.
+        now += 0.6;
+        let first = steady.settle(now, at(99.4));
+        assert_eq!(first.len(), 1);
+        let wording = first[0].message.clone();
+
+        // A fifth of a second of a number wandering, at the rate telemetry
+        // arrives. Well inside the rewording interval, which is the case that
+        // was a blur.
+        let steady_from = now;
+        for step in 0..12 {
+            now += 1.0 / 60.0;
+            assert!(
+                now - steady_from < 0.5,
+                "the test must stay inside the interval"
+            );
+            let said = steady.settle(now, at(99.4 + step as f32 * 0.05));
+            assert_eq!(
+                said[0].message, wording,
+                "the wording changed {step} frames in: a blur, not a reading"
+            );
+        }
+
+        // And past the interval it moves, because a temperature that is
+        // climbing has to be visibly climbing.
+        now += 0.6;
+        let later = steady.settle(now, at(101.2));
+        assert_ne!(later[0].message, wording, "it has to move eventually");
+    }
+
+    /// **Except when what to do has changed.** A finding that becomes more
+    /// serious, or whose action changes, is a different instruction and must
+    /// not wait half a second to say so.
+    #[test]
+    fn a_changed_instruction_does_not_wait() {
+        let mut steady = Steady::new(0.1, 4.0).rewording_every(10.0);
+        let one = |severity: Severity, action: &str| -> Vec<Recommendation> {
+            vec![Recommendation {
+                component: "Tyres".to_string(),
+                category: "Overheat".to_string(),
+                severity,
+                message: "FL hot".to_string(),
+                action: action.to_string(),
+                parameters: Vec::new(),
+                confidence: 0.9,
+                chain: None,
+            }]
+        };
+
+        let mut now = 0.0;
+        while now < 0.3 {
+            let _ = steady.settle(now, one(Severity::Warning, "Cool tyres"));
+            now += 0.05;
+        }
+        now += 1.0 / 60.0;
+        let worse = steady.settle(now, one(Severity::Critical, "Box"));
+        assert_eq!(worse[0].severity, Severity::Critical);
+        assert_eq!(worse[0].action, "Box");
+    }
     use super::*;
     use crate::engineer::Severity;
 
@@ -249,6 +383,11 @@ mod tests {
     }
 
     /// The wording keeps up while the line holds still.
+    ///
+    /// At [`REWORD_EVERY`] rather than on every call — the line holding still
+    /// with a number blurring inside it is the same flicker one level in — so
+    /// the clock has to move before the last reading lands, which it does in
+    /// any real session and did not in this test.
     #[test]
     fn the_number_inside_a_settled_finding_still_moves() {
         let mut steady = Steady::default();
@@ -257,6 +396,7 @@ mod tests {
             now += 0.5;
             let _ = steady.settle(now, vec![finding("FL", &format!("{} °C", 100 + step))]);
         }
+        now += REWORD_EVERY;
         let shown = steady.settle(now, vec![finding("FL", "108 °C")]);
         assert_eq!(
             shown[0].message, "108 °C",
