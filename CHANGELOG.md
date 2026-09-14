@@ -2,6 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.9] - 2026-09-14
+
+### Added
+
+- **The core says what the brake pedal did wrong.** `braking` turns a
+  `corners::Decomposition` into verdicts a driver can act on: braking too soft,
+  too early, released too soon, trailed too long, or slowed more than the
+  corner asked for. One fault per corner, and the pressure is checked before
+  the brake point it would explain — telling somebody to brake later when they
+  are not using the brakes they have is the wrong instruction in the right
+  place. Judged on the entry-to-apex split rather than the whole section:
+  charging an exit to the brakes sends a driver to fix something else.
+- **The engineer follows up on itself.** `followup` remembers what was said
+  last time in this car at this circuit and compares it with what is said now
+  — gone, eased, unchanged, worse, or new. That is the difference between an
+  engineer and a warning light that repeats, and it is what "did what I changed
+  work" has needed since the first release. Kept by the core rather than by a
+  front end, because a second implementation of "what did it say last time" is
+  a second set of answers to one question. Matched on the component alone and
+  case-insensitively, after a session reported the same tyres as both fixed and
+  newly wrong.
+- **Where a wheel let go, and how often.** `slips` finds the stretches of road
+  where a front locked, a rear locked or a wheel spun, and merges them across
+  laps — locking at T3 once is a lap and locking at T3 every lap is a setting.
+  Each carries the corner it happened in, how long it lasted, how fast the car
+  was going and which wheels were sliding.
+- **How the stint is going, and how much of it is left.** `stint` fits the
+  trend from the best lap onward rather than from the pit exit, so the warm-up
+  is not counted as degradation, and it invents no fuel correction — a number
+  nobody measured is worse than no number.
+- **A shared-lap library, with no accounts.** `library` makes two random
+  numbers on the machine the first time anything is shared: a public one that
+  goes beside the lap and a secret one that proves the lap is yours if you come
+  back to change or remove it. No email, no password, nothing to log into —
+  and so nothing that can ever be sent to anybody. What leaves is decided per
+  lap, and the setup is off unless it is asked for.
+- **The optimal lap says which of your own laps to watch.** `repeatability`
+  records which lap was quickest through each corner, so "practise T16" becomes
+  "watch your third lap through T16" — a lap already driven, which is the
+  difference between advice and a task.
+
+### Fixed
+
+- **Two screens, one lap, two different best times.** The best-corners lap was
+  timed from a trace's last sample, and a trace's last sample is before the
+  line by however long the gap between readings is — nine milliseconds on a
+  sixty-hertz feed. So one screen said 2:19.304 and another 2:19.313 about the
+  same lap. `Repeatability::against` takes the figure the caller already holds.
+- **A settled line held still with a number blurring inside it.** `steady`
+  exists so a finding on its threshold does not appear and vanish several times
+  a second; it kept the line and replaced the *wording* on every call, so
+  "FL 99.4 °C" became four digits changing and a driver could read none of
+  them. The flicker had not gone, it had moved one level in. The wording
+  changes at most twice a second now — and anything that is not the wording
+  goes through at once, because a finding that becomes more serious is a
+  different instruction and must not wait.
+- **Four rules offered a measurement as a setting.** A `Parameter` is the
+  number to change and what to change it to. Tyre life said `FL 89.59 % →
+  100.00 %`, and nobody turns a tyre back to a hundred percent; the clip ratio
+  and the camber spread named settings this cannot know; pad and disc thickness
+  are replaced, not set. Each was drawn as the most prominent half of a finding,
+  under an action that could be followed, and each was an instruction that could
+  not. Every one of those measurements is still said — in the chain, where it is
+  an observation — and wear and pad thickness now name all four corners rather
+  than the worst, because a set going evenly and a set with one corner going are
+  different problems.
+- **Two rules read measurements one game does not make.** Found by offering
+  Competizione in the window and then looking at every screen as somebody using
+  it would. `analyze_aero` computes rake from a ride height Competizione never
+  publishes, and was protected by nothing but a `!= 0.0` guard — one frame of
+  noise past it would have told a driver to stiffen their rear springs because
+  of a measurement their game never made. And `stint::look` read wear behind
+  `Detail::measured`, which says a lap carried detail at all and not that every
+  field in it was measured, so it offered "about 78 laps of tyre left" where
+  there is no wear figure at all.
+- **Somebody who restarted appeared in the LAN list twice**, and three times if
+  they restarted again: peers were keyed by an id made fresh on every run.
+  Keyed by address now, and an arrival clears any other row claiming the same
+  id.
+
+### Changed
+
+- **`ideal` is deleted.** It summed the best of thirty slices of distance;
+  `repeatability` has summed the best of every *corner* for longer, and one
+  screen carried both, two tabs apart, with two different numbers. Deleted
+  rather than reconciled: the rule this project keeps is that the moment
+  something is worked out twice the copies disagree, and these did. The one
+  that survives names corners, which is what somebody can act on.
+
 ## [v0.4.8] - 2026-09-07
 
 ### Added
