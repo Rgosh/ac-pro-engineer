@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.0] - 2026-09-20
+
+The three programs ship under one number, and this is the window's release —
+see its own changelog for what moved there. What changed here:
+
+### Fixed
+
+- **`rustls` moved to 0.23.45**, which closes GHSA-2mjx-qc3c-rqvc. The
+  advisory is a conformance fault rather than an interception one: rustls
+  accepted handshake messages that spanned a key change, which RFC 8446
+  forbids, and the transcript stays authenticated throughout — so somebody on
+  the network cannot alter or complete a handshake with it. It reaches this
+  program through `reqwest`, which talks to one host over HTTPS.
+
+### Changed
+
+- The panel, its manifest and the banner carry 0.5.0, so a build does not
+  offer a module newer than itself.
+
 ## [v0.4.9] - 2026-09-14
 
 ### Added

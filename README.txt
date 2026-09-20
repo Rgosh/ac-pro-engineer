@@ -1,5 +1,5 @@
 ========================================
-       PRO ENGINEER v0.4.9
+       PRO ENGINEER v0.5.0
 ========================================
 
 Telemetry and race engineering for Assetto Corsa and Assetto Corsa
