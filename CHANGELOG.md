@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Five faults, all of them found in one session and reported in one issue.
+
+### Fixed
+
+- **One wrong stride in the packing key, and most cars lost their own tyre
+  pressures.** v0.4.6 said every car's own `PRESSURE_IDEAL` was read out of
+  `data.acd` for the cars that ship it packed; for 72 of the 83 packed cars on
+  the machine this was found on, it never was. The fifth of the key's eight
+  components walked the folder name in strides of five where the game strides
+  by four, and one wrong byte decrypts the whole file to noise — which is
+  discarded here on purpose, so the failure was silent and looked exactly like
+  a car that ships no figure. The class table answered instead, and a 90s
+  Miata that wants 34 psi on both axles was told to deflate to 27.2. The true
+  keys were solved for out of 83 real archives rather than read out of the
+  code, and the test carries five of them.
+- **The engineer said the car understeers and oversteers at once.** Two
+  counters with a threshold each, and a lap understeers into one corner and
+  oversteers out of another — so the panel carried "More Front Wing" directly
+  above "More Rear Wing". There is one balance finding now: the larger count
+  wins, and how much larger it is becomes the confidence, so a car that only
+  ever understeers reads exactly as it did and a car that does both in equal
+  measure says so by being unsure.
+- **And it named parts the car has not got.** A car tagged `street` is
+  deliberately `Unknown` rather than pressed into a class, and `Unknown` was on
+  the side that has a wing — so a car whose whole setup screen is pressures,
+  camber, toe, gears and fuel was told to add front wing and stiffen a bar it
+  does not have. `games::catalogue::Adjustables` reads the car's own
+  `setup.ini`, which is the file the game builds that screen from, and the
+  guess is now only the fallback for Competizione and for a car whose data
+  cannot be read.
+- **The panel's tread read inner-first on both sides of the car.** The three
+  numbers under each corner carry no labels, so their order is the only thing
+  saying which edge is which — and on the left of the car the row ran the
+  opposite way round to the tyre. The left-hand tyres read outer, middle,
+  inner now. The numbers and the spread behind their colour are unchanged.
+- **"no finished laps yet" was two different nothings.** A debrief is built
+  from a lap watched from green flag to line, so a driver who starts the
+  program after setting a time has laps on the game's counter and none here.
+  The panel said the same sentence for that as for a session where nobody has
+  finished anything, which reads as a fault when there is a lap time beside
+  it. They are told apart now, from the lap count already in the frame.
+
+### Added
+
+- **Force feedback advice can be switched off.** Assetto Corsa computes the
+  signal whether or not anything is plugged in to feel it, and nothing in
+  shared memory says what the driver is holding — so a driver on a pad was
+  told to lower a gain they have not got, every lap. Settings -> RACE ENGINEER
+  -> Force Feedback Advice, on by default.
+
+### Thanks
+
+- **[@1sad](https://github.com/1sad)** again, who drove a 90s Miata and wrote
+  down every one of these. The tyre faults in v0.4.6 and v0.4.8 were his as
+  well; this is the third release in a row where the most useful bug report
+  came from him.
+
 ## [v0.5.0] - 2026-09-20
 
 The three programs ship under one number, and this is the window's release —
