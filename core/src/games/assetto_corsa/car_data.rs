@@ -152,7 +152,14 @@ fn packing_key(folder: &str) -> String {
     while i + 4 < n {
         let a = five.wrapping_mul(at(i) + 0xf);
         five = (at(i - 1) + 0xf).wrapping_mul(a).wrapping_add(0x16);
-        i += 5;
+        // **Four, and it was five.** This one stride is the difference
+        // between reading a car's own tyre pressures and quietly falling
+        // back to the class table: a wrong byte anywhere in the key
+        // decrypts the whole file to noise, and noise is discarded by
+        // design, so the failure is silent. Checked against the keys
+        // recovered from 83 of the cars on this machine — every one of
+        // them agrees at four, and 72 of the 83 disagreed at five.
+        i += 4;
     }
     five &= 0xff;
 
@@ -322,6 +329,36 @@ PRESSURE_IDEAL=44
         );
         assert_eq!(section_value(tyres, "FRONT", "MISSING"), None);
         assert_eq!(section_value(tyres, "NOWHERE", "PRESSURE_IDEAL"), None);
+    }
+
+    /// **The key, against keys recovered from real archives.**
+    ///
+    /// Every byte of this key has to be right or the file decrypts to noise,
+    /// and noise is thrown away by design — so a wrong key is not an error, it
+    /// is a car quietly judged against the class table instead of its own
+    /// figures. That is what happened: the fifth component strode by five
+    /// where the game strides by four, and it was wrong for 72 of the 83
+    /// packed cars on the machine this was found on.
+    ///
+    /// These are not hand-computed. Each was recovered from that car's own
+    /// `data.acd` by solving for the key that decrypts `tyres.ini` into text,
+    /// which is evidence about the game rather than about this function. Five
+    /// names, spread across the lengths that make the strides land
+    /// differently.
+    #[test]
+    fn the_packing_key_is_the_one_the_game_uses() {
+        for (folder, expected) in [
+            ("bmw_z4", "83-8-131-146-142-140-73-53"),
+            ("ks_mclaren_p1", "31-26-180-207-138-19-64-50"),
+            ("lotus_evora_gtc", "80-37-86-159-186-118-63-100"),
+            ("lotus_exige_240_s3", "162-96-131-77-120-125-13-52"),
+            (
+                "ks_lamborghini_huracan_performante",
+                "12-167-154-226-222-253-64-102",
+            ),
+        ] {
+            assert_eq!(packing_key(folder), expected, "the key for {folder}");
+        }
     }
 
     /// A number from outside a tyre's world is no answer at all.
