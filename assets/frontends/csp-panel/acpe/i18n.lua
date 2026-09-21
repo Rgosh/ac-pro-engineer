@@ -51,6 +51,7 @@ local RUSSIAN = {
   ['ENGINEER'] = 'ИНЖЕНЕР',
   ['nothing to report'] = 'без замечаний',
   ['no finished laps yet'] = 'ещё нет завершённых кругов',
+  ['no laps finished since the app started'] = 'ни одного круга с момента запуска программы',
   ['the debrief is switched off'] = 'разбор круга выключен в приложении',
   ['LAP'] = 'КРУГ',
   ['DEBRIEF'] = 'РАЗБОР КРУГА',

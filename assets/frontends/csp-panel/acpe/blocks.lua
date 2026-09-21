@@ -527,7 +527,18 @@ local function drawDebrief(withLabel)
 
   local available = math.min(shown.debrief_lap_count, frame.DEBRIEF_LAPS)
   if available == 0 then
-    say('caption', tr('no finished laps yet'), COLOR.dim)
+    -- **Two different nothings, and they were the same sentence.** A debrief
+    -- is built from a lap this application watched from start to finish, so a
+    -- driver who opens it after setting a time has laps on the game's counter
+    -- and none here — and "no finished laps yet" reads as a fault when it is
+    -- simply the first lap not having come round yet. Reported as "the post
+    -- lap debrief never shows up". The game's own count is already in the
+    -- frame, so no new field is needed to tell them apart.
+    if shown.lap_count and shown.lap_count > 0 then
+      say('caption', tr('no laps finished since the app started'), COLOR.dim)
+    else
+      say('caption', tr('no finished laps yet'), COLOR.dim)
+    end
     return
   end
 
