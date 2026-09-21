@@ -187,22 +187,50 @@ start in a particular order.
 
 ### Linux / Steam Deck
 
-1. Download the Linux archive from the
+1. Install **protontricks**, and **not as a Flatpak** — see below.
+2. Download the Linux archive from the
    [Releases page](https://github.com/Rgosh/ac-pro-engineer/releases) and unpack
    it. `shm-bridge.exe` sits next to `ac_pro_engineer` — keep them together.
-2. Run `./ac_pro_engineer`.
-3. **For the in-game overlay**, start the bridge inside the game's Proton prefix
-   and leave it running:
-
-   ```bash
-   protontricks-launch --appid 244210 shm-bridge.exe
-   ```
-
+3. Run `./ac_pro_engineer` and press **START**. The bridge is launched inside the
+   Proton prefix of the game you chose, and stopped when you come back to the
+   launcher.
 4. Start Assetto Corsa.
 
-The desktop application works without the bridge. The **overlay** does not: the
-application writes its frame into `/dev/shm` itself, and only a Windows process
-inside the prefix can give that file the Win32 name CSP is allowed to open.
+**The bridge is not optional, and it is not only for the overlay.** This said the
+opposite for several releases, and it cost at least one person an evening. Under
+Proton the game is a Windows process and its telemetry pages exist only inside
+the prefix; `shm-bridge.exe` is what mirrors them out to `/dev/shm`, which is
+where the Linux binary reads them. Without it running there is no telemetry on
+this side at all — for the tabs as much as for the panel. The overlay needs it
+for the opposite direction as well: the application writes its frame into
+`/dev/shm` itself, and only a Windows process inside the prefix can give that
+file the Win32 name CSP is allowed to open.
+
+**Starting it by hand** is the fallback when the application cannot, and the way
+to see what it says:
+
+```bash
+protontricks-launch --appid 244210 shm-bridge.exe
+```
+
+**protontricks must not be a Flatpak.** A Flatpak has a `/dev/shm` of its own, so
+a bridge inside one creates the pages in a tmpfs that exists only in that sandbox
+— the bridge reports success, and nothing outside can see a byte of it. Its
+private `/tmp` is a second wall: Wine's server socket lives in `/tmp/.wine-$UID`,
+so the sandboxed bridge cannot reach the running game's prefix to mirror from in
+the first place. This is the default install on some distributions — Bazzite
+among them — and it is why "the bridge does nothing" is the most common Linux
+report. A user-level `pipx install protontricks` needs no layering and no reboot
+on an immutable system.
+
+**With the game running, this is the proof it is through:**
+
+```bash
+ls -l /dev/shm/acpmf_physics
+```
+
+2048 bytes means the telemetry is reaching the Linux side. No file means the
+bridge is not.
 
 If Assetto Corsa itself does not run properly under Proton yet, do
 [the prefix setup](#linux--steam-deck--proton) first — that is a separate problem
