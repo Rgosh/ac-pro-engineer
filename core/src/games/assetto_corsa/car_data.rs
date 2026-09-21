@@ -28,6 +28,7 @@
 //! has the ceremony it has. A wrong read has to come out as *no answer*, so
 //! the class table is used instead, which is where we were yesterday.
 
+use crate::games::catalogue::Adjustables;
 use std::path::Path;
 
 /// A pressure this file is willing to believe, psi.
@@ -51,6 +52,52 @@ pub fn ideal_pressures(car_folder: &Path) -> Option<(f32, f32)> {
     let front = section_value(&text, "FRONT", "PRESSURE_IDEAL").and_then(sane_pressure)?;
     let rear = section_value(&text, "REAR", "PRESSURE_IDEAL").and_then(sane_pressure)?;
     Some((front, rear))
+}
+
+/// Which adjustments this car has, out of its own `setup.ini`.
+///
+/// Every car that has a setup screen at all has pressures, camber, toe and
+/// fuel, so those are not asked about: they are the advice that is always
+/// available and the reason a car with nothing else is not left with nothing
+/// to be told.
+pub fn adjustables(car_folder: &Path) -> Option<crate::games::catalogue::Adjustables> {
+    read_adjustables(&data_file(car_folder, "setup.ini")?)
+}
+
+/// The rule itself, over the file's text — so it can be tested without a
+/// game installed, which is the only way a test of it can mean the same
+/// thing on two machines.
+fn read_adjustables(text: &str) -> Option<Adjustables> {
+    let mut found = Adjustables::default();
+    let mut sections = 0;
+    for line in text.lines() {
+        let Some(name) = line
+            .trim()
+            .strip_prefix('[')
+            .and_then(|rest| rest.split(']').next())
+        else {
+            continue;
+        };
+        sections += 1;
+        // Prefixes rather than exact names: AC numbers wings `WING_1`,
+        // `WING_2` and corners `_LF`/`_RF`/`_LR`/`_RR`, and a car with one
+        // damper adjustment has it on all four corners. What is being asked
+        // is whether the adjustment exists at all.
+        match name {
+            _ if name.starts_with("WING") => found.wing = true,
+            _ if name.starts_with("ARB") => found.anti_roll_bar = true,
+            _ if name.starts_with("SPRING_RATE") => found.springs = true,
+            _ if name.starts_with("DAMP") => found.dampers = true,
+            _ if name.starts_with("DIFF") => found.differential = true,
+            _ if name.starts_with("ROD_LENGTH") => found.ride_height = true,
+            "FRONT_BIAS" => found.brake_bias = true,
+            _ => {}
+        }
+    }
+    // A file with no sections in it did not decrypt to a setup, whatever else
+    // it is. Answering "this car adjusts nothing" from that would silence
+    // every mechanical line on a car that has them all.
+    (sections > 0).then_some(found)
 }
 
 /// One file out of a car's data, whichever of the two forms it is in.
@@ -329,6 +376,39 @@ PRESSURE_IDEAL=44
         );
         assert_eq!(section_value(tyres, "FRONT", "MISSING"), None);
         assert_eq!(section_value(tyres, "NOWHERE", "PRESSURE_IDEAL"), None);
+    }
+
+    /// What a car lets you change, out of its own setup file.
+    ///
+    /// The sections are the ones a real `setup.ini` carries; the Miata's list
+    /// is its actual one, from the car this was reported on.
+    #[test]
+    fn a_setup_file_says_which_parts_the_car_has() {
+        let miata = "[DISPLAY_METHOD]\n[GEARS]\n[PRESSURE_LF]\n[PRESSURE_RF]\n\
+                     [CAMBER_LF]\n[CAMBER_RF]\n[TOE_OUT_LF]\n[FUEL]\n\
+                     [BRAKE_POWER_MULT]\n";
+        let found = read_adjustables(miata).expect("sections");
+        assert_eq!(found, Adjustables::default(), "{found:?}");
+
+        let gt = "[WING_1]\n[WING_2]\n[ARB_FRONT]\n[ARB_REAR]\n[SPRING_RATE_LF]\n\
+                  [DAMP_BUMP_LF]\n[DAMP_FAST_REBOUND_RR]\n[DIFF_POWER]\n[FRONT_BIAS]\n\
+                  [ROD_LENGTH_LF]\n[PRESSURE_LF]\n";
+        assert_eq!(
+            read_adjustables(gt),
+            Some(Adjustables {
+                wing: true,
+                anti_roll_bar: true,
+                springs: true,
+                dampers: true,
+                differential: true,
+                brake_bias: true,
+                ride_height: true,
+            })
+        );
+
+        // Not a setup file at all — the answer is "no answer", so a caller
+        // asks the class rather than believing a car adjusts nothing.
+        assert_eq!(read_adjustables("nothing in here\n"), None);
     }
 
     /// **The key, against keys recovered from real archives.**

@@ -47,6 +47,7 @@ mod tests {
             power_hp: 300.0,
             weight_kg: 1200.0,
             ideal_pressure: None,
+            adjustable: None,
         }
     }
 

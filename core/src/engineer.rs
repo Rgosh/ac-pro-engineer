@@ -151,6 +151,9 @@ pub struct Engineer {
     /// `Unknown` — the default — means the driver's own thresholds are used
     /// unchanged, which is what a mod nobody has classified deserves.
     car_class: crate::games::CarClass,
+    /// What the car itself says it lets a driver change. `None` until a car
+    /// whose data could be read is loaded, and the class is asked then.
+    car_adjustable: Option<crate::games::catalogue::Adjustables>,
     /// The hot pressure this car states for itself, front and rear, psi.
     ///
     /// Out of the car's own `tyres.ini`, handed in by whoever read the
@@ -444,6 +447,7 @@ impl Engineer {
             config: config.clone(),
             capabilities: Capabilities::default(),
             car_class: crate::games::CarClass::default(),
+            car_adjustable: None,
             car_tyres: None,
             history_size: 600,
             stats: EngineerStats::new(),
@@ -481,6 +485,49 @@ impl Engineer {
     /// What kind of car the numbers are being read against.
     pub fn car_class(&self) -> crate::games::CarClass {
         self.car_class
+    }
+
+    /// What the car says it lets a driver change.
+    ///
+    /// Set beside [`Self::update_car_class`] and off the same catalogue entry,
+    /// so the two cannot describe different cars.
+    pub fn update_car_adjustables(
+        &mut self,
+        adjustable: Option<crate::games::catalogue::Adjustables>,
+    ) {
+        self.car_adjustable = adjustable;
+    }
+
+    /// Whether this car has a wing to be told about.
+    ///
+    /// **The car's own answer first, the class only when there is none.** A
+    /// class is a guess and this is a fact: `setup.ini` has a `WING` section
+    /// exactly when the setup screen has a wing on it. The guess is kept for
+    /// Competizione, which ships no such file, and for a car whose data could
+    /// not be read.
+    fn wing_to_adjust(&self) -> bool {
+        match self.car_adjustable {
+            Some(adjustable) => adjustable.wing,
+            None => self.car_class.has_adjustable_aero(),
+        }
+    }
+
+    /// Whether springs or an anti-roll bar can be changed on this car.
+    ///
+    /// The mechanical half of a balance fix, and the reason it has to be
+    /// asked: a car can have no wing *and* no bar, and the line that used to
+    /// be the fallback named both.
+    fn mechanical_balance(&self) -> bool {
+        match self.car_adjustable {
+            Some(adjustable) => adjustable.springs || adjustable.anti_roll_bar,
+            // **Without the car's own answer, assume it has them.** A wing is
+            // the thing road cars tend not to have; springs and a bar are the
+            // thing nearly everything has, road cars included, and this is the
+            // line a road car has been given since the wing rule was written.
+            // Asking `has_adjustable_aero` here would have taken it away from
+            // every road car to fix the few that are also without a bar.
+            None => true,
+        }
     }
 
     /// What the car says its own hot pressure is, front and rear.
@@ -998,7 +1045,7 @@ impl Engineer {
         // one about a part it does not have — the same rule the balance
         // findings above follow. Nothing is invented to replace it: two real
         // changes are worth more than three with one that cannot be made.
-        let aero = self.car_class.has_adjustable_aero();
+        let aero = self.wing_to_adjust();
 
         match (&self.wizard_phase, &self.wizard_problem) {
             (WizardPhase::Entry, WizardProblem::Understeer) => {
@@ -2201,71 +2248,87 @@ impl Engineer {
             });
         }
 
-        if self.stats.understeer_frames > 30 {
-            recs.push(Recommendation {
-                component: "Balance".tr(ru).to_string(),
-                category: "Understeer".to_string(),
-                severity: Severity::Warning,
-                message: "High Speed Understeer".tr(ru).to_string(),
-                // **Only a car with a wing is told about its wing.** See
-                // `CarClass::has_adjustable_aero`: this line told a driver
-                // setting up a road car to add front downforce, and the
-                // mechanical half of the same fix is what is left when there
-                // is no wing to add.
-                action: if self.car_class.has_adjustable_aero() {
+        // **One balance, and one finding about it.** These were two
+        // independent counters with a threshold each, and a lap understeers
+        // in one corner and oversteers in another — so both fired, and the
+        // panel carried "High Speed Understeer / More Front Wing" directly
+        // above "High Speed Oversteer / More Rear Wing". Two instructions
+        // that undo each other are worse than either alone: a driver who
+        // follows both has changed nothing and stopped believing the rest.
+        //
+        // Reported from a session on a 90s Miata, where both lines stood
+        // together on a car that has neither wing.
+        //
+        // The larger count wins, and how much larger it is becomes the
+        // confidence: a car that only ever understeers reads exactly as it
+        // did before, and a car that does both in equal measure says so by
+        // being unsure rather than by saying both.
+        let (understeer, oversteer) = (self.stats.understeer_frames, self.stats.oversteer_frames);
+        let leaning = understeer.max(oversteer);
+        if leaning > 30 {
+            let understeering = understeer >= oversteer;
+            let margin = (leaning - understeer.min(oversteer)) as f32 / leaning as f32;
+            // 0.5 when the two are level, and the 0.85 these rules have
+            // always carried when one of them is the whole story.
+            let confidence = 0.5 + 0.35 * margin;
+
+            // The ladder is what this car can actually be changed by. A wing
+            // if it has one, the springs or the bar if it has those, and
+            // otherwise the four things every car with a setup screen has —
+            // which is not a consolation prize on a road car, it is the
+            // adjustment that car is actually tuned with.
+            let action = if self.wing_to_adjust() {
+                if understeering {
                     "More Front Wing / Softer Front".tr(ru)
                 } else {
-                    "Softer Front Springs or ARB".tr(ru)
-                }
-                .to_string(),
-                parameters: vec![],
-                confidence: 0.85,
-                chain: Some(Chain {
-                    cause: "the front axle runs out of grip before the rear at speed"
-                        .tr(ru)
-                        .to_string(),
-                    effect: Self::frames_phrase(
-                        self.stats.understeer_frames,
-                        self.stats.total_frames,
-                        ru,
-                    ),
-                    // Deliberately not "the car will understeer less": whether
-                    // this is the car or the driving is a different question,
-                    // and `driver_vs_car` is what answers it over a stint.
-                    confirm: "the understeer count next run out, after the change"
-                        .tr(ru)
-                        .to_string(),
-                    evidence: crate::confidence::Evidence::new(),
-                }),
-            });
-        }
-
-        if self.stats.oversteer_frames > 30 {
-            recs.push(Recommendation {
-                component: "Balance".tr(ru).to_string(),
-                category: "Oversteer".to_string(),
-                severity: Severity::Warning,
-                message: "High Speed Oversteer".tr(ru).to_string(),
-                action: if self.car_class.has_adjustable_aero() {
                     "More Rear Wing".tr(ru)
+                }
+            } else if self.mechanical_balance() {
+                if understeering {
+                    "Softer Front Springs or ARB".tr(ru)
                 } else {
                     "Softer Rear Springs or ARB".tr(ru)
                 }
+            } else if understeering {
+                "Lower Front Pressures or More Front Camber".tr(ru)
+            } else {
+                "Lower Rear Pressures or More Rear Camber".tr(ru)
+            };
+
+            recs.push(Recommendation {
+                component: "Balance".tr(ru).to_string(),
+                category: if understeering {
+                    "Understeer".to_string()
+                } else {
+                    "Oversteer".to_string()
+                },
+                severity: Severity::Warning,
+                message: if understeering {
+                    "High Speed Understeer".tr(ru)
+                } else {
+                    "High Speed Oversteer".tr(ru)
+                }
                 .to_string(),
+                action: action.to_string(),
                 parameters: vec![],
-                confidence: 0.85,
+                confidence,
                 chain: Some(Chain {
-                    cause: "the rear axle runs out of grip before the front at speed"
-                        .tr(ru)
-                        .to_string(),
-                    effect: Self::frames_phrase(
-                        self.stats.oversteer_frames,
-                        self.stats.total_frames,
-                        ru,
-                    ),
-                    confirm: "the oversteer count next run out, after the change"
-                        .tr(ru)
-                        .to_string(),
+                    cause: if understeering {
+                        "the front axle runs out of grip before the rear at speed".tr(ru)
+                    } else {
+                        "the rear axle runs out of grip before the front at speed".tr(ru)
+                    }
+                    .to_string(),
+                    effect: Self::frames_phrase(leaning, self.stats.total_frames, ru),
+                    // Deliberately not "the car will understeer less": whether
+                    // this is the car or the driving is a different question,
+                    // and `driver_vs_car` is what answers it over a stint.
+                    confirm: if understeering {
+                        "the understeer count next run out, after the change".tr(ru)
+                    } else {
+                        "the oversteer count next run out, after the change".tr(ru)
+                    }
+                    .to_string(),
                     evidence: crate::confidence::Evidence::new(),
                 }),
             });
@@ -2883,6 +2946,113 @@ mod tests {
             );
         }
 
+        /// **The two halves of a balance cannot both be true.**
+        ///
+        /// They were two counters with a threshold each, so a lap that
+        /// understeered into one corner and oversteered out of another
+        /// published both — "More Front Wing" directly above "More Rear
+        /// Wing". Reported from a real session.
+        #[test]
+        fn the_balance_is_one_finding_and_never_both() {
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            engineer.stats.total_frames = 600;
+            engineer.stats.understeer_frames = 120;
+            engineer.stats.oversteer_frames = 90;
+
+            let mut said = Vec::new();
+            engineer.analyze_driving_errors(&mut said);
+            let balance: Vec<&crate::engineer::Recommendation> = said
+                .iter()
+                .filter(|one| one.component == "Balance")
+                .collect();
+
+            assert_eq!(
+                balance.len(),
+                1,
+                "one balance finding, not two: {balance:?}"
+            );
+            assert_eq!(balance[0].category, "Understeer", "the larger count wins");
+            assert!(
+                balance[0].confidence < 0.7,
+                "nearly level counts are not a confident verdict: {}",
+                balance[0].confidence
+            );
+        }
+
+        /// And a car that only ever understeers still reads as it always did.
+        #[test]
+        fn a_car_that_only_understeers_is_said_with_the_old_confidence() {
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            engineer.stats.total_frames = 600;
+            engineer.stats.understeer_frames = 200;
+            engineer.stats.oversteer_frames = 0;
+
+            let mut said = Vec::new();
+            engineer.analyze_driving_errors(&mut said);
+            let one = said
+                .iter()
+                .find(|one| one.component == "Balance")
+                .expect("a balance finding");
+            assert_eq!(one.category, "Understeer");
+            assert!((one.confidence - 0.85).abs() < 0.001, "{}", one.confidence);
+        }
+
+        /// **Nothing is recommended that the car has not got.**
+        ///
+        /// The 90s Miata this was reported from adjusts pressures, camber,
+        /// toe, gears and fuel — no wing, no bar, no springs — and was being
+        /// told to add front wing.
+        #[test]
+        fn a_car_with_no_wing_and_no_bar_is_told_what_it_can_change() {
+            use crate::games::catalogue::Adjustables;
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            engineer.update_car_adjustables(Some(Adjustables::default()));
+            engineer.stats.total_frames = 600;
+            engineer.stats.understeer_frames = 200;
+
+            let mut said = Vec::new();
+            engineer.analyze_driving_errors(&mut said);
+            let one = said
+                .iter()
+                .find(|one| one.component == "Balance")
+                .expect("a balance finding");
+            assert!(
+                !one.action.contains("Wing") && !one.action.contains("ARB"),
+                "a car with neither was told about both: {}",
+                one.action
+            );
+            assert!(
+                one.action.contains("Pressure") || one.action.contains("Camber"),
+                "{}",
+                one.action
+            );
+        }
+
+        /// And one that has a wing is still told about it.
+        #[test]
+        fn a_car_with_a_wing_is_still_told_about_the_wing() {
+            use crate::games::catalogue::Adjustables;
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            engineer.update_car_adjustables(Some(Adjustables {
+                wing: true,
+                ..Adjustables::default()
+            }));
+            engineer.stats.total_frames = 600;
+            engineer.stats.oversteer_frames = 200;
+
+            let mut said = Vec::new();
+            engineer.analyze_driving_errors(&mut said);
+            let one = said
+                .iter()
+                .find(|one| one.component == "Balance")
+                .expect("a balance finding");
+            assert!(one.action.contains("Wing"), "{}", one.action);
+        }
+
         /// Tread temperature gates the camber advice, and only that.
         ///
         /// It used to gate the temperature band as well, which is what this
@@ -3345,11 +3515,17 @@ mod tests {
     fn a_road_car_is_not_told_about_a_wing_it_does_not_have() {
         let config = AppConfig::default();
 
-        let balance = |class: CarClass| {
+        // **One end at a time.** This used to set both counters to 40 and
+        // assert that both the front and the rear line came out, which is
+        // what the panel was actually doing and what a driver reported: two
+        // instructions that undo each other. The rule it was written for —
+        // a car with no wing is not told about one — is unchanged, and is
+        // what it checks now, one balance at a time.
+        let balance = |class: CarClass, understeer: u32, oversteer: u32| {
             let mut engineer = engineer_reading_a_complete_game(&config);
             engineer.update_car_class(class);
-            engineer.stats.understeer_frames = 40;
-            engineer.stats.oversteer_frames = 40;
+            engineer.stats.understeer_frames = understeer;
+            engineer.stats.oversteer_frames = oversteer;
             let mut recs = Vec::new();
             engineer.analyze_driving_errors(&mut recs);
             recs.iter()
@@ -3358,18 +3534,26 @@ mod tests {
                 .join(" | ")
         };
 
-        let road = balance(CarClass::Road);
+        let pushing = balance(CarClass::Road, 40, 0);
+        let loose = balance(CarClass::Road, 0, 40);
+        for road in [&pushing, &loose] {
+            assert!(
+                !road.to_lowercase().contains("wing"),
+                "a road car was told about a wing: {road}"
+            );
+        }
         assert!(
-            !road.to_lowercase().contains("wing"),
-            "a road car was told about a wing: {road}"
+            pushing.contains("Softer Front Springs or ARB"),
+            "the mechanical half of the same fix is what is left: {pushing}"
         );
         assert!(
-            road.contains("Softer Front Springs or ARB")
-                && road.contains("Softer Rear Springs or ARB"),
-            "the mechanical half of the same fix is what is left: {road}"
+            loose.contains("Softer Rear Springs or ARB"),
+            "the mechanical half of the same fix is what is left: {loose}"
         );
         assert!(
-            balance(CarClass::Gt3).to_lowercase().contains("wing"),
+            balance(CarClass::Gt3, 40, 0)
+                .to_lowercase()
+                .contains("wing"),
             "a GT3 has a wing and is still told about it"
         );
 

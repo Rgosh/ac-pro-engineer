@@ -79,6 +79,10 @@ pub fn scan_cars(ac_root: &Path) -> Vec<CarSpecs> {
                 // content folder, and skipped over in the archive without
                 // decrypting anything but the one file it wants.
                 ideal_pressure: super::car_data::ideal_pressures(entry.path()),
+                // And what it lets you change, from the same walk and the
+                // same archive, so a screen cannot recommend a part this car
+                // has not got.
+                adjustable: super::car_data::adjustables(entry.path()),
             });
         }
     }

@@ -672,6 +672,22 @@ impl AppState {
             .and_then(|specs| specs.ideal_pressure)
     }
 
+    /// Which adjustments this car's setup screen actually offers.
+    ///
+    /// Off the same catalogue entry the class and the pressures come from, so
+    /// all three describe one car. `None` on Competizione and for a car whose
+    /// data could not be read — the engineer asks the class then.
+    pub fn car_adjustables(&self) -> Option<ac_core::games::catalogue::Adjustables> {
+        let id = self
+            .reading
+            .as_ref()
+            .map(|reading| reading.fixed.car_model.clone())
+            .unwrap_or_default();
+        self.content_manager
+            .get_car_specs(&id)
+            .and_then(|specs| specs.adjustable)
+    }
+
     pub fn car_class(&self) -> ac_core::games::CarClass {
         let id = self
             .reading
@@ -1351,6 +1367,7 @@ impl AppState {
         // otherwise, which is descriptive in both games.
         self.engineer.update_car_class(self.car_class());
         self.engineer.update_car_tyres(self.car_tyres());
+        self.engineer.update_car_adjustables(self.car_adjustables());
         self.engineer.update(&car, &session, &self.session_info);
 
         // The engineer sets `current_delta` from AC's own performance meter,
