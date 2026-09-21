@@ -115,10 +115,25 @@ function M.rebuild(shown)
     -- the right way, which is the reading the camber advice is made of and the
     -- one the panel could not show.
     if settings.showTyreEdges then
-      text.tyreEdges[i] = string.format('%s|%s|%s',
-        tempText(shown.tyre_temp_inner_c[i]):gsub('[^%d%-]', ''),
-        tempText(shown.tyre_temp_c[i]):gsub('[^%d%-]', ''),
-        tempText(shown.tyre_temp_outer_c[i]):gsub('[^%d%-]', ''))
+      local inner = tempText(shown.tyre_temp_inner_c[i]):gsub('[^%d%-]', '')
+      local middle = tempText(shown.tyre_temp_c[i]):gsub('[^%d%-]', '')
+      local outer = tempText(shown.tyre_temp_outer_c[i]):gsub('[^%d%-]', '')
+      -- **Across the car, not always inner first.** These three carry no
+      -- labels — there is no room for any — so their order is the only thing
+      -- saying which edge is which, and printing inner first on all four put
+      -- the left-hand tyres on backwards: on the left of the car the inner
+      -- edge is the one nearer the middle of the screen, not the one at the
+      -- start of the row. Reported by a driver who could not tell which way
+      -- his fronts were leaning without counting the corners on his fingers.
+      --
+      -- The numbers themselves are untouched, and so is the spread the colour
+      -- is made of: inner minus outer is the same subtraction whichever end
+      -- it is drawn from.
+      if i == 1 or i == 3 then
+        text.tyreEdges[i] = string.format('%s|%s|%s', outer, middle, inner)
+      else
+        text.tyreEdges[i] = string.format('%s|%s|%s', inner, middle, outer)
+      end
     else
       text.tyreEdges[i] = ''
     end
