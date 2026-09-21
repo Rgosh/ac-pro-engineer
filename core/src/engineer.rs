@@ -1140,6 +1140,12 @@ impl Engineer {
     }
 
     fn analyze_ffb_clipping(&mut self, car: &Car, recs: &mut Vec<Recommendation>) {
+        // Switched off by a driver who has no wheel to feel it with. The
+        // game computes the signal either way, so there is nothing to detect
+        // and this is the only honest answer — see `AlertsConfig::ffb_advice`.
+        if !self.config.alerts.ffb_advice {
+            return;
+        }
         let ru = self.is_ru();
         let clip_ratio = if self.stats.total_frames > 0 {
             self.stats.ffb_clip_frames as f32 / self.stats.total_frames as f32
@@ -2944,6 +2950,52 @@ mod tests {
                 said.iter().any(|c| c == "Tyres/Overheat"),
                 "only the wear flag was taken away: {said:?}"
             );
+        }
+
+        /// Somebody with no wheel is not told to lower a gain they have not got.
+        ///
+        /// Reported by a driver on a pad: the game computes a force whether or
+        /// not anything can feel it, so the clipping line arrived every lap
+        /// for hardware that is not there.
+        #[test]
+        fn force_feedback_advice_can_be_switched_off() {
+            let clipping_car = || {
+                let mut car = a_car_in_trouble();
+                car.speed_kmh = 120.0;
+                car
+            };
+            // The rule waits a second before it speaks, which a test cannot
+            // sit through: the timer is put back instead.
+            let settled = |engineer: &mut Engineer| {
+                let now = std::time::Instant::now();
+                engineer.alert_timers.insert(
+                    "ffb_clip".to_string(),
+                    (now - std::time::Duration::from_secs(5), now),
+                );
+                engineer.stats.total_frames = 1000;
+                engineer.stats.ffb_clip_frames = 200;
+            };
+
+            let config = AppConfig::default();
+            let mut engineer = Engineer::new(&config);
+            settled(&mut engineer);
+            let mut said = Vec::new();
+            engineer.analyze_ffb_clipping(&clipping_car(), &mut said);
+            assert_eq!(said.len(), 1, "on by default: {said:?}");
+            assert_eq!(said[0].component, "Force Feedback");
+
+            let config = AppConfig {
+                alerts: crate::config::AlertsConfig {
+                    ffb_advice: false,
+                    ..AppConfig::default().alerts
+                },
+                ..AppConfig::default()
+            };
+            let mut engineer = Engineer::new(&config);
+            settled(&mut engineer);
+            let mut said = Vec::new();
+            engineer.analyze_ffb_clipping(&clipping_car(), &mut said);
+            assert!(said.is_empty(), "switched off and still said it: {said:?}");
         }
 
         /// **The two halves of a balance cannot both be true.**

@@ -381,6 +381,19 @@ pub struct AlertsConfig {
     /// cries wolf on lap three is advice nobody reads on lap thirty.
     #[serde(default = "default_wear_critical")]
     pub wear_critical: f32,
+    /// Whether to say anything about force feedback.
+    ///
+    /// **Because not everybody has a wheel.** The clipping rule reads a
+    /// signal Assetto Corsa computes whether or not there is anything to feel
+    /// it, so a driver on a pad or a keyboard was told to lower a gain they
+    /// do not have — every lap, in a slot that could have carried something
+    /// they can act on. Nothing in shared memory says what is plugged in, so
+    /// this is asked rather than guessed.
+    ///
+    /// On by default: a wheel is what most of this program's drivers use, and
+    /// clipping is worth knowing about when there is one.
+    #[serde(default = "default_ffb_advice")]
+    pub ffb_advice: bool,
 }
 
 fn default_language() -> Language {
@@ -407,6 +420,10 @@ fn default_fuel_warning_laps() -> f32 {
 fn default_wear_warning() -> f32 {
     96.0
 }
+fn default_ffb_advice() -> bool {
+    true
+}
+
 fn default_wear_critical() -> f32 {
     85.0
 }
@@ -890,6 +907,7 @@ impl Default for AlertsConfig {
             fuel_warning_laps: 3.0,
             wear_warning: 96.0,
             wear_critical: 85.0,
+            ffb_advice: default_ffb_advice(),
         }
     }
 }

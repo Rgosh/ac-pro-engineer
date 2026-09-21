@@ -349,6 +349,7 @@ impl SettingsState {
                         (config.target_hot_pressure_rear + delta * 0.1).clamp(15.0, 45.0)
                 }
                 10 if delta.abs() > 0.0 => config.show_ghost_delta = !config.show_ghost_delta,
+                11 if delta.abs() > 0.0 => config.alerts.ffb_advice = !config.alerts.ffb_advice,
                 _ => {}
             },
             SettingsCategory::Overlay => match self.selected_index {
@@ -1343,6 +1344,19 @@ fn render_engineer_settings(f: &mut Frame<'_>, areas: &[Rect], app: &AppState) {
         (
             "Ghost Delta Widget".tr(is_ru).to_string(),
             if config.show_ghost_delta {
+                "ON".tr(is_ru)
+            } else {
+                "OFF".tr(is_ru)
+            }
+            .to_string(),
+            true,
+        ),
+        (
+            // Off for a driver on a pad or a keyboard: the game computes the
+            // force whether or not anything can feel it, so the clipping
+            // advice arrived every lap for a wheel that is not there.
+            "Force Feedback Advice".tr(is_ru).to_string(),
+            if alerts.ffb_advice {
                 "ON".tr(is_ru)
             } else {
                 "OFF".tr(is_ru)
