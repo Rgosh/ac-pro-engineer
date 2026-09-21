@@ -417,6 +417,51 @@ fn verify() -> Result<()> {
     ))
 }
 
+/// How soon an input that ends means there was never anything on it.
+///
+/// **Wine leaves no better question to ask.** `GetFileType` answers
+/// `FILE_TYPE_CHAR` for a console, for a pipe and for `/dev/null` alike — all
+/// three measured under Proton's Wine 11 — so the handle cannot say who is on
+/// the other end of it. What separates them is *when* the input ends: nothing
+/// attached ends it at once, and an application that spawned this bridge holds
+/// its pipe open for the whole session.
+///
+/// Two seconds, because the only thing that can be mistaken for nothing is a
+/// parent that dies within two seconds of starting one of these, and the
+/// consequence of that mistake is one bridge left running rather than a bridge
+/// that never ran at all.
+const NOTHING_ATTACHED: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether a person is on the other end of this program's input.
+///
+/// A console is somebody who can type `exit`, and it is the one thing Wine
+/// will say plainly: `GetConsoleMode` succeeds for a handle that really is a
+/// console and fails for a pipe, a file and a null device. It is not the whole
+/// answer — the application's own bridge has a pipe rather than a console —
+/// but it is the half that can be answered without waiting.
+#[cfg(target_os = "windows")]
+fn stdin_is_a_console() -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{CONSOLE_MODE, GetConsoleMode};
+
+    let handle = HANDLE(stdin().as_raw_handle() as isize);
+    if handle.is_invalid() {
+        return false;
+    }
+    let mut mode = CONSOLE_MODE::default();
+    // SAFETY: the handle belongs to the process's own standard input and the
+    // call does not consume it.
+    unsafe { GetConsoleMode(handle, &mut mode) }.is_ok()
+}
+
+/// On anything that is not Windows this binary is a stub that maps nothing —
+/// see [`create_file_mapping`] — so the question does not arise.
+#[cfg(not(target_os = "windows"))]
+fn stdin_is_a_console() -> bool {
+    true
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -494,20 +539,56 @@ fn main() -> Result<()> {
         Err(error) => eprintln!("Could not announce this bridge: {error:#}"),
     }
 
-    println!("All mappings were successfully created, enter 'exit' to close the app");
+    // **Why this is not simply a read loop.** It was, and a bridge started
+    // from a file manager or a desktop entry — no console, no parent holding a
+    // pipe — read end-of-input on its first attempt, unlinked the mappings it
+    // had just made and exited. From the outside that is "running
+    // shm-bridge.exe does nothing", which is how it was reported.
+    //
+    // Input that ends is still how the application asks this to go away, and
+    // the backstop that stops a crashed application leaving a bridge behind.
+    // So an end is obeyed — unless it arrives so fast that there was plainly
+    // nobody there to have asked.
+    let console = stdin_is_a_console();
+    if console {
+        println!("All mappings were successfully created, enter 'exit' to close the app");
+    } else {
+        println!("All mappings were successfully created.");
+    }
 
+    let waiting_since = std::time::Instant::now();
     let mut input = String::new();
-    while let Ok(bytes) = stdin().read_line(&mut input) {
-        if bytes == 0 {
-            break;
-        }
-        match input.trim() {
-            "exit" => break,
-            _ => {
-                println!("Incorrect command '{}'", input.trim());
+    let mut nobody_was_there = false;
+    loop {
+        match stdin().read_line(&mut input) {
+            Ok(0) | Err(_) => {
+                nobody_was_there = !console && waiting_since.elapsed() < NOTHING_ATTACHED;
+                break;
             }
+            Ok(_) => match input.trim() {
+                "exit" => break,
+                other => println!("Incorrect command '{other}'"),
+            },
         }
         input.clear();
+    }
+
+    if nobody_was_there {
+        // Said out loud because the mappings only live as long as this
+        // process, and somebody who started it by double clicking has no
+        // window telling them so.
+        println!(
+            "Nothing is attached to this program's input, so there is no way to type 'exit' — \
+             it will hold the mappings until it is closed."
+        );
+        println!(
+            "Closing it is safe. Killing it rather than closing it can leave stale pages in {} \
+             for the next run to inherit.",
+            shm_dir.display()
+        );
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
     }
 
     println!("\nShutting down.");
