@@ -13,7 +13,7 @@ This archive holds both builds:
 
   ac_pro_engineer.exe    Windows
   ac_pro_engineer        Linux / Steam Deck
-  shm-bridge.exe         Linux only — see below
+  wineshm.exe         Linux only — see below
   overlay/               the in-game panel, for a manual install
 
 
@@ -33,7 +33,7 @@ ac_pro_engineer folder into:
 
     <Assetto Corsa>\apps\lua\
 
-The panel needs Custom Shaders Patch. It does not need shm-bridge.exe:
+The panel needs Custom Shaders Patch. It does not need wineshm.exe:
 on Windows the application creates the shared mapping itself. The bridge
 is a Linux-only piece.
 
@@ -43,7 +43,7 @@ is a Linux-only piece.
 Run ./ac_pro_engineer — the native Linux binary, not the .exe.
 
 Assetto Corsa itself runs under Proton, so its telemetry lives inside the
-game's prefix. shm-bridge.exe passes it out and must be running for the
+game's prefix. wineshm.exe passes it out and must be running for the
 application to see anything. Keep it next to the binary; the launcher
 card reports its version and whether it fits, and [B] there fetches a
 current one. protontricks is required to start it inside the prefix.
@@ -73,7 +73,7 @@ Keeping your own source closed, or selling a product with this code inside
 it, needs written permission first: rgoshbbb@gmail.com.
 
 LICENSE, NOTICE and LICENSING.md in the bundle have the detail.
-shm-bridge.exe is a separate piece and stays under its own MIT licence.
+wineshm.exe is a separate piece and stays under its own MIT licence.
 
 
 [ LINKS & SUPPORT ]

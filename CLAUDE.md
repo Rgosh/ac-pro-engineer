@@ -43,7 +43,7 @@ in the draw path.
 generator that emits its Lua declaration. Three artefacts encode it:
 
 1. the application, which writes it,
-2. `shm-bridge.exe`, which maps it into the Wine prefix on Linux,
+2. `wineshm.exe`, which maps it into the Wine prefix on Linux,
 3. `assets/frontends/csp-panel/frame_layout.lua`, which the panel reads it with.
 
 **Changing the struct means changing all three.** After any edit to the fields:
@@ -53,7 +53,7 @@ cargo run -p ac_core --example gen_lua_layout > assets/frontends/csp-panel/frame
 ```
 
 ```bash
-cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu   # in the wineshm checkout
 ```
 
 Bump `OVERLAY_VERSION` and `EXPECTED_VERSION` in the panel together —
@@ -80,7 +80,7 @@ Four numbers, and confusing them wastes an evening:
 |---|---|---|
 | `OVERLAY_VERSION` / `EXPECTED_VERSION` | `frame.rs`, the panel | a field moves (6 as of v0.4.0) |
 | `app_version` in the frame | filled by `OverlayFrame::empty` | every release, on its own |
-| `BRIDGE_PROTOCOL` | `bridge.rs`, `shm-bridge/src/main.rs` | the bridge's note gains a key |
+| `BRIDGE_PROTOCOL` | `bridge.rs`, `the wineshm crate` | the bridge's note gains a key |
 | `PANEL_VERSION`, manifest `VERSION` | the panel, `manifest.ini` | every release |
 | Cargo `version` | `Cargo.toml` | every release |
 
@@ -101,7 +101,7 @@ has in memory, and only if it is told what the current version is.
 
 ## The bridge is the third piece, and it is checkable now
 
-`shm-bridge.exe` writes `/dev/shm/acpe-bridge.info` naming its version, the
+`wineshm.exe` writes `/dev/shm/wineshm.info` naming its version, the
 bridge protocol, the bytes it mapped and under what name; it removes the file on
 a clean exit. It also compiles `ACPE-SHM-BRIDGE-VERSION=<version>;` into its own
 binary, so a bridge sitting on disk and not running can still be identified —

@@ -387,9 +387,9 @@ pub const CHAPTERS: [Chapter; 16] = [
             Line::Br,
             Line::H2("LINUX & STEAM DECK"),
             Line::P(
-                "The game runs inside the Proton prefix, so its pages exist only in there. shm-bridge.exe mirrors them out to /dev/shm. Without it there is no telemetry on this side at all — for the tabs as much as for the overlay.",
+                "The game runs inside the Proton prefix, so its pages exist only in there. wineshm.exe mirrors them out to /dev/shm. Without it there is no telemetry on this side at all — for the tabs as much as for the overlay.",
             ),
-            Line::Fix("1. Keep shm-bridge.exe in the folder with the application."),
+            Line::Fix("1. Keep wineshm.exe in the folder with the application."),
             Line::Fix("2. Press START. The bridge is started and stopped with the game."),
             Line::Fix(
                 "3. protontricks must be installed, and NOT as a Flatpak: a Flatpak has its own /dev/shm and the pages land where nothing can see them.",

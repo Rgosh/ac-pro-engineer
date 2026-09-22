@@ -190,7 +190,7 @@ start in a particular order.
 1. Install **protontricks**, and **not as a Flatpak** — see below.
 2. Download the Linux archive from the
    [Releases page](https://github.com/Rgosh/ac-pro-engineer/releases) and unpack
-   it. `shm-bridge.exe` sits next to `ac_pro_engineer` — keep them together.
+   it. `wineshm.exe` sits next to `ac_pro_engineer` — keep them together.
 3. Run `./ac_pro_engineer` and press **START**. The bridge is launched inside the
    Proton prefix of the game you chose, and stopped when you come back to the
    launcher.
@@ -199,7 +199,7 @@ start in a particular order.
 **The bridge is not optional, and it is not only for the overlay.** This said the
 opposite for several releases, and it cost at least one person an evening. Under
 Proton the game is a Windows process and its telemetry pages exist only inside
-the prefix; `shm-bridge.exe` is what mirrors them out to `/dev/shm`, which is
+the prefix; `wineshm.exe` is what mirrors them out to `/dev/shm`, which is
 where the Linux binary reads them. Without it running there is no telemetry on
 this side at all — for the tabs as much as for the panel. The overlay needs it
 for the opposite direction as well: the application writes its frame into
@@ -210,7 +210,7 @@ file the Win32 name CSP is allowed to open.
 to see what it says:
 
 ```bash
-protontricks-launch --appid 244210 shm-bridge.exe
+protontricks-launch --appid 244210 wineshm.exe
 ```
 
 **protontricks must not be a Flatpak.** A Flatpak has a `/dev/shm` of its own, so
@@ -252,7 +252,7 @@ rustup target add x86_64-pc-windows-gnu
 ```
 
 ```bash
-cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu   # in the wineshm checkout
 ```
 
 Or use the packaging script, which does both and lays out an archive:
@@ -287,14 +287,14 @@ rest of the application's screens under [Every screen](#every-screen).
 
 ### The Linux bridge
 
-`shm-bridge.exe` is a small Windows binary that runs inside the Proton prefix and
+`wineshm.exe` is a small Windows binary that runs inside the Proton prefix and
 wraps the files in `/dev/shm` in the Win32 named mappings the game and CSP can
 open. It is the only Linux-specific piece.
 
 **Ask it whether the overlay can be seen from inside the prefix:**
 
 ```bash
-protontricks-launch --appid 244210 shm-bridge.exe --verify
+protontricks-launch --appid 244210 wineshm.exe --verify
 ```
 
 It makes exactly the call a CSP script makes, and prints the frame version, the
@@ -320,7 +320,7 @@ bridge for this release has been published, the card says exactly that and gives
 you the command to build one, rather than "nothing to fetch". The launcher's overlay card
 shows the same verdict in one line, and **[B]** on that card downloads a
 published bridge — verifying it before it replaces anything and keeping the old
-one as `shm-bridge.exe.previous`.
+one as `wineshm.exe.previous`.
 
 > **⚠️ A bridge older than the frame maps too few bytes, and CSP silently refuses
 > the mapping.** No error appears anywhere; the panel just waits forever beside a
@@ -328,7 +328,7 @@ one as `shm-bridge.exe.previous`.
 > bridge from an earlier release will not serve it. Press **[B]**, or build one:
 >
 > ```bash
-> cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu
+> cargo build --release --target x86_64-pc-windows-gnu   # in the wineshm checkout
 > ```
 
 ---
@@ -468,7 +468,7 @@ Six categories, `A` `S` `D` `F` `G` `H` or `←/→`:
 `[C]` on **OVERLAY** answers the one question this program gets asked most —
 *why is the panel blank* — without leaving the application:
 
-![Overlay diagnostics: the application, the shm-bridge on disk and the one running, with a verdict](screenshots/Overlay_Diagnostics.png)
+![Overlay diagnostics: the application, the bridge on disk and the one running, with a verdict](screenshots/Overlay_Diagnostics.png)
 
 All three pieces that have to agree about a frame, what each one is, and what to
 do about the one that does not fit. `[R]` measures again, so starting the bridge
@@ -804,15 +804,15 @@ Environment variables the Linux build reads:
 
 | Variable | Effect |
 |---|---|
-| `AC_PROTON_PATH` | The launcher used to start `shm-bridge.exe`. Defaults to `protontricks-launch`. |
+| `AC_PROTON_PATH` | The launcher used to start `wineshm.exe`. Defaults to `protontricks-launch`. |
 | `AC_TEST_MODE` | Pretend to start the bridge without a Proton prefix. For development. |
 
-### `shm-bridge.exe` — the Linux bridge
+### `wineshm.exe` — the Linux bridge
 
 Runs **inside** the Proton prefix.
 
 ```bash
-protontricks-launch --appid 244210 shm-bridge.exe
+protontricks-launch --appid 244210 wineshm.exe
 ```
 
 | Flag | What it does |
@@ -990,7 +990,7 @@ The status bar tells three states apart on purpose:
 - **AC NOT RUNNING** — no `acs.exe` process was found. On Linux, make sure you
   are running the game, not just the launcher.
 - **AC RUNNING – NO DATA** — the process is there and its shared memory cannot be
-  read. On Linux this is almost always `shm-bridge.exe` not running in the
+  read. On Linux this is almost always `wineshm.exe` not running in the
   prefix. On Windows, try starting the application before the game.
 - **LIVE** — telemetry is arriving.
 
@@ -1004,10 +1004,10 @@ In order, cheapest first:
 2. **On Linux, is the bridge running in the prefix?**
 
    ```bash
-   protontricks-launch --appid 244210 shm-bridge.exe --verify
+   protontricks-launch --appid 244210 wineshm.exe --verify
    ```
 
-   If it cannot open the mapping, start `shm-bridge.exe` in the prefix first.
+   If it cannot open the mapping, start `wineshm.exe` in the prefix first.
 3. **Is the bridge new enough?**
 
    ```bash
@@ -1169,14 +1169,14 @@ above from the top.
 ```
 core/          ac_core — telemetry, analysis, the engineer, the overlay frame
 tui/           ac_tui  — the terminal application, the key map, every screen
-shm-bridge/    the Windows binary that bridges /dev/shm on Linux
+wineshm (its own repository)    the Windows binary that bridges /dev/shm on Linux
 apps/lua/      the CSP panel, and two harnesses that run it without the game
 tests_suite/   integration tests over the whole pipeline
 ```
 
 The desktop application computes everything and publishes a 712-byte
 `#[repr(C)]` `OverlayFrame` once per tick. The panel reads fields and calls
-ImGui. **Three artefacts encode that struct** — the application, `shm-bridge.exe`
+ImGui. **Three artefacts encode that struct** — the application, `wineshm.exe`
 and `assets/frontends/csp-panel/frame_layout.lua` — and changing it means changing
 all three. `core/src/overlay/frame.rs` has the rules; `CLAUDE.md` has the
 procedure and the traps.
@@ -1289,7 +1289,7 @@ the plain-language version:
 Versions up to and including **v0.3.6 were MIT** and stay MIT; that grant
 cannot be withdrawn. The AGPL applies from v0.3.7 onward.
 
-`shm-bridge` began as [Damir Jelić's](https://github.com/poljar) work on bridging
+`wineshm` began as [Damir Jelić's](https://github.com/poljar) work on bridging
 Wine shared memory and is used and extended here **under its own MIT licence**,
 which this project's change does not touch.
 

@@ -30,7 +30,7 @@ pub fn prefix_of(game: &ac_core::games::Game) -> u32 {
         .unwrap_or_default()
 }
 
-/// This is a helper struct to start a `Shared Memory Bridge` (`shm-bridge.exe`) process in Proton.
+/// This is a helper struct to start a the shared memory bridge (`wineshm.exe`) process in Proton.
 ///
 /// [protontricks](https://github.com/Matoking/protontricks) is required to launch the bridge
 pub struct SharedMemoryBridge {
@@ -38,7 +38,7 @@ pub struct SharedMemoryBridge {
     exit_tx: Option<Sender<()>>,
 }
 
-/// Locate `shm-bridge.exe`.
+/// Locate `wineshm.exe`.
 ///
 /// The same search the launcher's overlay card and `bridge_probe` use, so the
 /// bridge the card *judges* is the bridge the application *spawns*. They used
@@ -67,7 +67,7 @@ impl SharedMemoryBridge {
     /// games this build reads publish into two different prefixes, and the
     /// bridge can only be in one of them.
     pub async fn start(app_id: u32) -> Result<Self, std::io::Error> {
-        info!("[shm-bridge] Starting memory bridge process in prefix {app_id}...");
+        info!("[bridge] Starting memory bridge process in prefix {app_id}...");
         let (tx, rx) = tokio::sync::oneshot::channel();
         let pwd = match bridge_path().to_str() {
             Some(pwd) => pwd.to_string(),
@@ -81,7 +81,7 @@ impl SharedMemoryBridge {
         // own Proton where it can find it, so nothing has to be installed.
         let plan = ac_core::overlay::bridge::how_to_start(app_id, std::path::Path::new(&pwd));
         info!(
-            "[shm-bridge] Starting it through {:?}: {}",
+            "[bridge] Starting it through {:?}: {}",
             plan.how,
             plan.program.display()
         );
@@ -121,13 +121,13 @@ impl SharedMemoryBridge {
             .spawn()?;
 
         let process_handle = tokio::spawn(async move {
-            info!("[shm-bridge] Starting bridge process from");
+            info!("[bridge] Starting bridge process from");
             let stdout = child.stdout.take();
             if let Some(stdout) = stdout {
                 let mut reader = BufReader::new(stdout).lines();
                 tokio::task::spawn(async move {
                     while let Ok(Some(line)) = reader.next_line().await {
-                        info!("[shm-bridge/out] {line}");
+                        info!("[bridge/out] {line}");
                     }
                 });
             }
@@ -137,7 +137,7 @@ impl SharedMemoryBridge {
                 let mut reader = BufReader::new(stderr).lines();
                 tokio::task::spawn(async move {
                     while let Ok(Some(line)) = reader.next_line().await {
-                        info!("[shm-bridge/err] {line}");
+                        info!("[bridge/err] {line}");
                     }
                 });
             }
@@ -146,7 +146,7 @@ impl SharedMemoryBridge {
             if let Some(mut input) = input {
                 let should_exit = rx.await.is_ok();
                 if should_exit {
-                    info!("[shm-bridge] Exiting bridge process...");
+                    info!("[bridge] Exiting bridge process...");
                     // Send an 'exit' command to the bridge process.
                     // This is not the best way to stop it, but the easiest to make it work
                     // through Protontricks layer. We cannot send any signal to the bridge
@@ -158,15 +158,15 @@ impl SharedMemoryBridge {
                     // process, which is a worse outcome than a bridge that did
                     // not hear the request.
                     if let Err(error) = input.write_all("exit\n".as_bytes()).await {
-                        error!("[shm-bridge] Could not send the exit command: {error}");
+                        error!("[bridge] Could not send the exit command: {error}");
                     } else if let Err(error) = input.flush().await {
-                        error!("[shm-bridge] Could not flush the exit command: {error}");
+                        error!("[bridge] Could not flush the exit command: {error}");
                     }
                 }
             }
 
             let status = child.wait().await?;
-            info!("[shm-bridge] Bridge process exited, {}", status);
+            info!("[bridge] Bridge process exited, {}", status);
             Ok::<(), anyhow::Error>(())
         });
 
@@ -179,7 +179,7 @@ impl SharedMemoryBridge {
 
 impl Drop for SharedMemoryBridge {
     fn drop(&mut self) {
-        info!("[shm-bridge] Shutting down memory bridge process...");
+        info!("[bridge] Shutting down memory bridge process...");
         if let Some(tx) = self.exit_tx.take() {
             let _unused = tx.send(());
         }
@@ -197,22 +197,22 @@ impl Drop for SharedMemoryBridge {
 
             match result {
                 Err(_elapsed) => error!(
-                    "[shm-bridge] Bridge did not exit within {:?}; abandoning it. \
+                    "[bridge] Bridge did not exit within {:?}; abandoning it. \
                      Stale mappings may remain in /dev/shm.",
                     SHUTDOWN_TIMEOUT
                 ),
                 Ok(Err(join_error)) => {
-                    error!("[shm-bridge] Failed to join bridge process handle: {join_error:?}")
+                    error!("[bridge] Failed to join bridge process handle: {join_error:?}")
                 }
                 // The inner Result used to be discarded, so a failure inside
                 // the task -- writing the exit command, or waiting on the
                 // child -- disappeared without trace.
                 Ok(Ok(Err(task_error))) => {
-                    error!("[shm-bridge] Bridge task failed: {task_error:?}")
+                    error!("[bridge] Bridge task failed: {task_error:?}")
                 }
                 Ok(Ok(Ok(()))) => {}
             }
         }
-        info!("[shm-bridge] Memory bridge process finished...");
+        info!("[bridge] Memory bridge process finished...");
     }
 }

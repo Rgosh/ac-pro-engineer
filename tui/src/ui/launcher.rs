@@ -367,7 +367,7 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Span::styled("update   ", dim),
             Span::styled(
                 format!(
-                    "shm-bridge v{} is published — press B to fetch it",
+                    "the bridge v{} is published — press B to fetch it",
                     offer.version
                 ),
                 Style::default().fg(Color::Cyan),
@@ -431,7 +431,7 @@ fn render_overlay_card(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     ) {
         lines.push(Line::from(vec![
             Span::raw("            "),
-            Span::styled("B — fetch the published shm-bridge.exe", dim),
+            Span::styled("B — fetch the published wineshm.exe", dim),
         ]));
     }
 

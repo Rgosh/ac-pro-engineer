@@ -118,7 +118,7 @@ pub fn report() -> Report {
         bridge::BRIDGE_PROTOCOL.to_string(),
     ));
 
-    lines.push(Line::heading("shm-bridge.exe on disk"));
+    lines.push(Line::heading("wineshm.exe on disk"));
     match bridge::installed_executable() {
         Some(path) => {
             lines.push(Line::new(Tone::Plain, "found", path.display().to_string()));
@@ -147,14 +147,14 @@ pub fn report() -> Report {
         )),
     }
 
-    lines.push(Line::heading("shm-bridge.exe running"));
+    lines.push(Line::heading("wineshm.exe running"));
     lines.push(Line::new(
         Tone::Plain,
         "announced in",
         bridge::info_path().display().to_string(),
     ));
 
-    let status = bridge::status(CURRENT_VERSION);
+    let status = bridge::status(bridge::BRIDGE_VERSION);
     match &status {
         BridgeStatus::NotRequired => lines.push(Line::new(
             Tone::Good,
@@ -169,7 +169,7 @@ pub fn report() -> Report {
             ));
             lines.push(Line::action("Start it in the game's Proton prefix:"));
             lines.push(Line::action(
-                "protontricks-launch --appid 244210 shm-bridge.exe",
+                "protontricks-launch --appid 244210 wineshm.exe",
             ));
         }
         BridgeStatus::Unannounced => {
@@ -187,7 +187,7 @@ pub fn report() -> Report {
             ));
             lines.push(Line::action("Build one from a checkout:"));
             lines.push(Line::action(
-                "cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu",
+                "cargo build --release --target x86_64-pc-windows-gnu in the wineshm checkout",
             ));
         }
         BridgeStatus::Unreadable(why) => {
@@ -201,7 +201,7 @@ pub fn report() -> Report {
                  fetch a published bridge, or build one:",
             ));
             lines.push(Line::action(
-                "cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu",
+                "cargo build --release --target x86_64-pc-windows-gnu in the wineshm checkout",
             ));
         }
         BridgeStatus::Behind {
@@ -285,8 +285,8 @@ mod tests {
             headings,
             vec![
                 "this application",
-                "shm-bridge.exe on disk",
-                "shm-bridge.exe running"
+                "wineshm.exe on disk",
+                "wineshm.exe running"
             ]
         );
 

@@ -6,7 +6,7 @@
 //!   are in the same Win32 session, so they see `Local\<name>`.
 //! * **Linux** — a plain file under `/dev/shm/`. The application is a native
 //!   Linux process and cannot create a Win32 named object that Wine resolves,
-//!   so `shm-bridge.exe`, which already runs under Wine whenever telemetry is
+//!   so `wineshm.exe`, which already runs under Wine whenever telemetry is
 //!   being read, wraps this same file in a named mapping. Both sides then look
 //!   at the same bytes. This is the mechanism the bridge already uses for AC's
 //!   own pages, run in the opposite direction.
@@ -24,7 +24,7 @@ use std::io;
 use std::path::PathBuf;
 
 /// Where the backing file lives on Linux. Wine sees this as `Z:\dev\shm\…`,
-/// which is how `shm-bridge` reaches it.
+/// which is how `the bridge` reaches it.
 #[cfg(not(target_os = "windows"))]
 const SHM_DIR: &str = "/dev/shm";
 
@@ -106,7 +106,7 @@ impl OverlayWriter {
 }
 
 // ---------------------------------------------------------------------------
-// Linux: an ordinary file under /dev/shm that shm-bridge wraps for Wine.
+// Linux: an ordinary file under /dev/shm that the bridge wraps for Wine.
 // ---------------------------------------------------------------------------
 
 #[cfg(not(target_os = "windows"))]

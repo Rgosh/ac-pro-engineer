@@ -31,22 +31,51 @@ use std::path::{Path, PathBuf};
 
 /// Shape of [`BRIDGE_INFO_FILE`]'s contents.
 ///
-/// Bumped when the file gains or loses a key, not when the bridge changes.
-/// Must match `BRIDGE_PROTOCOL` in `shm-bridge/src/main.rs`.
-pub const BRIDGE_PROTOCOL: u32 = 1;
+/// **Taken from the bridge rather than restated here.** These four constants
+/// used to be written down twice — once in this file and once in the bridge's
+/// own source, with a comment on each saying "must match". They agreed
+/// because somebody remembered. The bridge is its own crate now, so the
+/// agreement is a `use` and cannot rot.
+pub const BRIDGE_PROTOCOL: u32 = wineshm::announce::FORMAT;
 
 /// What a running bridge calls itself, in `/dev/shm`.
-///
-/// Must match `BRIDGE_INFO_FILE` in `shm-bridge/src/main.rs`.
-pub const BRIDGE_INFO_FILE: &str = "acpe-bridge.info";
+pub const BRIDGE_INFO_FILE: &str = wineshm::announce::FILE;
 
 /// Filename of the bridge as it is built and shipped.
-pub const BRIDGE_EXE: &str = "shm-bridge.exe";
+pub const BRIDGE_EXE: &str = "wineshm.exe";
+
+/// The bridge version this build was compiled against.
+///
+/// **It is no longer this application's version, and that is the change.**
+/// The bridge used to be a crate in this workspace, so the two numbers moved
+/// together and "is the bridge current" was "does it say what I say". It is
+/// its own project now, on its own release cycle, and a driver whose bridge
+/// reads 0.1.0 beside an application reading 0.5.0 has a matched pair.
+///
+/// Taken from the library this links, which is built from the same tag as the
+/// `.exe` it is asking about.
+pub const BRIDGE_VERSION: &str = wineshm::VERSION;
 
 /// The prefix the bridge compiles into its own binary, ahead of its version.
+pub const VERSION_MARKER_PREFIX: &str = wineshm::VERSION_MARKER_PREFIX;
+
+/// Every block this program needs out of the prefix, and how big each is.
 ///
-/// Must match `VERSION_MARKER` in `shm-bridge/src/main.rs`.
-pub const VERSION_MARKER_PREFIX: &str = "ACPE-SHM-BRIDGE-VERSION=";
+/// Four that Assetto Corsa and Competizione publish, and one that runs the
+/// other way — the application writes it and the in-game panel reads it, which
+/// is the same mechanism with the arrow reversed and so costs one more entry
+/// rather than a second bridge.
+///
+/// **The one list.** It is what the bridge is started with, what the note is
+/// checked against, and what a diagnostic quotes.
+pub fn pages() -> Vec<wineshm::Page> {
+    let mut pages = wineshm::page::preset("assetto-corsa").unwrap_or_default();
+    pages.push(wineshm::Page {
+        name: super::frame::OVERLAY_MMF_NAME.to_string(),
+        bytes: size_of::<super::frame::OverlayFrame>(),
+    });
+    pages
+}
 
 /// Where the mappings live on Linux. Wine sees it as `Z:\dev\shm\…`.
 const SHM_DIR: &str = "/dev/shm";
@@ -69,39 +98,30 @@ pub struct BridgeInfo {
 }
 
 impl BridgeInfo {
-    /// Read the `key=value` lines a bridge writes.
+    /// Read what a running bridge published about itself.
     ///
-    /// Unknown keys are ignored rather than rejected: a newer bridge adding one
-    /// must stay readable by an older application, or the version check breaks
-    /// in exactly the situation it exists to report.
+    /// The bridge writes a note listing every block it is serving, its own
+    /// version and its pid. What this program needs from it is narrower — the
+    /// overlay mapping's name and size, because that is the number that
+    /// decides whether CSP will open it — so the note is read by the crate
+    /// that defines it and the interesting part is picked out here.
+    ///
+    /// `None` when the file is not a note, or is one from a format this build
+    /// does not understand, or does not carry the overlay block at all: all
+    /// three mean "a bridge that cannot serve this application", which is what
+    /// the caller is asking about.
     pub fn parse(text: &str) -> Option<Self> {
-        let mut protocol = None;
-        let mut version = None;
-        let mut frame_bytes = None;
-        let mut mmf = None;
-        let mut pid = 0;
-
-        for line in text.lines() {
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            let value = value.trim();
-            match key.trim() {
-                "protocol" => protocol = value.parse().ok(),
-                "version" => version = Some(value.to_string()),
-                "frame_bytes" => frame_bytes = value.parse().ok(),
-                "mmf" => mmf = Some(value.to_string()),
-                "pid" => pid = value.parse().unwrap_or(0),
-                _ => {}
-            }
-        }
-
+        let note = wineshm::Note::parse(text)?;
+        let (page, _) = note
+            .pages
+            .iter()
+            .find(|(page, _)| page.name == super::frame::OVERLAY_MMF_NAME)?;
         Some(Self {
-            protocol: protocol?,
-            version: version?,
-            frame_bytes: frame_bytes?,
-            mmf: mmf?,
-            pid,
+            protocol: note.format,
+            version: note.version,
+            frame_bytes: page.bytes,
+            mmf: page.name.clone(),
+            pid: note.pid,
         })
     }
 }
@@ -241,71 +261,58 @@ pub enum How {
 ///
 /// `AC_PROTON_PATH` still wins where it is set: it is documented, somebody is
 /// relying on it, and it takes the protontricks command line.
+#[cfg(unix)]
 pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
     let chosen = std::env::var("AC_PROTON_PATH")
         .ok()
-        .filter(|p| !p.is_empty());
+        .filter(|program| !program.is_empty());
     if let Some(program) = chosen {
-        return protontricks(PathBuf::from(program), app_id, exe, How::Chosen);
+        return dressed(
+            wineshm::launch::Launch::Protontricks { app_id },
+            PathBuf::from(program),
+            exe,
+            How::Chosen,
+        );
     }
 
-    let id = app_id.to_string();
-    if let (Some(wine), Some(prefix)) = (
-        crate::steam::proton_wine(&id),
-        crate::steam::proton_prefix(&id),
-    ) {
-        return through_proton(wine, prefix, exe);
-    }
-
-    protontricks(
-        PathBuf::from("protontricks-launch"),
-        app_id,
-        exe,
-        How::Protontricks,
-    )
+    // **Which Proton, and where, is the bridge crate's question now.** It was
+    // answered here as well until this release, and the two answers were the
+    // same only because they were written on the same afternoon. See
+    // `wineshm::launch` for the layouts it covers — native, Flatpak, Snap, the
+    // Deck, and libraries on other disks.
+    let plan = wineshm::launch::how_to_launch(app_id);
+    let how = match plan {
+        wineshm::launch::Launch::Proton { .. } => How::Steam,
+        wineshm::launch::Launch::Protontricks { .. } => How::Protontricks,
+    };
+    let (program, _) = plan.command(exe);
+    dressed(plan, program, exe, how)
 }
 
-fn protontricks(program: PathBuf, app_id: u32, exe: &Path, how: How) -> Invocation {
+/// Turn the bridge crate's plan into this program's [`Invocation`], with the
+/// blocks it wants added to the command line.
+#[cfg(unix)]
+fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How) -> Invocation {
+    let (_, mut args) = plan.command(exe);
+    for page in pages() {
+        args.push("--page".to_string());
+        args.push(format!("{}:{}", page.name, page.bytes));
+    }
+    // Nothing to say on a terminal nobody is watching: the launcher card and
+    // the diagnostics read the note instead.
+    args.push("--quiet".to_string());
+
     Invocation {
         program,
-        args: vec![
-            "--appid".to_string(),
-            app_id.to_string(),
-            exe.to_string_lossy().into_owned(),
-        ],
-        env: common_env(),
-        working_dir: None,
-        how,
-    }
-}
-
-fn through_proton(wine: PathBuf, prefix: PathBuf, exe: &Path) -> Invocation {
-    let mut env = common_env();
-    env.push((
-        "WINEPREFIX".to_string(),
-        prefix.to_string_lossy().into_owned(),
-    ));
-
-    Invocation {
-        program: wine,
-        args: vec![exe.to_string_lossy().into_owned()],
-        env,
+        args,
+        env: plan.env(),
         // **The folder the bridge is in, and it matters.** Wine resolves the
         // path against the prefix's drive mappings, and a folder that is not
         // mapped — `/tmp` is the one that bit during testing — comes back as
         // "failed to open" with the file plainly there.
-        working_dir: exe.parent().map(Path::to_path_buf),
-        how: How::Steam,
+        working_dir: wineshm::launch::Launch::working_dir(exe),
+        how,
     }
-}
-
-/// Set for either route: both end up running a Windows process under Wine.
-fn common_env() -> Vec<(String, String)> {
-    vec![
-        // Both of these stop winedevice.exe spinning a core.
-        ("DBUS_FATAL_WARNINGS".to_string(), "0".to_string()),
-        ("WINEDLLOVERRIDES".to_string(), "winebus.sys=d".to_string()),
-    ]
 }
 
 /// Where a running bridge would have left its note.
@@ -434,20 +441,13 @@ pub fn version_in_executable(path: &Path) -> Option<String> {
 
 /// [`version_in_executable`] against bytes already in hand.
 pub fn version_in_bytes(bytes: &[u8]) -> Option<String> {
-    let marker = VERSION_MARKER_PREFIX.as_bytes();
-    let start = bytes
-        .windows(marker.len())
-        .position(|window| window == marker)?
-        + marker.len();
-
-    // Terminated by the `;` the bridge writes. Capped so a marker that lost its
-    // terminator reads a version rather than the rest of the binary.
-    let rest = &bytes[start..bytes.len().min(start + 32)];
-    let end = rest.iter().position(|b| *b == b';')?;
-    std::str::from_utf8(&rest[..end]).ok().map(str::to_string)
+    // The marker is the bridge's, so reading it is the bridge crate's job.
+    // This used to be a second implementation of the same scan, which is one
+    // more place for the terminator or the cap to be got subtly wrong.
+    wineshm::version_in_binary(bytes)
 }
 
-/// Every place a `shm-bridge.exe` might be, in the order they are preferred
+/// Every place a bridge might be, in the order they are preferred
 /// when none of them is the right version.
 ///
 /// Beside the application first, because that is where the release bundle puts
@@ -561,21 +561,25 @@ fn choose_executable(candidates: &[PathBuf], wanted: &str) -> Option<PathBuf> {
 mod tests {
 
     /// **Steam's own Proton, and what it is instead of.**
+    #[cfg(unix)]
     ///
     /// The shapes rather than the discovery: whether a prefix exists on the
     /// machine running the test is not something a test may depend on.
     #[test]
     fn the_bridge_is_started_through_steams_own_proton_when_there_is_one() {
-        let exe = Path::new("/home/someone/pro-engineer/shm-bridge.exe");
-        let through = through_proton(
+        let exe = Path::new("/home/someone/pro-engineer/wineshm.exe");
+        let through = dressed(
+            wineshm::launch::Launch::Proton {
+                wine: PathBuf::from("/steam/Proton - Experimental/files/bin/wine"),
+                prefix: PathBuf::from("/steam/steamapps/compatdata/244210/pfx"),
+            },
             PathBuf::from("/steam/Proton - Experimental/files/bin/wine"),
-            PathBuf::from("/steam/steamapps/compatdata/244210/pfx"),
             exe,
+            How::Steam,
         );
 
         assert_eq!(through.how, How::Steam);
         assert!(through.program.ends_with("bin/wine"));
-        assert_eq!(through.args, vec![exe.to_string_lossy().into_owned()]);
         assert!(
             through.env.iter().any(|(key, value)| key == "WINEPREFIX"
                 && value == "/steam/steamapps/compatdata/244210/pfx"),
@@ -590,23 +594,81 @@ mod tests {
         );
 
         // And the fallback still speaks protontricks' command line.
-        let tricks = protontricks(
+        let tricks = dressed(
+            wineshm::launch::Launch::Protontricks { app_id: 244210 },
             PathBuf::from("protontricks-launch"),
-            244210,
             exe,
             How::Protontricks,
         );
-        assert_eq!(
-            tricks.args,
-            vec![
+        assert!(
+            tricks.args.starts_with(&[
                 "--appid".to_string(),
                 "244210".to_string(),
                 exe.to_string_lossy().into_owned()
-            ]
+            ]),
+            "{:?}",
+            tricks.args
         );
         assert!(
-            tricks.working_dir.is_none() && !tricks.env.iter().any(|(k, _)| k == "WINEPREFIX"),
+            !tricks.env.iter().any(|(k, _)| k == "WINEPREFIX"),
             "protontricks finds the prefix itself"
+        );
+    }
+
+    /// **Every block this program needs is on the command line.**
+    #[cfg(unix)]
+    ///
+    /// The bridge publishes what it is asked for and nothing else, so a block
+    /// missing here is a mapping that never exists — and the failure is a
+    /// panel waiting for ever rather than an error.
+    #[test]
+    fn the_blocks_this_program_needs_are_asked_for_by_name_and_size() {
+        let exe = Path::new("/somewhere/wineshm.exe");
+        let plan = dressed(
+            wineshm::launch::Launch::Protontricks { app_id: 244210 },
+            PathBuf::from("protontricks-launch"),
+            exe,
+            How::Protontricks,
+        );
+        let said = plan.args.join(" ");
+
+        for page in pages() {
+            assert!(
+                said.contains(&format!("--page {}:{}", page.name, page.bytes)),
+                "{} is not asked for: {said}",
+                page.name
+            );
+        }
+        // The overlay block above all: it is the one this program writes and
+        // the in-game panel reads, and its size is what CSP checks.
+        assert!(
+            said.contains(&format!(
+                "--page {}:{}",
+                super::super::frame::OVERLAY_MMF_NAME,
+                size_of::<super::super::frame::OverlayFrame>()
+            )),
+            "{said}"
+        );
+        assert!(said.contains("--quiet"), "nobody is watching its terminal");
+    }
+
+    /// The five are the four the games publish and the one that runs back.
+    #[test]
+    fn the_page_list_is_the_games_four_and_the_panel_one() {
+        let pages = pages();
+        assert_eq!(pages.len(), 5, "{pages:?}");
+        for wanted in [
+            "acpmf_physics",
+            "acpmf_graphics",
+            "acpmf_static",
+            "acpmf_crewchief",
+        ] {
+            assert!(pages.iter().any(|page| page.name == wanted), "{wanted}");
+        }
+        assert!(
+            pages
+                .iter()
+                .any(|page| page.name == super::super::frame::OVERLAY_MMF_NAME)
         );
     }
     use super::*;
@@ -627,7 +689,7 @@ mod tests {
 
         assert!(
             candidates.contains(&PathBuf::from(
-                "/home/someone/project/target/x86_64-pc-windows-gnu/release/shm-bridge.exe"
+                "/home/someone/project/target/x86_64-pc-windows-gnu/release/wineshm.exe"
             )),
             "the sibling of the binary it was built beside: {candidates:?}"
         );
@@ -639,7 +701,7 @@ mod tests {
         let exe = Path::new("/w/target/debug/ac_pro_engineer");
         let candidates = cross_build_candidates(exe);
         assert!(candidates.contains(&PathBuf::from(
-            "/w/target/x86_64-pc-windows-gnu/debug/shm-bridge.exe"
+            "/w/target/x86_64-pc-windows-gnu/debug/wineshm.exe"
         )));
     }
 
@@ -653,35 +715,65 @@ mod tests {
         }
     }
 
+    /// A note the bridge actually writes, rendered by the crate that writes
+    /// it rather than typed out here — which is the point of the two sharing
+    /// a definition.
+    fn a_real_note() -> String {
+        wineshm::Note {
+            version: "0.1.0".to_string(),
+            format: BRIDGE_PROTOCOL,
+            pid: 1234,
+            pages: pages()
+                .into_iter()
+                .map(|page| (page, wineshm::Mode::Owned))
+                .collect(),
+        }
+        .render()
+    }
+
     #[test]
     fn a_note_from_the_bridge_parses_field_for_field() {
-        let text = format!(
-            "protocol=1\nversion=0.3.3\nframe_bytes={}\nmmf={OVERLAY_MMF_NAME}\npid=1234\n",
-            size_of::<OverlayFrame>()
-        );
-        let info = BridgeInfo::parse(&text).expect("a complete note parses");
-        assert_eq!(info.protocol, 1);
-        assert_eq!(info.version, "0.3.3");
+        let info = BridgeInfo::parse(&a_real_note()).expect("a complete note parses");
+        assert_eq!(info.protocol, BRIDGE_PROTOCOL);
+        assert_eq!(info.version, "0.1.0");
         assert_eq!(info.frame_bytes, size_of::<OverlayFrame>());
         assert_eq!(info.mmf, OVERLAY_MMF_NAME);
         assert_eq!(info.pid, 1234);
     }
 
-    /// A newer bridge adding a key must stay readable here, or the check
+    /// A newer bridge adding a line must stay readable here, or the check
     /// breaks in the one situation it exists for.
     #[test]
     fn an_unknown_key_is_ignored_rather_than_fatal() {
-        let text = format!(
-            "protocol=1\nversion=0.9.0\nframe_bytes={}\nmmf={OVERLAY_MMF_NAME}\npid=1\n\
-             something_new=yes\n",
-            size_of::<OverlayFrame>()
-        );
+        let text = a_real_note() + "something_new=yes\n";
         assert!(BridgeInfo::parse(&text).is_some());
     }
 
     #[test]
     fn a_note_missing_a_required_key_is_not_a_bridge_report() {
-        assert!(BridgeInfo::parse("protocol=1\nversion=0.3.3\n").is_none());
+        assert!(BridgeInfo::parse("format=1\nversion=0.1.0\n").is_none());
+        assert!(BridgeInfo::parse("").is_none());
+    }
+
+    /// **A bridge serving everything except the block the panel reads.**
+    ///
+    /// It is running, its note is valid, every other mapping is there — and
+    /// the panel waits for ever. That has to read as "no usable bridge"
+    /// rather than as a healthy one.
+    #[test]
+    fn a_note_without_the_overlay_block_is_not_a_bridge_this_can_use() {
+        let text = wineshm::Note {
+            version: "0.1.0".to_string(),
+            format: BRIDGE_PROTOCOL,
+            pid: 1,
+            pages: wineshm::page::preset("assetto-corsa")
+                .unwrap_or_default()
+                .into_iter()
+                .map(|page| (page, wineshm::Mode::Owned))
+                .collect(),
+        }
+        .render();
+        assert!(BridgeInfo::parse(&text).is_none());
     }
 
     /// The failure that presents as silence: CSP will not open a mapping
@@ -774,7 +866,7 @@ mod tests {
     #[test]
     fn the_marker_is_read_back_out_of_surrounding_noise() {
         let mut bytes = vec![0xAB; 4096];
-        bytes.extend_from_slice(b"ACPE-SHM-BRIDGE-VERSION=1.2.3;");
+        bytes.extend_from_slice(format!("{VERSION_MARKER_PREFIX}1.2.3;").as_bytes());
         bytes.extend_from_slice(&[0xCD; 4096]);
 
         assert_eq!(version_in_bytes(&bytes).as_deref(), Some("1.2.3"));
@@ -791,91 +883,9 @@ mod tests {
     /// rest of the executable as a version string.
     #[test]
     fn a_marker_without_its_terminator_is_refused_not_run_away_with() {
-        let mut bytes = b"ACPE-SHM-BRIDGE-VERSION=".to_vec();
+        let mut bytes = VERSION_MARKER_PREFIX.as_bytes().to_vec();
         bytes.extend_from_slice(&[b'9'; 4096]);
         assert_eq!(version_in_bytes(&bytes), None);
-    }
-
-    /// The bridge writes this file, and it does not depend on ac_core — so the
-    /// two constants are kept in step by reading its source, as the frame size
-    /// already is.
-    #[test]
-    fn the_bridge_agrees_about_the_note_it_writes() {
-        let source = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../shm-bridge/src/main.rs"
-        ))
-        .expect("shm-bridge source");
-
-        assert!(
-            source.contains(&format!("BRIDGE_PROTOCOL: u32 = {BRIDGE_PROTOCOL};")),
-            "shm-bridge declares a different bridge protocol than ac_core expects"
-        );
-        assert!(
-            source.contains(&format!("BRIDGE_INFO_FILE: &str = \"{BRIDGE_INFO_FILE}\";")),
-            "shm-bridge writes its note somewhere ac_core does not look"
-        );
-        assert!(
-            source.contains(VERSION_MARKER_PREFIX),
-            "shm-bridge must compile in the marker version_in_executable scans for"
-        );
-
-        // Every key `parse` requires has to be one the bridge actually writes.
-        for key in ["protocol=", "version=", "frame_bytes=", "mmf=", "pid="] {
-            assert!(
-                source.contains(key),
-                "shm-bridge does not write {key}, which this build requires"
-            );
-        }
-    }
-
-    /// A bridge built for this release wins over one that merely sits in a
-    /// more-preferred directory.
-    ///
-    /// This is what makes a checkout testable. The working directory is
-    /// searched before the build target, so a stale `shm-bridge.exe` at the
-    /// root of the repository used to shadow the one just cross-compiled — the
-    /// application spawned the stale one, called it out of date, and offered to
-    /// download a third.
-    #[test]
-    fn the_bridge_built_for_this_release_wins_wherever_it_is() {
-        let dir = std::env::temp_dir().join("acpe_bridge_choice");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create tmp");
-
-        let marked = |name: &str, version: &str| {
-            let path = dir.join(name);
-            let body = format!("MZ padding {VERSION_MARKER_PREFIX}{version}; more padding");
-            std::fs::write(&path, body).expect("write");
-            path
-        };
-
-        let stale = marked("stale.exe", "0.3.1");
-        let current = marked("current.exe", crate::updater::CURRENT_VERSION);
-
-        // Stale first, which is the order the directories actually produce.
-        let candidates = vec![stale.clone(), current.clone()];
-        assert_eq!(
-            choose_executable(&candidates, crate::updater::CURRENT_VERSION),
-            Some(current),
-            "the one carrying this build's version is the one to run"
-        );
-
-        // With nothing matching, the search order decides, as it always did.
-        assert_eq!(
-            choose_executable(
-                std::slice::from_ref(&stale),
-                crate::updater::CURRENT_VERSION
-            ),
-            Some(stale.clone()),
-            "an old bridge is still better than no bridge, and the card says so"
-        );
-
-        assert_eq!(
-            choose_executable(&[], crate::updater::CURRENT_VERSION),
-            None,
-            "and nothing found is still nothing found"
-        );
     }
 
     /// Windows has no bridge, and reporting a missing one there would send

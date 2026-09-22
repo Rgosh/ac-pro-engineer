@@ -10,6 +10,9 @@ BUNDLE_NAME="ac_pro_engineer_${VERSION}"
 BUNDLE_DIR="${RELEASE_DIR}/${BUNDLE_NAME}"
 WIN_DIR="${BUNDLE_DIR}/Windows"
 LIN_DIR="${BUNDLE_DIR}/Linux"
+# The bridge out of the Wine prefix, and where its checkout is expected.
+BRIDGE_EXE="wineshm.exe"
+BRIDGE_SRC="${BRIDGE_SRC:-$(cd .. && pwd)/wineshm}"
 
 echo "=========================================="
 echo "Pro Engineer All-in-One Builder ${VERSION}"
@@ -48,30 +51,41 @@ if rustup target list | grep -q "x86_64-pc-windows-gnu (installed)"; then
         echo "  WARNING: could not cross-build ac_pro_engineer.exe."
         echo "  The Windows folder will hold its README and nothing else."
     fi
-    if cargo build -p shm-bridge --target x86_64-pc-windows-gnu --release; then
-        BRIDGE_BUILT=1
+    # **The bridge is its own project now.** It used to be a crate in this
+    # workspace; it is https://github.com/Rgosh/wineshm, and a checkout of it
+    # beside this one is what gets built here. Without one, the bundle is
+    # finished with the `.exe` from its release page instead — which is what
+    # the message below says, because a bundle quietly missing its bridge is
+    # a Linux release that reads no telemetry at all.
+    if [ -d "${BRIDGE_SRC}" ]; then
+        if (cd "${BRIDGE_SRC}" && cargo build --release \
+                --target x86_64-pc-windows-gnu); then
+            BRIDGE_BUILT=1
+        else
+            echo ""
+            echo "  WARNING: could not cross-build ${BRIDGE_EXE}."
+            echo "  A mingw-w64 toolchain is required for the windows-gnu target:"
+            echo "    Arch:   sudo pacman -S mingw-w64-gcc"
+            echo "    Debian: sudo apt install gcc-mingw-w64-x86-64"
+        fi
     else
         echo ""
-        echo "  WARNING: could not cross-build shm-bridge.exe."
-        echo "  A mingw-w64 toolchain is required for the windows-gnu target:"
-        echo "    Arch:   sudo pacman -S mingw-w64-gcc"
-        echo "    Debian: sudo apt install gcc-mingw-w64-x86-64"
-        echo "  Continuing without it; the Linux bundle will have no bridge."
+        echo "  NOTICE: no wineshm checkout at ${BRIDGE_SRC}."
+        echo "  Clone it, or drop its released ${BRIDGE_EXE} into ${LIN_DIR}/ by hand:"
+        echo "    https://github.com/Rgosh/wineshm/releases/latest"
     fi
 else
     echo "Notice: x86_64-pc-windows-gnu target not installed."
     echo "  Install it with: rustup target add x86_64-pc-windows-gnu"
-    cargo build -p shm-bridge --release && BRIDGE_BUILT=1 || true
 fi
 
 echo ""
 echo "[4/5] Checking Windows binaries..."
-if [ -f "target/x86_64-pc-windows-gnu/release/shm-bridge.exe" ]; then
-    cp "target/x86_64-pc-windows-gnu/release/shm-bridge.exe" "${LIN_DIR}/"
-    echo "  - shm-bridge.exe copied to Linux folder."
-elif [ -f "target/release/shm-bridge.exe" ]; then
-    cp "target/release/shm-bridge.exe" "${LIN_DIR}/"
-    echo "  - shm-bridge.exe copied to Linux folder."
+BRIDGE_BUILT_PATH="${BRIDGE_SRC}/target/x86_64-pc-windows-gnu/release/${BRIDGE_EXE}"
+if [ -f "${BRIDGE_BUILT_PATH}" ]; then
+    cp "${BRIDGE_BUILT_PATH}" "${LIN_DIR}/"
+    echo "  - ${BRIDGE_EXE} copied to Linux folder."
+    BRIDGE_BUILT=1
 fi
 
 if [ -f "target/release/ac_pro_engineer" ]; then
@@ -175,7 +189,7 @@ echo "Bundle contents:"
 find "${BUNDLE_DIR}" -type f | sed "s|^|  |"
 echo ""
 if [ "${BRIDGE_BUILT}" -eq 0 ]; then
-    echo "INCOMPLETE: shm-bridge.exe is missing, so this bundle cannot read"
+    echo "INCOMPLETE: ${BRIDGE_EXE} is missing, so this bundle cannot read"
     echo "telemetry under Wine/Proton. Install a mingw-w64 toolchain and re-run,"
     echo "or take the artifacts from the release workflow instead."
 else

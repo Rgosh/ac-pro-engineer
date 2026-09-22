@@ -19,6 +19,7 @@ workspace = true
 kn5 = { path = "../kn5" }
 
 anyhow = { workspace = true }
+wineshm = { workspace = true }
 zerocopy = { workspace = true, features = ["derive"] }
 directories-next = { workspace = true }
 walkdir = { workspace = true }

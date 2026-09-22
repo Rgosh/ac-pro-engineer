@@ -9,7 +9,7 @@
 //! refuses to attach to a page that declares the other game's contract.
 //!
 //! On Windows the game writes the pages itself; on Linux it is a Windows
-//! process under Proton, so `shm-bridge.exe` runs inside **ACC's own prefix**
+//! process under Proton, so `wineshm.exe` runs inside **ACC's own prefix**
 //! — appid 805550, not Assetto Corsa's — and mirrors them into `/dev/shm`.
 
 pub mod paths;

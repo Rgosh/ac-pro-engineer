@@ -961,28 +961,26 @@ mod tests {
         assert!(lua.trim_end().ends_with("return FRAME_LAYOUT"));
     }
 
-    /// shm-bridge hardcodes this size, because it deliberately does not
-    /// depend on ac_core — it is a small Windows binary that runs under Wine.
-    /// This is the check that keeps the two in step.
+    /// **Nothing hardcodes this size any more, and that is the check.**
+    ///
+    /// The bridge used to carry `OVERLAY_FILE_SIZE` in its own source because
+    /// it deliberately did not depend on this crate, and a test read that
+    /// source to keep the two in step. The bridge is told the size on its
+    /// command line now — see `overlay::bridge::pages` — so the only thing
+    /// left to assert is that the number it is told comes from the struct
+    /// rather than from a literal somebody typed.
     #[test]
-    fn the_bridge_knows_the_right_size() {
-        let bridge = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../shm-bridge/src/main.rs"
-        ))
-        .expect("shm-bridge source");
+    fn the_bridge_is_asked_for_a_mapping_the_size_of_the_frame() {
+        let pages = crate::overlay::bridge::pages();
+        let overlay = pages
+            .iter()
+            .find(|page| page.name == OVERLAY_MMF_NAME)
+            .expect("the overlay block is one of the pages the bridge is started with");
 
-        let expected = format!("OVERLAY_FILE_SIZE: usize = {};", size_of::<OverlayFrame>());
-        assert!(
-            bridge.contains(&expected),
-            "shm-bridge declares a different size than OverlayFrame ({} bytes); \
-             update OVERLAY_FILE_SIZE in shm-bridge/src/main.rs",
-            size_of::<OverlayFrame>()
-        );
-
-        assert!(
-            bridge.contains(OVERLAY_MMF_NAME),
-            "shm-bridge must map the same name the writer uses"
+        assert_eq!(
+            overlay.bytes,
+            size_of::<OverlayFrame>(),
+            "the mapping CSP opens has to be at least the struct the panel declares"
         );
     }
 

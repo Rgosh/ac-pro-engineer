@@ -3,7 +3,7 @@
 //! AC publishes three pages — physics, graphics and static — into named shared
 //! memory, and that is the whole interface. On Windows the game writes them
 //! directly; on Linux the game is a Windows process under Proton, so
-//! `shm-bridge.exe` runs inside the prefix and mirrors them out to `/dev/shm`.
+//! `wineshm.exe` runs inside the prefix and mirrors them out to `/dev/shm`.
 //! Either way what arrives here is the same bytes in the same layout.
 
 pub mod car_data;
@@ -36,7 +36,7 @@ pub const PROCESS_NAMES: &[&str] = &["acs.exe", "simulator.exe"];
 /// Whether Assetto Corsa's telemetry can actually be read on this machine.
 ///
 /// On Linux the game is a Windows process under Proton and its pages reach us
-/// only once `shm-bridge.exe` mirrors them into `/dev/shm`, so a running
+/// only once `wineshm.exe` mirrors them into `/dev/shm`, so a running
 /// `acs.exe` with no mapping is a game this application cannot see. On Windows
 /// the game writes the pages itself and the process being up is the whole
 /// answer.

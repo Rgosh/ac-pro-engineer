@@ -492,7 +492,7 @@ impl Reading {
     /// and has never been written to.
     ///
     /// **The two are the same bytes**, and telling them apart is not optional
-    /// on Linux: `shm-bridge` creates the pages when it starts, so they are
+    /// on Linux: `the bridge` creates the pages when it starts, so they are
     /// there — full of zeros — from before the game is launched until after it
     /// has quit. A front end that trusts `poll` returning `Some` shows a
     /// connected car doing 0 km/h in first gear on a track with no name, which

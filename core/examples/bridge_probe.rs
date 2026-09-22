@@ -1,4 +1,4 @@
-//! Print what the application knows about `shm-bridge.exe`.
+//! Print what the application knows about `wineshm.exe`.
 //!
 //! Three pieces have to agree about a frame — the application, the panel, and
 //! the bridge — and the bridge was the one that could not be inspected. Every

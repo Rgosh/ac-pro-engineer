@@ -936,11 +936,11 @@ mod tests {
         "ac_tui-x86_64-unknown-linux-gnu.tar.gz.sha256",
         "dist-manifest.json",
         "sha256.sum",
-        "shm-bridge-installer.ps1",
-        "shm-bridge-installer.sh",
-        "shm-bridge-x86_64-pc-windows-gnu-update",
-        "shm-bridge-x86_64-pc-windows-gnu.zip",
-        "shm-bridge-x86_64-pc-windows-gnu.zip.sha256",
+        "the bridge-installer.ps1",
+        "the bridge-installer.sh",
+        "the bridge-x86_64-pc-windows-gnu-update",
+        "the bridge-x86_64-pc-windows-gnu.zip",
+        "the bridge-x86_64-pc-windows-gnu.zip.sha256",
         "source.tar.gz",
         "source.tar.gz.sha256",
     ];
@@ -949,8 +949,8 @@ mod tests {
     #[test]
     fn non_application_assets_are_rejected() {
         for name in [
-            "shm-bridge.exe",
-            "shm-bridge-x86_64-pc-windows-gnu.zip",
+            "wineshm.exe",
+            "the bridge-x86_64-pc-windows-gnu.zip",
             "ac_tui-installer.sh",
             "ac_tui-installer.ps1",
             "ac_tui-x86_64-unknown-linux-gnu-update",
@@ -988,8 +988,8 @@ mod tests {
     #[test]
     fn other_packages_archives_are_rejected() {
         for name in [
-            "shm-bridge-x86_64-pc-windows-gnu.zip",
-            "shm-bridge-x86_64-unknown-linux-gnu.tar.gz",
+            "the bridge-x86_64-pc-windows-gnu.zip",
+            "the bridge-x86_64-unknown-linux-gnu.tar.gz",
             "some-future-tool-x86_64-unknown-linux-gnu.tar.gz",
         ] {
             assert_eq!(classify_asset(name), None, "{name} should be rejected");
@@ -1022,7 +1022,7 @@ mod tests {
         let assets = [
             asset("ac_pro_engineer"),
             asset("ac_pro_engineer.exe"),
-            asset("shm-bridge.exe"),
+            asset("wineshm.exe"),
         ];
         let (kind, chosen) = select_asset(&assets).expect("a linux asset exists");
         assert_eq!(chosen.name, "ac_pro_engineer");
@@ -1074,7 +1074,7 @@ mod tests {
         let assets = [
             asset("ac_pro_engineer"),
             asset("ac_pro_engineer.exe"),
-            asset("shm-bridge.exe"),
+            asset("wineshm.exe"),
         ];
         let (kind, chosen) = select_asset(&assets).expect("a windows asset exists");
         assert_eq!(chosen.name, "ac_pro_engineer.exe");

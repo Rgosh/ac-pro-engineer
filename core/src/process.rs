@@ -170,7 +170,7 @@ pub struct ProcessWatcher {
     /// A second question the game gets to ask, beyond "is the process there".
     ///
     /// On Linux the game runs under Proton and its telemetry only arrives once
-    /// `shm-bridge.exe` is up, so a running `acs.exe` with no mapping is a game
+    /// `wineshm.exe` is up, so a running `acs.exe` with no mapping is a game
     /// this application cannot read — and the launcher says so rather than
     /// waiting silently. Which mapping that is is a fact about a game, so the
     /// game supplies the test and this module only remembers the answer.

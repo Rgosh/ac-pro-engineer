@@ -92,8 +92,13 @@ fact — **every line of this core is the maintainer's own or arrived under MIT.
 - The one other contributor's commits all predate the change to the AGPL, and
   were made under the MIT terms this project carried then.
   `LICENSE-MIT-HISTORICAL` keeps those terms, and MIT permits exactly this use.
-- `shm-bridge/` is a fork of Damir Jelić's
-  [shm-bridge](https://github.com/poljar/shm-bridge) and stays MIT.
+- The bridge out of the Wine prefix is
+  [wineshm](https://github.com/Rgosh/wineshm) — the maintainer's own work,
+  MIT, and a separate repository. It replaced `shm-bridge/`, which was a fork
+  of Damir Jelić's [shm-bridge](https://github.com/poljar/shm-bridge) carrying
+  his and a second contributor's copyright under MIT. Releases up to and
+  including v0.5.0 shipped that fork, under its own `LICENSE`, and nothing
+  about those releases changes.
 - **No third-party dependency is copyleft.** The window's whole tree is 473
   packages; the only copyleft licences in it are this project's own. Two
   crates offer copyleft as one of several choices — `r-efi` is "MIT OR
@@ -175,9 +180,18 @@ permanently. `LICENSE-MIT-HISTORICAL` keeps those terms. The AGPL applies from
 the commit that followed `9ba92a3` onward, which is to say to v0.3.7 and every
 release after it.
 
-`shm-bridge/` is not affected at all. It is a fork of Damir Jelić's
-[shm-bridge](https://github.com/poljar/shm-bridge) and stays MIT-licensed,
-today and going forward, under its own `LICENSE`.
+The bridge is not affected at all. It is [wineshm](https://github.com/Rgosh/wineshm)
+now — the maintainer's own, MIT, in a repository of its own, and linked here
+as an ordinary dependency. Before it, `shm-bridge/` in this workspace was a
+fork of Damir Jelić's [shm-bridge](https://github.com/poljar/shm-bridge),
+MIT-licensed under its own `LICENSE`; every release up to and including v0.5.0
+shipped it and stays exactly as it was published.
+
+MIT into AGPL is the direction that works: MIT permits the use, and the
+combined work is offered under the AGPL. The reverse would not, which is why
+the bridge being the maintainer's own MIT code rather than AGPL matters — a
+program that only *runs* it is unaffected either way, but a program that links
+it as a library is not.
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-//! Fetching a newer `shm-bridge.exe` from the release page.
+//! Fetching a newer bridge from its release page.
 //!
 //! The bridge is the one piece of this that a user cannot rebuild: it is a
 //! Windows binary, and cross-building it needs a mingw toolchain that a Linux
@@ -27,7 +27,10 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 const GITHUB_OWNER: &str = "Rgosh";
-const GITHUB_REPO: &str = "ac-pro-engineer";
+// **The bridge's own repository, not this one.** It used to be a crate in
+// this workspace and shipped in this project's releases; it is its own
+// project now, which is why the asset is looked for over there.
+const GITHUB_REPO: &str = "wineshm";
 
 /// Long enough for a slow connection, short enough that a launcher card does
 /// not appear to have hung.
@@ -130,17 +133,20 @@ pub enum Delivery {
 
 /// Is this asset the bridge, and how does it deliver it?
 ///
-/// Matched by stem rather than by exact name, because the published name is
-/// `shm-bridge-x86_64-pc-windows-gnu.zip` and has been since dist took over
-/// releases. Matching only `shm-bridge.exe` found nothing newer than v0.2.2 and
-/// would have offered that as an "update" — a downgrade past the release that
-/// taught the bridge about the overlay at all.
+/// Matched by stem rather than by exact name: the release page has published
+/// it as a bare `.exe` and as a `-x86_64-pc-windows-gnu.zip`, and an exact
+/// match on either one silently finds nothing on releases that used the other
+/// — which presents as "no update available" for ever rather than as an
+/// error.
 ///
-/// Checksums, installers and dist's own `-update` artifacts carry the same stem
-/// and are not the bridge.
+/// Checksums, installers and dist's own `-update` artifacts carry the same
+/// stem and are not the bridge.
 fn classify_asset(name: &str) -> Option<Delivery> {
     let lower = name.to_ascii_lowercase();
-    if !lower.contains("shm-bridge") {
+    // The stem of the binary this program looks for, without its extension —
+    // so the two cannot drift apart.
+    let stem = super::bridge::BRIDGE_EXE.trim_end_matches(".exe");
+    if !lower.contains(stem) {
         return None;
     }
     if lower.ends_with(".sha256") || lower.contains("installer") {
@@ -246,7 +252,7 @@ pub fn best_for(app_version: &str) -> Result<RemoteBridge, String> {
 /// Every published bridge, newest release first.
 pub fn published_bridges() -> Result<Vec<RemoteBridge>, String> {
     let url = format!("https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases");
-    info!("Looking for a published shm-bridge at {url}");
+    info!("Looking for a published bridge at {url}");
 
     // Off the caller's thread: this is reached both from a background thread
     // and straight from the terminal's key handler, and `reqwest::blocking`
@@ -380,14 +386,14 @@ pub fn download_to(remote: &RemoteBridge, destination: &Path) -> Result<PathBuf,
     }
 
     info!(
-        "Fetched shm-bridge {} into {}",
+        "Fetched the bridge {} into {}",
         remote.version,
         destination.display()
     );
     Ok(destination.to_path_buf())
 }
 
-/// Pull `shm-bridge.exe` out of a release zip.
+/// Pull the bridge out of a release zip.
 ///
 /// dist's zip carries the binary beside a README, a LICENSE and a CHANGELOG, so
 /// the entry is found by name rather than by taking the first one.
@@ -448,17 +454,17 @@ fn verify(bytes: &[u8], expected_version: &str) -> Result<(), String> {
 
     if !contains(bytes, OVERLAY_MMF_NAME.as_bytes()) {
         return Err(format!(
-            "shm-bridge {expected_version} does not know about the overlay mapping \
+            "the bridge {expected_version} does not know about the overlay mapping \
              ({OVERLAY_MMF_NAME}) — it maps AC's own pages and nothing else, so the \
              panel would never appear. Build one from this checkout instead: \
-             cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu"
+             cargo build --release --target x86_64-pc-windows-gnu, in the wineshm checkout"
         ));
     }
 
     match version_in_bytes(bytes) {
         Some(found) if found == expected_version.trim_start_matches('v') => Ok(()),
         Some(found) => Err(format!(
-            "the download says it is shm-bridge {found}, the release said {expected_version}"
+            "the download says it is the bridge {found}, the release said {expected_version}"
         )),
         // No marker, but it does carry the mapping name — so it is a bridge that
         // knows about the overlay, from before the marker was added. Allowed:
@@ -555,27 +561,27 @@ mod tests {
         assert!(!is_worth_fetching("0.3.2", Some("0.3.3")));
     }
 
-    /// The names the release page has actually used. `shm-bridge.exe` is the
+    /// The names the release page has actually used. `wineshm.exe` is the
     /// hand-made form up to v0.2.2; everything since dist took over is the
     /// windows-gnu zip, and matching only the `.exe` found nothing newer than
     /// v0.2.2 — which would have been offered as an update.
     #[test]
     fn the_bridge_asset_is_recognised_however_the_release_named_it() {
         assert_eq!(
-            classify_asset("shm-bridge-x86_64-pc-windows-gnu.zip"),
+            classify_asset("wineshm-x86_64-pc-windows-gnu.zip"),
             Some(Delivery::Zip),
             "this is the name every release since v0.3.0 actually publishes"
         );
-        assert_eq!(classify_asset("shm-bridge.exe"), Some(Delivery::Executable));
-        assert_eq!(classify_asset("SHM-Bridge.EXE"), Some(Delivery::Executable));
+        assert_eq!(classify_asset("wineshm.exe"), Some(Delivery::Executable));
+        assert_eq!(classify_asset("WineSHM.EXE"), Some(Delivery::Executable));
 
         // Same stem, not the bridge.
         assert_eq!(
-            classify_asset("shm-bridge-x86_64-pc-windows-gnu.zip.sha256"),
+            classify_asset("wineshm-x86_64-pc-windows-gnu.zip.sha256"),
             None
         );
-        assert_eq!(classify_asset("shm-bridge-installer.ps1"), None);
-        assert_eq!(classify_asset("shm-bridge-installer.sh"), None);
+        assert_eq!(classify_asset("wineshm-installer.ps1"), None);
+        assert_eq!(classify_asset("wineshm-installer.sh"), None);
         assert_eq!(classify_asset("ac_tui-x86_64-pc-windows-gnu.zip"), None);
         assert_eq!(classify_asset("ac_pro_engineer.exe"), None);
     }
@@ -586,7 +592,13 @@ mod tests {
         bytes.extend_from_slice(&[0u8; 512]);
         bytes.extend_from_slice(OVERLAY_MMF_NAME.as_bytes());
         if let Some(version) = version {
-            bytes.extend_from_slice(format!("ACPE-SHM-BRIDGE-VERSION={version};").as_bytes());
+            bytes.extend_from_slice(
+                format!(
+                    "{}{version};",
+                    crate::overlay::bridge::VERSION_MARKER_PREFIX
+                )
+                .as_bytes(),
+            );
         }
         bytes.extend_from_slice(&[0u8; 512]);
         bytes
@@ -638,7 +650,7 @@ mod tests {
             for (name, body) in [
                 ("README.md", b"not the bridge".to_vec()),
                 ("LICENSE", b"nor this".to_vec()),
-                ("shm-bridge.exe", fake_bridge(Some("0.3.4"))),
+                ("wineshm.exe", fake_bridge(Some("0.3.4"))),
             ] {
                 zip.start_file(name, options).expect("zip entry");
                 zip.write_all(&body).expect("zip write");

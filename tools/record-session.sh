@@ -14,7 +14,7 @@
 #   1. Finds the game's Steam appid by reading the manifests on this machine.
 #      Nothing is hardcoded: a guessed appid is the kind of thing that costs an
 #      evening the day it turns out to be wrong.
-#   2. Starts `shm-bridge.exe` inside *that game's* Proton prefix. The game is a
+#   2. Starts `wineshm.exe` inside *that game's* Proton prefix. The game is a
 #      Windows process under Proton and publishes into the prefix; the bridge
 #      pre-creates the mappings as files in /dev/shm so the writes land where
 #      Linux can read them. **This has to happen before the game starts**, which
@@ -103,17 +103,17 @@ command -v protontricks-launch >/dev/null \
 # is the bridge the application would have started.
 bridge=""
 for candidate in \
-  "$ROOT/target/x86_64-pc-windows-gnu/release/shm-bridge.exe" \
-  "$ROOT/shm-bridge.exe"; do
+  "$ROOT/target/x86_64-pc-windows-gnu/release/wineshm.exe" \
+  "$ROOT/wineshm.exe"; do
   [ -f "$candidate" ] && { bridge="$candidate"; break; }
 done
 
 if [ -z "$bridge" ]; then
-  say "No shm-bridge.exe yet — building it"
-  cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu \
+  say "No wineshm.exe yet — building it"
+  cargo build --release --target x86_64-pc-windows-gnu in the wineshm checkout \
     || die "could not build the bridge. Is the x86_64-pc-windows-gnu target installed?
    rustup target add x86_64-pc-windows-gnu"
-  bridge="$ROOT/target/x86_64-pc-windows-gnu/release/shm-bridge.exe"
+  bridge="$ROOT/target/x86_64-pc-windows-gnu/release/wineshm.exe"
 fi
 echo "   using $bridge"
 

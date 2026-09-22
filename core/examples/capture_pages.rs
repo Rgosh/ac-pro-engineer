@@ -37,7 +37,7 @@
 //! # On Linux
 //!
 //! The game is a Windows process under Proton and publishes into the prefix,
-//! so `shm-bridge.exe` has to be running to mirror the pages into `/dev/shm`.
+//! so `wineshm.exe` has to be running to mirror the pages into `/dev/shm`.
 //! The bridge maps 2048 bytes per page, which is larger than any page Assetto
 //! Corsa or Competizione writes — but it is the bridge's number, not the
 //! game's, so **the length printed here is the mapping's, not necessarily the

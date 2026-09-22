@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "kn5", "tui", "shm-bridge", "tests_suite"]
+members = ["core", "kn5", "tui", "tests_suite"]
 
 [workspace.package]
 version = "0.5.0"
@@ -8,11 +8,26 @@ edition = "2024"
 authors = ["Rgosh"]
 # AGPL from the commit after 9ba92a3 (v0.3.6 and earlier were MIT, and stay
 # MIT — that grant cannot be withdrawn; see LICENSE-MIT-HISTORICAL).
-# `shm-bridge` is deliberately not on this: it is a fork of poljar/shm-bridge
-# and keeps its own MIT licence.
+#
+# Everything in this workspace is on it now. The one exception used to be
+# `shm-bridge/`, a fork of poljar/shm-bridge carrying its own MIT terms and two
+# other people's copyright; it has been replaced by `wineshm`, which is a
+# project of its own under MIT — see the workspace dependency below.
 license = "AGPL-3.0-only"
 
 [workspace.dependencies]
+# **The bridge out of the Wine prefix, and its own crate now.**
+#
+# It used to be `shm-bridge/` in this workspace: a fork of poljar/shm-bridge,
+# MIT, with two other people's copyright in it and its page list written into a
+# `const` array so it served one pair of games and nothing else. It is a
+# project of its own — https://github.com/Rgosh/wineshm — which is what lets
+# the launcher, the note format and the version marker live in one place
+# instead of being described here and implemented there.
+#
+# Pinned to a tag rather than a branch: this decides what a released binary
+# talks to, and "whatever main was that afternoon" is not a thing to ship.
+wineshm = { git = "https://github.com/Rgosh/wineshm", tag = "v0.1.0" }
 # 1.0.103 is where RUSTSEC-2026-0190 was fixed — unsoundness in
 # `Error::downcast_mut`. Same reasoning as memmap2 below: name the floor.
 anyhow = "1.0.103"

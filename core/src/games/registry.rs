@@ -65,7 +65,7 @@ pub struct Backend {
     /// Steam's number for this game.
     ///
     /// On Linux it names the Proton prefix, which is the only thing that
-    /// decides where `shm-bridge.exe` has to run: a bridge started in the
+    /// decides where `wineshm.exe` has to run: a bridge started in the
     /// wrong prefix creates mappings the game never writes into, and every
     /// symptom of that looks like the game not publishing. It used to be a
     /// constant in the launcher, which meant one game.

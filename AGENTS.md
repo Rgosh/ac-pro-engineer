@@ -33,7 +33,7 @@ RaceEngineer/
 │       │   ├── simulator.rs # Mock telemetry simulator binary
 │       │   └── tui_tester.rs# Automated headless TUI menu & action test runner (generates PNG screenshots)
 │       └── ui/              # TUI components, layouts, theme engine, and tab widgets
-├── shm-bridge/              # Shared Memory Bridge binary for Wine/Proton to Linux /dev/shm
+├── wineshm (its own repository)              # Shared Memory Bridge binary for Wine/Proton to Linux /dev/shm
 └── tests_suite/             # Integration tests for core logic, Linux distro mocks, & overlay
 ```
 
@@ -68,8 +68,8 @@ All commands must pass cleanly without warnings or errors.
 
 ## 3. Cross-Platform Guidelines (Linux & Windows)
 
-1. **Shared Memory (`shm-bridge`)**:
-   - `shm-bridge` runs under Wine/Proton to map Windows named shared memory objects (`acpmf_physics`, `acpmf_graphics`, `acpmf_static`) directly to Linux `/dev/shm`.
+1. **Shared Memory (`wineshm`)**:
+   - `wineshm` runs under Wine/Proton to map Windows named shared memory objects (`acpmf_physics`, `acpmf_graphics`, `acpmf_static`) directly to Linux `/dev/shm`.
    - Always gate Win32 API calls (`windows` crate, `std::os::windows`) with `#[cfg(target_os = "windows")]` or `#[cfg(windows)]`.
    - Provide non-Windows compilation stubs so `cargo check --workspace` succeeds on Linux native targets.
 

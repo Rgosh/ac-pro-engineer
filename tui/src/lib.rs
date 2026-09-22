@@ -354,7 +354,7 @@ pub struct AppState {
     pub show_overlay_card: bool,
     pub overlay_card_selection: usize,
     pub overlay_report: ac_core::overlay::install::InstallReport,
-    /// Which `shm-bridge.exe` is serving the mapping, and whether it can.
+    /// Which `wineshm.exe` is serving the mapping, and whether it can.
     ///
     /// The third of the three pieces that have to agree about a frame, and the
     /// one that used to be unknowable: a bridge older than the struct maps too
@@ -719,7 +719,8 @@ impl AppState {
     pub fn refresh_overlay_report(&mut self) {
         self.overlay_report =
             ac_core::overlay::install::describe(self.config.ac_install_override());
-        self.bridge_status = ac_core::overlay::bridge::status(ac_core::updater::CURRENT_VERSION);
+        self.bridge_status =
+            ac_core::overlay::bridge::status(ac_core::overlay::bridge::BRIDGE_VERSION);
     }
 
     /// Put the panel in the game folder if it is not already there.
@@ -861,7 +862,7 @@ impl AppState {
 
             if bridge_update::should_fetch(&remote.version, local.as_deref(), wanted) {
                 info!(
-                    "A published shm-bridge v{} is worth taking over the one here ({})",
+                    "A published bridge v{} is worth taking over the one here ({})",
                     remote.version,
                     local.as_deref().unwrap_or("unknown")
                 );
@@ -878,7 +879,7 @@ impl AppState {
             .clone()
     }
 
-    /// Fetch the published `shm-bridge.exe` and put it where this application
+    /// Fetch the published `wineshm.exe` and put it where this application
     /// looks for one.
     ///
     /// Blocking, and deliberately: it is one small file behind an explicit
@@ -934,7 +935,7 @@ impl AppState {
                 format!("the bridge here is v{here}, the same release as this application")
             } else {
                 format!(
-                    "the bridge here is v{here} and the newest published is v{} —                      no bridge for v{wanted} has been published yet, so build one:                      cargo build --release -p shm-bridge --target x86_64-pc-windows-gnu",
+                    "the bridge here is v{here} and the newest published is v{} —                      no bridge for v{wanted} has been published yet, so build one:                      cargo build --release --target x86_64-pc-windows-gnu in the wineshm checkout",
                     remote.version
                 )
             };
@@ -943,7 +944,7 @@ impl AppState {
 
         self.bridge_fetch_status = match bridge_update::download_to(&remote, &destination) {
             Ok(path) => format!(
-                "fetched shm-bridge v{}{} into {} — restart it to pick it up",
+                "fetched the bridge v{}{} into {} — restart it to pick it up",
                 remote.version,
                 if remote.version == wanted {
                     ""

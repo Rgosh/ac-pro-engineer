@@ -7,7 +7,7 @@
 //! interfaces read the core.
 //!
 //! The names are AC's own. On Windows the game writes these mappings itself; on
-//! Linux the game runs under Proton and `shm-bridge.exe` mirrors them into
+//! Linux the game runs under Proton and `wineshm.exe` mirrors them into
 //! `/dev/shm`, so the paths differ and the bytes do not.
 //!
 //! **They are also Competizione's**, which is the one thing to be careful

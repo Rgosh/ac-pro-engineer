@@ -68,13 +68,13 @@ note "the largest of them."
 protontricks "${APPID}" dwrite
 
 say "[4/4] Checking for the bridge"
-BRIDGE="$(dirname "$0")/shm-bridge.exe"
+BRIDGE="$(dirname "$0")/wineshm.exe"
 if [ -f "${BRIDGE}" ]; then
     note "Found ${BRIDGE}"
     note "Start it before the game, and leave it running:"
     note "    protontricks-launch --appid ${APPID} ${BRIDGE}"
 else
-    note "shm-bridge.exe is not next to this script."
+    note "wineshm.exe is not next to this script."
     note "Without it the desktop application cannot read the game's telemetry"
     note "and the in-game panel never receives a frame. It ships in the same"
     note "archive as this script."
@@ -84,7 +84,7 @@ cat <<EOF
 
 Done. In order, every time:
 
-  1. protontricks-launch --appid ${APPID} shm-bridge.exe   (leave it running)
+  1. protontricks-launch --appid ${APPID} wineshm.exe   (leave it running)
   2. ./ac_pro_engineer                                     (leave it running)
   3. Assetto Corsa
 

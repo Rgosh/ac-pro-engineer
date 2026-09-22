@@ -71,13 +71,13 @@ const SPEAKS_AC: &[&str] = &[
 /// Folders exempt from the layout rule, and why.
 ///
 /// `overlay/` installs a Custom Shaders Patch Lua app into the game's own
-/// folder and drives `shm-bridge.exe` inside its Proton prefix. CSP is an
+/// folder and drives `wineshm.exe` inside its Proton prefix. CSP is an
 /// Assetto Corsa mod and ACC has none, so this is not a boundary a second game
 /// crosses — it is a feature one game has. See §8 of `docs/roadmap.md`, which
 /// is where that decision is written down.
 ///
 /// `tui/src/platform/` is deliberately **not** on this list any more. It
-/// launches `shm-bridge.exe` inside a Proton prefix, and it used to be given
+/// launches `wineshm.exe` inside a Proton prefix, and it used to be given
 /// Assetto Corsa's appid as a constant — which is the same as saying this
 /// program reads one game. It asks the registry which prefix now, so it has
 /// stopped knowing what a simulator is, and the test is what keeps it that
