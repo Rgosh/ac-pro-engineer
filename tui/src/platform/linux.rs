@@ -74,8 +74,17 @@ impl SharedMemoryBridge {
             None => ".".to_string(),
         };
 
-        let proton_cmd =
-            std::env::var("AC_PROTON_PATH").unwrap_or_else(|_| "protontricks-launch".to_string());
+        // **How to reach the prefix is the core's answer, not this file's.**
+        // Both front ends start this bridge, and for four releases both of
+        // them hardcoded `protontricks-launch` separately — two copies of one
+        // rule, which is how they come to disagree. The core picks Steam's
+        // own Proton where it can find it, so nothing has to be installed.
+        let plan = ac_core::overlay::bridge::how_to_start(app_id, std::path::Path::new(&pwd));
+        info!(
+            "[shm-bridge] Starting it through {:?}: {}",
+            plan.how,
+            plan.program.display()
+        );
         let is_test = std::env::var("AC_TEST_MODE").is_ok();
 
         let mut child = if is_test {
@@ -89,16 +98,23 @@ impl SharedMemoryBridge {
                 c
             }
         } else {
-            let mut c = Command::new(proton_cmd);
-            c.args(["--appid", &app_id.to_string(), &pwd]);
+            let mut c = Command::new(&plan.program);
+            c.args(&plan.args);
+            if let Some(dir) = plan.working_dir.as_ref() {
+                c.current_dir(dir);
+            }
             c
         };
 
+        child.envs(std::env::vars());
+        // **After the inherited environment, so these win.** A driver with
+        // `WINEPREFIX` already set in their shell — pointing at some other
+        // prefix — would otherwise send the bridge into that one, and the two
+        // overrides among these exist to stop winedevice.exe spinning a core.
+        for (key, value) in &plan.env {
+            child.env(key, value);
+        }
         let mut child = child
-            .envs(std::env::vars())
-            // These envs are required to fix 100% CPU usage by winedevice.exe
-            .env("DBUS_FATAL_WARNINGS", "0")
-            .env("WINEDLLOVERRIDES", "winebus.sys=d")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

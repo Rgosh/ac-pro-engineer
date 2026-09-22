@@ -36,15 +36,25 @@ pub fn roots() -> Vec<PathBuf> {
         roots.push(home.join(".steam").join("steam"));
         roots.push(home.join(".steam").join("root"));
         roots.push(home.join(".local").join("share").join("Steam"));
-        // Flatpak keeps its own home.
-        roots.push(
+        // Flatpak keeps its own home. Both spellings are real: the sandbox's
+        // HOME is `~/.var/app/<id>`, so Steam's own `~/.local/share/Steam`
+        // lands under it — and `XDG_DATA_HOME` is pointed at `data/`, which is
+        // where other versions put it. A machine has one or the other.
+        for inside in [
             home.join(".var")
                 .join("app")
                 .join("com.valvesoftware.Steam")
                 .join(".local")
                 .join("share")
                 .join("Steam"),
-        );
+            home.join(".var")
+                .join("app")
+                .join("com.valvesoftware.Steam")
+                .join("data")
+                .join("Steam"),
+        ] {
+            roots.push(inside);
+        }
         // Snap.
         roots.push(
             home.join("snap")
@@ -275,6 +285,51 @@ pub fn proton_documents_dir(app_id: &str) -> Option<PathBuf> {
         .find(|candidate| candidate.exists())
 }
 
+/// The Proton prefix Steam built for one game.
+///
+/// `<library>/steamapps/compatdata/<app id>/pfx`, in whichever library holds
+/// the game. `None` before the game has been run once, because Steam makes
+/// the prefix on first launch and not at install.
+pub fn proton_prefix(app_id: &str) -> Option<PathBuf> {
+    libraries()
+        .into_iter()
+        .map(|library| {
+            library
+                .join("steamapps")
+                .join("compatdata")
+                .join(app_id)
+                .join("pfx")
+        })
+        .find(|candidate| candidate.is_dir())
+}
+
+/// The `wine` Steam itself runs this game with.
+///
+/// **So that nothing has to be installed to start the bridge.** Which Proton
+/// a game uses is a per-game setting, and reading it out of Steam's config
+/// would mean parsing another VDF and knowing the difference between a
+/// per-game override, a default, and a tool that is itself a shim. Proton
+/// writes the answer into the prefix it builds: the second line of
+/// `config_info` is that Proton's own font directory, and the build is three
+/// components above it.
+///
+/// Taken from the prefix rather than from a version number, so a driver on
+/// Proton 7, Experimental or GE gets their own.
+pub fn proton_wine(app_id: &str) -> Option<PathBuf> {
+    let prefix = proton_prefix(app_id)?;
+    let info = std::fs::read_to_string(prefix.parent()?.join("config_info")).ok()?;
+    wine_from_config_info(&info)
+}
+
+/// The rule itself, over the file's text, so it can be tested without Steam.
+fn wine_from_config_info(info: &str) -> Option<PathBuf> {
+    // `.../files/share/fonts/` — the Proton build's own fonts. Everything
+    // this needs is two levels above it.
+    let fonts = Path::new(info.lines().nth(1)?.trim());
+    let wine = fonts.parent()?.parent()?.join("bin").join("wine");
+    wine.is_file().then_some(wine)
+}
+
 /// The host's own Documents folder, for a native install or a Wine-less one.
 pub fn host_documents_dir() -> Option<PathBuf> {
     directories_next::UserDirs::new()
@@ -284,6 +339,37 @@ pub fn host_documents_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Proton writes which build made a prefix into the prefix.
+    ///
+    /// The second line is that Proton's font directory; the `wine` beside it
+    /// is what Steam runs the game with, whatever the version or the fork.
+    #[test]
+    fn the_proton_a_prefix_was_built_with_is_read_from_it() {
+        let dir = scratch_dir("proton-config-info");
+        let files = dir.join("Proton - Experimental").join("files");
+        std::fs::create_dir_all(files.join("bin")).expect("bin");
+        std::fs::create_dir_all(files.join("share").join("fonts")).expect("fonts");
+        std::fs::write(files.join("bin").join("wine"), b"#!/bin/true").expect("wine");
+
+        let info = format!(
+            "11.0-100\n{}/share/fonts/\n{}/lib/\n",
+            files.display(),
+            files.display()
+        );
+        assert_eq!(
+            wine_from_config_info(&info).as_deref(),
+            Some(files.join("bin").join("wine").as_path())
+        );
+
+        // A file that is not one, and a Proton that has been deleted since:
+        // both are "ask protontricks instead" rather than a wrong path.
+        assert_eq!(wine_from_config_info("11.0-100\n"), None);
+        assert_eq!(
+            wine_from_config_info("11.0-100\n/gone/files/share/fonts/\n"),
+            None
+        );
+    }
     use super::*;
     use std::io::Write;
 

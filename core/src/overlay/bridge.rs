@@ -194,6 +194,120 @@ impl BridgeStatus {
     }
 }
 
+/// Everything needed to start the bridge inside a game's Proton prefix.
+///
+/// The pieces rather than a `Command`, because the two front ends build
+/// different ones — one of them `tokio`'s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invocation {
+    /// What to run.
+    pub program: PathBuf,
+    /// Its arguments, in order.
+    pub args: Vec<String>,
+    /// Environment to set for it.
+    pub env: Vec<(String, String)>,
+    /// What to make the working directory, when it matters.
+    pub working_dir: Option<PathBuf>,
+    /// How this was decided, for the log line and for the settings card.
+    pub how: How,
+}
+
+/// Which of the three ways of reaching a Proton prefix this is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum How {
+    /// `AC_PROTON_PATH`, which the driver set themselves.
+    Chosen,
+    /// Steam's own Proton, found in the prefix it built.
+    Steam,
+    /// `protontricks-launch`, and hoping it is installed.
+    Protontricks,
+}
+
+/// **Steam's own Proton first, and protontricks only if it cannot be found.**
+///
+/// The bridge has to run as a Windows process inside the game's prefix, and
+/// for four releases the only way this offered was `protontricks-launch`.
+/// That is a dependency, and on an immutable distribution — Bazzite,
+/// Silverblue, the Steam Deck — it is one that usually arrives as a Flatpak.
+/// A Flatpak has a `/dev/shm` of its own, so the bridge inside one creates
+/// its pages in a tmpfs that exists only in that sandbox: it reports success,
+/// and nothing outside can see a byte of it. Reported from Bazzite as
+/// "running shm-bridge.exe does nothing", by somebody who then could not
+/// install protontricks any other way without rebuilding their OS image.
+///
+/// Nothing needs to be installed. Steam already ships the Proton the game is
+/// set to use and writes which one into the prefix it built, so the bridge
+/// can be started with that directly — see [`crate::steam::proton_wine`].
+///
+/// `AC_PROTON_PATH` still wins where it is set: it is documented, somebody is
+/// relying on it, and it takes the protontricks command line.
+pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
+    let chosen = std::env::var("AC_PROTON_PATH")
+        .ok()
+        .filter(|p| !p.is_empty());
+    if let Some(program) = chosen {
+        return protontricks(PathBuf::from(program), app_id, exe, How::Chosen);
+    }
+
+    let id = app_id.to_string();
+    if let (Some(wine), Some(prefix)) = (
+        crate::steam::proton_wine(&id),
+        crate::steam::proton_prefix(&id),
+    ) {
+        return through_proton(wine, prefix, exe);
+    }
+
+    protontricks(
+        PathBuf::from("protontricks-launch"),
+        app_id,
+        exe,
+        How::Protontricks,
+    )
+}
+
+fn protontricks(program: PathBuf, app_id: u32, exe: &Path, how: How) -> Invocation {
+    Invocation {
+        program,
+        args: vec![
+            "--appid".to_string(),
+            app_id.to_string(),
+            exe.to_string_lossy().into_owned(),
+        ],
+        env: common_env(),
+        working_dir: None,
+        how,
+    }
+}
+
+fn through_proton(wine: PathBuf, prefix: PathBuf, exe: &Path) -> Invocation {
+    let mut env = common_env();
+    env.push((
+        "WINEPREFIX".to_string(),
+        prefix.to_string_lossy().into_owned(),
+    ));
+
+    Invocation {
+        program: wine,
+        args: vec![exe.to_string_lossy().into_owned()],
+        env,
+        // **The folder the bridge is in, and it matters.** Wine resolves the
+        // path against the prefix's drive mappings, and a folder that is not
+        // mapped — `/tmp` is the one that bit during testing — comes back as
+        // "failed to open" with the file plainly there.
+        working_dir: exe.parent().map(Path::to_path_buf),
+        how: How::Steam,
+    }
+}
+
+/// Set for either route: both end up running a Windows process under Wine.
+fn common_env() -> Vec<(String, String)> {
+    vec![
+        // Both of these stop winedevice.exe spinning a core.
+        ("DBUS_FATAL_WARNINGS".to_string(), "0".to_string()),
+        ("WINEDLLOVERRIDES".to_string(), "winebus.sys=d".to_string()),
+    ]
+}
+
 /// Where a running bridge would have left its note.
 pub fn info_path() -> PathBuf {
     Path::new(SHM_DIR).join(BRIDGE_INFO_FILE)
@@ -445,6 +559,56 @@ fn choose_executable(candidates: &[PathBuf], wanted: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **Steam's own Proton, and what it is instead of.**
+    ///
+    /// The shapes rather than the discovery: whether a prefix exists on the
+    /// machine running the test is not something a test may depend on.
+    #[test]
+    fn the_bridge_is_started_through_steams_own_proton_when_there_is_one() {
+        let exe = Path::new("/home/someone/pro-engineer/shm-bridge.exe");
+        let through = through_proton(
+            PathBuf::from("/steam/Proton - Experimental/files/bin/wine"),
+            PathBuf::from("/steam/steamapps/compatdata/244210/pfx"),
+            exe,
+        );
+
+        assert_eq!(through.how, How::Steam);
+        assert!(through.program.ends_with("bin/wine"));
+        assert_eq!(through.args, vec![exe.to_string_lossy().into_owned()]);
+        assert!(
+            through.env.iter().any(|(key, value)| key == "WINEPREFIX"
+                && value == "/steam/steamapps/compatdata/244210/pfx"),
+            "the prefix is how wine knows which game it is joining: {:?}",
+            through.env
+        );
+        // The folder, because wine resolves a path against the prefix's drive
+        // mappings and a folder that is not mapped reads as "file not found".
+        assert_eq!(
+            through.working_dir.as_deref(),
+            Some(Path::new("/home/someone/pro-engineer"))
+        );
+
+        // And the fallback still speaks protontricks' command line.
+        let tricks = protontricks(
+            PathBuf::from("protontricks-launch"),
+            244210,
+            exe,
+            How::Protontricks,
+        );
+        assert_eq!(
+            tricks.args,
+            vec![
+                "--appid".to_string(),
+                "244210".to_string(),
+                exe.to_string_lossy().into_owned()
+            ]
+        );
+        assert!(
+            tricks.working_dir.is_none() && !tricks.env.iter().any(|(k, _)| k == "WINEPREFIX"),
+            "protontricks finds the prefix itself"
+        );
+    }
     use super::*;
 
     /// "I built it and ran it out of the target folder and it does not see the
