@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ac_core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "ac_tui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ac_core",
  "anyhow",
@@ -1148,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "kn5"
-version = "0.5.0"
+version = "0.5.1"
 
 [[package]]
 name = "kurbo"
@@ -2183,7 +2183,7 @@ dependencies = [
 
 [[package]]
 name = "tests_suite"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ac_core",
  "ac_tui",
@@ -3098,8 +3098,8 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "wineshm"
-version = "0.2.0"
-source = "git+https://github.com/Rgosh/wineshm?tag=v0.2.0#fe5ca989989054d200f1e7a6ce2322b096ef3b27"
+version = "0.3.0"
+source = "git+https://github.com/Rgosh/wineshm?tag=v0.3.0#c642043c255b2f2fe6b6a89d7a30898cde5cc28e"
 dependencies = [
  "windows 0.58.0",
 ]

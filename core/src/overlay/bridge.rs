@@ -311,6 +311,20 @@ fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How
         args.push("--page".to_string());
         args.push(format!("{}:{}", page.name, page.bytes));
     }
+    // **The block that proves the game is still there.** Assetto Corsa
+    // rewrites its physics page three hundred times a second while a session
+    // is live and stops entirely when it exits — and the pages outlive it,
+    // because the bridge is holding the sections. Without this the file goes
+    // on holding the last frame: a car at some speed on some circuit, real
+    // numbers from a session that ended, and the first thing read after the
+    // game is started again. That is the Huracán at Spa, at its source.
+    //
+    // Named rather than guessed: `acpmf_static` is written once a session and
+    // is constant afterwards, so "blank what has not changed" would wipe the
+    // car and the track of a session that is still running.
+    args.push("--heartbeat".to_string());
+    args.push("acpmf_physics".to_string());
+
     // Nothing to say on a terminal nobody is watching: the launcher card and
     // the diagnostics read the note instead.
     args.push("--quiet".to_string());
@@ -715,6 +729,17 @@ mod tests {
             "{said}"
         );
         assert!(said.contains("--quiet"), "nobody is watching its terminal");
+        // The heartbeat has to name a block that is actually published, and
+        // one that moves — the bridge refuses a name it is not serving, and a
+        // static block would have it blank a live session.
+        assert!(
+            said.contains("--heartbeat acpmf_physics"),
+            "without this the pages outlive the game: {said}"
+        );
+        assert!(
+            pages().iter().any(|page| page.name == "acpmf_physics"),
+            "the heartbeat must be one of the blocks being published"
+        );
     }
 
     /// The five are the four the games publish and the one that runs back.

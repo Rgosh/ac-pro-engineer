@@ -2,9 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.5.1] - 2026-09-22
 
-Five faults, all of them found in one session and reported in one issue.
+The bridge out of the Wine prefix is its own project now —
+[wineshm](https://github.com/Rgosh/wineshm), MIT — and it stopped letting a
+session that has ended read as the one you are in.
+
+### Fixed
+
+- **The pages outlived the game.** A game exits; the section it was writing
+  into stays, because the bridge is holding it; and the file under `/dev/shm`
+  goes on holding the last frame for ever. A reader opening it found a car at
+  some speed on some circuit — real numbers, from a session that ended — and
+  starting the game again read that old frame until the first new one landed.
+  This is the Huracán at Spa, at its source. The bridge is told which block
+  changes while the game is alive (`acpmf_physics`, three hundred times a
+  second) and zeroes every block when it goes quiet. Zeroes are the state
+  every reader already waits through.
+- **A bridge that was killed no longer reads as a working one.** It leaves its
+  note and its pages exactly as they were, so the launcher card and the
+  diagnostics said the bridge was fine while the pages beside it held a dead
+  session. A running bridge touches its note every couple of seconds now, and
+  `BridgeStatus::Abandoned` is what an untouched one reads as — not workable,
+  and it says the pages are not a live session rather than quoting a version
+  at somebody about a process that is gone.
+- **"Unreadable" now says what to do about it.** A note this build cannot use —
+  another release, or another program's blocks in the same directory — printed
+  the fault and stopped, which is a support question rather than a diagnosis.
+
+### Changed
+
+- **`shm-bridge/` is gone from this repository.** It was a fork of
+  poljar/shm-bridge carrying two other people's copyright, with its page list
+  written into a `const` array so it served one pair of games and nothing else.
+  Everything published up to and including v0.5.0 shipped it and is unaffected;
+  `LICENSING.md` has the detail.
+- **The bridge is versioned separately.** They moved together while it was a
+  crate in this workspace, so "is the bridge current" meant "does it say what I
+  say". A bridge reading 0.3.0 beside this application is a matched pair.
+- Nothing has to be installed to start it: Steam ships the Proton the game is
+  set to use and records which one in the prefix it built, so `protontricks` is
+  a fallback rather than a requirement. That covers the native, Flatpak, Snap
+  and Steam Deck layouts, and libraries on other disks.
+
+### Also in this release
+
+Five faults found in one session and reported in one issue, fixed before
+this one was cut.
 
 ### Fixed
 
@@ -60,6 +104,14 @@ Five faults, all of them found in one session and reported in one issue.
   down every one of these. The tyre faults in v0.4.6 and v0.4.8 were his as
   well; this is the third release in a row where the most useful bug report
   came from him.
+
+### Thanks
+
+- **[@Stuntman Daz](https://www.overtake.gg/)**, who could not get any of this
+  working on Bazzite and said so in detail. Every Linux fix in this release
+  started from that thread: the setting that does not exist, the README that
+  said the bridge was optional, and protontricks arriving as a Flatpak whose
+  own `/dev/shm` makes a bridge publish where nothing can read it.
 
 ## [v0.5.0] - 2026-09-20
 

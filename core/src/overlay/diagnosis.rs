@@ -204,7 +204,18 @@ pub fn report() -> Report {
             ));
         }
         BridgeStatus::Unreadable(why) => {
-            lines.push(Line::new(Tone::Bad, "unreadable", why.clone()))
+            lines.push(Line::new(Tone::Bad, "unreadable", why.clone()));
+            // **Something wrote a note this build cannot use.** A bridge from
+            // another release, or one serving a different program's blocks in
+            // the same directory. Either way the remedy is the same, and a
+            // screen that says "unreadable" and stops is a support question.
+            lines.push(Line::action(
+                "Whatever wrote it is not serving this application's overlay block. Stop it \
+                 and start the bridge again:",
+            ));
+            lines.push(Line::action(
+                "protontricks-launch --appid 244210 wineshm.exe --verify",
+            ));
         }
         BridgeStatus::Incompatible { info, complaint } => {
             describe(&mut lines, info);
