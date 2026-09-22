@@ -176,6 +176,19 @@ pub enum BridgeStatus {
     Unannounced,
     /// A note is there but cannot be read.
     Unreadable(String),
+    /// A note is there, and nothing has touched it for long enough that the
+    /// bridge behind it is gone.
+    ///
+    /// **The state that used to read as health.** A bridge killed rather than
+    /// closed leaves its note and its pages exactly as they were, so this used
+    /// to come back [`Self::Current`] — and the pages beside it hold a session
+    /// that ended whenever the process died. Every number in them is real and
+    /// none of it is now, which is this project's worst class of fault: a
+    /// Huracán at Spa reported as a Ferrari at Monza with the speed correct.
+    ///
+    /// The bridge touches its note every couple of seconds now, so its age is
+    /// a pulse — see `wineshm::liveness`.
+    Abandoned(Box<BridgeInfo>),
     /// Running, and it cannot serve this build's frames.
     Incompatible {
         info: Box<BridgeInfo>,
@@ -414,7 +427,16 @@ pub fn status(expected_version: &str) -> BridgeStatus {
     };
 
     match BridgeInfo::parse(&text) {
-        Some(info) => judge(info, expected_version),
+        Some(info) => {
+            // Before anything else about it: is the bridge that wrote this
+            // still there? A note outlives the process that made it, and the
+            // pages beside it outlive the session.
+            let store = wineshm::Store::at(SHM_DIR);
+            if wineshm::reader::pulse(&store).is_some_and(|pulse| !pulse.is_worth_reading()) {
+                return BridgeStatus::Abandoned(Box::new(info));
+            }
+            judge(info, expected_version)
+        }
         None => BridgeStatus::Unreadable(format!(
             "{} is missing a key this build needs",
             path.display()
@@ -613,6 +635,49 @@ mod tests {
             !tricks.env.iter().any(|(k, _)| k == "WINEPREFIX"),
             "protontricks finds the prefix itself"
         );
+    }
+
+    /// **A bridge that was killed is not a bridge.**
+    ///
+    /// It leaves its note and its pages exactly as they were, so this used to
+    /// come back `Current` and the pages beside it held a session that ended
+    /// whenever the process did. Checked here on a directory of its own, with
+    /// the note's age set by hand, because a test may not wait six seconds and
+    /// may not touch `/dev/shm`.
+    #[cfg(unix)]
+    #[test]
+    fn a_note_nothing_is_maintaining_is_not_a_running_bridge() {
+        use wineshm::liveness::{Pulse, pulse};
+
+        // The rule the status depends on, stated where it can be seen: a note
+        // older than the window is abandoned, and one touched now is not.
+        assert_eq!(
+            pulse(
+                std::time::Duration::from_secs(60),
+                false,
+                wineshm::liveness::STALE
+            ),
+            Pulse::Abandoned
+        );
+        assert_eq!(
+            pulse(std::time::Duration::ZERO, false, wineshm::liveness::STALE),
+            Pulse::Beating
+        );
+        assert!(!Pulse::Abandoned.is_worth_reading());
+
+        // And the status this crate builds on it says so rather than judging
+        // the version of something that is gone.
+        let info = BridgeInfo {
+            protocol: BRIDGE_PROTOCOL,
+            version: BRIDGE_VERSION.to_string(),
+            frame_bytes: size_of::<OverlayFrame>(),
+            mmf: OVERLAY_MMF_NAME.to_string(),
+            pid: 7,
+        };
+        let abandoned = BridgeStatus::Abandoned(Box::new(info.clone()));
+        assert!(!abandoned.is_workable(), "its pages are not a live session");
+        // The same bridge, still beating, is the one that works.
+        assert!(judge(info, BRIDGE_VERSION).is_workable());
     }
 
     /// **Every block this program needs is on the command line.**

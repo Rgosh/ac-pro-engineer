@@ -490,6 +490,16 @@ fn bridge_span<'a>(
             "running but too old to serve the overlay — press B, or rebuild it",
             bad,
         ),
+        // Red for the same reason as above: something is there, and it is not
+        // serving anything. The pages beside its note are whatever it last
+        // wrote, which reads as a session rather than as nothing.
+        BridgeStatus::Abandoned(info) => Span::styled(
+            format!(
+                "v{} left its pages behind and is gone — press START",
+                info.version
+            ),
+            bad,
+        ),
         BridgeStatus::Unreadable(why) => Span::styled(format!("cannot be read: {why}"), warn),
         BridgeStatus::Incompatible { info, complaint } => Span::styled(
             format!("v{} {} — press B", info.version, complaint.describe()),

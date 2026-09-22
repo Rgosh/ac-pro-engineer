@@ -172,6 +172,19 @@ pub fn report() -> Report {
                 "protontricks-launch --appid 244210 wineshm.exe",
             ));
         }
+        BridgeStatus::Abandoned(info) => {
+            lines.push(Line::new(
+                Tone::Bad,
+                "gone",
+                "a bridge left its note and its pages behind, and nothing is maintaining them",
+            ));
+            lines.push(Line::action(format!(
+                "the pages in /dev/shm are whatever v{} (pid {}) last wrote — not a live \
+                 session",
+                info.version, info.pid
+            )));
+            lines.push(Line::action("Start it again in the game's Proton prefix."));
+        }
         BridgeStatus::Unannounced => {
             lines.push(Line::new(
                 Tone::Bad,
