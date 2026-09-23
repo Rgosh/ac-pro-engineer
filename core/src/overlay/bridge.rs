@@ -322,8 +322,15 @@ fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How
     // Named rather than guessed: `acpmf_static` is written once a session and
     // is constant afterwards, so "blank what has not changed" would wipe the
     // car and the track of a session that is still running.
-    args.push("--heartbeat".to_string());
-    args.push("acpmf_physics".to_string());
+    // Which block that is, is the bridge crate's knowledge — it ships the
+    // preset these pages come from, so it knows which of them moves. Naming
+    // it here as well would be the same fact in two places, and the wrong
+    // answer is not an error anybody sees: pick the static block, which
+    // carries the car and the track, and a live session gets blanked.
+    if let Some(beat) = wineshm::page::preset_heartbeat("assetto-corsa") {
+        args.push("--heartbeat".to_string());
+        args.push(beat.to_string());
+    }
 
     // Nothing to say on a terminal nobody is watching: the launcher card and
     // the diagnostics read the note instead.

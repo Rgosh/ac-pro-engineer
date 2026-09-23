@@ -3098,8 +3098,8 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "wineshm"
-version = "0.3.0"
-source = "git+https://github.com/Rgosh/wineshm?tag=v0.3.0#c642043c255b2f2fe6b6a89d7a30898cde5cc28e"
+version = "0.4.0"
+source = "git+https://github.com/Rgosh/wineshm?tag=v0.4.0#b63aaac26df4be10d166b2ca558c6d0afdd915c5"
 dependencies = [
  "windows 0.58.0",
 ]

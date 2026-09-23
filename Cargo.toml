@@ -27,7 +27,7 @@ license = "AGPL-3.0-only"
 #
 # Pinned to a tag rather than a branch: this decides what a released binary
 # talks to, and "whatever main was that afternoon" is not a thing to ship.
-wineshm = { git = "https://github.com/Rgosh/wineshm", tag = "v0.3.0" }
+wineshm = { git = "https://github.com/Rgosh/wineshm", tag = "v0.4.0" }
 # 1.0.103 is where RUSTSEC-2026-0190 was fixed — unsoundness in
 # `Error::downcast_mut`. Same reasoning as memmap2 below: name the floor.
 anyhow = "1.0.103"
