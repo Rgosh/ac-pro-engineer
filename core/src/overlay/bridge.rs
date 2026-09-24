@@ -77,6 +77,27 @@ pub fn pages() -> Vec<wineshm::Page> {
     pages
 }
 
+/// Whether this set of pages may be left in the game's hands.
+///
+/// Only when every one of them is written by the *game*. A page this program
+/// writes — the overlay frame the in-game panel reads — may have no other
+/// handle on it, and handing over closes the last one and destroys the
+/// section. See the note in [`dressed`].
+///
+/// A predicate rather than a constant `false`, because the day the overlay
+/// page stops being published for a driver who does not use the panel, this
+/// says so by itself instead of somebody remembering to.
+#[cfg(unix)]
+fn hands_over(pages: &[wineshm::Page]) -> bool {
+    !pages.iter().any(written_by_us)
+}
+
+/// Whether this program is the one that fills a page.
+#[cfg(unix)]
+fn written_by_us(page: &wineshm::Page) -> bool {
+    page.name == super::frame::OVERLAY_MMF_NAME
+}
+
 /// Where the mappings live on Linux. Wine sees it as `Z:\dev\shm\…`.
 const SHM_DIR: &str = "/dev/shm";
 
@@ -330,6 +351,27 @@ fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How
     if let Some(beat) = wineshm::page::preset_heartbeat("assetto-corsa") {
         args.push("--heartbeat".to_string());
         args.push(beat.to_string());
+    }
+
+    // **Handing the sections over, when it can be done at all.** The bridge
+    // can leave once the game holds the sections itself: a named section is a
+    // counted object, so the game's own handle keeps it alive and its writes
+    // go on landing in /dev/shm with no Wine process left running. That is
+    // about forty megabytes and a wineserver client that this program would
+    // otherwise keep resident for a whole session.
+    //
+    // It cannot be done while a page in the set is one *this* program writes.
+    // The overlay page goes the other way — this side fills it, CSP inside the
+    // prefix reads it — so the only handle on it may be the bridge's, and a
+    // section whose last handle closes is destroyed. Hand that over before the
+    // panel has loaded and the name is gone: the panel never appears, and
+    // nothing anywhere reports an error.
+    //
+    // There is no way to ask. The overlay protocol is deliberately one-way, so
+    // the panel cannot say it has attached, and "the game is writing" — which
+    // is what the bridge waits for — says nothing about CSP.
+    if hands_over(&pages()) {
+        args.push("--handoff".to_string());
     }
 
     // Nothing to say on a terminal nobody is watching: the launcher card and
@@ -602,6 +644,50 @@ fn choose_executable(candidates: &[PathBuf], wanted: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **The page this program writes is why the bridge has to stay.**
+    ///
+    /// A named section dies with its last handle. The overlay page goes the
+    /// other way round from the rest — this side fills it and CSP reads it —
+    /// so the bridge's handle may be the only one there is. Letting the bridge
+    /// leave destroys the section, the panel never appears, and nothing
+    /// reports an error anywhere. The overlay protocol is one-way, so there is
+    /// no way to ask whether CSP has attached yet.
+    #[cfg(unix)]
+    #[test]
+    fn the_pages_this_program_publishes_are_never_handed_over() {
+        assert!(
+            !super::hands_over(&super::pages()),
+            "the overlay page is in the set, so the bridge has to keep holding it"
+        );
+    }
+
+    /// And the game's own pages would be, which is what makes this a
+    /// predicate rather than a `false` somebody has to remember to change.
+    #[cfg(unix)]
+    #[test]
+    fn a_set_of_only_the_games_own_pages_may_be_handed_over() {
+        let game_only: Vec<wineshm::Page> = super::pages()
+            .into_iter()
+            .filter(|page| !super::written_by_us(page))
+            .collect();
+        assert!(!game_only.is_empty(), "the game publishes pages of its own");
+        assert!(super::hands_over(&game_only));
+    }
+
+    /// The flag must not reach the command line while the overlay page is in
+    /// the set — this is the assertion that would actually catch somebody
+    /// turning it on by hand.
+    #[cfg(unix)]
+    #[test]
+    fn the_command_line_does_not_ask_for_a_handover_today() {
+        let plan = super::how_to_start(244210, std::path::Path::new("/tmp/wineshm.exe"));
+        assert!(
+            !plan.args.iter().any(|arg| arg == "--handoff"),
+            "{:?}",
+            plan.args
+        );
+    }
 
     /// **Steam's own Proton, and what it is instead of.**
     #[cfg(unix)]
