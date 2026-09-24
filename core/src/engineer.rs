@@ -38,6 +38,20 @@ pub struct Recommendation {
     pub chain: Option<Chain>,
 }
 
+impl Recommendation {
+    /// Whether this finding is about the wheel rather than the car.
+    ///
+    /// **Asked here rather than matched there.** A front end that wanted the
+    /// force-feedback findings for its own force-feedback screen had to
+    /// compare `category` against a literal — and `component` beside it is
+    /// translated, so the obvious field to match is the one that breaks in
+    /// Russian. The rule that writes the category is a dozen lines below this;
+    /// the question belongs beside it.
+    pub fn is_about_force_feedback(&self) -> bool {
+        self.category == "Clipping"
+    }
+}
+
 /// Evidence, mechanism, and a check for next time.
 ///
 /// A flat finding says "front-right 96 °C". This says what produced it, what it
@@ -183,6 +197,7 @@ pub struct EngineerStats {
     pub current_excess_steer: f32,
     pub total_frames: u32,
     pub ffb_clip_frames: u32,
+
     pub input_history: crate::RingBuffer<(f64, f64, f64, f64, f64)>,
     pub fuel_laps_remaining: f32,
     pub fuel_consumption_rate: f32,
@@ -231,6 +246,22 @@ impl Default for EngineerStats {
 }
 
 impl EngineerStats {
+    /// The share of this session's frames in which the wheel was saturating.
+    ///
+    /// **One answer, because a front end shows it and the engineer judges
+    /// it.** Clipping is the one fault on the force-feedback screen that
+    /// cannot be felt — a wheel at its ceiling feels *strong* — so what a
+    /// driver sees is a number, and a number a screen worked out for itself
+    /// would sooner or later disagree with the finding printed beside it.
+    ///
+    /// Zero before anything has arrived, rather than a division by nothing.
+    pub fn ffb_clip_ratio(&self) -> f32 {
+        if self.total_frames == 0 {
+            return 0.0;
+        }
+        self.ffb_clip_frames as f32 / self.total_frames as f32
+    }
+
     pub fn new() -> Self {
         Self {
             bottoming_frames: [0; 4],
@@ -1147,11 +1178,7 @@ impl Engineer {
             return;
         }
         let ru = self.is_ru();
-        let clip_ratio = if self.stats.total_frames > 0 {
-            self.stats.ffb_clip_frames as f32 / self.stats.total_frames as f32
-        } else {
-            0.0
-        };
+        let clip_ratio = self.stats.ffb_clip_ratio();
 
         let is_clipping = clip_ratio > 0.05 && car.speed_kmh > 10.0;
 
@@ -2539,6 +2566,73 @@ mod compound_tests {
 
 #[cfg(test)]
 mod tests {
+
+    /// **The category is the stable half.** `component` goes through the
+    /// translator, so a front end matching on it would find nothing the moment
+    /// somebody ran the program in Russian — which is the mistake this
+    /// question exists to stop anybody making.
+    #[test]
+    fn a_clipping_finding_knows_it_is_about_the_wheel() {
+        let clipping = super::Recommendation {
+            component: "Force Feedback".to_string(),
+            category: "Clipping".to_string(),
+            severity: Severity::Warning,
+            message: String::new(),
+            action: String::new(),
+            parameters: Vec::new(),
+            confidence: 0.5,
+            chain: None,
+        };
+        assert!(clipping.is_about_force_feedback());
+
+        let tyres = super::Recommendation {
+            category: "Pressure".to_string(),
+            ..clipping.clone()
+        };
+        assert!(!tyres.is_about_force_feedback());
+    }
+
+    /// **The number a screen prints and the number a finding quotes are one
+    /// number.** The force-feedback screen shows the share of the session
+    /// spent clipping; the engineer warns above five percent. Worked out in
+    /// two places they would eventually disagree, and a driver would be told
+    /// "not clipping" beside a warning that said otherwise.
+    #[test]
+    fn the_clipping_share_is_one_answer() {
+        let mut stats = super::EngineerStats::new();
+        assert_eq!(
+            stats.ffb_clip_ratio(),
+            0.0,
+            "nothing has arrived, and that is not a division by nothing"
+        );
+
+        stats.total_frames = 200;
+        stats.ffb_clip_frames = 0;
+        assert_eq!(stats.ffb_clip_ratio(), 0.0);
+
+        stats.ffb_clip_frames = 50;
+        assert!((stats.ffb_clip_ratio() - 0.25).abs() < f32::EPSILON);
+
+        stats.ffb_clip_frames = 200;
+        assert!((stats.ffb_clip_ratio() - 1.0).abs() < f32::EPSILON);
+    }
+
+    /// The threshold the warning uses, stated against the accessor rather than
+    /// against arithmetic written out again here.
+    #[test]
+    fn a_twentieth_of_the_session_is_where_the_warning_starts() {
+        let mut stats = super::EngineerStats::new();
+        stats.total_frames = 1_000;
+
+        stats.ffb_clip_frames = 49;
+        assert!(
+            stats.ffb_clip_ratio() <= 0.05,
+            "just under is not a warning"
+        );
+
+        stats.ffb_clip_frames = 51;
+        assert!(stats.ffb_clip_ratio() > 0.05, "just over is");
+    }
 
     /// The simulator publishes zero wear until a lap is done, and so does a
     /// real session before its first update. Neither means the tyres are gone.
