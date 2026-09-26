@@ -845,6 +845,48 @@ impl Theme {
             .unwrap_or_default()
     }
 
+    /// What is wrong with this palette, if anything.
+    ///
+    /// **The rule the shipped palettes are held to, as a function, so that a
+    /// palette somebody mixes themselves is held to the same one.** What goes
+    /// wrong with colours is not a compile error and not a crash: it is a
+    /// border the same shade as the background, text that cannot be read on
+    /// what it sits on, or a warning and an all-clear that look alike. Every
+    /// one of those is silent, and the last is the dangerous one — this
+    /// program says a tyre is fine or overheating in colour, and two verdicts
+    /// that look the same is worse than no colour at all.
+    ///
+    /// Empty means nothing is wrong. The complaints name the part, so whoever
+    /// is mixing can see which of the eight to move.
+    pub fn unreadable(&self) -> Vec<String> {
+        let apart = |a: &ColorTuple, b: &ColorTuple| {
+            (a.r as i32 - b.r as i32).abs()
+                + (a.g as i32 - b.g as i32).abs()
+                + (a.b as i32 - b.b as i32).abs()
+        };
+        let mut wrong = Vec::new();
+
+        if apart(&self.text, &self.background) <= 200 {
+            wrong.push("the text is too close to its background to read".to_string());
+        }
+        for (what, colour) in [
+            ("highlight", &self.highlight),
+            ("accent", &self.accent),
+            ("warning", &self.warning),
+            ("critical", &self.critical),
+            ("good", &self.good),
+            ("border", &self.border),
+        ] {
+            if apart(colour, &self.background) <= 60 {
+                wrong.push(format!("{what} disappears into the background"));
+            }
+        }
+        if apart(&self.critical, &self.good) <= 120 {
+            wrong.push("a warning and an all-clear look the same".to_string());
+        }
+        wrong
+    }
+
     /// Whether text on this background is dark on light.
     ///
     /// A front end that draws its own shading needs to know which way round the
@@ -1559,37 +1601,60 @@ mod theme_tests {
 
         for entry in &all {
             assert!(!entry.about.is_empty(), "{} says nothing", entry.name);
-            let theme = &entry.theme;
-            let apart = |a: &ColorTuple, b: &ColorTuple| {
-                (a.r as i32 - b.r as i32).abs()
-                    + (a.g as i32 - b.g as i32).abs()
-                    + (a.b as i32 - b.b as i32).abs()
-            };
+            // The rule itself lives on `Theme` so that a palette somebody
+            // mixes is held to the same one this holds the shipped set to.
             assert!(
-                apart(&theme.text, &theme.background) > 200,
-                "{}: text is too close to its background to read",
-                entry.name
-            );
-            for (what, colour) in [
-                ("highlight", &theme.highlight),
-                ("accent", &theme.accent),
-                ("warning", &theme.warning),
-                ("critical", &theme.critical),
-                ("good", &theme.good),
-                ("border", &theme.border),
-            ] {
-                assert!(
-                    apart(colour, &theme.background) > 60,
-                    "{}: {what} disappears into the background",
-                    entry.name
-                );
-            }
-            assert!(
-                apart(&theme.critical, &theme.good) > 120,
-                "{}: a warning and an all-clear look the same",
-                entry.name
+                entry.theme.unreadable().is_empty(),
+                "{}: {:?}",
+                entry.name,
+                entry.theme.unreadable()
             );
         }
+    }
+
+    /// **The rule has to be able to refuse**, or holding the shipped palettes
+    /// to it proves nothing and a driver mixing their own is told everything
+    /// is fine whatever they pick.
+    #[test]
+    fn a_palette_that_cannot_be_read_says_so() {
+        let invisible = Theme {
+            text: c(20, 20, 20),
+            ..Theme::default()
+        };
+        assert!(
+            invisible
+                .unreadable()
+                .iter()
+                .any(|why| why.contains("too close to its background")),
+            "{:?}",
+            invisible.unreadable()
+        );
+
+        // The dangerous one: this program says fine or overheating in colour.
+        let alike = Theme {
+            good: Theme::default().critical,
+            ..Theme::default()
+        };
+        assert!(
+            alike
+                .unreadable()
+                .iter()
+                .any(|why| why.contains("all-clear look the same")),
+            "{:?}",
+            alike.unreadable()
+        );
+
+        let lost = Theme {
+            border: Theme::default().background,
+            ..Theme::default()
+        };
+        assert!(
+            lost.unreadable()
+                .iter()
+                .any(|why| why.contains("border disappears")),
+            "{:?}",
+            lost.unreadable()
+        );
     }
 
     /// A name nobody recognises opens in the default rather than not opening.
