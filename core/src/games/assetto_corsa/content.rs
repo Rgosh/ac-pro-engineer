@@ -233,6 +233,76 @@ fn pretty_layout(config: &str) -> String {
         .replace('_', " ")
 }
 
+/// Every livery a car has, in the order the game numbers them.
+///
+/// **Ordered by the folder name, which is how the game's own list reads.**
+/// They are named `00_classic_red`, `01_mariner_blue` and so on precisely so
+/// that sorting the folders gives the order the maker intended; sorting by the
+/// pretty name would scatter a manufacturer's own sequence.
+///
+/// A skin folder with no `ui_skin.json` is still a skin — the game will drive
+/// it — so it is listed under a tidied version of its folder name rather than
+/// skipped. That is the opposite of the rule for tracks, and for a reason: a
+/// track with no description cannot be loaded, and a livery with none can.
+pub fn scan_skins(ac_root: &Path, car: &str) -> Vec<crate::games::catalogue::SkinListing> {
+    let skins = ac_root.join("content").join("cars").join(car).join("skins");
+    let Ok(entries) = fs::read_dir(&skins) else {
+        return Vec::new();
+    };
+
+    let mut found: Vec<(String, crate::games::catalogue::SkinListing)> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .filter_map(|path| {
+            let id = path.file_name()?.to_string_lossy().into_owned();
+            let described =
+                find_case_insensitive(&path, "ui_skin.json").and_then(|at| read_json(&at));
+
+            let name = described
+                .as_ref()
+                .and_then(|json| json["skinname"].as_str())
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| tidy(&id));
+            let number = described
+                .as_ref()
+                .and_then(|json| json["number"].as_str())
+                .map(str::trim)
+                .filter(|number| !number.is_empty() && *number != "0")
+                .map(str::to_string);
+
+            Some((
+                id.clone(),
+                crate::games::catalogue::SkinListing { id, name, number },
+            ))
+        })
+        .collect();
+
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found.into_iter().map(|(_, skin)| skin).collect()
+}
+
+/// A folder name as something a person would read.
+///
+/// `03_silver_stone_metallic_red` as `Silver stone metallic red`: the leading
+/// number is the game's ordering and says nothing to anybody looking at a list
+/// of pictures.
+fn tidy(folder: &str) -> String {
+    let without_number = folder
+        .split_once('_')
+        .filter(|(first, _)| first.chars().all(|c| c.is_ascii_digit()))
+        .map(|(_, rest)| rest)
+        .unwrap_or(folder);
+    let words = without_number.replace(['_', '-'], " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => folder.to_string(),
+    }
+}
+
 /// Read one of the game's own description files, which are not valid JSON.
 ///
 /// **Ninety-two of the ninety-six cars installed on the machine this was
@@ -312,6 +382,96 @@ fn find_case_insensitive(base: &Path, name: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    fn a_skin(at: &std::path::Path, car: &str, folder: &str, described: Option<&str>) {
+        let dir = at.join("content/cars").join(car).join("skins").join(folder);
+        fs::create_dir_all(&dir).expect("a fixture");
+        if let Some(json) = described {
+            fs::write(dir.join("ui_skin.json"), json).expect("a fixture");
+        }
+    }
+
+    /// **Ordered by folder, which is how the game's own list reads.** They are
+    /// named `00_`, `01_` and so on precisely so that sorting the folders
+    /// gives the order the maker intended; sorting by the pretty name would
+    /// scatter a manufacturer's own sequence.
+    #[test]
+    fn liveries_come_back_in_the_makers_order() {
+        let dir = scratch("skins-order");
+        a_skin(
+            &dir,
+            "miata",
+            "02_crystal_white",
+            Some(r#"{"skinname":"Crystal White"}"#),
+        );
+        a_skin(
+            &dir,
+            "miata",
+            "00_classic_red",
+            Some(r#"{"skinname":"Classic Red"}"#),
+        );
+        a_skin(
+            &dir,
+            "miata",
+            "01_mariner_blue",
+            Some(r#"{"skinname":"Mariner Blue"}"#),
+        );
+
+        let found = scan_skins(&dir, "miata");
+        let names: Vec<&str> = found.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Classic Red", "Mariner Blue", "Crystal White"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// **A livery with no description is still a livery** — the game will
+    /// drive it. That is the opposite of the rule for tracks, and for a
+    /// reason: a track with no description cannot be loaded and this can.
+    #[test]
+    fn a_livery_that_describes_nothing_is_still_offered() {
+        let dir = scratch("skins-bare");
+        a_skin(&dir, "miata", "03_silver_stone_metallic_red", None);
+
+        let found = scan_skins(&dir, "miata");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, "03_silver_stone_metallic_red");
+        assert_eq!(
+            found[0].name, "Silver stone metallic red",
+            "the folder was not made readable"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Zero is what the game writes when a livery carries no number, and a
+    /// picker showing "0" on half its entries is showing noise.
+    #[test]
+    fn a_number_of_zero_is_no_number() {
+        let dir = scratch("skins-number");
+        a_skin(
+            &dir,
+            "gt",
+            "00_one",
+            Some(r#"{"skinname":"One","number":"0"}"#),
+        );
+        a_skin(
+            &dir,
+            "gt",
+            "01_two",
+            Some(r#"{"skinname":"Two","number":"46"}"#),
+        );
+
+        let found = scan_skins(&dir, "gt");
+        assert_eq!(found[0].number, None);
+        assert_eq!(found[1].number.as_deref(), Some("46"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A car with no skins folder at all is not a crash.
+    #[test]
+    fn a_car_with_no_liveries_lists_nothing() {
+        let dir = scratch("skins-none");
+        assert!(scan_skins(&dir, "nothing").is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     /// **The game's own files are not valid JSON, and almost none of them
     /// are.** Ninety-two of the ninety-six cars installed on the machine this

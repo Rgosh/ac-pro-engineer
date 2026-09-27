@@ -86,6 +86,23 @@ impl TrackListing {
     }
 }
 
+/// One livery a car can be driven in.
+///
+/// **The most visible choice there is.** It is what the car looks like on
+/// screen and in every screenshot anybody takes, and the game writes it into
+/// the session by folder name — so a launcher that does not offer it either
+/// writes nothing and takes whatever the game picks, or writes a name it
+/// guessed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkinListing {
+    /// The folder under `skins`, which is what the session is told.
+    pub id: String,
+    /// What it calls itself, or the folder tidied up when it does not say.
+    pub name: String,
+    /// The racing number, where the livery carries one.
+    pub number: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CarSpecs {
     pub id: String,
