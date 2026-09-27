@@ -24,8 +24,7 @@ use walkdir::WalkDir;
 /// — which is why `UserDirs::document_dir()` found nothing on Linux and local
 /// setups were never discovered there.
 pub fn setups_root(configured_docs: Option<&Path>) -> Option<PathBuf> {
-    super::paths::ac_documents_dir(configured_docs)
-        .map(|docs| docs.join("Assetto Corsa").join("setups"))
+    super::paths::game_documents_dir(configured_docs).map(|game| game.join("setups"))
 }
 
 /// The folder a downloaded setup for `car` is installed into.

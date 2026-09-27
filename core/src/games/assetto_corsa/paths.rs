@@ -90,6 +90,24 @@ pub fn ac_install_root(configured: Option<&Path>) -> Option<PathBuf> {
     None
 }
 
+/// The game's own folder inside Documents.
+///
+/// **`Documents` is not where the game keeps anything.** It keeps
+/// `Documents/Assetto Corsa`, and everything of its own goes under that:
+/// `setups`, `cfg`, `personalbest.ini`, the logs. Writing to the parent puts a
+/// file somewhere nothing reads — which is exactly what happened when a
+/// launcher wrote `Documents/cfg/race.ini` and the game went on loading the
+/// session it already had, with a different car in it.
+///
+/// One place, because the folder's name was already spelled inside
+/// `setups_root` and a second spelling is a second answer.
+pub fn game_documents_dir(configured: Option<&Path>) -> Option<PathBuf> {
+    ac_documents_dir(configured).map(|docs| docs.join(GAME_FOLDER))
+}
+
+/// What the game calls its own folder, in Documents and nowhere else.
+pub const GAME_FOLDER: &str = "Assetto Corsa";
+
 /// Resolve the Documents folder Assetto Corsa reads setups from.
 pub fn ac_documents_dir(configured: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = configured.filter(|p| !p.as_os_str().is_empty()) {
@@ -118,6 +136,40 @@ pub fn ac_documents_dir(configured: Option<&Path>) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **The game keeps nothing in `Documents` itself.** Everything of its own
+    /// is under `Documents/Assetto Corsa`, and a file written to the parent
+    /// goes somewhere nothing reads — which is what happened when a launcher
+    /// wrote `Documents/cfg/race.ini` and the game went on loading the session
+    /// it already had, with a different car in it.
+    #[test]
+    fn the_games_folder_is_inside_documents_and_not_documents_itself() {
+        // A real directory: `ac_documents_dir` falls back to looking for the
+        // prefix when the one it is handed does not exist, which is right of
+        // it and makes a made-up path prove nothing.
+        let docs = std::env::temp_dir().join("ac-docs-fixture");
+        std::fs::create_dir_all(&docs).expect("a fixture");
+        let docs = docs.as_path();
+        let game = game_documents_dir(Some(docs)).expect("a path");
+        assert!(game.ends_with(GAME_FOLDER), "{game:?}");
+        assert_ne!(game, docs, "the parent is not the game's folder");
+        assert!(game.starts_with(docs), "{game:?}");
+    }
+
+    /// Setups and the session live side by side under the same folder, and
+    /// the name of that folder is written once.
+    #[test]
+    fn setups_and_the_session_agree_about_where_the_game_keeps_things() {
+        let docs = std::env::temp_dir().join("ac-docs-fixture");
+        std::fs::create_dir_all(&docs).expect("a fixture");
+        let docs = docs.as_path();
+        let setups = super::super::setups::setups_root(Some(docs)).expect("a path");
+        let game = game_documents_dir(Some(docs)).expect("a path");
+        assert!(
+            setups.starts_with(&game),
+            "{setups:?} is not under {game:?}"
+        );
+    }
     use super::*;
 
     /// A scratch directory of its own per test, so the suite stays parallel.
