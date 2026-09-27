@@ -22,6 +22,98 @@ use tracing::debug;
 /// `Vec::dedup` only removes *neighbouring* repeats, and these lists are built
 /// from several sources that overlap without being adjacent — the registry and
 /// `%ProgramFiles%` name the same directory on an ordinary machine.
+/// Who is signed in to Steam on this machine.
+///
+/// **Read, not asked for.** A launcher that wants somebody's name in a session
+/// can put a text box on screen and have them type what Steam already knows,
+/// or it can look. Steam writes the signed-in accounts to
+/// `config/loginusers.vdf` and has done for years.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Account {
+    /// The 64-bit id, as text. It is seventeen digits and does not fit
+    /// comfortably in anything a configuration file wants to hold.
+    pub id64: String,
+    /// The login name.
+    pub account: String,
+    /// What other people see, which is the one to put in front of a driver —
+    /// and may be in any script at all.
+    pub persona: String,
+}
+
+/// The account Steam would sign in as, or `None`.
+///
+/// Where several are remembered, the one marked most recent wins, then the one
+/// set to sign in automatically, then whichever came first. Guessing wrong
+/// here puts somebody else's name on a lap, so the order is the same one
+/// Steam's own client uses.
+pub fn signed_in() -> Option<Account> {
+    let at = roots()
+        .into_iter()
+        .map(|root| root.join("config").join("loginusers.vdf"))
+        .find(|at| at.is_file())?;
+    let text = std::fs::read_to_string(at).ok()?;
+    accounts_in(&text).into_iter().next()
+}
+
+/// Every account in a `loginusers.vdf`, best first.
+///
+/// Apart from [`signed_in`] so the rule can be tested against the file's own
+/// shape without a Steam installation.
+pub fn accounts_in(vdf: &str) -> Vec<Account> {
+    let mut found: Vec<(u8, Account)> = Vec::new();
+    let mut id: Option<String> = None;
+    let mut account = String::new();
+    let mut persona = String::new();
+    let mut rank = 2u8;
+
+    for line in vdf.lines() {
+        let line = line.trim();
+        let quoted: Vec<&str> = line
+            .split('"')
+            .filter(|part| !part.trim().is_empty())
+            .collect();
+
+        // A block opens with a key on its own line: `"76561199…"`.
+        if quoted.len() == 1
+            && line.starts_with('"')
+            && quoted[0].chars().all(|c| c.is_ascii_digit())
+        {
+            id = Some(quoted[0].to_string());
+            account.clear();
+            persona.clear();
+            rank = 2;
+            continue;
+        }
+        if quoted.len() == 2 {
+            match quoted[0] {
+                "AccountName" => account = quoted[1].to_string(),
+                "PersonaName" => persona = quoted[1].to_string(),
+                // Lower is better, because the list is sorted by it.
+                "MostRecent" if quoted[1] == "1" => rank = 0,
+                "AutoLogin" if quoted[1] == "1" => rank = rank.min(1),
+                _ => {}
+            }
+            continue;
+        }
+        // A block closes; keep what was in it.
+        if line == "}"
+            && let Some(id64) = id.take()
+        {
+            found.push((
+                rank,
+                Account {
+                    id64,
+                    account: account.clone(),
+                    persona: persona.clone(),
+                },
+            ));
+        }
+    }
+
+    found.sort_by_key(|(rank, _)| *rank);
+    found.into_iter().map(|(_, one)| one).collect()
+}
+
 pub fn dedup_keeping_order(paths: &mut Vec<PathBuf>) {
     let mut seen = std::collections::HashSet::new();
     paths.retain(|path| seen.insert(path.clone()));
@@ -339,6 +431,87 @@ pub fn host_documents_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The shape Steam actually writes, taken from a real file.
+    const ONE_ACCOUNT: &str = r#""users"
+{
+	"76561199148681321"
+	{
+		"AccountName"		"rgoshbbb"
+		"PersonaName"		"ピークRgosh チーム"
+		"RememberPassword"		"1"
+		"AutoLogin"		"1"
+	}
+}
+"#;
+
+    #[test]
+    fn the_signed_in_account_is_read_rather_than_asked_for() {
+        let found = accounts_in(ONE_ACCOUNT);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].id64, "76561199148681321");
+        assert_eq!(found[0].account, "rgoshbbb");
+        assert_eq!(
+            found[0].persona, "ピークRgosh チーム",
+            "a name can be in any script and must survive"
+        );
+    }
+
+    /// **Guessing wrong puts somebody else's name on a lap.** Where several
+    /// accounts are remembered, the order is the one Steam's own client uses:
+    /// most recent, then auto-login, then whatever was there.
+    #[test]
+    fn the_most_recent_account_wins_over_the_automatic_one() {
+        let two = r#""users"
+{
+	"111"
+	{
+		"AccountName"		"older"
+		"PersonaName"		"Older"
+		"AutoLogin"		"1"
+	}
+	"222"
+	{
+		"AccountName"		"newer"
+		"PersonaName"		"Newer"
+		"MostRecent"		"1"
+	}
+}
+"#;
+        let found = accounts_in(two);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].account, "newer", "most recent should lead");
+        assert_eq!(found[1].account, "older");
+    }
+
+    #[test]
+    fn auto_login_beats_an_account_with_no_marks_at_all() {
+        let two = r#""users"
+{
+	"111"
+	{
+		"AccountName"		"plain"
+		"PersonaName"		"Plain"
+	}
+	"222"
+	{
+		"AccountName"		"auto"
+		"PersonaName"		"Auto"
+		"AutoLogin"		"1"
+	}
+}
+"#;
+        assert_eq!(accounts_in(two)[0].account, "auto");
+    }
+
+    /// A file that is not one, or is empty, is nobody — not a panic and not a
+    /// made-up name.
+    #[test]
+    fn nothing_readable_is_nobody() {
+        assert!(accounts_in("").is_empty());
+        assert!(accounts_in("not a vdf at all").is_empty());
+        assert!(accounts_in("\"users\"\n{\n}\n").is_empty());
+    }
 
     /// Proton writes which build made a prefix into the prefix.
     ///
