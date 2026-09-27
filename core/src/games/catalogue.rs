@@ -48,6 +48,44 @@ pub struct Adjustables {
     pub ride_height: bool,
 }
 
+/// One thing a driver can pick to drive on.
+///
+/// **A layout is a track here, not a track with a note beside it.** Half the
+/// circuits installed on the machine this was written on have more than one —
+/// Barcelona has a grand prix and a moto layout, and they are different
+/// lengths with different corners. A list that offered "Barcelona" and then
+/// asked a second question would be a list that cannot be scrolled and picked
+/// from, which is the whole job.
+///
+/// `config` is empty for a circuit that has only one layout, because that is
+/// what the game's own configuration expects in that case — not the string
+/// "default", and not the track's own name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackListing {
+    /// The folder under `content/tracks`.
+    pub id: String,
+    /// The layout under it, or empty when the track has only one.
+    pub config: String,
+    /// What the track calls itself, with the layout named when there is one.
+    pub name: String,
+    pub country: String,
+    /// Metres, or zero where the track does not say.
+    pub length_m: u32,
+    /// How many cars can start, or zero where the track does not say.
+    pub pitboxes: u32,
+}
+
+impl TrackListing {
+    /// What the game is told to load.
+    ///
+    /// Two strings rather than one: `race.ini` carries the track and the
+    /// layout on separate lines, and joining them into a path here would mean
+    /// taking them apart again there.
+    pub fn as_game_asks(&self) -> (&str, &str) {
+        (&self.id, &self.config)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CarSpecs {
     pub id: String,
