@@ -41,8 +41,7 @@ pub fn scan_cars(ac_root: &Path) -> Vec<CarSpecs> {
         let ui_path = ui_dir.and_then(|d| find_case_insensitive(&d, "ui_car.json"));
 
         if let Some(p) = ui_path
-            && let Ok(content) = fs::read_to_string(p)
-            && let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(json_val) = read_json(&p)
         {
             let name = json_val["name"].as_str().unwrap_or("Unknown").to_string();
             let brand = json_val["brand"].as_str().unwrap_or("Unknown").to_string();
@@ -170,8 +169,7 @@ fn read_track(
     id: &str,
     config: &str,
 ) -> Option<crate::games::catalogue::TrackListing> {
-    let text = fs::read_to_string(path).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let json = read_json(path)?;
     let name = json["name"].as_str().filter(|name| !name.is_empty())?;
 
     Some(crate::games::catalogue::TrackListing {
@@ -235,6 +233,66 @@ fn pretty_layout(config: &str) -> String {
         .replace('_', " ")
 }
 
+/// Read one of the game's own description files, which are not valid JSON.
+///
+/// **Ninety-two of the ninety-six cars installed on the machine this was
+/// written on fail a strict parse**, and they had been failing silently since
+/// the catalogue was written: the scan found four cars out of ninety-six, and
+/// everything downstream — the car's class, its weight, the tags the engineer
+/// judges a GT3 by — quietly had nothing to work with for the other ninety-two.
+///
+/// The fault is in the files and cannot be fixed there. A `description` runs
+/// over several lines and the line breaks are written *raw* inside the string,
+/// which JSON forbids:
+///
+/// ```text
+///   "description": "…gaining a fair amount of power and torque.
+///   <TAB>
+///   <TAB>Turning the modern Fiat 500 into an Abarth meant…"
+/// ```
+///
+/// So the control characters are escaped before the parse rather than the
+/// parse being abandoned. Only inside strings, and only the three that appear:
+/// anywhere else they are whitespace and already legal.
+fn lenient(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for c in text.chars() {
+        if escaped {
+            out.push(c);
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' if in_string => {
+                out.push(c);
+                escaped = true;
+            }
+            '"' => {
+                in_string = !in_string;
+                out.push(c);
+            }
+            '\n' if in_string => out.push_str("\\n"),
+            '\r' if in_string => out.push_str("\\r"),
+            '\t' if in_string => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Read a description file the way the game writes them.
+fn read_json(path: &Path) -> Option<serde_json::Value> {
+    let text = fs::read_to_string(path).ok()?;
+    // Strict first: the files that are valid cost nothing, and a rewrite that
+    // went wrong would then only affect the ones that were already broken.
+    serde_json::from_str(&text)
+        .ok()
+        .or_else(|| serde_json::from_str(&lenient(&text)).ok())
+}
+
 /// Mod folders capitalise `UI` and `ui_car.json` inconsistently, and Linux
 /// filesystems care where Windows does not.
 fn find_case_insensitive(base: &Path, name: &str) -> Option<PathBuf> {
@@ -254,6 +312,67 @@ fn find_case_insensitive(base: &Path, name: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// **The game's own files are not valid JSON, and almost none of them
+    /// are.** Ninety-two of the ninety-six cars installed on the machine this
+    /// was written on failed a strict parse, and had been failing silently
+    /// since the catalogue was written — the scan returned four cars, and the
+    /// class, weight and tags the engineer judges a car by were simply absent
+    /// for the rest.
+    #[test]
+    fn a_description_written_across_several_lines_is_still_read() {
+        // Exactly the shape the game ships: raw CR, LF and tabs inside the
+        // string, which JSON forbids and every text editor writes.
+        let as_shipped = "{\"name\":\"Abarth 500\",\"description\":\"fast.\r\n\t\r\n\tAnd small.\",\"class\":\"street\"}";
+        assert!(
+            serde_json::from_str::<serde_json::Value>(as_shipped).is_err(),
+            "the fixture is valid JSON and proves nothing"
+        );
+
+        let read: serde_json::Value =
+            serde_json::from_str(&lenient(as_shipped)).expect("it should read now");
+        assert_eq!(read["name"], "Abarth 500");
+        assert_eq!(read["class"], "street");
+        assert!(
+            read["description"]
+                .as_str()
+                .is_some_and(|text| text.contains("And small")),
+            "the description lost its second half"
+        );
+    }
+
+    /// Whitespace between tokens is already legal and must be left alone —
+    /// rewriting it would be changing a file that was never broken.
+    #[test]
+    fn whitespace_outside_a_string_is_untouched() {
+        let pretty = "{\n\t\"a\": 1,\n\t\"b\": 2\n}";
+        assert_eq!(lenient(pretty), pretty);
+    }
+
+    /// A backslash before a quote does not end the string, and getting that
+    /// wrong would turn the rest of the file into "outside a string" and leave
+    /// its line breaks raw.
+    #[test]
+    fn an_escaped_quote_does_not_end_the_string() {
+        let tricky = "{\"a\":\"he said \\\"go\\\"\r\nthen left\"}";
+        let read: serde_json::Value =
+            serde_json::from_str(&lenient(tricky)).expect("it should read");
+        assert!(
+            read["a"]
+                .as_str()
+                .is_some_and(|text| text.contains("then left")),
+            "{:?}",
+            read["a"]
+        );
+    }
+
+    /// The valid ones are parsed as they are: a rewrite that went wrong would
+    /// then only ever affect files that were already broken.
+    #[test]
+    fn a_file_that_was_already_valid_is_not_rewritten_to_read_it() {
+        let fine = r#"{"name":"Imola","length":"4909"}"#;
+        assert_eq!(lenient(fine), fine);
+    }
 
     fn a_track(at: &std::path::Path, id: &str, config: &str, name: &str, length: &str) {
         let ui = match config.is_empty() {
