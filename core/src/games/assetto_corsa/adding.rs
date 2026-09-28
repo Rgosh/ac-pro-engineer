@@ -966,6 +966,51 @@ mod tests {
         assert!(!root.join("escaped.txt").exists());
     }
 
+    /// **The two directions of the same knowledge have to agree.**
+    ///
+    /// `content.rs` reads an installed car out of the game; this reads one on
+    /// its way in. They are the same rule written twice, which is the thing
+    /// this whole family of repositories is arranged to prevent — so where
+    /// there is a real install, every car and every circuit the scan lists
+    /// must be recognised by the recogniser, and as the right kind.
+    ///
+    /// Run against the ninety-six cars and twenty-one circuits on the machine
+    /// this was written on it also settles a thing that looks like a fault and
+    /// is not: eighty-four more car folders and three more circuit folders
+    /// hold nothing but `ui/dlc_ui_car.json` and a badge. They are unowned DLC
+    /// and there is no car in them. Both sides refuse them, which is right.
+    ///
+    /// **Skipped where there is no game**, because the alternative is a test
+    /// nobody can run.
+    #[test]
+    fn what_is_installed_is_what_the_recogniser_sees() {
+        let Some(root) = crate::games::assetto_corsa::paths::ac_install_root(None) else {
+            return;
+        };
+
+        for car in crate::games::assetto_corsa::content::scan_cars(&root) {
+            let at = root.join("content").join("cars").join(&car.id);
+            let found = whats_in(&at);
+            assert_eq!(
+                found.first().map(|one| one.kind),
+                Some(Kind::Car),
+                "the scan lists {} as a car and the recogniser did not",
+                car.id
+            );
+        }
+
+        for track in crate::games::assetto_corsa::content::scan_tracks(&root) {
+            let at = root.join("content").join("tracks").join(&track.id);
+            let found = whats_in(&at);
+            assert_eq!(
+                found.first().map(|one| one.kind),
+                Some(Kind::Track),
+                "the scan lists {} as a circuit and the recogniser did not",
+                track.id
+            );
+        }
+    }
+
     /// A weather preset is a folder with `weather.ini`, and it says its own
     /// name in an ini rather than a json.
     #[test]
