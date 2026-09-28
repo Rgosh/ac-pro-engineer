@@ -436,13 +436,25 @@ fn unzip_bridge(bytes: &[u8]) -> Result<Vec<u8>, String> {
 ///
 /// 1. **A PE header.** A rate-limit page, a redirect body and an error JSON all
 ///    arrive happily under an `.exe` name.
-/// 2. **The overlay mapping's name.** A bridge built before the overlay existed
-///    maps AC's four `acpmf_*` pages and nothing else — it runs, it announces
-///    nothing wrong, and the panel waits forever. Every release up to and
-///    including v0.3.3 published exactly that: v0.3.3 was tagged eleven minutes
-///    before the commit that taught the bridge about the overlay. Downloading
-///    one of those over a working bridge would be a downgrade into the bug this
-///    whole module exists to catch, so it is refused by name.
+/// 2. **That it can carry the overlay at all.** There are two ways a bridge
+///    can, and only one of them leaves a trace in the binary.
+///
+///    The old `shm-bridge` held a hardcoded list of names, so the overlay's
+///    name was *in* it — and a build from before the overlay existed mapped
+///    AC's four `acpmf_*` pages and nothing else. It ran, it announced nothing
+///    wrong, and the panel waited forever. Every release up to and including
+///    v0.3.3 published exactly that: v0.3.3 was tagged eleven minutes before
+///    the commit that taught the bridge about the overlay.
+///
+///    `wineshm` is told which names to publish — `--page NAME:SIZE` — and
+///    [`super::bridge::how_to_start`] passes the overlay among them. So it
+///    carries none of those names and never will, and scanning it for one
+///    refuses a bridge that works. **This is what the refusal in front of
+///    somebody was**: the check belonged to the bridge that hardcoded a list
+///    and was being applied to the bridge that does not.
+///
+///    So: a binary that says it is a `wineshm` is one that takes its names at
+///    runtime and is accepted; anything else still has to carry the name.
 /// 3. **The version marker**, when the binary has one. Bridges from before it
 ///    existed do not, and cannot be made to, so its absence is not fatal — but
 ///    when it is there it has to agree with the tag, which catches an asset
@@ -452,12 +464,13 @@ fn verify(bytes: &[u8], expected_version: &str) -> Result<(), String> {
         return Err("what arrived is not a Windows executable".to_string());
     }
 
-    if !contains(bytes, OVERLAY_MMF_NAME.as_bytes()) {
+    let takes_names_at_runtime = version_in_bytes(bytes).is_some();
+    if !takes_names_at_runtime && !contains(bytes, OVERLAY_MMF_NAME.as_bytes()) {
         return Err(format!(
             "the bridge {expected_version} does not know about the overlay mapping \
-             ({OVERLAY_MMF_NAME}) — it maps AC's own pages and nothing else, so the \
-             panel would never appear. Build one from this checkout instead: \
-             cargo build --release --target x86_64-pc-windows-gnu, in the wineshm checkout"
+             ({OVERLAY_MMF_NAME}) and cannot be told about one either — it maps AC's own \
+             pages and nothing else, so the panel would never appear. Build one from the \
+             wineshm checkout instead: cargo build --release --target x86_64-pc-windows-gnu"
         ));
     }
 
@@ -630,6 +643,32 @@ mod tests {
         );
     }
 
+    /// **A bridge that is told its pages carries none of their names.**
+    ///
+    /// This is the refusal that was in front of somebody: `wineshm` takes
+    /// `--page NAME:SIZE` and `bridge::how_to_start` passes the overlay among
+    /// them, so scanning its binary for the overlay's name finds nothing and
+    /// never will. The check belonged to the bridge that hardcoded a list, and
+    /// applied to this one it refused a bridge that works — with a message
+    /// telling somebody to go and build it by hand.
+    #[test]
+    fn a_bridge_that_takes_its_pages_as_arguments_is_accepted() {
+        let mut told = b"MZ".to_vec();
+        told.extend_from_slice(&[0u8; 256]);
+        // No overlay name anywhere in it — that is the whole point.
+        told.extend_from_slice(b"--page NAME:SIZE");
+        told.extend_from_slice(
+            format!("{}0.6.1;", crate::overlay::bridge::VERSION_MARKER_PREFIX).as_bytes(),
+        );
+
+        assert!(!contains(&told, OVERLAY_MMF_NAME.as_bytes()));
+        assert_eq!(
+            verify(&told, "0.6.1"),
+            Ok(()),
+            "a bridge that is told its pages must not be refused for not naming one"
+        );
+    }
+
     /// A bridge that knows the overlay but predates the version marker is the
     /// newest thing that works today. Refusing it would leave nothing to fetch.
     #[test]
@@ -715,17 +754,34 @@ mod tests {
     /// Skipped without a cross-build, as the marker test in `bridge` is.
     #[test]
     fn the_bridge_this_checkout_builds_passes_verification() {
-        let built = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
-            .join("target/x86_64-pc-windows-gnu/release")
-            .join(BRIDGE_EXE);
+        // **Both checkouts.** The bridge moved to a repository of its own and
+        // this went on looking only beside this one, so it skipped silently on
+        // every machine — which is why the refusal it exists to prevent
+        // reached somebody.
+        let here = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+        let places = [
+            here.join("target/x86_64-pc-windows-gnu/release")
+                .join(BRIDGE_EXE),
+            here.join("../wineshm/target/x86_64-pc-windows-gnu/release")
+                .join(BRIDGE_EXE),
+        ];
 
-        let Ok(bytes) = std::fs::read(&built) else {
-            eprintln!("{} has not been cross-built; skipping", built.display());
+        let Some((built, bytes)) = places
+            .iter()
+            .find_map(|at| std::fs::read(at).ok().map(|bytes| (at, bytes)))
+        else {
+            eprintln!("no cross-built {BRIDGE_EXE}; skipping");
             return;
         };
+        eprintln!("checking {}", built.display());
 
+        // **The bridge's version, not this application's.** They moved
+        // together while the bridge was a crate in this workspace; it has its
+        // own repository and its own release cycle now, and comparing the
+        // built bridge against `ac_core`'s number was a test that could only
+        // pass by coincidence.
         assert_eq!(
-            verify(&bytes, env!("CARGO_PKG_VERSION")),
+            verify(&bytes, super::super::bridge::BRIDGE_VERSION),
             Ok(()),
             "the bridge this checkout builds must be one this would install"
         );
