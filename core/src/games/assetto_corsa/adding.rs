@@ -51,6 +51,13 @@ pub enum Kind {
     Skin,
     /// A weather preset, which goes under `content/weather`.
     Weather,
+    /// Custom Shaders Patch, which goes into the game's own folder.
+    ///
+    /// **The one kind that is not content.** Everything else here is a folder
+    /// under `content`; this is a loader beside `acs.exe` and a folder called
+    /// `extension` — see [`super::csp`], which owns what it is and how it
+    /// comes out again.
+    Csp,
 }
 
 impl Kind {
@@ -61,7 +68,19 @@ impl Kind {
             Self::Track => "track",
             Self::Skin => "livery",
             Self::Weather => "weather",
+            Self::Csp => "custom shaders patch",
         }
+    }
+
+    /// Whether this kind is put into the game's folder rather than under
+    /// `content`, and merged with what is there rather than replacing it.
+    ///
+    /// **This is a guard, not a category.** The destination for everything
+    /// else is a folder of its own, and replacing one means deleting it first.
+    /// The patch's destination is the game itself; deleting that first would
+    /// delete the game.
+    fn merges_into_the_game(self) -> bool {
+        matches!(self, Self::Csp)
     }
 
     /// Which folder under `content` this kind lives in.
@@ -73,6 +92,9 @@ impl Kind {
             Self::Car | Self::Skin => "cars",
             Self::Track => "tracks",
             Self::Weather => "weather",
+            // Never reached: the patch does not live under `content`, and
+            // `where_it_goes` answers for it before this is asked.
+            Self::Csp => "",
         }
     }
 
@@ -83,6 +105,7 @@ impl Kind {
             Self::Track => "ui/ui_track.json",
             Self::Skin => "ui_skin.json",
             Self::Weather => "weather.ini",
+            Self::Csp => "extension/config/data_manifest.ini",
         }
     }
 
@@ -142,6 +165,9 @@ impl Addition {
     /// `None` for a livery whose car is known neither here nor by the caller,
     /// which is the one case that cannot be resolved without asking.
     pub fn where_it_goes(&self, root: &Path, car: Option<&str>) -> Option<PathBuf> {
+        if self.kind.merges_into_the_game() {
+            return Some(root.to_path_buf());
+        }
         let content = root.join("content").join(self.kind.folder());
         match self.kind {
             Kind::Skin => {
@@ -158,6 +184,15 @@ impl Addition {
     /// spent an evening tuning, without saying so, is the difference between a
     /// tool and an accident.
     pub fn replaces(&self, root: &Path, car: Option<&str>) -> Option<PathBuf> {
+        // **The patch is never "already there" as a folder.** Its destination
+        // is the game, which always exists; what it might be replacing is a
+        // patch, and that is [`super::csp::look`]'s question rather than a
+        // path check.
+        if self.kind.merges_into_the_game() {
+            return super::csp::look(root)
+                .is_anywhere()
+                .then(|| root.join(super::csp::FOLDER));
+        }
         self.where_it_goes(root, car).filter(|at| at.exists())
     }
 
@@ -233,7 +268,16 @@ pub fn place(
     replacing: bool,
 ) -> Result<PathBuf, Trouble> {
     let to = addition.where_it_goes(root, car).ok_or(Trouble::WhichCar)?;
-    if to.exists() {
+
+    // **The one destination that is never cleared first.** Everything else
+    // lands in a folder of its own, and replacing one means deleting it. The
+    // patch lands in the game's own folder — deleting that first would delete
+    // the game, with the cars and the circuits in it.
+    if addition.kind.merges_into_the_game() {
+        if !replacing && let Some(already) = addition.replaces(root, car) {
+            return Err(Trouble::AlreadyThere(already));
+        }
+    } else if to.exists() {
         if !replacing {
             return Err(Trouble::AlreadyThere(to));
         }
@@ -299,6 +343,13 @@ fn kind_at(paths: &[String], at: &str) -> Option<Kind> {
         || deeper_ui_track(paths, at)
     {
         return Some(Kind::Track);
+    }
+    // **Before the livery test, and before weather.** The patch carries
+    // hundreds of `.dds` at various depths and a `weather.ini` of its own
+    // among its configuration; asked in the other order it would be installed
+    // as a livery, into a car, at the wrong end of the game.
+    if here(super::csp::LOADER) && here(&format!("{}/", super::csp::FOLDER)) {
+        return Some(Kind::Csp);
     }
     if here("weather.ini") {
         return Some(Kind::Weather);
@@ -463,6 +514,12 @@ fn describes(one: &Addition) -> Option<String> {
     let text = String::from_utf8_lossy(&said);
     if one.kind == Kind::Weather {
         return ini_name(&text);
+    }
+    // **The patch states its version, not a name**, and the version is what
+    // anybody installing one wants to see. Read by the module that owns the
+    // patch, so an archive and an installed copy are read the same way.
+    if one.kind == Kind::Csp {
+        return super::csp::stated_in(&text);
     }
     let json = super::content::read_json_text(&text)?;
     json[one.kind.calls_itself()]
@@ -650,7 +707,7 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    fn scratch(name: &str) -> PathBuf {
+    pub(super) fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("acpe-adding-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("a scratch folder");
@@ -658,7 +715,7 @@ mod tests {
     }
 
     /// Write a file and every folder above it.
-    fn file(at: &Path, relative: &str, said: &str) {
+    pub(super) fn file(at: &Path, relative: &str, said: &str) {
         let full = relative
             .split('/')
             .fold(at.to_path_buf(), |p, part| p.join(part));
@@ -669,7 +726,7 @@ mod tests {
     }
 
     /// A zip whose entries are exactly these names.
-    fn archive(at: &Path, named: &str, entries: &[(&str, &str)]) -> PathBuf {
+    pub(super) fn archive(at: &Path, named: &str, entries: &[(&str, &str)]) -> PathBuf {
         let path = at.join(named);
         let file = fs::File::create(&path).expect("a fixture");
         let mut zip = zip::ZipWriter::new(file);
@@ -1027,5 +1084,143 @@ mod tests {
             found[0].where_it_goes(Path::new("/game"), None),
             Some(PathBuf::from("/game/content/weather/sol_clear"))
         );
+    }
+}
+
+#[cfg(test)]
+mod csp_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::tests::{archive, file, scratch};
+    use super::*;
+
+    /// A patch archive as they are actually distributed: the loader at the top
+    /// and everything else under `extension`.
+    fn a_patch(at: &Path, named: &str) -> PathBuf {
+        archive(
+            at,
+            named,
+            &[
+                ("dwrite.dll", "MZ the loader"),
+                (
+                    "extension/config/data_manifest.ini",
+                    "[VERSION]\nSHADERS_PATCH=0.2.7\n",
+                ),
+                ("extension/lua/new-modes/something.lua", "-- a mode"),
+                ("extension/textures/some_texture.dds", "DDS"),
+            ],
+        )
+    }
+
+    /// **The patch is recognised by both halves.** `dwrite.dll` is what
+    /// Windows loads and `extension` is everything it is; either alone is not
+    /// a patch.
+    #[test]
+    fn a_shaders_patch_archive_is_recognised_and_says_its_version() {
+        let dir = scratch("csp-zip");
+        let zipped = a_patch(&dir, "lights-patch-v0.2.7.zip");
+
+        let found = whats_in(&zipped);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].kind, Kind::Csp);
+        assert_eq!(found[0].name.as_deref(), Some("0.2.7"));
+        assert_eq!(
+            found[0].where_it_goes(Path::new("/game"), None),
+            Some(PathBuf::from("/game"))
+        );
+    }
+
+    /// **The patch carries hundreds of textures and a `weather.ini` of its
+    /// own.** Asked in the wrong order it reads as a livery or a weather
+    /// preset, and a livery goes inside a car — which would put the patch at
+    /// the wrong end of the game entirely.
+    #[test]
+    fn a_patch_is_not_mistaken_for_a_livery_or_the_weather() {
+        let dir = scratch("csp-order");
+        let zipped = archive(
+            &dir,
+            "patch.zip",
+            &[
+                ("dwrite.dll", "MZ"),
+                ("weather.ini", "[LAUNCHER]\nNAME=not a preset\n"),
+                ("body_d.dds", "DDS"),
+                (
+                    "extension/config/data_manifest.ini",
+                    "SHADERS_PATCH=0.2.7\n",
+                ),
+            ],
+        );
+
+        assert_eq!(
+            whats_in(&zipped).first().map(|one| one.kind),
+            Some(Kind::Csp)
+        );
+    }
+
+    /// **The one destination that must never be cleared first.**
+    ///
+    /// Every other kind lands in a folder of its own, and replacing one means
+    /// deleting that folder before writing. The patch lands in the game's own
+    /// folder — clearing that first would delete the game, with every car and
+    /// circuit in it. This is a test rather than a comment because the cost of
+    /// it being wrong is somebody's whole install.
+    #[test]
+    fn installing_the_patch_does_not_clear_the_game() {
+        let dir = scratch("csp-place");
+        let zipped = a_patch(&dir, "patch.zip");
+        let root = dir.join("game");
+        file(&root, "acs.exe", "MZ the game");
+        file(
+            &root,
+            "content/cars/ks_mazda_miata/ui/ui_car.json",
+            r#"{"name":"MX-5"}"#,
+        );
+
+        let found = whats_in(&zipped);
+        let landed = place(&root, &found[0], None, false).expect("it should go in");
+        assert_eq!(landed, root);
+
+        assert!(root.join("acs.exe").is_file(), "it removed the game");
+        assert!(
+            root.join("content/cars/ks_mazda_miata").is_dir(),
+            "it removed the cars"
+        );
+        assert!(root.join("dwrite.dll").is_file(), "the loader is not there");
+        assert!(
+            root.join("extension/lua/new-modes/something.lua").is_file(),
+            "the patch's own files are not there"
+        );
+
+        // And the module that owns the patch agrees it is installed.
+        let seen = super::super::csp::look(&root);
+        assert!(seen.is_working());
+        assert_eq!(seen.version.as_deref(), Some("0.2.7"));
+    }
+
+    /// A patch over a patch is a decision, like every other replacement.
+    #[test]
+    fn installing_over_a_patch_has_to_be_asked_for() {
+        let dir = scratch("csp-over");
+        let zipped = a_patch(&dir, "patch.zip");
+        let root = dir.join("game");
+        file(&root, "acs.exe", "MZ");
+        file(
+            &root,
+            "extension/config/data_manifest.ini",
+            "SHADERS_PATCH=0.2.0\n",
+        );
+
+        let found = whats_in(&zipped);
+        assert!(matches!(
+            place(&root, &found[0], None, false),
+            Err(Trouble::AlreadyThere(_))
+        ));
+
+        place(&root, &found[0], None, true).expect("replacing was asked for");
+        assert_eq!(
+            super::super::csp::look(&root).version.as_deref(),
+            Some("0.2.7")
+        );
+        assert!(root.join("acs.exe").is_file(), "it removed the game");
     }
 }
