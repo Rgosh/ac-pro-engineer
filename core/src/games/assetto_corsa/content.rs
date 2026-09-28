@@ -355,12 +355,20 @@ fn lenient(text: &str) -> String {
 
 /// Read a description file the way the game writes them.
 fn read_json(path: &Path) -> Option<serde_json::Value> {
-    let text = fs::read_to_string(path).ok()?;
+    read_json_text(&fs::read_to_string(path).ok()?)
+}
+
+/// The same, from text already in hand.
+///
+/// **One parser, two callers.** `adding` reads these very files out of an
+/// archive that has not been unpacked, and a second lenient parse there would
+/// be a second set of these rules to get wrong.
+pub(super) fn read_json_text(text: &str) -> Option<serde_json::Value> {
     // Strict first: the files that are valid cost nothing, and a rewrite that
     // went wrong would then only affect the ones that were already broken.
-    serde_json::from_str(&text)
+    serde_json::from_str(text)
         .ok()
-        .or_else(|| serde_json::from_str(&lenient(&text)).ok())
+        .or_else(|| serde_json::from_str(&lenient(text)).ok())
 }
 
 /// Mod folders capitalise `UI` and `ui_car.json` inconsistently, and Linux
