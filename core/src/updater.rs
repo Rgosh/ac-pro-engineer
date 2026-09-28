@@ -16,6 +16,58 @@ const GITHUB_REPO: &str = "ac-pro-engineer";
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The prefix the application compiles into its own binary, ahead of its
+/// version — see [`version_in_binary`].
+pub const VERSION_MARKER_PREFIX: &str = "RGPE-APP-VERSION=";
+
+/// Find the application's version inside the bytes of its own executable.
+///
+/// **Read out of the file rather than asked for, and that is not a
+/// preference.** Another program that finds an `rg_pro_engineer` on disk — the
+/// launcher does, so that it can offer to start it — cannot ask it anything
+/// without running it, and running it is the thing being decided. A build old
+/// enough not to understand `--version` simply *starts*: it opens its window,
+/// writes its desktop entry, and the asking has changed the answer. That
+/// happened on the machine this was written on and rewrote the entry to point
+/// at a build two releases behind.
+///
+/// So the answer travels in the file, behind a prefix distinctive enough that
+/// scanning cannot match anything else. This is the same arrangement the
+/// bridge uses, for the same reason and with the same shape — see
+/// [`wineshm::version_in_binary`].
+///
+/// `None` for a build older than the marker, which is itself an answer: it is
+/// older than this check.
+pub fn version_in_binary(bytes: &[u8]) -> Option<String> {
+    let needle = VERSION_MARKER_PREFIX.as_bytes();
+    // **Every match, not the first.** The prefix is a constant in this crate,
+    // so it can appear in a binary on its own — in the string table, ahead of
+    // the marker — and the bytes following it are whatever the linker put
+    // there. A match that does not yield a plausible version is not the
+    // marker.
+    bytes
+        .windows(needle.len())
+        .enumerate()
+        .filter(|(_, window)| *window == needle)
+        .find_map(|(at, _)| {
+            let rest = &bytes[at + needle.len()..];
+            let end = rest.iter().position(|byte| *byte == b';')?;
+            let said = core::str::from_utf8(&rest[..end]).ok()?;
+            looks_like_a_version(said).then(|| said.to_string())
+        })
+}
+
+/// Whether a run of bytes is a version and not whatever followed a bare
+/// prefix in the string table.
+fn looks_like_a_version(said: &str) -> bool {
+    !said.is_empty()
+        && said.len() < 32
+        && said.starts_with(|c: char| c.is_ascii_digit())
+        && said
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UpdateStatus {
     Idle,
@@ -1523,5 +1575,87 @@ mod tests {
         // And the newest entry is the other end.
         updater.prev_version();
         assert_eq!(selected(), "1.0.0");
+    }
+}
+
+#[cfg(test)]
+mod marker_tests {
+    use super::*;
+
+    /// The marker as the application compiles it into itself.
+    fn marker(version: &str) -> Vec<u8> {
+        format!("{VERSION_MARKER_PREFIX}{version};").into_bytes()
+    }
+
+    #[test]
+    fn the_version_is_found_in_a_blob_of_bytes() {
+        let mut blob = b"....some other content....".to_vec();
+        blob.extend_from_slice(&marker("0.5.2"));
+        blob.extend_from_slice(b"....trailing....");
+
+        assert_eq!(version_in_binary(&blob).as_deref(), Some("0.5.2"));
+    }
+
+    /// **A bare prefix is not a marker.** The prefix is a constant in this
+    /// crate, so it can land in a binary on its own — in the string table,
+    /// ahead of the real marker — and whatever bytes follow it are the
+    /// linker's business. Taking the first match would read those as a
+    /// version.
+    #[test]
+    fn a_loose_copy_of_the_prefix_is_stepped_over() {
+        let mut blob = VERSION_MARKER_PREFIX.as_bytes().to_vec();
+        blob.extend_from_slice(b"\x00\x01rubbish;");
+        blob.extend_from_slice(&marker("0.5.2"));
+
+        assert_eq!(version_in_binary(&blob).as_deref(), Some("0.5.2"));
+    }
+
+    /// A binary from before the marker existed says nothing, which is the
+    /// honest answer: it is older than this check.
+    #[test]
+    fn a_binary_without_a_marker_says_nothing() {
+        assert_eq!(version_in_binary(b"no marker anywhere in here"), None);
+    }
+
+    /// **The application this checkout builds must carry it.** A marker that
+    /// dead-code elimination removed is a marker that is not there, and
+    /// nothing else would notice — the scan would simply start answering
+    /// `None` for every build from then on.
+    ///
+    /// Skipped without a built binary, since that is a build and not a test.
+    #[test]
+    fn the_application_this_checkout_builds_carries_the_marker() {
+        let places = [
+            "../../RGProEngineer/target/release/rg_pro_engineer",
+            "../../RGProEngineer/target/debug/rg_pro_engineer",
+        ];
+        let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // **The newest build, not the first one that exists.** A release
+        // binary from last week sitting beside a debug one built a minute ago
+        // would otherwise decide this, and the answer would be about the old
+        // one.
+        let Some(newest) = places
+            .iter()
+            .map(|at| here.join(at))
+            .filter_map(|at| {
+                let when = std::fs::metadata(&at).ok()?.modified().ok()?;
+                Some((when, at))
+            })
+            .max_by_key(|(when, _)| *when)
+            .map(|(_, at)| at)
+        else {
+            eprintln!("no built rg_pro_engineer; skipping");
+            return;
+        };
+        let Ok(bytes) = std::fs::read(&newest) else {
+            eprintln!("{} could not be read; skipping", newest.display());
+            return;
+        };
+        eprintln!("checking {}", newest.display());
+
+        assert!(
+            version_in_binary(&bytes).is_some(),
+            "the built application carries no version marker"
+        );
     }
 }
