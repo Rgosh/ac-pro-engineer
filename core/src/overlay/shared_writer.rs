@@ -260,10 +260,50 @@ mod tests {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const OverlayFrame) }
     }
 
+    /// A page that takes itself away again.
+    ///
+    /// **Every name one of these tests opens becomes a file in `/dev/shm`,
+    /// and they were never removed.** Five were still sitting there weeks
+    /// later, beside the game's own pages, on the machine this was found on.
+    /// That directory is where this project's worst class of bug lives — a
+    /// page left behind by something that has stopped reads as a live
+    /// session, which is how a Huracán at Spa was once reported as a Ferrari
+    /// at Monza — so leaving clutter in the one place somebody looks when
+    /// they are already confused is not a small thing.
+    ///
+    /// On drop rather than at the end of each test, because a test that fails
+    /// half way through still has to tidy up after itself.
+    struct Borrowed(&'static str, OverlayWriter);
+
+    impl Borrowed {
+        fn named(name: &'static str) -> Self {
+            Self(name, OverlayWriter::open_named(name).expect("open shm"))
+        }
+    }
+
+    impl std::ops::Deref for Borrowed {
+        type Target = OverlayWriter;
+        fn deref(&self) -> &OverlayWriter {
+            &self.1
+        }
+    }
+
+    impl std::ops::DerefMut for Borrowed {
+        fn deref_mut(&mut self) -> &mut OverlayWriter {
+            &mut self.1
+        }
+    }
+
+    impl Drop for Borrowed {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(std::path::Path::new("/dev/shm").join(self.0));
+        }
+    }
+
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn a_published_frame_reads_back_field_for_field() {
-        let mut writer = OverlayWriter::open_named("acpe-test-roundtrip").expect("open shm");
+        let mut writer = Borrowed::named("acpe-test-roundtrip");
 
         let mut frame = OverlayFrame::empty();
         frame.speed_kmh = 213.5;
@@ -288,7 +328,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn the_sequence_is_even_between_writes_and_advances_each_time() {
-        let mut writer = OverlayWriter::open_named("acpe-test-sequence").expect("open shm");
+        let mut writer = Borrowed::named("acpe-test-sequence");
         let frame = OverlayFrame::empty();
 
         writer.publish(&frame);
@@ -309,7 +349,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn shutdown_zeroes_the_sequence() {
-        let mut writer = OverlayWriter::open_named("acpe-test-shutdown").expect("open shm");
+        let mut writer = Borrowed::named("acpe-test-shutdown");
         let mut frame = OverlayFrame::empty();
         frame.speed_kmh = 100.0;
         writer.publish(&frame);
@@ -328,7 +368,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn the_backing_file_is_sized_to_the_struct() {
-        let writer = OverlayWriter::open_named("acpe-test-size").expect("open shm");
+        let writer = Borrowed::named("acpe-test-size");
         let meta = std::fs::metadata(writer.backing_path()).expect("stat");
         assert!(meta.len() as usize >= size_of::<OverlayFrame>());
     }

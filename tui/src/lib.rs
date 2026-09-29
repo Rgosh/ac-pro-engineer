@@ -2652,6 +2652,15 @@ mod tests {
             "there is no car on the launcher screen"
         );
         assert_eq!(frame.speed_kmh, 0.0, "and no telemetry to go with it");
+
+        // **Taken away again.** Every name a test opens becomes a file in
+        // `/dev/shm`, and this one was still sitting there weeks later. That
+        // directory is where this project's worst class of bug lives — a page
+        // left behind by something that has stopped reads as a live session —
+        // so leaving clutter in the one place somebody looks when they are
+        // already confused is not a small thing.
+        drop(app);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The final split is derived from the lap time rather than read off the
