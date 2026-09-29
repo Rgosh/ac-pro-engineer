@@ -276,3 +276,288 @@ mod tests {
         );
     }
 }
+
+// ------------------------------------------------------------ what is offered
+
+/// Where the patch is published.
+///
+/// **Measured, not assumed.** `?get=<version>` answers with the zip itself —
+/// sixty megabytes of it, first entry `dwrite.dll` — and the page lists every
+/// version as an `?info=` link with the maintainer's recommended one in its
+/// download block. Nothing here was guessed at: each was fetched and looked at
+/// before it was written down.
+pub const HOME: &str = "https://acstuff.ru/patch/";
+
+/// What the site is offering.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Available {
+    /// The build its maintainer recommends, which is what anybody should take
+    /// unless they have a reason.
+    pub recommended: Option<String>,
+    /// Every build the page lists, oldest first as the page orders them.
+    pub all: Vec<String>,
+}
+
+/// Read what a copy of the patch's page is offering.
+///
+/// **A pure function over the page's text**, so the rule that reads it is
+/// checked against a real copy of that page rather than against the network.
+/// A site that changes shape then fails a test here rather than failing in
+/// front of somebody.
+pub fn offered_in(html: &str) -> Available {
+    let mut all: Vec<String> = Vec::new();
+    for at in html
+        .match_indices("?info=")
+        .map(|(at, _)| at + "?info=".len())
+    {
+        let rest = &html[at..];
+        let end = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len());
+        let said = &rest[..end];
+        if !said.is_empty() && !all.iter().any(|seen| seen == said) {
+            all.push(said.to_string());
+        }
+    }
+
+    // The download block names one, and it is the one to take.
+    let recommended = html
+        .match_indices("?get=")
+        .map(|(at, _)| at + "?get=".len())
+        .find_map(|at| {
+            let rest = &html[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            (end > 0).then(|| rest[..end].to_string())
+        });
+
+    Available { recommended, all }
+}
+
+/// Where one version's archive is.
+pub fn archive_url(version: &str) -> String {
+    format!("{HOME}?get={version}")
+}
+
+#[cfg(test)]
+mod offered_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// The page as it was actually served, saved so the parser is checked
+    /// against the real thing rather than against something written here.
+    const PAGE: &str = include_str!("../../../tests/fixtures/csp-patch-page.html");
+
+    /// **Read off the page the maintainer publishes.** The recommended build
+    /// is the one its download block names; the list is every version it links
+    /// an information page for.
+    #[test]
+    fn the_real_page_reads_as_the_versions_it_offers() {
+        let offered = offered_in(PAGE);
+
+        assert_eq!(offered.recommended.as_deref(), Some("0.2.11"));
+        // Seventeen, which is what that copy of the page lists. Counted from
+        // the page rather than guessed: the first guess here was "more than
+        // twenty" and it was the assertion that was wrong, not the parser.
+        assert_eq!(offered.all.len(), 17, "{:?}", offered.all);
+        assert_eq!(offered.all.first().map(String::as_str), Some("0.1.75"));
+        assert_eq!(offered.all.last().map(String::as_str), Some("0.2.11"));
+
+        // **The page has a regular expression in its own script that contains
+        // the same marker.** It yields an empty version, and an empty version
+        // in a list of builds is a row somebody can press that downloads
+        // nothing.
+        assert!(
+            !offered.all.iter().any(|one| one.is_empty()),
+            "the script's own text got in: {:?}",
+            offered.all
+        );
+        assert!(
+            offered
+                .all
+                .iter()
+                .all(|one| one.chars().all(|c| c.is_ascii_digit() || c == '.')),
+            "something that is not a version got in: {:?}",
+            offered.all
+        );
+    }
+
+    /// A page that is not that page offers nothing, rather than nonsense.
+    #[test]
+    fn a_page_with_nothing_on_it_offers_nothing() {
+        assert_eq!(
+            offered_in("<html><body>down for maintenance</body></html>"),
+            Available::default()
+        );
+    }
+
+    /// The address is built from the version and nothing else.
+    #[test]
+    fn an_archive_is_addressed_by_its_version() {
+        assert_eq!(
+            archive_url("0.2.11"),
+            "https://acstuff.ru/patch/?get=0.2.11"
+        );
+    }
+}
+
+// ------------------------------------------------------------- fetching one
+
+/// Long enough for sixty megabytes on a slow line, short enough that a dead
+/// host does not hold a thread all evening.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// The smallest thing that could be the patch.
+///
+/// **A guard against a page, not a size check.** The published archive is
+/// around sixty megabytes; an error page, a redirect body or a rate-limit
+/// notice is a few thousand bytes and arrives with a perfectly good status
+/// code. Anything under this is not the patch whatever it says it is.
+const SURELY_TOO_SMALL: u64 = 4 * 1024 * 1024;
+
+/// Ask the site what it is offering.
+///
+/// Blocking, so the caller puts it on a thread. Nothing in this crate is
+/// async and nothing here should become so.
+pub fn what_is_offered() -> Result<Available, String> {
+    let page = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|why| format!("{why}"))?
+        .get(HOME)
+        .send()
+        .map_err(|why| format!("{HOME} could not be reached: {why}"))?
+        .error_for_status()
+        .map_err(|why| format!("{HOME} answered with {why}"))?
+        .text()
+        .map_err(|why| format!("{HOME} sent something unreadable: {why}"))?;
+
+    let offered = offered_in(&page);
+    if offered.all.is_empty() {
+        return Err(format!(
+            "{HOME} answered, but nothing on it looks like a list of versions any more"
+        ));
+    }
+    Ok(offered)
+}
+
+/// Fetch one version's archive to a file, and refuse anything that is not one.
+///
+/// **What arrives is checked before it is anywhere near the game.** A download
+/// under an `.zip` name can be an error page, a redirect body or somebody
+/// else's file entirely, and the cost of writing one of those into a game
+/// folder is the game. So the bytes are written to a file of their own and
+/// then read back through the same recogniser a dropped archive goes through —
+/// if it does not come back as the patch, it is refused and the file is
+/// removed.
+///
+/// Returns the archive, for [`super::adding::place`] to install from. One
+/// path for a download and for a drop, deliberately: two ways of installing
+/// the same zip is two ways for one of them to be wrong.
+pub fn fetch(version: &str, into: &Path) -> Result<PathBuf, String> {
+    let at = into.join(format!("csp-{version}.zip"));
+    if let Some(above) = at.parent() {
+        std::fs::create_dir_all(above).map_err(|why| format!("{}: {why}", above.display()))?;
+    }
+
+    let url = archive_url(version);
+    let mut answer = reqwest::blocking::Client::builder()
+        .timeout(PATIENCE)
+        .build()
+        .map_err(|why| format!("{why}"))?
+        .get(&url)
+        .send()
+        .map_err(|why| format!("{url} could not be reached: {why}"))?
+        .error_for_status()
+        .map_err(|why| format!("{url} answered with {why}"))?;
+
+    let mut file = std::fs::File::create(&at).map_err(|why| format!("{}: {why}", at.display()))?;
+    std::io::copy(&mut answer, &mut file)
+        .map_err(|why| format!("{} could not be written: {why}", at.display()))?;
+    drop(file);
+
+    if let Err(why) = is_really_the_patch(&at) {
+        // **Removed, not left for somebody to find later.** A file under a
+        // zip's name that is not the patch is worse sitting in a folder than
+        // it is missing.
+        let _ = std::fs::remove_file(&at);
+        return Err(format!("what arrived from {url}: {why}"));
+    }
+
+    Ok(at)
+}
+
+/// Whether a downloaded file is the patch, before it is anywhere near a game.
+///
+/// **Two checks, and each catches what the other does not.** A rate-limit
+/// page, a redirect body and an error JSON all arrive happily under a `.zip`
+/// name with a perfectly good status code, and they are a few kilobytes — so
+/// size catches them first and cheaply. And a real zip of something else
+/// entirely passes any size rule, so what is inside it is read back through
+/// the same recogniser a dropped archive goes through.
+///
+/// One recogniser for a download and for a drop, deliberately: two ways of
+/// judging the same zip is two ways for one of them to be wrong.
+fn is_really_the_patch(at: &Path) -> Result<(), String> {
+    let size = std::fs::metadata(at).map(|it| it.len()).unwrap_or_default();
+    if size < SURELY_TOO_SMALL {
+        return Err(format!(
+            "it is {size} bytes, which is a page and not sixty megabytes of patch"
+        ));
+    }
+    match super::adding::whats_in(at).first() {
+        Some(one) if one.kind == super::adding::Kind::Csp => Ok(()),
+        _ => Err(format!(
+            "there is no {LOADER} and no {FOLDER} in it, so it is not going anywhere near the game"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod fetch_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// **A page under a zip's name is not the patch.** This is the check
+    /// standing between a rate-limit notice and somebody's game folder.
+    #[test]
+    fn a_page_saved_under_a_zip_name_is_refused() {
+        let dir = std::env::temp_dir().join(format!("acpe-csp-page-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+        let at = dir.join("csp-0.2.11.zip");
+        std::fs::write(&at, b"<html><body>too many requests</body></html>").expect("a fixture");
+
+        let refused = is_really_the_patch(&at).expect_err("a page is not the patch");
+        assert!(refused.contains("bytes"), "{refused}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **And a real archive of something else passes any size rule.** What is
+    /// inside it has to be read, through the same recogniser a dropped archive
+    /// goes through.
+    #[test]
+    fn a_large_archive_that_is_not_the_patch_is_refused() {
+        let dir = std::env::temp_dir().join(format!("acpe-csp-other-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+        let at = dir.join("csp-0.2.11.zip");
+        // Big enough to pass the size rule, and not the patch.
+        std::fs::write(&at, vec![0u8; (SURELY_TOO_SMALL + 1) as usize]).expect("a fixture");
+
+        let refused = is_really_the_patch(&at).expect_err("not the patch");
+        assert!(refused.contains(LOADER), "{refused}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The version list has to come out of the page, and a page that no longer
+    /// has one is an error rather than an empty list — an empty list of builds
+    /// reads as "the patch has no versions", which is never true.
+    #[test]
+    fn a_page_without_versions_is_an_error_not_an_empty_list() {
+        assert!(offered_in("<html>nothing here</html>").all.is_empty());
+    }
+}

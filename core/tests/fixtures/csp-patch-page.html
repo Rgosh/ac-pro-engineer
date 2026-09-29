@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Custom Shaders Patch</title>
+  <base href="/patch/">
+  <link rel="stylesheet" href="/app/style.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="shortcut icon" type="image/x-icon" href="/app/icon.ico" sizes="16x16" />
+  <link rel="icon" type="image/x-icon" href="/app/icon.png" sizes="16x16" />
+  <link rel="apple-touch-icon-precomposed" href="/app/icon.png" />
+
+  <script src="/libs/jquery.min.js"></script>
+  <script src="/libs/jquery.magnific-popup.min.js"></script>
+  <link rel="stylesheet" href="/libs/magnific-popup.min.css" />
+
+  <style>
+    .piece:target { background: rgba(0,0,0,.5); border-radius: 4px; padding: 6px 12px; margin: -6px -12px; position: relative; overflow: hidden; }
+    .piece:target h3 { margin-top: 12px; }
+    .piece:target:before { content: ""; background: #A20025; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+    .screenshots img { object-fit: cover; height: 160px; width: 240px; margin-right: 4px; }
+    .mfp-fade.mfp-bg { opacity: 0; transition: all 0.15s ease-out; }
+    .mfp-fade.mfp-bg.mfp-ready { opacity: 0.95; }
+    .mfp-fade.mfp-bg.mfp-removing { opacity: 0; }
+    .mfp-fade.mfp-wrap .mfp-content { opacity: 0; transition: all 0.15s ease-out; }
+    .mfp-fade.mfp-wrap.mfp-ready .mfp-content { opacity: 1; }
+    .mfp-fade.mfp-wrap.mfp-removing .mfp-content { opacity: 0; }
+    .mfp-close { font-weight: 100; font-size: 28px; font-family: segoe ui; }
+    .mfp-figure:after { box-shadow: none; }
+    .mfp-arrow:before { box-shadow: none; content: none; }
+    .mfp-title, .mfp-counter { font-size: 11px; }
+    .markdown li:after, .version-block-links li:after { content: none; }
+    .version-block { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+    .previous-versions { display: flex; flex-direction: column-reverse; flex-grow: 1; }
+    .previous-versions-wrapper { max-height: 200px; overflow-y: auto; }
+    .changelog { max-height: 320px; overflow-y: auto; font-size: 12px; }
+    .version-block ul { font-size: 12px; }
+    .mfp-arrow-right { margin-top: -69px; }
+    .version-block-links-title, .version-block-links span { display: none; }
+    .version-block-links { display: flex; justify-content: flex-start; padding: 0; }
+    .version-block-links li { display: block; margin-right: 20px; }
+    .version-block-links a { font-size: 0; }
+    .version-block-links a:not([download]):after { font-size: 14px; content: "More info"; }
+    .version-block-links a[download]:after { font-size: 14px; content: "Download"; }
+    /* .version-block .tag-tested { color: #8f0; }
+    .version-block .tag-untested { color: #ff0; } */
+    .tag-tested { color: #8f0; }
+    .tag-recommended { color: #0f0; }
+    .tag-relatively.functional { color: #ff0; }
+    .tag-not.recommended { color: #f80; background: rgba(0, 0, 0, 0.005); }
+    .tag-buggy { color: #f00; }
+    ::-webkit-scrollbar { width: 8px;}
+    ::-webkit-scrollbar-track { background: #000; display: none;}
+    ::-webkit-scrollbar-thumb { background: #aaa; }
+    ::-webkit-scrollbar-thumb:hover { background: #fff; }  
+    body { padding: 0 0 0 40px; }
+    .main > section { display: block; width: 520px; }
+    .main > section:last-of-type { width: 520px; }
+    .main { margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-evenly; }
+</style>
+</head>
+<body>
+<div class="background"></div>
+<div class="main">
+<section>
+  <div class="piece">
+    <h1>Custom Shaders Patch</h1>
+    <p>
+      An extension for <a target="_blank" href="http://www.assettocorsa.net/">Assetto Corsa</a> which started as an attempt to add some sort dynamic lighting, hence the name. Still in development, as usual.
+    </p>
+    <p>
+      <i>We’d like to thank the Kunos developers for all of the effort they put into making AC such a great simulator and giving us an excellent basis for our work.</i>
+    </p>
+  </div>
+
+  <div class="piece" id="requirements">
+    <h3>Requirements:</h3>
+    <ul>
+      <li>Installed Assetto Corsa v1.16.3/4 (64-bit only)</li>
+      <li><a target="_blank" href="https://www.microsoft.com/en-us/download/details.aspx?id=48145">Visual C++ Redistributable 2015 (x86)</a></li>
+    </ul>
+  </div>
+
+  <div class="piece" id="features">
+    <h3>Some of features:</h3>
+    <ul>
+      <li>Various physics extensions by mclarenf1papa</li>
+      <li>Optimizations and fixes</li>
+      <li>Dynamic lights as part of Lighting FX</li>
+      <li>Weather FX: fully scriptable dynamic weather engine</li>
+      <li>Extra FX: local reflections, bounced lighting, temporal anti-aliasing, etc.</li>
+      <!-- <li>Grass FX: procedurally generated grass</li> -->
+      <li>Particles FX: sparks, new smoke, bits of grass and dirt and more</li>
+      <!-- <li>Tyres FX: visible wear and flex, custom textures for different types</li> -->
+      <li>Car extensions: reverse lights, turning signals, working odometers and more</li>
+      <!-- <li>Real Mirrors reflecting car accurately</li> -->
+      <li>And more (still compiling the full list)</li>
+    </ul>
+  </div>
+
+  <div class="piece" id="get">
+    <h3>Download:</h3>
+    <ul>
+      <li><a download="v0.2.11.zip" href="?get=0.2.11" style="color:#0f0">v0.2.11 (recommended version)</a></li>
+          </ul>
+  </div>
+  <div class="piece" id="links">
+    <h3>More links:</h3>
+    <ul>
+      <li><a target="_blank" href="https://github.com/ac-custom-shaders-patch" style="color:#ff0">GitHub group with configs and helpful apps</a></li>
+      <li><a target="_blank" href="https://www.youtube.com/channel/UCA2_Ah2mkae04FEVusea1ig">YouTube channel with some videos</a></li>
+      <li><a target="_blank" href="https://trello.com/b/xq54vHsX/ac-patch">Trello board with all the information</a></li>
+    </ul>
+  </div>
+
+  <div class="piece" id="changelog">
+    <h3>Other versions:</h3>
+    <div class="previous-versions-wrapper">
+      <ul class="previous-versions" style="display:none"><li><a target="_blank" href="?info=0.1.75">v0.1.75</a> (52.83 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.1.76">v0.1.76</a> (57.23 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.1.77">v0.1.77</a> (61.64 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.1.78">v0.1.78</a> (80.75 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.1.79">v0.1.79</a> (80.74 MB, <span class="tag tag-recommended">recommended</span>)</li><li><a target="_blank" href="?info=0.2.0">v0.2.0</a> (91.97 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.1">v0.2.1</a> (93.36 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.2">v0.2.2</a> (93.38 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.3">v0.2.3</a> (110.15 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.4">v0.2.4</a> (110.58 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.5">v0.2.5</a> (116.5 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.6">v0.2.6</a> (116.74 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.7">v0.2.7</a> (117.81 MB, <span class="tag tag-untested">untested</span>)</li><li><a target="_blank" href="?info=0.2.8">v0.2.8</a> (118.68 MB, <span class="tag tag-buggy">buggy</span>)</li><li><a target="_blank" href="?info=0.2.9">v0.2.9</a> (118.28 MB, <span class="tag tag-buggy">buggy</span>)</li><li><a target="_blank" href="?info=0.2.10">v0.2.10</a> (119.12 MB, <span class="tag tag-buggy">buggy</span>)</li><li><a target="_blank" href="?info=0.2.11">v0.2.11</a> (119.12 MB, <span class="tag tag-recommended">recommended</span>)</li></ul><script>$('.previous-versions').show().scrollTop(0);</script>
+    </div>
+  </div>
+  
+</section>
+
+<section class="screenshots">
+  <h3>Screenshots:</h3>
+  <p><a href="screens/~a.jpg" title=""><img src="screens/thumb_~a.jpg.jpg"></a><a href="screens/~b.jpg" title=""><img src="screens/thumb_~b.jpg.jpg"></a><a href="screens/~c.jpg" title=""><img src="screens/thumb_~c.jpg.jpg"></a><a href="screens/~d.png" title=""><img src="screens/thumb_~d.png.jpg"></a><a href="screens/~e.png" title=""><img src="screens/thumb_~e.png.jpg"></a><a href="screens/~f.png" title=""><img src="screens/thumb_~f.png.jpg"></a><a href="screens/~g.jpg" title=""><img src="screens/thumb_~g.jpg.jpg"></a><a href="screens/~h.jpg" title=""><img src="screens/thumb_~h.jpg.jpg"></a><a href="screens/~k.png" title=""><img src="screens/thumb_~k.png.jpg"></a><a href="screens/~l.png" title=""><img src="screens/thumb_~l.png.jpg"></a><a href="screens/~m.jpg" title=""><img src="screens/thumb_~m.jpg.jpg"></a><a href="screens/~n.jpg" title=""><img src="screens/thumb_~n.jpg.jpg"></a>  </p>
+</section>
+</div>
+
+<script>
+  $('.screenshots').magnificPopup({
+    type: 'image',
+    delegate: 'a',
+    removalDelay: 100,
+    mainClass: 'mfp-fade',
+		closeOnContentClick: true,
+    callbacks: { elementParse: item => item.src = item.el.find('img')[0].src.replace(/thumb_|\.jpg$/g, '') },
+    gallery: { enabled: true, preload: [1, 2], navigateByImgClick: false }
+  });
+  $('#changelog').magnificPopup({
+    type: 'ajax',
+    delegate: 'a',
+    removalDelay: 100,
+    mainClass: 'mfp-fade',
+		closeOnContentClick: false,
+    gallery: { enabled: true, preload: [1, 2], navigateByImgClick: false },
+    callbacks: {
+      open: function() {
+        location.hash = /\?info=(.+)/.test(this.currItem.src) ? RegExp.$1 : '';
+        setTimeout(() => {
+          $('.version-block').click(e => !1);
+          $('.version-block a').click(e => (location = e.target.href) && !1);
+        }, 100);
+      },
+      change: function() {
+        location.hash = /\?info=(.+)/.test(this.currItem.src) ? RegExp.$1 : '';
+        setTimeout(() => {
+          $('.version-block').click(e => !1);
+          $('.version-block a').click(e => (location = e.target.href) && !1);
+        }, 100);
+      },
+      close: function() {
+        history.replaceState({}, document.title, window.location.href.split('#')[0]);
+      }
+    }
+  });
+  if (location.hash){
+    [].slice.call($('[href="?info='+location.hash.substr(1)+'"]'), 0, 1).forEach(x => x.click());
+  }
+</script>
+</body>
+<script>
+</script>
+</html>
