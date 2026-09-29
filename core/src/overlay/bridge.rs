@@ -309,9 +309,38 @@ pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
         );
     }
 
-    // **Which Proton, and where, is the bridge crate's question now.** It was
-    // answered here as well until this release, and the two answers were the
-    // same only because they were written on the same afternoon. See
+    // **Through Proton's own entry point, the way the game itself is
+    // started.** This is not a preference: it was measured.
+    //
+    // Started with the `wine` inside Proton — which is what `how_to_launch`
+    // answers — the bridge runs, reports nothing wrong, and publishes **no
+    // pages at all**. Wine says why in passing: "Server is running with
+    // WINEFSYNC but this process is not". The game was started through
+    // `proton run`, which sets that environment up; a bare `wine` joins the
+    // same prefix under different rules and cannot see the game's sections.
+    //
+    // The symptom is a game running, an engineer running, and no telemetry,
+    // with nothing anywhere saying why — which is exactly how it was
+    // reported. Started through `proton run` against the same live game, all
+    // four `acpmf_*` pages appeared and `acpmf_static` read back the car that
+    // was loaded.
+    //
+    // It is the same trap as the one that left the game itself untextured,
+    // and it is written down in the launcher's plan in as many words:
+    // `proton run`, not `files/bin/wine`.
+    if let Some(through_proton) = wineshm::launch::game::how_to_start(app_id) {
+        let (program, mut args) = through_proton.command(exe);
+        args.extend(what_to_tell_it());
+        return Invocation {
+            program,
+            args,
+            env: through_proton.env(),
+            working_dir: wineshm::launch::Launch::working_dir(exe),
+            how: How::Steam,
+        };
+    }
+
+    // **Which Proton, and where, is the bridge crate's question.** See
     // `wineshm::launch` for the layouts it covers — native, Flatpak, Snap, the
     // Deck, and libraries on other disks.
     let plan = wineshm::launch::how_to_launch(app_id);
@@ -328,6 +357,31 @@ pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
 #[cfg(unix)]
 fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How) -> Invocation {
     let (_, mut args) = plan.command(exe);
+    args.extend(what_to_tell_it());
+
+    Invocation {
+        program,
+        args,
+        env: plan.env(),
+        // **The folder the bridge is in, and it matters.** Wine resolves the
+        // path against the prefix's drive mappings, and a folder that is not
+        // mapped — `/tmp` is the one that bit during testing — comes back as
+        // "failed to open" with the file plainly there.
+        working_dir: wineshm::launch::Launch::working_dir(exe),
+        how,
+    }
+}
+
+/// Everything the bridge is told, whichever way it is reached.
+///
+/// **One list, because there are two ways in.** The arguments were built
+/// inside the one that knows how to reach the prefix, and adding a second way
+/// meant rebuilding them from the first — which dropped a `--page` in the
+/// splicing and was caught only by reading the command line that came out.
+/// What the bridge is told has nothing to do with how it is started.
+#[cfg(unix)]
+fn what_to_tell_it() -> Vec<String> {
+    let mut args = Vec::new();
     for page in pages() {
         args.push("--page".to_string());
         args.push(format!("{}:{}", page.name, page.bytes));
@@ -378,17 +432,7 @@ fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How
     // the diagnostics read the note instead.
     args.push("--quiet".to_string());
 
-    Invocation {
-        program,
-        args,
-        env: plan.env(),
-        // **The folder the bridge is in, and it matters.** Wine resolves the
-        // path against the prefix's drive mappings, and a folder that is not
-        // mapped — `/tmp` is the one that bit during testing — comes back as
-        // "failed to open" with the file plainly there.
-        working_dir: wineshm::launch::Launch::working_dir(exe),
-        how,
-    }
+    args
 }
 
 /// Where a running bridge would have left its note.
@@ -630,6 +674,27 @@ fn cross_build_candidates(exe: &Path) -> Vec<PathBuf> {
 /// somewhere else, which is the same situation with different directories.
 pub fn installed_executable() -> Option<PathBuf> {
     choose_executable(&candidate_executables(), crate::updater::CURRENT_VERSION)
+}
+
+/// What the bridge used to be called.
+///
+/// **It was renamed, and every install from before that has the old one.** The
+/// bridge became its own project under a name of its own; an application
+/// looking only for the new name beside itself finds nothing at all in a
+/// folder that plainly contains a bridge, and says "none found" — which is
+/// true, useless, and indistinguishable from never having installed one.
+pub const OLDER_BRIDGE_EXE: &str = "shm-bridge.exe";
+
+/// A bridge under its old name, where the new one would have been.
+///
+/// Only for saying so. It is not run: it is the bridge from before the
+/// overlay, the handoff and the supervision, and pretending otherwise would
+/// trade a clear refusal for a session that quietly does not work.
+pub fn older_bridge_beside_us() -> Option<PathBuf> {
+    candidate_executables()
+        .iter()
+        .map(|at| at.with_file_name(OLDER_BRIDGE_EXE))
+        .find(|at| at.is_file())
 }
 
 /// The rule above, with the search and the version handed in so it can be
@@ -1120,5 +1185,61 @@ mod tests {
     fn an_empty_note_is_not_a_bridge_report() {
         assert!(BridgeInfo::parse("").is_none());
         assert!(BridgeInfo::parse("garbage without any equals sign").is_none());
+    }
+}
+
+#[cfg(test)]
+mod renamed_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// **The rename left every existing install without a bridge.**
+    ///
+    /// It became its own project under a name of its own, and an application
+    /// looking only for the new name beside itself finds nothing in a folder
+    /// that plainly contains a bridge. "None found" is true, useless, and
+    /// indistinguishable from never having installed one — which is exactly
+    /// what somebody reported: a game running, an engineer running, and no
+    /// telemetry, with nothing on screen saying why.
+    #[test]
+    fn the_two_names_are_not_the_same_file() {
+        assert_ne!(BRIDGE_EXE, OLDER_BRIDGE_EXE);
+        assert_eq!(BRIDGE_EXE, "wineshm.exe");
+        assert_eq!(OLDER_BRIDGE_EXE, "shm-bridge.exe");
+    }
+
+    /// An old bridge is found so it can be *named*, and is never chosen to
+    /// run: it predates the overlay, the handoff and the supervision, and
+    /// running it would trade a clear refusal for a session that quietly does
+    /// not work.
+    #[test]
+    fn an_old_bridge_is_named_and_not_used() {
+        let dir = std::env::temp_dir().join(format!("acpe-renamed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+        let older = dir.join(OLDER_BRIDGE_EXE);
+        std::fs::write(&older, b"MZ").expect("a fixture");
+
+        // What `older_bridge_beside_us` does, against a folder under this
+        // test's control rather than against wherever this happens to run.
+        let looked = [dir.join(BRIDGE_EXE)]
+            .iter()
+            .map(|at| at.with_file_name(OLDER_BRIDGE_EXE))
+            .find(|at| at.is_file());
+        assert_eq!(looked.as_deref(), Some(older.as_path()));
+
+        // **And nothing this application searches is ever the old name.**
+        // `choose_executable` judges a path it is handed and does not look at
+        // what the file is called — hand it an old bridge and it will take it.
+        // What keeps that from happening is that every candidate is built
+        // from `BRIDGE_EXE`, so this is the assertion that matters.
+        assert!(
+            candidate_executables()
+                .iter()
+                .all(|at| at.file_name().is_some_and(|name| name == BRIDGE_EXE)),
+            "something in the search is not {BRIDGE_EXE}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
