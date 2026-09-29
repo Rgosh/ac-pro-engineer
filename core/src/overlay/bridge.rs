@@ -434,7 +434,20 @@ fn what_to_tell_it(exe: &Path) -> Vec<String> {
     // session before anybody noticed it was this. Nothing was ever written to
     // it: the launcher card and the diagnostics read the note in `/dev/shm`
     // instead.
-    args.push("--background".to_string());
+    //
+    // **Only to a bridge that knows the word.** An unrecognised flag is a hard
+    // refusal there, and rightly so — but that means sending this to an older
+    // bridge turns "a window nobody wanted" into "no telemetry at all", which
+    // is much the worse of the two and would look like this fix breaking the
+    // program. The version is compiled into the binary precisely so it can be
+    // asked without running it.
+    args.push(
+        match knows_about_hiding(exe) {
+            true => "--background",
+            false => "--quiet",
+        }
+        .to_string(),
+    );
 
     args
 }
@@ -893,9 +906,14 @@ mod tests {
         // **Out of sight, which is also silent.** Under Wine a console binary
         // is given a console window, and one sat in the taskbar beside the
         // game for a whole session before anybody worked out it was this.
+        //
+        // Either word, because which one is sent depends on the bridge that is
+        // actually on this machine — and one too old to know `--background`
+        // refuses it outright, which would trade an unwanted window for no
+        // telemetry at all.
         assert!(
-            said.contains("--background"),
-            "it would be a window: {said}"
+            said.contains("--background") || said.contains("--quiet"),
+            "it would talk to a terminal nobody is watching: {said}"
         );
         // The heartbeat has to name a block that is actually published, and
         // one that moves — the bridge refuses a name it is not serving, and a
