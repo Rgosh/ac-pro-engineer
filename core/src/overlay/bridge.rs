@@ -330,7 +330,7 @@ pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
     // `proton run`, not `files/bin/wine`.
     if let Some(through_proton) = wineshm::launch::game::how_to_start(app_id) {
         let (program, mut args) = through_proton.command(exe);
-        args.extend(what_to_tell_it());
+        args.extend(what_to_tell_it(exe));
         return Invocation {
             program,
             args,
@@ -357,7 +357,7 @@ pub fn how_to_start(app_id: u32, exe: &Path) -> Invocation {
 #[cfg(unix)]
 fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How) -> Invocation {
     let (_, mut args) = plan.command(exe);
-    args.extend(what_to_tell_it());
+    args.extend(what_to_tell_it(exe));
 
     Invocation {
         program,
@@ -380,7 +380,7 @@ fn dressed(plan: wineshm::launch::Launch, program: PathBuf, exe: &Path, how: How
 /// splicing and was caught only by reading the command line that came out.
 /// What the bridge is told has nothing to do with how it is started.
 #[cfg(unix)]
-fn what_to_tell_it() -> Vec<String> {
+fn what_to_tell_it(exe: &Path) -> Vec<String> {
     let mut args = Vec::new();
     for page in pages() {
         args.push("--page".to_string());
@@ -1250,6 +1250,83 @@ mod renamed_tests {
                 .all(|at| at.file_name().is_some_and(|name| name == BRIDGE_EXE)),
             "something in the search is not {BRIDGE_EXE}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Whether a bridge on disk understands being asked to hide its console.
+///
+/// **Asked of the file, and the older answer is the safe one.** A bridge that
+/// does not know a flag refuses to start at all — which is right of it, and
+/// means sending this blind would turn a window nobody wanted into no
+/// telemetry whatsoever. A binary too old to carry a version marker is treated
+/// as too old to know, which it is.
+#[cfg(unix)]
+fn knows_about_hiding(exe: &Path) -> bool {
+    /// The release it arrived in.
+    const SINCE: &str = "0.6.3";
+
+    version_in_executable(exe)
+        .is_some_and(|said| crate::overlay::bridge_update::compare_versions(&said, SINCE).is_ge())
+}
+
+#[cfg(all(test, unix))]
+mod hiding_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// A bridge carrying a version marker, as one does.
+    fn a_bridge(dir: &Path, version: Option<&str>) -> PathBuf {
+        let at = dir.join(BRIDGE_EXE);
+        let mut bytes = b"MZ".to_vec();
+        bytes.extend_from_slice(&[0u8; 64]);
+        if let Some(version) = version {
+            bytes.extend_from_slice(format!("{VERSION_MARKER_PREFIX}{version};").as_bytes());
+        }
+        std::fs::write(&at, bytes).expect("a fixture");
+        at
+    }
+
+    /// **An old bridge must not be asked.** An unrecognised flag is a hard
+    /// refusal there — rightly — so asking blind turns a window nobody wanted
+    /// into no telemetry at all, which is much the worse of the two.
+    #[test]
+    fn only_a_bridge_that_knows_the_word_is_asked_to_hide() {
+        let dir = std::env::temp_dir().join(format!("acpe-hiding-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+
+        assert!(knows_about_hiding(&a_bridge(&dir, Some("0.6.3"))));
+        assert!(knows_about_hiding(&a_bridge(&dir, Some("0.7.0"))));
+        assert!(!knows_about_hiding(&a_bridge(&dir, Some("0.6.2"))));
+        assert!(!knows_about_hiding(&a_bridge(&dir, Some("0.6.1"))));
+        // No marker at all is a bridge older than the marker, which is older
+        // than this.
+        assert!(!knows_about_hiding(&a_bridge(&dir, None)));
+        assert!(!knows_about_hiding(&dir.join("not-there.exe")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// And one of the two words is always sent: the bridge has no terminal
+    /// anybody is watching either way.
+    #[test]
+    fn something_is_always_said_about_the_terminal() {
+        let dir = std::env::temp_dir().join(format!("acpe-hiding-said-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+
+        for version in [Some("0.6.3"), Some("0.6.1"), None] {
+            let at = a_bridge(&dir, version);
+            let said = what_to_tell_it(&at);
+            assert!(
+                said.iter()
+                    .any(|arg| arg == "--background" || arg == "--quiet"),
+                "{version:?} got neither: {said:?}"
+            );
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
