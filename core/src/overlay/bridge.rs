@@ -428,9 +428,13 @@ fn what_to_tell_it() -> Vec<String> {
         args.push("--handoff".to_string());
     }
 
-    // Nothing to say on a terminal nobody is watching: the launcher card and
-    // the diagnostics read the note instead.
-    args.push("--quiet".to_string());
+    // **Out of sight, which is also silent.** Under Wine a console binary is
+    // given a console, and that console is a window with a title — one called
+    // `Z:\…\wineshm.exe` sat in the taskbar beside the game for a whole
+    // session before anybody noticed it was this. Nothing was ever written to
+    // it: the launcher card and the diagnostics read the note in `/dev/shm`
+    // instead.
+    args.push("--background".to_string());
 
     args
 }
@@ -886,7 +890,13 @@ mod tests {
             )),
             "{said}"
         );
-        assert!(said.contains("--quiet"), "nobody is watching its terminal");
+        // **Out of sight, which is also silent.** Under Wine a console binary
+        // is given a console window, and one sat in the taskbar beside the
+        // game for a whole session before anybody worked out it was this.
+        assert!(
+            said.contains("--background"),
+            "it would be a window: {said}"
+        );
         // The heartbeat has to name a block that is actually published, and
         // one that moves — the bridge refuses a name it is not serving, and a
         // static block would have it blank a live session.
