@@ -74,6 +74,12 @@ it turned out to be a real fault rather than a feeling.
   from the first finished lap on. Now when it changed: at once for a new lap,
   at most every fifteen seconds when only the advice moved.
 
+### Changed
+
+- **The bridge is wineshm 0.7.0**, released, and FETCH THE BRIDGE installs it.
+  It adds `--window`, which the window's Overlay module uses on Linux to know
+  where the game's window is and whether it is in front.
+
 ### Also since v0.5.1
 
 Nothing between 0.5.1 and this was released, so this is the first build to
