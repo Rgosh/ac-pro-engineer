@@ -73,6 +73,17 @@ const EVERY: Duration = Duration::from_secs(2);
 /// should leave the list rather than sit in it being unreachable.
 const FORGET_AFTER: Duration = Duration::from_secs(7);
 
+/// How often the interfaces are asked for again, and the group joined on them.
+///
+/// **The network a copy started on is not the network it is on an hour later.**
+/// A laptop that slept wakes on another address; a desktop that started this
+/// program before the Wi-Fi came up had only loopback to join. Either way the
+/// membership taken at `open` was for interfaces that no longer carry anything,
+/// and the copy could see nobody and be seen by nobody until it was restarted.
+/// Ten seconds is a handful of system calls, and a friend appears within one
+/// announcement of the network coming back.
+const REJOIN_EVERY: Duration = Duration::from_secs(10);
+
 /// The most an announcement may be. They are a couple of hundred bytes; this is
 /// the ceiling past which something is not ours.
 const MAX_ANNOUNCEMENT: usize = 2048;
@@ -198,6 +209,8 @@ pub struct Discovery {
     /// otherwise only one of them works.
     peers: HashMap<SocketAddr, Peer>,
     last_announced: Option<Instant>,
+    /// When the interfaces were last asked for — see [`REJOIN_EVERY`].
+    rejoined: Instant,
     id: String,
     buffer: Vec<u8>,
 }
@@ -251,6 +264,7 @@ impl Discovery {
             to_group: SocketAddrV4::new(GROUP, PORT).into(),
             peers: HashMap::new(),
             last_announced: None,
+            rejoined: Instant::now(),
             id: fresh_id(),
             buffer: vec![0; MAX_ANNOUNCEMENT],
         })
@@ -266,6 +280,9 @@ impl Discovery {
     /// `announce` is `None` for somebody who does not want to be found: they
     /// still see everybody else, which is the asymmetry a shared network wants.
     pub fn poll(&mut self, announce: Option<&Announcement>) {
+        if self.rejoined.elapsed() >= REJOIN_EVERY {
+            self.rejoin(interfaces());
+        }
         if let Some(mine) = announce {
             let due = self
                 .last_announced
@@ -289,6 +306,34 @@ impl Discovery {
 
         self.peers
             .retain(|_, peer| peer.last_seen.elapsed() < FORGET_AFTER);
+    }
+
+    /// Join the group on the interfaces this machine has now, and announce out
+    /// of those from here on.
+    ///
+    /// **Joined again on all of them, not only the new ones.** An interface
+    /// that went down and came back with the same address has lost its
+    /// membership as surely as one that changed address, and nothing says
+    /// which happened; joining one that is already joined is refused and
+    /// harmless. An address that has gone is left, so the kernel stops
+    /// holding a membership for something that is not there.
+    fn rejoin(&mut self, found: Vec<Ipv4Addr>) {
+        self.rejoined = Instant::now();
+        for address in &found {
+            let _ = self.socket.join_multicast_v4(&GROUP, address);
+        }
+        for gone in self.interfaces.iter().filter(|old| !found.contains(old)) {
+            let _ = self.socket.leave_multicast_v4(&GROUP, gone);
+        }
+        // Somebody who has just arrived on a network says so at once, rather
+        // than up to two seconds later.
+        if found
+            .iter()
+            .any(|address| !self.interfaces.contains(address))
+        {
+            self.last_announced = None;
+        }
+        self.interfaces = found;
     }
 
     /// Take one datagram. Public for the tests, which need no network to
@@ -601,9 +646,34 @@ mod tests {
             to_group: SocketAddrV4::new(GROUP, PORT).into(),
             peers: HashMap::new(),
             last_announced: None,
+            rejoined: Instant::now(),
             id: "me".to_string(),
             buffer: vec![0; MAX_ANNOUNCEMENT],
         }
+    }
+
+    /// **A machine that changed networks is still findable.** The address it
+    /// started on is dropped, the one it has now is announced on, and the
+    /// first announcement goes out at once rather than on the next beat.
+    #[test]
+    fn a_network_that_changed_underneath_is_joined_again() {
+        let mut discovery = quiet();
+        discovery.interfaces = vec![Ipv4Addr::LOCALHOST, Ipv4Addr::new(10, 0, 0, 9)];
+        discovery.last_announced = Some(Instant::now());
+
+        let woke_on = Ipv4Addr::new(192, 168, 1, 15);
+        discovery.rejoin(vec![Ipv4Addr::LOCALHOST, woke_on]);
+
+        assert_eq!(discovery.interfaces, vec![Ipv4Addr::LOCALHOST, woke_on]);
+        assert_eq!(
+            discovery.last_announced, None,
+            "a copy that has just arrived on a network says so at once"
+        );
+
+        // Nothing new: the next beat is kept, and nothing is announced early.
+        discovery.last_announced = Some(Instant::now());
+        discovery.rejoin(vec![Ipv4Addr::LOCALHOST, woke_on]);
+        assert!(discovery.last_announced.is_some());
     }
 
     fn from(address: &str) -> SocketAddr {
