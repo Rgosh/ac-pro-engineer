@@ -516,6 +516,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// **Written when it changed, not every time it was asked.** A new lap
+    /// goes down at once; the engineer changing its mind between two laps
+    /// waits; the same session asked about again writes nothing.
+    #[test]
+    fn a_session_is_written_when_it_changed() {
+        let root = std::env::temp_dir().join(format!("rg-followup-often-{}", std::process::id()));
+        let store = store::Store::in_dir(root.clone());
+        let mut session = store::Remembered {
+            started: "2026-09-12 10:00".to_string(),
+            car: "bmw_z4_gt3".to_string(),
+            track: "spa".to_string(),
+            laps: 4,
+            best_ms: 90_000,
+            findings: vec![said("TYRES", Severity::Warning)],
+        };
+        store.remember(&session).expect("it writes");
+        let file = std::fs::read_dir(store.at())
+            .expect("the directory")
+            .flatten()
+            .next()
+            .expect("one file")
+            .path();
+        let read = || {
+            serde_json::from_slice::<store::Remembered>(&std::fs::read(&file).expect("it reads"))
+                .expect("it parses")
+        };
+
+        // Only what is being said moved: not yet.
+        session.findings = vec![said("BRAKES", Severity::Critical)];
+        store.remember(&session).expect("it is asked");
+        assert_eq!(
+            read().findings[0].component,
+            "TYRES",
+            "rewritten within the quarter-minute"
+        );
+
+        // A lap was added: at once, findings and all.
+        session.laps = 5;
+        store.remember(&session).expect("it writes");
+        let now = read();
+        assert_eq!(now.laps, 5);
+        assert_eq!(now.findings[0].component, "BRAKES");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A session with nothing wrong in it has nothing for the next one to
     /// follow up on, and offering it would make everything read as new.
     #[test]
@@ -635,7 +681,15 @@ pub mod store {
     /// One file per car and track, under the application's own directory.
     pub struct Store {
         at: PathBuf,
+        /// What was written last, and when — see [`Store::remember`].
+        written: std::sync::Mutex<Option<(Remembered, std::time::Instant)>>,
     }
+
+    /// The most often a session whose laps have not changed is written again.
+    ///
+    /// What the engineer is saying moves from second to second; what the next
+    /// session compares against only has to be close to the last word.
+    const REWRITE_AT_MOST_EVERY: std::time::Duration = std::time::Duration::from_secs(15);
 
     impl Default for Store {
         fn default() -> Self {
@@ -653,6 +707,7 @@ pub mod store {
         pub fn in_dir(data_dir: PathBuf) -> Self {
             Self {
                 at: data_dir.join("followup"),
+                written: std::sync::Mutex::new(None),
             }
         }
 
@@ -677,14 +732,42 @@ pub mod store {
         /// **Called on every lap and not at the end.** A program that is killed
         /// keeps what it knew up to the last lap, and the session most worth
         /// remembering is the one where something went wrong.
+        ///
+        /// **And not on every reading either**, which is where both front ends
+        /// call it from. Each call was a whole file, written beside the old one,
+        /// flushed to the disk and renamed over it — sixty times a second from
+        /// the first finished lap to the end of the evening, on the thread that
+        /// reads the game, with an `fsync` in every one. So: nothing at all
+        /// when nothing changed; at once when a lap was added or the session
+        /// is another one; and at most every fifteen seconds when only what the
+        /// engineer is saying has moved.
         pub fn remember(&self, session: &Remembered) -> std::io::Result<()> {
             if session.car.is_empty() || session.track.is_empty() {
                 return Ok(());
             }
+            let mut written = self
+                .written
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some((last, when)) = written.as_ref() {
+                if last == session {
+                    return Ok(());
+                }
+                let same_laps = last.started == session.started
+                    && last.car == session.car
+                    && last.track == session.track
+                    && last.laps == session.laps
+                    && last.best_ms == session.best_ms;
+                if same_laps && when.elapsed() < REWRITE_AT_MOST_EVERY {
+                    return Ok(());
+                }
+            }
             std::fs::create_dir_all(&self.at)?;
-            let written = serde_json::to_vec_pretty(session)
+            let bytes = serde_json::to_vec_pretty(session)
                 .map_err(|why| std::io::Error::other(why.to_string()))?;
-            crate::atomic_file::write_atomic(&self.file_for(&session.car, &session.track), &written)
+            crate::atomic_file::write_atomic(&self.file_for(&session.car, &session.track), &bytes)?;
+            *written = Some((session.clone(), std::time::Instant::now()));
+            Ok(())
         }
 
         /// The last session in this car at this track, if it is not the one
