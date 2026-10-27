@@ -436,6 +436,12 @@ pub struct AppState {
     pub overlay_confirm: Option<OverlayAction>,
     pub overlay_confirm_selection: usize,
     pub is_demo_mode: bool,
+    /// Whether the reading being processed arrived from somebody else.
+    ///
+    /// Set around `process_tick_logic` while a watched session is pumped in,
+    /// so the one thing that outlives the session — `records.json` — can
+    /// refuse it. A friend's lap is not this driver's personal best.
+    watched_tick: bool,
     pub demo_tick_counter: u64,
     pub show_help: bool,
     /// How long the last rendered frame took, and how long ago the background
@@ -522,6 +528,7 @@ impl AppState {
             source: None,
             reading: None,
             is_demo_mode: false,
+            watched_tick: false,
             demo_tick_counter: 0,
             setup_manager,
             content_manager: scan_installed_cars(game, config.ac_install_override()),
@@ -1482,7 +1489,16 @@ impl AppState {
                     // computing validity a second way. Assetto Corsa reports no
                     // validity at all, so every lap there is valid and this
                     // reads exactly as it did.
-                    let counted = self.analyzer.laps.last().is_some_and(|lap| lap.valid);
+                    //
+                    // **And only this driver's, measured.** A lap watched over
+                    // the network is somebody else's, and a demo lap is
+                    // nobody's — both were written here as "User Best", where
+                    // the off-pace advice then measured this driver against a
+                    // friend's pace or a made-up one for good. The window has
+                    // refused both since it was written.
+                    let counted = self.analyzer.laps.last().is_some_and(|lap| lap.valid)
+                        && !self.is_demo_mode
+                        && !self.watched_tick;
                     if counted {
                         let mut personal = reference.clone();
                         personal.time_ms = last_lap_time;
@@ -1982,7 +1998,9 @@ impl AppState {
             // the distinction between "nobody is sending" and "they have not
             // started yet".
             self.is_connected = reading.car_is_loaded();
+            self.watched_tick = true;
             self.process_tick_logic(reading);
+            self.watched_tick = false;
         }
         true
     }
@@ -2383,6 +2401,64 @@ mod tests {
             watcher.watching.is_some(),
             "no port was opened to listen on"
         );
+    }
+
+    /// **A friend's lap is not this driver's personal best.** Watched laps
+    /// went through the same lap pipeline as local ones — which is right, it
+    /// is what fills the screens — and into `records.json` as "User Best".
+    #[test]
+    fn a_watched_lap_is_never_a_personal_best() {
+        use ac_core::games::{Reading, Status};
+
+        let scratch = std::env::temp_dir().join(format!("acpe-watched-{}", std::process::id()));
+        let mut watcher = AppState::new();
+        watcher.record_manager = ac_core::records::RecordManager::with_data_dir(scratch.clone());
+        watcher.stage = AppStage::Running;
+        watcher.lan.watch_simply();
+        watcher.lan.listen_on = "127.0.0.1:0".to_string();
+        watcher.reconcile_lan();
+        let listening_on = watcher
+            .watching
+            .as_ref()
+            .expect("the watcher opened a port")
+            .listening_on()
+            .to_string();
+
+        let mut driver = AppState::new();
+        driver.lan.share_simply("Kimi");
+        driver.lan.share_to = listening_on;
+        driver.lan.share_hz = 0.0;
+        driver.reconcile_lan();
+
+        for step in 0..400 {
+            let round = (step % 200) as f32 / 200.0;
+            let mut reading = Reading::default();
+            reading.session.status = Status::Live;
+            reading.session.track_position = round;
+            reading.session.completed_laps = step / 200;
+            reading.session.last_lap_ms = if step >= 200 { 95_000 } else { 0 };
+            reading.session.lap_is_valid = true;
+            reading.car.speed_kmh = 150.0;
+            reading.car.rpm = 6000;
+            reading.fixed.car_model = "bmw_z4_gt3".to_string();
+            reading.fixed.track = "spa".to_string();
+            driver.share_reading(&reading);
+            watcher.pump_watched_session();
+        }
+
+        assert!(
+            watcher.analyzer.laps.len() + watcher.current_lap_cars.len() > 0,
+            "the watched session reached the lap pipeline at all"
+        );
+        assert!(
+            !watcher
+                .record_manager
+                .records
+                .values()
+                .any(|record| record.source == "User Best"),
+            "the friend's 1:35 was written down as this driver's best"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 
     /// **Two copies of this program, over a socket, and every screen filled.**
