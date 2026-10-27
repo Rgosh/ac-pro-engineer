@@ -20,6 +20,7 @@ pub mod braking;
 pub mod broadcast;
 pub mod confidence;
 pub mod config;
+pub mod consistency;
 pub mod content_manager;
 pub mod corners;
 pub mod crash_logger;

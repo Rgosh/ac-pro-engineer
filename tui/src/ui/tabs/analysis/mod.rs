@@ -357,7 +357,15 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
             .split(area);
 
-        render_laps_list(f, main_layout[0], app);
+        // The laps, and under them how many of them were close to the best —
+        // the question a list of times answers only for somebody who does the
+        // arithmetic while driving.
+        let left = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(5), Constraint::Length(6)])
+            .split(main_layout[0]);
+        render_laps_list(f, left[0], app);
+        render_consistency(f, left[1], app);
 
         let right_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -495,6 +503,69 @@ fn render_subtabs_header(f: &mut Frame<'_>, area: Rect, app: &AppState) {
     }
 
     f.render_widget(tabs, area);
+}
+
+/// The consistency trainer: the run in progress, the session's longest, and
+/// how many laps were within the window of the best.
+///
+/// Worked out here rather than kept, because it is a walk over a few dozen lap
+/// times and the laps are already in hand; see `ac_core::consistency` for what
+/// counts as a hit and why.
+fn render_consistency(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let theme = &app.ui_state.theme;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+    let block = Block::default()
+        .title(ac_core::consistency::Consistency::title(is_ru).to_string())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+
+    let Some(counted) = ac_core::consistency::measure(&app.analyzer.laps) else {
+        f.render_widget(
+            Paragraph::new("a valid lap first".tr(is_ru))
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block),
+            area,
+        );
+        return;
+    };
+
+    let streak_colour = if counted.new_longest() {
+        Color::Green
+    } else if counted.streak > 0 {
+        app.ui_state.get_color(&theme.text)
+    } else {
+        Color::DarkGray
+    };
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(
+                format!("{} ", counted.streak),
+                Style::default()
+                    .fg(streak_colour)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                tr_fmt("in a row · ±{0}", is_ru, &[&counted.window()]),
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(Span::styled(
+            tr_fmt(
+                "longest {0} · {1}% of laps",
+                is_ru,
+                &[
+                    &counted.longest.to_string(),
+                    &counted.hit_rate().to_string(),
+                ],
+            ),
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            counted.spread(is_ru).unwrap_or_default(),
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn render_laps_list(f: &mut Frame<'_>, area: Rect, app: &AppState) {
