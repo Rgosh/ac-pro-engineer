@@ -48,6 +48,7 @@ pub mod rejoin;
 pub mod repeatability;
 pub mod ring_buffer;
 pub mod session_info;
+pub mod session_report;
 pub mod setup_manager;
 pub mod shifts;
 pub mod slips;

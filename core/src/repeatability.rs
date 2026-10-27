@@ -144,6 +144,40 @@ impl Repeatability {
     }
 }
 
+/// The session's corners, measured over every valid lap driven in it.
+///
+/// **In the core because it was in the window.** The window worked this out
+/// itself — which laps count, which one decides where the corners are — and
+/// the moment the terminal wanted the same answer for its session report
+/// there would have been two. The quickest valid lap is the skeleton, as
+/// [`measure`] asks, and its own recorded time is the best lap, as
+/// [`Repeatability::against`] asks. `None` below three laps, where a spread is
+/// two numbers and a guess.
+pub fn of_session(laps: &[crate::analyzer::LapData]) -> Option<Repeatability> {
+    let driven: Vec<&crate::analyzer::LapData> = laps
+        .iter()
+        .filter(|lap| !lap.from_file && lap.valid && !lap.telemetry_trace.is_empty())
+        .collect();
+    if driven.len() < 3 {
+        return None;
+    }
+    let quickest = driven
+        .iter()
+        .filter(|lap| lap.lap_time_ms > 0)
+        .min_by_key(|lap| lap.lap_time_ms)
+        .copied()
+        .unwrap_or(driven[0]);
+    let skeleton = crate::corners::detect(&quickest.telemetry_trace);
+    if skeleton.is_empty() {
+        return None;
+    }
+    let traces: Vec<&[TelemetryPoint]> = driven
+        .iter()
+        .map(|lap| lap.telemetry_trace.as_slice())
+        .collect();
+    Some(measure(&traces, &skeleton).against(quickest.lap_time_ms))
+}
+
 /// Measure a stint's corners against one lap's corner list.
 ///
 /// `skeleton` should be the corners of the quickest lap — it decides where the

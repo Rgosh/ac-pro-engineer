@@ -1233,17 +1233,7 @@ impl TelemetryAnalyzer {
     /// `> MIN_VALID_SECTOR_MS`, matching `process_lap`, so the two agree on
     /// what counts as a sector.
     pub fn best_sectors_ms(&self) -> [Option<i32>; 3] {
-        let mut best = [None; 3];
-
-        for lap in self.laps.iter().filter(|l| l.valid) {
-            for (slot, sector) in best.iter_mut().zip(lap.sectors.iter()) {
-                if *sector > MIN_VALID_SECTOR_MS && slot.is_none_or(|current| *sector < current) {
-                    *slot = Some(*sector);
-                }
-            }
-        }
-
-        best
+        best_sectors_of(&self.laps)
     }
 
     /// The lap that would result from stringing every best sector together.
@@ -1258,6 +1248,40 @@ impl TelemetryAnalyzer {
         }
         Some(best.iter().flatten().sum())
     }
+}
+
+/// The fastest valid time in each sector over these laps.
+///
+/// Free of the analyser so that a front end holding only the laps — the
+/// window's drawing side, the session report — gets the same answer as the
+/// analyser itself, rather than writing a second minimum that disagrees with
+/// it about what a sector is.
+pub fn best_sectors_of(laps: &[LapData]) -> [Option<i32>; 3] {
+    let mut best = [None; 3];
+
+    for lap in laps.iter().filter(|l| l.valid) {
+        for (slot, sector) in best.iter_mut().zip(lap.sectors.iter()) {
+            if *sector > MIN_VALID_SECTOR_MS && slot.is_none_or(|current| *sector < current) {
+                *slot = Some(*sector);
+            }
+        }
+    }
+
+    best
+}
+
+/// The lap of every best sector strung together, over these laps — see
+/// [`TelemetryAnalyzer::theoretical_best_lap_ms`].
+///
+/// Only over the sectors the track has: a two-sector track leaves the third
+/// slot empty on every lap, and that is not a sector nobody has set yet.
+pub fn theoretical_best_of(laps: &[LapData], sector_count: usize) -> Option<i32> {
+    let best = best_sectors_of(laps);
+    let used = &best[..sector_count.clamp(1, 3)];
+    if used.iter().any(Option::is_none) {
+        return None;
+    }
+    Some(used.iter().flatten().sum())
 }
 
 pub fn export_lap_to_csv(

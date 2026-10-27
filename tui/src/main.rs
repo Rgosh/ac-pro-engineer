@@ -938,6 +938,42 @@ async fn main() -> Result<(), anyhow::Error> {
                                     app_lock.config.language == ac_core::config::Language::Russian;
                                 app_lock.ui_state.analysis.toggle_corners_filter(is_ru);
                             }
+                            // **The session, written down as something to
+                            // post.** Every lap, the best, the consistency run,
+                            // the corners worth practising and what the
+                            // engineer said — see `ac_core::session_report`.
+                            (Some(keys::Action::AnalysisReport), _) => {
+                                let is_ru =
+                                    app_lock.config.language == ac_core::config::Language::Russian;
+                                let laps = &app_lock.analyzer.laps;
+                                let corners = ac_core::repeatability::of_session(laps);
+                                let (car, track) = (
+                                    app_lock.session_info.car_name.clone(),
+                                    app_lock.session_info.track_name.clone(),
+                                );
+                                let session = ac_core::session_report::Session {
+                                    game: app_lock.game.name,
+                                    car: &car,
+                                    track: &track,
+                                    driver: &app_lock.session_info.player_name,
+                                    laps,
+                                    findings: &app_lock.recommendations,
+                                    corners: corners.as_ref(),
+                                    sector_count: app_lock.track_sector_count.max(1) as usize,
+                                };
+                                let status = match ac_core::session_report::save(
+                                    &app_lock.config,
+                                    &session,
+                                    is_ru,
+                                ) {
+                                    Ok(path) => format!("Report: {}", path.display()),
+                                    Err(error) => {
+                                        error!(error = ?error, "Session report failed");
+                                        format!("Report failed: {error}")
+                                    }
+                                };
+                                app_lock.ui_state.analysis.set_status(status);
+                            }
                             (Some(keys::Action::AnalysisExport), _) => {
                                 let sel = app_lock
                                     .ui_state
