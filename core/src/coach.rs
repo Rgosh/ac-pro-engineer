@@ -153,6 +153,30 @@ impl Focus {
     }
 }
 
+/// The lap to learn from: one somebody chose, when it is of this car at
+/// this track, and the session's own best otherwise.
+///
+/// **A chosen lap is the whole point of choosing one.** A driver who loads a
+/// faster friend's lap, or one from the library, wants to be told where *that*
+/// lap was quicker — not where their own best was. But a lap of another car,
+/// or another circuit, is not a reference for anything here, and is passed
+/// over rather than compared corner by corner with a different track.
+pub fn reference<'a>(
+    laps: &'a [LapData],
+    best: Option<usize>,
+    chosen: Option<&'a LapData>,
+) -> Option<&'a LapData> {
+    let latest = laps.last()?;
+    chosen
+        .filter(|lap| {
+            !lap.telemetry_trace.is_empty()
+                && lap.lap_time_ms > 0
+                && lap.car_model == latest.car_model
+                && lap.track_name == latest.track_name
+        })
+        .or_else(|| best.and_then(|at| laps.get(at)))
+}
+
 /// The corner being worked on.
 #[derive(Debug, Clone)]
 struct Working {
@@ -317,6 +341,16 @@ fn describe(
         _ => Phase::Exit,
     });
 
+    // Whose lap this is measured against: the session's own best, or a lap
+    // somebody chose to learn from — loaded from a file or the library.
+    let against = if reference.from_file {
+        "the reference lap"
+    } else {
+        "your best lap"
+    }
+    .tr(ru)
+    .to_string();
+
     let fault = report
         .corners
         .iter()
@@ -337,9 +371,9 @@ fn describe(
         },
         (Some((Fault::Soft, at)), _) => match at.decel_delta_g.filter(|g| *g < 0.0) {
             Some(g) => tr_fmt(
-                "Brake harder into {0} — {1} g short of your best lap",
+                "Brake harder into {0} — {1} g short of {2}",
                 ru,
-                &[&corner, &format!("{:.2}", -g)],
+                &[&corner, &format!("{:.2}", -g), &against],
             ),
             None => tr_fmt("Brake harder into {0}", ru, &[&corner]),
         },
@@ -408,19 +442,20 @@ fn describe(
 
     let because = match worst_part {
         Some((part, ms)) => tr_fmt(
-            "{0} cost {1} against your best lap — {2} of it {3}",
+            "{0} cost {1} against {2} — {3} of it {4}",
             ru,
             &[
                 &corner,
                 &seconds(section.delta_ms),
+                &against,
                 &seconds(ms),
                 part.tr(ru),
             ],
         ),
         None => tr_fmt(
-            "{0} cost {1} against your best lap",
+            "{0} cost {1} against {2}",
             ru,
-            &[&corner, &seconds(section.delta_ms)],
+            &[&corner, &seconds(section.delta_ms), &against],
         ),
     };
     let check = tr_fmt(
@@ -633,6 +668,58 @@ mod tests {
     fn the_reference_is_not_its_own_lesson() {
         let mut coach = Coach::default();
         assert!(coach.after_lap(&lap(1), &lap(1), false).is_none());
+    }
+
+    /// **A chosen lap of this car and track is learned from; another car's
+    /// is not.**
+    #[test]
+    fn a_chosen_reference_is_used_when_it_is_the_same_car_and_track() {
+        let mut mine = vec![lap(1), lap(2)];
+        for lap in &mut mine {
+            lap.car_model = "bmw_z4_gt3".to_string();
+            lap.track_name = "spa".to_string();
+        }
+        let mut friend = lap(9);
+        friend.car_model = "bmw_z4_gt3".to_string();
+        friend.track_name = "spa".to_string();
+        friend.from_file = true;
+        assert_eq!(
+            reference(&mine, Some(0), Some(&friend)).map(|lap| lap.lap_number),
+            Some(9)
+        );
+
+        friend.track_name = "monza".to_string();
+        assert_eq!(
+            reference(&mine, Some(0), Some(&friend)).map(|lap| lap.lap_number),
+            Some(1),
+            "another circuit is not a reference here"
+        );
+        assert_eq!(
+            reference(&mine, Some(0), None).map(|lap| lap.lap_number),
+            Some(1)
+        );
+    }
+
+    /// And the sentence says whose lap it was.
+    #[test]
+    fn the_sentence_names_the_reference() {
+        let mut coach = Coach::default();
+        let mut friend = lap(1);
+        friend.from_file = true;
+        let found = coach
+            .choose(
+                &split(&[(2, 0.3, 300)]),
+                &braking::Report::default(),
+                &lap(3),
+                &friend,
+                false,
+            )
+            .expect("a corner");
+        assert!(
+            found.because.contains("against the reference lap"),
+            "{}",
+            found.because
+        );
     }
 
     /// The braking analysis's finding becomes an instruction in metres.

@@ -1488,11 +1488,15 @@ impl AppState {
                     // before the debrief is built, so the panel's debrief of
                     // this lap opens with it.
                     let ru = self.config.language == ac_core::config::Language::Russian;
+                    // A ghost the driver loaded is the lap to learn from, when
+                    // it is of this car at this track.
                     if let (Some(latest), Some(best)) = (
                         self.analyzer.laps.last(),
-                        self.analyzer
-                            .best_lap_index
-                            .and_then(|at| self.analyzer.laps.get(at)),
+                        ac_core::coach::reference(
+                            &self.analyzer.laps,
+                            self.analyzer.best_lap_index,
+                            self.analyzer.reference_lap.as_ref(),
+                        ),
                     ) {
                         let lap_number = latest.lap_number;
                         self.focus = self
