@@ -11,6 +11,17 @@ it turned out to be a real fault rather than a feeling.
 
 ### Added
 
+- **The coach: one thing to fix after each lap, and whether it got fixed.**
+  After every lap the corner that cost the most against your best — or
+  against a lap you loaded as the ghost, when it is of the same car and
+  track — becomes one instruction in units you can feel: "Brake 12 m later
+  into T5", "Back on the throttle 0.20 s sooner out of T9", "Carry 6 km/h
+  more through the middle of T3", with what it cost, which part of the corner
+  it went in, and what the next lap has to show. It then stays on that
+  corner: fixed when it costs half what it did, and on to the next; left
+  after four laps without coming. It is first in the engineer's list, in the
+  terminal, the in-game panel and a watcher's screens, and the panel's
+  debrief of that lap opens with it.
 - **The consistency trainer.** How many laps in a row you have kept within
   half a percent of the session's best — 0.6 s round a two-minute lap, never
   tighter than three tenths — the longest run of the session, the share of
