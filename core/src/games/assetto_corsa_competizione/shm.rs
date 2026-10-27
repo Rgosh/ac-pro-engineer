@@ -69,6 +69,8 @@ pub struct Memory {
     acc_physics: AccPhysics,
     acc_graphics: AccGraphics,
     acc_static: AccStatic,
+
+    recheck: crate::memory::Recheck,
 }
 
 impl Memory {
@@ -80,6 +82,7 @@ impl Memory {
             acc_physics: AccPhysics::default(),
             acc_graphics: AccGraphics::default(),
             acc_static: AccStatic::default(),
+            recheck: crate::memory::Recheck::default(),
         };
         // Refusing here rather than on the first tick means the caller is told
         // at the point it can still do something about it — pick another game,
@@ -89,6 +92,17 @@ impl Memory {
     }
 
     pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // **Pages that were made again are not these pages.** Once a second,
+        // because it is a `stat` of three files; refusing here is what makes
+        // every front end drop this connection and open the new ones, which
+        // is all a restart of the program was ever doing.
+        if self.recheck.due()
+            && (self.static_mem.replaced()
+                || self.physics_mem.replaced()
+                || self.graphics_mem.replaced())
+        {
+            return Err(anyhow::format_err!("{}", crate::memory::REPLACED).into());
+        }
         // Checked every tick and not only on connecting: a session of the
         // other game can start while this connection is open, and the mapping
         // it writes has the same name and this one's file handle still points

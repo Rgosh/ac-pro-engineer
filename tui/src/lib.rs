@@ -1684,6 +1684,15 @@ impl AppState {
         // application is alive and has no car, which is the distinction v0.3.5
         // added.
         let Some(reading) = source.poll() else {
+            // **And the connection is opened again on the next tick.** A
+            // reading of zeros is still a reading, so `None` is the page set
+            // refusing: another game's pages, or pages the bridge made afresh
+            // when it was started again. Kept, the second one is a mapping of
+            // a file nobody writes — the panel waited for a car that was on
+            // track until somebody restarted this program. Nothing else is
+            // thrown away: a new session announces itself when it arrives.
+            self.source = None;
+            self.is_connected = false;
             self.publish_overlay_idle();
             return;
         };

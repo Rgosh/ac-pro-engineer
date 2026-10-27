@@ -25,9 +25,59 @@ pub trait Versioned {
 /// worse than one bad frame.
 const MAX_TEAR_RETRIES: usize = 3;
 
+/// How often a connection asks whether its pages are still the ones being
+/// written.
+///
+/// A `stat` of three files once a second is nothing; sixty times a second it
+/// would be a hundred and eighty system calls to learn something that changes
+/// a few times a day.
+const RECHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What a refresh says when the pages were published again underneath it.
+pub const REPLACED: &str = "the pages were published again since this connection \
+                            opened them, and the old ones are read by nobody — \
+                            reconnect";
+
+/// When a connection last asked [`SharedMemory::replaced`].
+///
+/// Kept by the page set rather than by each page, because the three are
+/// replaced together and asking about them together is one decision.
+#[derive(Default)]
+pub struct Recheck {
+    at: Option<std::time::Instant>,
+}
+
+impl Recheck {
+    /// Whether a second has passed since the last time this said yes.
+    pub fn due(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        if self
+            .at
+            .is_some_and(|at| now.duration_since(at) < RECHECK_EVERY)
+        {
+            return false;
+        }
+        self.at = Some(now);
+        true
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 pub struct SharedMemory<T> {
     mmap: memmap2::Mmap,
+    /// Where the page was opened from, so it can be asked about again.
+    path: std::path::PathBuf,
+    /// The device and inode that were mapped.
+    ///
+    /// **A mapping is of a file, not of a name.** When the bridge is started
+    /// again it makes the pages afresh, and the name under `/dev/shm` then
+    /// belongs to a new file while this mapping goes on holding the old one —
+    /// which nothing writes to any more, and which reads as a session that
+    /// stopped at whatever frame it stopped at. Nothing fails: the reader
+    /// waits for a car that is already on track in the pages beside it, for
+    /// as long as the program is left open. That was "it needs restarting
+    /// after it has been sitting there a while".
+    identity: Option<(u64, u64)>,
     _phantom: PhantomData<T>,
 }
 
@@ -46,6 +96,7 @@ impl<T> SharedMemory<T> {
         use std::fs::File;
 
         let file = File::open(name)?;
+        let identity = file.metadata().ok().map(|meta| identity_of(&meta));
         let mmap = unsafe { Mmap::map(&file) };
 
         let Ok(mmap) = mmap else {
@@ -54,8 +105,26 @@ impl<T> SharedMemory<T> {
 
         Ok(Self {
             mmap,
+            path: std::path::PathBuf::from(name),
+            identity,
             _phantom: PhantomData,
         })
+    }
+
+    /// Whether the name this page was opened under now belongs to another
+    /// file, or to none.
+    ///
+    /// See [`SharedMemory::identity`]. A page that could not be identified
+    /// when it was opened is never called replaced: that would reconnect on
+    /// every check for as long as it was open.
+    pub fn replaced(&self) -> bool {
+        let Some(mapped) = self.identity else {
+            return false;
+        };
+        match std::fs::metadata(&self.path) {
+            Ok(meta) => identity_of(&meta) != mapped,
+            Err(_) => true,
+        }
     }
 
     pub fn get(&self) -> Result<T, Box<dyn std::error::Error>>
@@ -92,6 +161,12 @@ impl<T> SharedMemory<T> {
         }
         Ok(value)
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn identity_of(meta: &std::fs::Metadata) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    (meta.dev(), meta.ino())
 }
 
 #[cfg(target_os = "windows")]
@@ -137,6 +212,15 @@ impl<T> SharedMemory<T> {
         }
     }
 
+    /// Never, on Windows.
+    ///
+    /// A named section stays the same section for as long as anybody holds a
+    /// handle to it, and this connection does — a game started again opens
+    /// the one already there rather than making another under the same name.
+    pub fn replaced(&self) -> bool {
+        false
+    }
+
     pub fn get(&self) -> Result<T, Box<dyn std::error::Error>>
     where
         T: TryFromBytes + Debug,
@@ -177,5 +261,50 @@ impl<T> Drop for SharedMemory<T> {
             });
             let _ = CloseHandle(self.handle);
         }
+    }
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    /// **The bridge started again is a new file under the old name**, and a
+    /// mapping of the old one reads its last frame for ever. This is the
+    /// whole of "it needs restarting after sitting there a while".
+    #[test]
+    fn a_page_made_again_under_the_same_name_is_noticed() {
+        let folder = std::env::temp_dir().join(format!("acpe-replaced-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a scratch folder");
+        let page = folder.join("a-page");
+        std::fs::write(&page, [1u8; 8]).expect("a page");
+
+        let mapped =
+            SharedMemory::<u64>::connect(page.to_str().expect("a path")).expect("the page maps");
+        assert!(!mapped.replaced(), "the page it opened is the page there");
+
+        // What a bridge does when it starts: the old file goes and a new one
+        // takes the name.
+        std::fs::remove_file(&page).expect("the old page goes");
+        assert!(
+            mapped.replaced(),
+            "a name with nothing under it is not ours"
+        );
+        std::fs::write(&page, [2u8; 8]).expect("a new page");
+        assert!(mapped.replaced(), "and a new file under it is not either");
+        assert_eq!(
+            mapped.get().expect("the old mapping still reads"),
+            u64::from_ne_bytes([1; 8]),
+            "which is exactly the trap: it reads, and it is the old frame"
+        );
+
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Asked once a second, not sixty times.
+    #[test]
+    fn the_check_is_due_once_a_second() {
+        let mut recheck = Recheck::default();
+        assert!(recheck.due(), "the first time is always due");
+        assert!(!recheck.due(), "and not again within the second");
     }
 }
