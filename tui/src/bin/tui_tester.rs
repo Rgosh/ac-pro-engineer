@@ -448,6 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 track: "ks_nordschleife".to_string(),
                 version: "0.4.5".to_string(),
                 front_end: "window".to_string(),
+                asks_to_watch_me: false,
                 last_seen: Instant::now(),
             },
             Peer {
@@ -459,6 +460,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 track: String::new(),
                 version: "0.4.5".to_string(),
                 front_end: "terminal".to_string(),
+                // The one row that says somebody wants to watch, so the
+                // screenshot shows what it looks like.
+                asks_to_watch_me: true,
                 last_seen: Instant::now(),
             },
         ];

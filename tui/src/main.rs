@@ -1105,6 +1105,21 @@ async fn main() -> Result<(), anyhow::Error> {
                                         // pressing Enter on them was silent —
                                         // which reads as the program ignoring
                                         // the keyboard.
+                                        // **A driver who only shares is
+                                        // asked instead.** They cannot be sent
+                                        // to, and the one thing somebody
+                                        // picking them wants is to watch them.
+                                        Some(peer)
+                                            if peer.role
+                                                == ac_core::broadcast::discovery::Role::Driving =>
+                                        {
+                                            wish.ask_to_watch(&peer);
+                                            app_lock.lan_trouble = Some(format!(
+                                                "asked {} to send to you — their session appears \
+                                                 here when they do",
+                                                peer.name
+                                            ));
+                                        }
                                         Some(peer) => {
                                             app_lock.lan_trouble = Some(format!(
                                                 "{} is not listening — they press W on their side",

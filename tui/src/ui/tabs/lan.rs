@@ -247,7 +247,7 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         " {}   [{}] {}   [↑↓] {} ",
         "ON THIS NETWORK".tr_lang(lang),
         crate::keys::describe(&keys.lan_pick),
-        "send to them".tr_lang(lang),
+        "send to them, or ask to watch a driver".tr_lang(lang),
         "choose".tr_lang(lang),
     ));
     let mut inner = block.inner(area);
@@ -324,6 +324,17 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
                 (false, false) => "  ",
             };
             let role = match peer.role {
+                // **Somebody asking is the thing to see**, over what they are
+                // doing: it is what the key on this row answers.
+                _ if peer.asks_to_watch_me => Span::styled(
+                    "asks to watch you".tr_lang(lang),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                _ if !app.lan.ask_to_watch.is_empty() && app.lan.ask_to_watch == peer.id => {
+                    Span::styled("asked".tr_lang(lang), Style::default().fg(Color::Cyan))
+                }
                 Role::Driving => Span::styled(
                     peer.role.label().tr_lang(lang),
                     Style::default().fg(Color::Green),
@@ -367,7 +378,7 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Constraint::Length(2),
             Constraint::Length(18),
             Constraint::Length(22),
-            Constraint::Length(10),
+            Constraint::Length(17),
             Constraint::Min(16),
             Constraint::Length(18),
         ],

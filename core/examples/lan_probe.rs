@@ -100,6 +100,7 @@ fn announcement(id: &str, role: Role, port: u16) -> Announcement {
         track: String::new(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         front_end: "probe".to_string(),
+        asks_to_watch: String::new(),
     }
 }
 

@@ -1970,6 +1970,7 @@ impl AppState {
                 track,
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 front_end: "terminal".to_string(),
+                asks_to_watch: self.lan.ask_to_watch.clone(),
             }
         });
         finder.poll(announcement.as_ref());

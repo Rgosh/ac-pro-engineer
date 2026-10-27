@@ -147,6 +147,13 @@ pub struct LanWish {
     /// a friend without telling the room their name. Off does not stop them
     /// *seeing* anybody: listening is free and says nothing.
     pub announce: bool,
+    /// The driver this copy has asked to watch, by their announcement's id.
+    ///
+    /// Not written into the configuration: an id is fresh every time a copy
+    /// starts, so an ask is for this evening and nothing after it. See
+    /// [`crate::broadcast::discovery::Announcement::asks_to_watch`].
+    #[serde(default)]
+    pub ask_to_watch: String,
 }
 
 impl Default for LanWish {
@@ -167,6 +174,7 @@ impl Default for LanWish {
             only_on_track: false,
             quiet_after_s: 3.0,
             announce: true,
+            ask_to_watch: String::new(),
         }
     }
 }
@@ -205,6 +213,7 @@ impl LanWish {
             only_on_track: lan.only_on_track,
             quiet_after_s: lan.quiet_after_s,
             announce: lan.announce,
+            ask_to_watch: String::new(),
         }
     }
 
@@ -294,9 +303,22 @@ impl LanWish {
         }
     }
 
+    /// **Ask a driver to send to this copy**, and be ready when they do.
+    ///
+    /// A driver who only shares cannot be sent to — not even a request — so
+    /// the ask travels in this copy's own announcement, which their list
+    /// reads. Listening is switched on here, because an ask from a copy that
+    /// is not listening is a button on the driver's side that does nothing;
+    /// and announcing, because an ask nobody hears is not one.
+    pub fn ask_to_watch(&mut self, peer: &crate::broadcast::discovery::Peer) {
+        self.watch_simply();
+        self.ask_to_watch = peer.id.clone();
+    }
+
     /// Stop everything, keeping every address and name where it was.
     pub fn off(&mut self) {
         self.mode = Mode::Off;
+        self.ask_to_watch.clear();
     }
 
     /// The address to send to, or nothing when it is off or unset.
@@ -439,6 +461,34 @@ mod tests {
         assert_eq!(wish.share_to, "192.168.1.42:9001");
         assert_eq!(wish.sending_to(), None, "kept is not the same as used");
         assert_eq!(wish.listening_on(), None);
+    }
+
+    /// **Asking is watching, and says who.** The copy that asks is left
+    /// listening and findable, so the driver's button has somewhere to send.
+    #[test]
+    fn asking_to_watch_listens_and_names_the_driver() {
+        let driver = crate::broadcast::discovery::Peer {
+            id: "driver-id".to_string(),
+            name: "Kimi".to_string(),
+            role: crate::broadcast::discovery::Role::Driving,
+            reachable_at: "192.168.1.42:0".parse().expect("an address"),
+            car: String::new(),
+            track: String::new(),
+            version: String::new(),
+            front_end: String::new(),
+            asks_to_watch_me: false,
+            last_seen: std::time::Instant::now(),
+        };
+        let mut wish = LanWish::default();
+        wish.ask_to_watch(&driver);
+
+        assert!(wish.mode.receives());
+        assert_eq!(wish.listening_port(), PORT);
+        assert!(wish.announce);
+        assert_eq!(wish.ask_to_watch, "driver-id");
+
+        wish.off();
+        assert!(wish.ask_to_watch.is_empty(), "off asks nobody");
     }
 
     #[test]

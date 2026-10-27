@@ -119,6 +119,20 @@ pub struct Announcement {
     /// list of four entries on a LAN-party table can be read at a glance.
     #[serde(default)]
     pub front_end: String,
+    /// The id of the copy this one would like to watch, or empty.
+    ///
+    /// **Asking rather than waiting to be found.** A driver who only shares
+    /// is not listening, so a watcher cannot send them anything — not even a
+    /// request — and until this the only way to be watched was for the driver
+    /// to find the watcher in their own list and know that was who wanted to
+    /// watch. Now the watcher names the driver here, and the driver's list says
+    /// so beside the button that answers it. It is a name in a list, never a
+    /// connection: nothing is sent anywhere until the driver chooses to.
+    ///
+    /// `serde(default)`, so an older copy's announcement reads as asking
+    /// nobody and an older copy ignores the field in ours.
+    #[serde(default)]
+    pub asks_to_watch: String,
 }
 
 /// What a copy is doing, as far as anybody else needs to know.
@@ -159,6 +173,8 @@ pub struct Peer {
     pub track: String,
     pub version: String,
     pub front_end: String,
+    /// They have asked to watch this copy — see [`Announcement::asks_to_watch`].
+    pub asks_to_watch_me: bool,
     pub last_seen: Instant,
 }
 
@@ -370,6 +386,7 @@ impl Discovery {
                 track: heard.track,
                 version: heard.version,
                 front_end: heard.front_end,
+                asks_to_watch_me: !heard.asks_to_watch.is_empty() && heard.asks_to_watch == self.id,
                 last_seen: Instant::now(),
             },
         );
@@ -575,6 +592,7 @@ mod tests {
             track: "spa".to_string(),
             version: "0.4.5".to_string(),
             front_end: "terminal".to_string(),
+            asks_to_watch: String::new(),
         }
     }
 
@@ -650,6 +668,59 @@ mod tests {
             id: "me".to_string(),
             buffer: vec![0; MAX_ANNOUNCEMENT],
         }
+    }
+
+    /// **Asking to watch reaches the driver it names, and nobody else.**
+    #[test]
+    fn a_driver_sees_who_asks_to_watch_them() {
+        let mut driver = quiet();
+        let mut asking = announcement("watcher", "Lewis", Role::Watching, 9001);
+        asking.asks_to_watch = "me".to_string();
+        driver.accept(
+            &serde_json::to_vec(&asking).expect("serialises"),
+            from("192.168.1.20:9002"),
+        );
+        let mut elsewhere = announcement("other", "Max", Role::Watching, 9001);
+        elsewhere.asks_to_watch = "somebody-else".to_string();
+        driver.accept(
+            &serde_json::to_vec(&elsewhere).expect("serialises"),
+            from("192.168.1.21:9002"),
+        );
+
+        let peers = driver.peers();
+        let lewis = peers
+            .iter()
+            .find(|peer| peer.name == "Lewis")
+            .expect("listed");
+        let max = peers
+            .iter()
+            .find(|peer| peer.name == "Max")
+            .expect("listed");
+        assert!(lewis.asks_to_watch_me);
+        assert!(
+            !max.asks_to_watch_me,
+            "asking another driver is not asking this one"
+        );
+    }
+
+    /// An announcement from a copy older than the question reads as asking
+    /// nobody, rather than failing to read.
+    #[test]
+    fn an_older_announcement_asks_nobody() {
+        let mut driver = quiet();
+        let mut older =
+            serde_json::to_value(announcement("old", "Kimi", Role::Watching, 9001)).expect("json");
+        older
+            .as_object_mut()
+            .expect("an object")
+            .remove("asks_to_watch");
+        driver.accept(
+            &serde_json::to_vec(&older).expect("serialises"),
+            from("192.168.1.22:9002"),
+        );
+        let peers = driver.peers();
+        assert_eq!(peers.len(), 1, "an older copy is still listed");
+        assert!(!peers[0].asks_to_watch_me);
     }
 
     /// **A machine that changed networks is still findable.** The address it
