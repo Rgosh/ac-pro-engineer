@@ -279,6 +279,13 @@ pub struct AppState {
     /// through it into AC's own shared-memory structs — which is how a folder
     /// per game ended up carrying no data across its own boundary.
     pub source: Option<Box<dyn Source + Send>>,
+    /// This machine's own game, read only to be sent on while the screens
+    /// follow somebody else — see [`AppState::relay_own_game`].
+    ///
+    /// **A connection of its own.** Opening `source` here would leave it
+    /// open when watching stops, and the tick only fills in the session's
+    /// car and track when it opens that one itself.
+    relay_source: Option<Box<dyn Source + Send>>,
     /// The most recent reading, and the only thing the screens draw from.
     ///
     /// A demo run and a screenshot run put a made-up one here, which is why
@@ -526,6 +533,7 @@ impl AppState {
         let mut state = Self {
             game,
             source: None,
+            relay_source: None,
             reading: None,
             is_demo_mode: false,
             watched_tick: false,
@@ -1612,8 +1620,12 @@ impl AppState {
         // numbers on screen are theirs, and letting the local tick run
         // underneath would have the two fighting for the same mapping.
         if self.pump_watched_session() {
+            if self.lan.mode.sends() {
+                self.relay_own_game();
+            }
             return;
         }
+        self.relay_source = None;
         if self.is_demo_mode {
             self.update_demo_tick();
             if let Some(reading) = self.reading.clone() {
@@ -2003,6 +2015,33 @@ impl AppState {
             self.watched_tick = false;
         }
         true
+    }
+
+    /// **What `Both` says it does: send this session while watching another.**
+    ///
+    /// A watching copy leaves its own game alone so two cars do not
+    /// interleave in one set of screens — and so in `Both` nothing of this
+    /// driver's was ever sent. Their game is read here, not analysed, and goes
+    /// out whole; the far end analyses it as it would any other.
+    fn relay_own_game(&mut self) {
+        if self.is_demo_mode {
+            return;
+        }
+        if self.relay_source.is_none() {
+            self.relay_source = self
+                .game
+                .backend()
+                .and_then(|backend| (backend.connect)().ok());
+        }
+        let Some(reading) = self.relay_source.as_mut().and_then(|source| source.poll()) else {
+            // Refused — another game's pages, or pages made again. The next
+            // tick opens them afresh.
+            self.relay_source = None;
+            return;
+        };
+        if reading.car_is_loaded() {
+            self.share_reading(&reading);
+        }
     }
 
     /// Send this reading to whoever is watching.
