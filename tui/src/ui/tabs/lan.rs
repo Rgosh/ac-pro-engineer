@@ -250,8 +250,31 @@ fn render_peers(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         "send to them".tr_lang(lang),
         "choose".tr_lang(lang),
     ));
-    let inner = block.inner(area);
+    let mut inner = block.inner(area);
     f.render_widget(block, area);
+
+    // **What the last key did, under the list as well as instead of it.**
+    // It was drawn only while the list was empty — so pressing the key on a
+    // driver who was not listening said, in code, that a key which does
+    // nothing has to say so, and said it nowhere a person could see.
+    if !app.peers.is_empty()
+        && let Some(why) = &app.lan_trouble
+        && inner.height > 1
+    {
+        let said = Rect {
+            y: inner.y + inner.height - 1,
+            height: 1,
+            ..inner
+        };
+        inner.height -= 1;
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                why.clone(),
+                Style::default().fg(Color::Yellow),
+            ))),
+            said,
+        );
+    }
 
     if app.peers.is_empty() {
         // **Why the list is empty matters more than that it is.** A group that
