@@ -2,6 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.5] - 2026-10-27
+
+**A program left open for an evening stays as good as it was when it
+started.** Most of what is below is one complaint from several sides — "it
+needs restarting after it has been sitting there a while" — and each side of
+it turned out to be a real fault rather than a feeling.
+
+### Added
+
+- **The first lap after a break is called a warm-up.** Two minutes standing
+  while the simulation runs — not paused, not in the menus — and the engineer
+  says, when the car goes out again, how long it stood, how much the tyres
+  lost and that this lap is for temperature rather than for judging the
+  balance. A warning at twenty degrees or more. Over when the tyres are back
+  within five degrees, a lap has been driven or four minutes have passed. It is
+  a finding like any other, so the terminal, the window and the in-game panel
+  all carry it. Nothing is said on a game that publishes no tyre temperature.
+- **A watcher can ask a driver to send to them.** A driver who only shares is
+  not listening, so nobody could send them anything — not even a request. The
+  pick key on such a driver now asks; the driver's list says "asks to watch
+  you" on that row, beside the key that answers it, and nothing is sent until
+  they press it. Additive in the announcement, so older copies read it as
+  asking nobody.
+
+### Fixed
+
+- **Pages made again under the same name are read again.** A mapping is of a
+  file, not of a name: a bridge started again makes new pages, and the old
+  connection went on reading the frame it stopped at. The window waited for a
+  car that was on track; the terminal never reconnected at all. Each page set
+  now checks once a second that the file under its name is the one it mapped.
+- **A copy that changed networks can be found again.** Discovery joined the
+  group on the interfaces it had when it started — so after sleep, a new
+  address, or a start before the Wi-Fi came up, nobody could see it and it could
+  see nobody. The interfaces are asked for again every ten seconds.
+- **Two drivers sending to one watcher are not one car.** Their readings were
+  spliced into one session. The first is followed until it goes quiet; the
+  other is said out loud.
+- **The terminal wrote a friend's lap down as this driver's best**, and the
+  demo's laps as well. `records.json` is now only written from this machine's
+  own game.
+- **`Both` in the terminal sent nothing of this driver's.** A watching copy
+  skips its own game; it is now read on a connection of its own and sent.
+- **What a key on the network list did is said where it can be seen** — it was
+  only drawn while the list was empty.
+- **The follow-up was written sixty times a second**, with an `fsync` in each,
+  from the first finished lap on. Now when it changed: at once for a new lap,
+  at most every fifteen seconds when only the advice moved.
+
+### Also since v0.5.1
+
+Nothing between 0.5.1 and this was released, so this is the first build to
+carry these.
+
+- **Ninety-two of ninety-six cars were invisible to the catalogue.** A car
+  whose description would not parse was skipped without a word, so its class,
+  weight, power and tags were simply absent and the engineer guessed.
+- **The bridge ran, published nothing and said nothing was wrong.** It was
+  started with the `wine` inside Proton where the game is started with
+  `proton run`; it is now started the way the game is. It is no longer a
+  console window in the taskbar either — and a bridge too old to know the
+  word for that is told to be quiet instead, rather than refused.
+- **The panel's FETCH THE BRIDGE refused the bridge that would have carried
+  it.**
+- The core can now list the installed tracks with their layouts, a car's
+  liveries in the order its maker meant, who is signed in to Steam, and what
+  a dropped folder is — a car, a circuit or a livery, and for which car.
+- Custom Shaders Patch: what is installed, fetching it, putting it in and
+  taking it out, refusing anything that is not it.
+- The application's version is compiled into its own binary, so another
+  program can identify a copy on disk without running it.
+- wineshm 0.6 can hand the sections to the game and exit, so a whole session
+  runs with one small Linux process instead of a Wine stack.
+
 ## [v0.5.1] - 2026-09-22
 
 The bridge out of the Wine prefix is its own project now —

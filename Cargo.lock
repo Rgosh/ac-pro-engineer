@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ac_core"
-version = "0.5.1"
+version = "0.5.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "ac_tui"
-version = "0.5.1"
+version = "0.5.5"
 dependencies = [
  "ac_core",
  "anyhow",
@@ -1148,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "kn5"
-version = "0.5.1"
+version = "0.5.5"
 
 [[package]]
 name = "kurbo"
@@ -2183,7 +2183,7 @@ dependencies = [
 
 [[package]]
 name = "tests_suite"
-version = "0.5.1"
+version = "0.5.5"
 dependencies = [
  "ac_core",
  "ac_tui",
