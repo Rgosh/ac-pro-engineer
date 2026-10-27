@@ -558,9 +558,9 @@ fn fetch(from: &Source, relative: &str) -> Option<Vec<u8>> {
             let file = fs::File::open(archive).ok()?;
             let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).ok()?;
             let wanted = format!("{under}{relative}");
-            let at = zip
-                .file_names()
-                .position(|name| name.replace('\\', "/").to_lowercase() == wanted)?;
+            let at = zip.file_names().position(|name| {
+                name.is_ok_and(|name| name.replace('\\', "/").to_lowercase() == wanted)
+            })?;
             let mut entry = zip.by_index(at).ok()?;
             if entry.size() > SMALL {
                 return None;
@@ -606,6 +606,9 @@ fn peek(archive: &Path) -> Option<Vec<String>> {
     Some(
         zip.file_names()
             .take(MOST)
+            // A name the archive cannot decode is a name nothing here asked
+            // for, and is left out rather than failing the whole listing.
+            .filter_map(Result::ok)
             .map(|name| name.replace('\\', "/").to_lowercase())
             .collect(),
     )
@@ -730,8 +733,8 @@ mod tests {
         let path = at.join(named);
         let file = fs::File::create(&path).expect("a fixture");
         let mut zip = zip::ZipWriter::new(file);
-        let plain: zip::write::FileOptions<'_, ()> =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let plain = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
         for (name, said) in entries {
             zip.start_file(*name, plain).expect("a fixture");
             zip.write_all(said.as_bytes()).expect("a fixture");

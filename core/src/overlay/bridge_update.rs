@@ -685,7 +685,7 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
-            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+            let options = zip::write::SimpleFileOptions::default();
             for (name, body) in [
                 ("README.md", b"not the bridge".to_vec()),
                 ("LICENSE", b"nor this".to_vec()),
@@ -709,7 +709,7 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
-            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+            let options = zip::write::SimpleFileOptions::default();
             zip.start_file("README.md", options).expect("zip entry");
             zip.write_all(b"nothing here").expect("zip write");
             zip.finish().expect("finish zip");
