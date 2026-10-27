@@ -18,6 +18,7 @@ pub mod analyzer;
 pub mod atomic_file;
 pub mod braking;
 pub mod broadcast;
+pub mod coach;
 pub mod confidence;
 pub mod config;
 pub mod consistency;

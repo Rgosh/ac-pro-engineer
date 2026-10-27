@@ -449,6 +449,10 @@ pub struct AppState {
     /// so the one thing that outlives the session — `records.json` — can
     /// refuse it. A friend's lap is not this driver's personal best.
     watched_tick: bool,
+    /// The one corner being worked on, across laps — see `ac_core::coach`.
+    coach: ac_core::coach::Coach,
+    /// What the coach said after the last lap, and which lap that was.
+    pub focus: Option<(i32, ac_core::coach::Focus)>,
     pub demo_tick_counter: u64,
     pub show_help: bool,
     /// How long the last rendered frame took, and how long ago the background
@@ -537,6 +541,8 @@ impl AppState {
             reading: None,
             is_demo_mode: false,
             watched_tick: false,
+            coach: ac_core::coach::Coach::default(),
+            focus: None,
             demo_tick_counter: 0,
             setup_manager,
             content_manager: scan_installed_cars(game, config.ac_install_override()),
@@ -805,7 +811,19 @@ impl AppState {
                     lap.sectors[1].max(0) as u32,
                     lap.sectors[2].max(0) as u32,
                 ],
-                advice: ac_core::debrief::debrief(lap, &self.config),
+                advice: {
+                    let mut said = ac_core::debrief::debrief(lap, &self.config);
+                    // The lap the coach looked at opens with what it said.
+                    if let Some((_, focus)) = self
+                        .focus
+                        .as_ref()
+                        .filter(|(number, _)| *number == lap.lap_number)
+                    {
+                        let ru = self.config.language == ac_core::config::Language::Russian;
+                        said.insert(0, focus.as_recommendation(ru));
+                    }
+                    said
+                },
             })
             .collect();
     }
@@ -1358,6 +1376,9 @@ impl AppState {
                         self.session_info.car_name, self.session_info.track_name
                     );
                     self.analyzer.start_new_session();
+                    // Another car's corner is not this one's lesson.
+                    self.coach.forget();
+                    self.focus = None;
                     self.current_lap_cars.clear();
                     self.current_lap_sessions.clear();
                     self.current_lap_sectors = [0; 3];
@@ -1462,6 +1483,23 @@ impl AppState {
                     // in the publisher: once a lap rather than sixty times a
                     // second, and the sentences are identical every frame in
                     // between.
+                    // **The one thing, against the session's best.** Once a
+                    // lap, here, where the lap has just been closed — and
+                    // before the debrief is built, so the panel's debrief of
+                    // this lap opens with it.
+                    let ru = self.config.language == ac_core::config::Language::Russian;
+                    if let (Some(latest), Some(best)) = (
+                        self.analyzer.laps.last(),
+                        self.analyzer
+                            .best_lap_index
+                            .and_then(|at| self.analyzer.laps.get(at)),
+                    ) {
+                        let lap_number = latest.lap_number;
+                        self.focus = self
+                            .coach
+                            .after_lap(latest, best, ru)
+                            .map(|focus| (lap_number, focus));
+                    }
                     self.rebuild_overlay_debrief();
 
                     // Car specs sharpen the *estimated* reference time, but
@@ -1547,6 +1585,13 @@ impl AppState {
             .engineer
             .analyze_live(&car, &session, active_setup.as_ref());
         self.follow_up();
+        // After the follow-up has written its findings down: a lesson for the
+        // next lap is not a fault of the car to compare with next week. First,
+        // because it is the one thing to do.
+        if let Some((_, focus)) = &self.focus {
+            let ru = self.config.language == ac_core::config::Language::Russian;
+            self.recommendations.insert(0, focus.as_recommendation(ru));
+        }
     }
 
     /// Read what the engineer said last time, and write down what it says now.
