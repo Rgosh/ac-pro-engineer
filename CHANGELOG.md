@@ -11,6 +11,18 @@ it turned out to be a real fault rather than a feeling.
 
 ### Added
 
+- **The consistency trainer.** How many laps in a row you have kept within
+  half a percent of the session's best — 0.6 s round a two-minute lap, never
+  tighter than three tenths — the longest run of the session, the share of
+  laps inside the window and the lap-to-lap spread. A cut lap, a spin or an
+  in-lap ends a run. In the terminal it sits under the lap list on ANALYSIS.
+- **A session report you can post.** R on ANALYSIS writes the whole session
+  as Markdown into `reports/` beside the CSV exports: every lap with its
+  sectors (the session's best in bold, invalid laps struck through), the
+  best lap, the best sectors together, the lap of your own best corners, the
+  consistency run, fuel per lap, the corners worth practising and what the
+  engineer said — worst first, with what to check next time. It renders as
+  written on Discord, GitHub and forums. Nothing leaves the machine.
 - **The first lap after a break is called a warm-up.** Two minutes standing
   while the simulation runs — not paused, not in the menus — and the engineer
   says, when the car goes out again, how long it stood, how much the tyres
