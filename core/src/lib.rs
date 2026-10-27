@@ -43,6 +43,7 @@ pub mod net;
 pub mod overlay;
 pub mod process;
 pub mod records;
+pub mod rejoin;
 pub mod repeatability;
 pub mod ring_buffer;
 pub mod session_info;

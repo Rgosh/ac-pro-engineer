@@ -181,6 +181,8 @@ pub struct Engineer {
     pub wizard_phase: WizardPhase,
     pub wizard_problem: WizardProblem,
     alert_timers: HashMap<String, (Instant, Instant)>,
+    /// Whether the car is warming up after standing — see [`crate::rejoin`].
+    rejoin: crate::rejoin::Rejoin,
 }
 
 #[derive(Debug, Clone)]
@@ -486,7 +488,92 @@ impl Engineer {
             wizard_phase: WizardPhase::Entry,
             wizard_problem: WizardProblem::Understeer,
             alert_timers: HashMap::new(),
+            rejoin: crate::rejoin::Rejoin::default(),
         }
+    }
+
+    /// Whether the car is on a warm-up after standing for a while.
+    ///
+    /// For a front end that wants to mark the lap, and for the rules that
+    /// should be careful about a car that has not warmed up yet.
+    pub fn warming_up(&self) -> bool {
+        self.rejoin.warming_up()
+    }
+
+    /// The mean tyre temperature by whatever this game measures, or zero
+    /// when it measures none.
+    fn mean_judged_tyre_temp(&self, car: &Car) -> f32 {
+        let measured: Vec<f32> = (0..4)
+            .map(|wheel| self.judged_tyre_temp(car, wheel))
+            .filter(|temp| *temp > 0.0)
+            .collect();
+        if measured.len() < 4 {
+            return 0.0;
+        }
+        measured.iter().sum::<f32>() / 4.0
+    }
+
+    /// **The first lap after a break is a warm-up, and it is said.**
+    ///
+    /// See [`crate::rejoin`]. One line, while the warm-up lasts: how long the
+    /// car stood, what the tyres lost, and that nothing about the balance is
+    /// worth reading off this lap.
+    fn analyze_rejoin(
+        &mut self,
+        now: Instant,
+        car: &Car,
+        session: &Session,
+        recs: &mut Vec<Recommendation>,
+    ) {
+        let tyre_c = self.mean_judged_tyre_temp(car);
+        self.rejoin.observe(now, car, session, tyre_c);
+        let Some(briefing) = self.rejoin.briefing() else {
+            return;
+        };
+        let ru = self.is_ru();
+        let fmt = self.config.formatter();
+        let minutes = briefing.minutes().to_string();
+        let cooled = fmt.format_temp_delta(briefing.cooled_c());
+        recs.push(Recommendation {
+            component: "Tyres".tr(ru).to_string(),
+            category: "Rejoin".tr(ru).to_string(),
+            // A warning only when the tyres are properly cold: the first
+            // corner on them is where a car goes off.
+            severity: if briefing.cooled_c() >= 20.0 {
+                Severity::Warning
+            } else {
+                Severity::Info
+            },
+            message: tr_fmt(
+                "Back after {0} min: tyres {1} colder than when you stopped",
+                ru,
+                &[&minutes, &cooled],
+            ),
+            action: "Warm-up lap — build temperature before judging the balance"
+                .tr(ru)
+                .to_string(),
+            parameters: Vec::new(),
+            confidence: 0.9,
+            chain: Some(Chain {
+                cause: "a car standing still gives its tyres' heat to the air and the track"
+                    .tr(ru)
+                    .to_string(),
+                effect: format!(
+                    "{} \u{2192} {}",
+                    fmt.format_temp(briefing.was_c),
+                    fmt.format_temp(briefing.now_c)
+                ),
+                confirm: tr_fmt(
+                    "the tyres back within {0} of {1}, usually inside one lap",
+                    ru,
+                    &[
+                        &fmt.format_temp_delta(5.0),
+                        &fmt.format_temp(briefing.was_c),
+                    ],
+                ),
+                evidence: Default::default(),
+            }),
+        });
     }
 
     pub fn update_config(&mut self, config: &AppConfig) {
@@ -899,6 +986,7 @@ impl Engineer {
     ) -> Vec<Recommendation> {
         let mut recommendations = Vec::new();
 
+        self.analyze_rejoin(Instant::now(), car, session, &mut recommendations);
         self.analyze_tyre_pressure(car, session, &mut recommendations);
         // Both of these are built on measurements a game may simply not make,
         // and a missing measurement reads as zero — which is a confident
@@ -2566,6 +2654,62 @@ mod compound_tests {
 
 #[cfg(test)]
 mod tests {
+
+    /// **Ten minutes in the garage and the engineer says so**, in the units
+    /// the driver chose, and stops once the tyres are back.
+    #[test]
+    fn the_first_lap_after_a_break_is_called_a_warm_up() {
+        use crate::games::reading::Status;
+        use std::time::{Duration, Instant};
+
+        let mut engineer = super::Engineer::new(&crate::config::AppConfig::default());
+        let session = crate::games::Session {
+            status: Status::Live,
+            completed_laps: 6,
+            ..Default::default()
+        };
+        let at = |speed_kmh: f32, temp: f32| crate::games::Car {
+            speed_kmh,
+            tyre_core_temp_c: [temp; 4],
+            ..Default::default()
+        };
+
+        let start = Instant::now();
+        let mut recs = Vec::new();
+        engineer.analyze_rejoin(start, &at(180.0, 90.0), &session, &mut recs);
+        for second in 1..=600 {
+            engineer.analyze_rejoin(
+                start + Duration::from_secs(second),
+                &at(0.0, 62.0),
+                &session,
+                &mut recs,
+            );
+        }
+        assert!(recs.is_empty(), "nothing is said while the car stands");
+
+        engineer.analyze_rejoin(
+            start + Duration::from_secs(601),
+            &at(45.0, 62.0),
+            &session,
+            &mut recs,
+        );
+        let said = recs.first().expect("going out again after ten minutes");
+        assert_eq!(said.category, "Rejoin");
+        assert_eq!(said.severity, Severity::Warning, "28 degrees is cold");
+        assert!(said.message.contains("10 min"), "{}", said.message);
+        assert!(said.message.contains("28"), "{}", said.message);
+        assert!(engineer.warming_up());
+
+        recs.clear();
+        engineer.analyze_rejoin(
+            start + Duration::from_secs(700),
+            &at(200.0, 88.0),
+            &session,
+            &mut recs,
+        );
+        assert!(recs.is_empty(), "warm again, and quiet again");
+        assert!(!engineer.warming_up());
+    }
 
     /// **The category is the stable half.** `component` goes through the
     /// translator, so a front end matching on it would find nothing the moment
