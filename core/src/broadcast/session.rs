@@ -229,12 +229,29 @@ pub struct Link {
     pub lost: u64,
 }
 
+/// What a listener says while a second driver is sending to it.
+const TWO_SENDERS: &str =
+    "somebody else is sending here as well — following whoever was first until they stop";
+
 /// The receiving half: somebody else's session, arriving.
 pub struct Listener {
     socket: UdpSocket,
     buffer: Vec<u8>,
     listening_on: String,
     from: Option<String>,
+    /// Where the session being followed comes from.
+    ///
+    /// **One driver at a time.** Two copies sharing to the same watcher — two
+    /// friends who both picked the one spare laptop from their lists — had
+    /// their readings interleaved into one analysis: two cars' laps spliced
+    /// into one, the map drawn between two places on the circuit, the name on
+    /// the strip flickering between them and every other datagram counted as
+    /// lost because the sequence numbers were two different counts. The first
+    /// one heard is followed until it goes quiet, and the other is said out
+    /// loud rather than drawn.
+    following: Option<SocketAddr>,
+    /// When somebody other than the one followed was last heard.
+    interloper: Option<Instant>,
     last_arrival: Option<Instant>,
     seen: u64,
     lost: u64,
@@ -277,6 +294,8 @@ impl Listener {
             buffer: vec![0; MAX_DATAGRAM],
             listening_on,
             from: None,
+            following: None,
+            interloper: None,
             last_arrival: None,
             seen: 0,
             lost: 0,
@@ -297,7 +316,7 @@ impl Listener {
     /// a fresher had arrived is a hole in the picture rather than a saving.
     pub fn poll(&mut self) -> Vec<Reading> {
         let mut arrived = Vec::new();
-        while let Ok((size, _)) = self.socket.recv_from(&mut self.buffer) {
+        while let Ok((size, sender)) = self.socket.recv_from(&mut self.buffer) {
             let datagram = &self.buffer[..size];
             let Ok(envelope) = serde_json::from_slice::<Envelope>(datagram) else {
                 // Whose it was, if it says. An older copy of this program is a
@@ -319,7 +338,33 @@ impl Listener {
                 self.trouble = Some("the sender speaks a different version of this protocol");
                 continue;
             }
-            self.trouble = None;
+            // Somebody else, while the one being followed is still talking.
+            // Once they have gone quiet the newcomer is followed instead — a
+            // driver who restarted their program comes back from another
+            // port, and is the same person.
+            let followed_is_alive = self
+                .last_arrival
+                .is_some_and(|when| when.elapsed() <= self.quiet_after);
+            match self.following {
+                Some(followed) if followed != sender && followed_is_alive => {
+                    self.interloper = Some(Instant::now());
+                    self.trouble = Some(TWO_SENDERS);
+                    continue;
+                }
+                Some(followed) if followed == sender => {}
+                _ => {
+                    self.following = Some(sender);
+                    // Their count, not the last driver's: a gap between two
+                    // people's sequence numbers is not a reading that was lost.
+                    self.last_sequence = None;
+                }
+            }
+            // Said for as long as the other one keeps sending, rather than
+            // cleared by the very next datagram from this one.
+            self.trouble = self
+                .interloper
+                .is_some_and(|when| when.elapsed() <= self.quiet_after)
+                .then_some(TWO_SENDERS);
             // **Counted, not ordered.** A sequence that went backwards is a
             // datagram that overtook another on the way, which is normal and
             // is not worth reordering for at thirty a second; a gap is a
@@ -445,6 +490,48 @@ mod tests {
         assert_eq!(link.from.as_deref(), Some("Kimi"));
         assert_eq!(link.seen, 1);
         assert_eq!(sender.sent(), 1);
+    }
+
+    /// **Two drivers sending to one watcher are not one car.** The first is
+    /// followed; the second is said out loud and not drawn.
+    #[test]
+    fn a_second_driver_is_not_spliced_into_the_first() {
+        let mut listener = Listener::open("127.0.0.1:0", 3.0)
+            .expect("an ephemeral port")
+            .expect("a link");
+        let to = listener.listening_on().to_string();
+        let mut kimi = Sender::open(&to, "Kimi", 0.0).expect("a sender");
+        let mut lewis = Sender::open(&to, "Lewis", 0.0).expect("another");
+
+        let mut first = Reading::default();
+        first.car.speed_kmh = 100.0;
+        kimi.send(&first);
+        let mut arrived = Vec::new();
+        for _ in 0..50 {
+            arrived.extend(listener.poll());
+            if !arrived.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(arrived.len(), 1, "the first driver is heard");
+
+        let mut second = Reading::default();
+        second.car.speed_kmh = 250.0;
+        lewis.send(&second);
+        std::thread::sleep(Duration::from_millis(20));
+        let after = listener.poll();
+        assert!(after.is_empty(), "the second car is not drawn as the first");
+
+        let link = listener.link();
+        assert_eq!(link.from.as_deref(), Some("Kimi"));
+        assert_eq!(link.lost, 0, "two counts are not one count with holes");
+        assert!(
+            link.trouble
+                .is_some_and(|said| said.contains("somebody else")),
+            "and the second one is said, not hidden: {:?}",
+            link.trouble
+        );
     }
 
     /// The coordinates are the two fields nothing else would miss: a map with
