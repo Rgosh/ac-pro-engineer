@@ -26,7 +26,7 @@
 <meta property="og:site_name" content="Pro Engineer">
 <meta property="og:locale" content="en_GB">
 <!--MODIFIED-->
-<meta property="article:modified_time" content="2026-08-24">
+<meta property="article:modified_time" content="2026-10-29">
 <!--/MODIFIED-->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://proengineer.app/og.png">
@@ -68,7 +68,7 @@
   "@context":"https://schema.org",
   "@type":"SoftwareApplication",
   "name":"Pro Engineer",
-  "alternateName":"AC Pro Engineer",
+  "alternateName":["AC Pro Engineer","Pro Engineer terminal"],
   "applicationCategory":"GameApplication",
   "applicationSubCategory":"Sim racing telemetry and race engineering",
   "operatingSystem":"Windows, Linux, SteamOS",
@@ -80,7 +80,7 @@
   "screenshot":"https://proengineer.app/og.png",
   "downloadUrl":"https://github.com/Rgosh/ac-pro-engineer/releases",
   "softwareHelp":"https://proengineer.app/download/",
-  "description":"A free, open-source sim racing telemetry application and virtual race engineer. Reads the simulator's shared memory, analyses tyre temperatures and pressures, brake heat, fuel and driving style, and gives plain-language engineering advice in a terminal dashboard and an in-game overlay.",
+  "description":"Pro Engineer is the free, open-source terminal (console) sim racing telemetry application and virtual race engineer for Assetto Corsa and Assetto Corsa Competizione. It runs in a text console rather than a graphical window; the graphical program is RG Pro Engineer, a separate download. Pro Engineer reads the simulator's shared memory, analyses tyre temperatures and pressures, brake heat, fuel and driving style, and gives plain-language engineering advice in a terminal dashboard and an in-game overlay.",
   "featureList":[
     "Live tyre pressure and inner, middle and outer temperature per corner",
     "Cold tyre pressure calculator",
@@ -97,13 +97,24 @@
     "Driving style analysis: smoothness, aggression, trail braking, lockups",
     "Separating car problems from driver mistakes over a stint",
     "Ghost lap delta against your own best lap",
+    "Watch another machine's session over the local network, with your own analysis of it",
     "MoTeC-compatible CSV export",
     "In-game overlay as a Custom Shaders Patch Lua app",
     "Setup browser and installer",
     "UDP JSON telemetry feed for custom front ends",
     "Watching another driver's telemetry over a local network",
     "Windows, Linux and Steam Deck under Proton"
-  ]
+  ],
+  "isRelatedTo":{
+    "@type":"SoftwareApplication",
+    "name":"RG Pro Engineer",
+    "url":"https://proengineer.app/rg/",
+    "applicationCategory":"GameApplication",
+    "operatingSystem":"Windows, Linux",
+    "isAccessibleForFree":true,
+    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
+    "description":"RG Pro Engineer is the graphical (GUI) sim racing telemetry program of the same project: a native window with ten screens, plotted telemetry channels, a drawn circuit and the same race engineer. Pro Engineer is the terminal version; RG Pro Engineer is the window."
+  }
 }
 </script>
 <script type="application/ld+json">
@@ -737,6 +748,7 @@ pre{
   padding:14px 16px;overflow-x:auto;margin:0 0 16px;font-size:13.5px;
 }
 pre .c{color:var(--dim)}
+pre .s{color:#9aa0b0}
 code{color:var(--accent)}
 
 table{width:100%;border-collapse:collapse;font-size:14px;margin:0 0 4px}
@@ -967,6 +979,15 @@ footer .cols a:hover{color:var(--highlight)}
    block quote. Nothing else on the site has a plain <ul> in it, which is
    why these are scoped to .log — a rule for bare `ul` here would reach
    into the panels and tables on every other page. */
+/* Two programs on one page, and the reader has to be told which is which.
+   They ship together and carry the same version, so one list of numbers read
+   as one product. The heading is deliberately louder than a release's. */
+.stream{
+  margin:64px 0 6px;font-size:1.45rem;letter-spacing:.01em;
+  color:var(--text);scroll-margin-top:80px;
+}
+.stream:first-of-type{margin-top:38px}
+.stream-note{color:var(--dim);margin:0 0 6px;max-width:78ch;line-height:1.7}
 .log{padding:34px 0 6px;border-top:1px solid var(--border)}
 .log:first-of-type{border-top:0}
 .log > h2{margin-bottom:14px}
@@ -1004,6 +1025,179 @@ footer .cols a:hover{color:var(--highlight)}
 .log .src{margin:6px 0 0;font-size:12.5px}
 .log .src a{color:var(--dim);text-decoration:none}
 .log .src a:hover{color:var(--highlight)}
+
+/* The language reference, laid out like documentation rather than like a page.
+   One column of prose is fine to read once and hopeless to use: a reference is
+   for jumping to the one name you have forgotten, and scrolling to find it is
+   what a sidebar exists to stop. */
+.docs{display:grid;grid-template-columns:214px minmax(0,1fr);gap:36px;align-items:start}
+.docs-nav{
+  position:sticky;top:calc(var(--bar) + 18px);align-self:start;
+  max-height:calc(100vh - var(--bar) - 40px);overflow:auto;
+  border-left:1px solid var(--border);padding:2px 0 2px 14px;
+  display:flex;flex-direction:column;gap:1px
+}
+/* **A wrapped entry has to still read as one entry.** "Tyre and brake
+   channels" does not fit on one line at any sensible width, and left alone the
+   second line started under the first and the list turned to mush. A hanging
+   indent puts the continuation under the text rather than under the margin,
+   and a little air between items does the rest. */
+.docs-nav a{
+  color:var(--dim);text-decoration:none;font-size:13px;line-height:1.5;
+  padding:3px 0 3px 10px;text-indent:-10px
+}
+.docs-nav a:hover{color:var(--highlight)}
+.docs-nav a code{font-size:12.5px;color:inherit}
+.docs-nav .docs-head{
+  color:var(--highlight);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  margin:16px 0 3px
+}
+.docs-nav .docs-head:first-child{margin-top:0}
+
+/* The sections sit closer together than they do on a page of prose: beside a
+   sticky sidebar, 46 px of air between them is 46 px of nothing to look at. */
+.docs-body > section{padding:30px 0 4px}
+.docs-body > section:first-child{padding-top:0}
+
+/* **The name column is as wide as the names and no wider.** Left to itself the
+   browser gave the first column whatever it liked, so the three tables did not
+   line up with each other and the descriptions started in a different place in
+   each — which is most of what made this hard to read down. `width:1%` with
+   `nowrap` is the standing trick for "shrink to fit". */
+.docs-body table td:first-child{width:1%;white-space:nowrap;padding-right:22px}
+.docs-body table td:first-child code{color:var(--accent)}
+.docs-body table td:last-child{color:var(--dim)}
+.docs-body table tr{scroll-margin-top:calc(var(--bar) + 20px)}
+/* And a row somebody has just jumped to says so, or a link into the middle of
+   a table lands the reader somewhere with nothing to confirm they arrived. */
+.docs-body table tr:target td{background:color-mix(in srgb,var(--highlight) 12%,transparent)}
+.docs-body table tr:target td:first-child{box-shadow:inset 2px 0 0 var(--highlight)}
+
+/* Below a laptop the sidebar is a strip across the top rather than a column
+   squeezing the table it is meant to help with. */
+@media (max-width:900px){
+  .docs{grid-template-columns:1fr;gap:12px}
+  .docs-nav{
+    position:static;max-height:none;flex-direction:row;flex-wrap:wrap;gap:4px 14px;
+    border-left:0;border-bottom:1px solid var(--border);padding:0 0 12px
+  }
+  .docs-nav .docs-head{margin:0}
+  .docs-body table td:first-child{white-space:normal}
+}
+
+/* A heading row inside the reference tables: seventy channels under nine
+   words rather than seventy in a row. */
+.docs-body table tr.head td{
+  color:var(--highlight);font-size:11px;letter-spacing:.08em;
+  padding-top:20px;border-bottom:0
+}
+.docs-body table tr.head:first-child td{padding-top:2px}
+
+/* ── the shared-laps library ──────────────────────────────────────────────
+   A table, three pickers and one lap drawn from its own telemetry. Nothing
+   here is a leaderboard: the time column is emphasised because it is what
+   somebody is looking for, and no row is numbered or ranked. */
+.filters { margin: 1.6rem 0 1rem; }
+.filter-row {
+  display: flex; flex-wrap: wrap; gap: 1rem 1.4rem; align-items: flex-end;
+}
+.filter-row label { display: flex; flex-direction: column; gap: .3rem; }
+.filter-row label > span {
+  font-size: .72rem; letter-spacing: .08em; opacity: .62; text-transform: uppercase;
+}
+.filter-row select {
+  background: var(--panel, #11161d); color: inherit;
+  border: 1px solid var(--line, #223); border-radius: 6px;
+  padding: .45rem .6rem; min-width: 12rem; font: inherit;
+}
+.filter-row .tick { flex-direction: row; align-items: center; gap: .45rem; }
+.filter-row .tick > span { font-size: .85rem; letter-spacing: 0; opacity: .8; text-transform: none; }
+.count { opacity: .6; font-size: .85rem; margin: .8rem 0 0; }
+
+.listing { overflow-x: auto; }
+.listing table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.listing th {
+  text-align: left; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+  opacity: .55; padding: .5rem .7rem; border-bottom: 1px solid var(--line, #223);
+}
+.listing td { padding: .55rem .7rem; border-bottom: 1px solid rgba(128,128,128,.14); }
+.listing tbody tr { cursor: pointer; }
+.listing tbody tr:hover, .listing tbody tr:focus {
+  background: rgba(78,201,255,.08); outline: none;
+}
+.listing .lap-time { font-variant-numeric: tabular-nums; font-weight: 600; color: #4ec9ff; }
+.empty { opacity: .6; padding: 1.2rem 0; }
+
+.lap-view { margin-top: 2.4rem; }
+.lap-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.6rem; }
+@media (max-width: 760px) { .lap-grid { grid-template-columns: 1fr; } }
+.lap-map svg, .lap-traces svg { width: 100%; height: auto; display: block; }
+.lap-map figcaption, .lap-traces figcaption {
+  font-size: .78rem; opacity: .6; margin-top: .4rem;
+}
+.key { padding: 0 .35rem; border-radius: 3px; color: #0b0f14; }
+.key.slow { background: hsl(10, 85%, 58%); }
+.key.fast { background: hsl(190, 85%, 58%); }
+.lap-facts { display: grid; grid-template-columns: auto 1fr; gap: .3rem 1rem; margin: 1.2rem 0; }
+.lap-facts dt { opacity: .6; font-size: .82rem; }
+.lap-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.copy-row { display: flex; gap: .6rem; align-items: center; margin: .5rem 0; }
+.copy-row code {
+  background: var(--panel, #11161d); border: 1px solid var(--line, #223);
+  border-radius: 5px; padding: .35rem .55rem; font-size: .85rem; word-break: break-all;
+}
+.copy-row button {
+  background: transparent; color: inherit; border: 1px solid var(--line, #223);
+  border-radius: 5px; padding: .35rem .7rem; cursor: pointer; font: inherit;
+}
+.copy-row button:hover { border-color: #4ec9ff; color: #4ec9ff; }
+
+/* The four numbers at the top: what is actually in here. */
+.tally { display: flex; flex-wrap: wrap; gap: 2.2rem; margin: 1.8rem 0 .4rem; }
+.tally div { display: flex; flex-direction: column; gap: .15rem; }
+.tally strong { font-size: 1.9rem; line-height: 1; color: #4ec9ff; font-variant-numeric: tabular-nums; }
+.tally span { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+
+/* A tile per circuit — the way in for somebody who does not yet know what
+   they are looking for. */
+.tiles { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.2rem 0 1.8rem; }
+.tile {
+  display: flex; flex-direction: column; gap: .15rem; align-items: flex-start;
+  background: var(--panel, #11161d); color: inherit; font: inherit; cursor: pointer;
+  border: 1px solid var(--line, #223); border-radius: 8px; padding: .5rem .8rem;
+}
+.tile:hover { border-color: #4ec9ff; }
+.tile.on { border-color: #4ec9ff; background: rgba(78,201,255,.1); }
+.tile-name { font-size: .92rem; }
+.tile small { font-size: .72rem; opacity: .55; }
+.clear {
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+  border: 1px solid var(--line, #223); border-radius: 6px; padding: .45rem .8rem;
+}
+.clear:hover { border-color: #4ec9ff; color: #4ec9ff; }
+
+/* One heading per circuit, and its own table under it. */
+.track-head {
+  display: flex; align-items: baseline; gap: .7rem;
+  margin: 1.8rem 0 .4rem; font-size: 1.05rem; letter-spacing: .02em;
+}
+.track-head small { font-size: .74rem; opacity: .5; font-weight: 400; }
+.listing table { margin-bottom: .4rem; }
+.listing .driver { font-weight: 500; }
+.listing .car { opacity: .78; font-size: .86rem; }
+.listing .lap-time.best { color: #57d977; }
+.listing .has-setup { color: #57d977; font-size: .84rem; }
+
+/* The readout under the map, while the pointer is on the lap. */
+.at-cursor {
+  display: grid; grid-template-columns: auto 1fr; gap: .2rem .9rem;
+  margin: .8rem 0 0; padding: .7rem .8rem;
+  background: var(--panel, #11161d); border: 1px solid var(--line, #223);
+  border-radius: 8px; font-size: .85rem;
+}
+.at-cursor dt { opacity: .55; }
+.at-cursor dd { margin: 0; font-variant-numeric: tabular-nums; }
+.lap-map svg, .lap-traces svg { cursor: crosshair; }
 /*PE_CSS_END*/
   /* ── the landing's own ────────────────────────────────────────────
      The block logo, and the pieces only the front door uses. */
@@ -1062,7 +1256,7 @@ footer .cols a:hover{color:var(--highlight)}
   <nav class="tabs">
 <!--NAV-->
     <a href="https://proengineer.app/" class="on">OVERVIEW</a>
-    <a href="https://proengineer.app/rg/" class="pick">RG PRO ENGINEER</a>
+    <a href="https://proengineer.app/rg/" class="pick">THE WINDOW</a>
     <span class="has-menu">
       <button class="games" type="button" aria-haspopup="true">GAMES</button>
       <span class="menu">
@@ -1071,12 +1265,42 @@ footer .cols a:hover{color:var(--highlight)}
         <a href="https://proengineer.app/games/" class="all">What each game reports</a>
       </span>
     </span>
-    <a href="https://proengineer.app/features/">FEATURES</a>
-    <a href="https://proengineer.app/compare/">COMPARE</a>
-    <a href="https://proengineer.app/technical/">HOW IT WORKS</a>
+    <span class="has-menu">
+      <button class="games" type="button" aria-haspopup="true">WHAT IT DOES</button>
+      <span class="menu">
+        <a href="https://proengineer.app/features/">Every feature</a>
+        <a href="https://proengineer.app/compare/">How it compares</a>
+        <a href="https://proengineer.app/technical/">How it works</a>
+      </span>
+    </span>
     <a href="https://proengineer.app/download/">DOWNLOAD</a>
-    <a href="https://proengineer.app/faq/">FAQ</a>
-    <a href="https://github.com/Rgosh/ac-pro-engineer">SOURCE ↗</a>
+    <span class="has-menu">
+      <button class="games" type="button" aria-haspopup="true">MODULES</button>
+      <span class="menu">
+        <a href="https://proengineer.app/library/">Shared laps</a>
+        <a href="https://proengineer.app/modules/">What they are</a>
+        <a href="https://proengineer.app/modules/docs/">RGE reference</a>
+      </span>
+    </span>
+    <span class="has-menu">
+      <button class="games" type="button" aria-haspopup="true">WHAT TO CHANGE</button>
+      <span class="menu">
+        <a href="https://proengineer.app/tyre-temperatures/">Why tyres overheat</a>
+        <a href="https://proengineer.app/understeer-oversteer/">Understeer & oversteer</a>
+        <a href="https://proengineer.app/damper-histograms/">Damper histograms</a>
+        <a href="https://proengineer.app/force-feedback/">Why the wheel goes light</a>
+        <a href="https://proengineer.app/fuel-strategy/">Fuel and lift-and-coast</a>
+        <a href="https://proengineer.app/guide/">Setup handbook</a>
+      </span>
+    </span>
+    <span class="has-menu">
+      <button class="games" type="button" aria-haspopup="true">MORE</button>
+      <span class="menu">
+        <a href="https://proengineer.app/changelog/">Every release</a>
+        <a href="https://proengineer.app/faq/">Questions</a>
+        <a href="https://github.com/Rgosh/ac-pro-engineer">Source ↗</a>
+      </span>
+    </span>
 <!--/NAV-->
   </nav>
 
@@ -1090,6 +1314,16 @@ footer .cols a:hover{color:var(--highlight)}
     <h1 class="h1"><span>Pro Engineer</span><span> — sim racing telemetry and a virtual race engineer</span></h1>
 
     <p class="tagline">It reads your telemetry and <b>tells you what to change.</b></p>
+
+    <p class="sub">
+      <b>Two programs, one engineer.</b> <b>Pro Engineer</b> is the terminal — the
+      analysis in a text console, open source and free.
+      <a href="/rg/"><b>RG Pro Engineer</b></a> is the graphical one: a native desktop
+      window with ten screens, plotted channels and the circuit drawn from the game's own
+      files. Separate downloads, released together under one version, and everything that
+      decides anything lives in one shared core — so the two can never tell you different
+      things about the same lap.
+    </p>
 
     <p class="sub">
       Most telemetry tools hand you graphs and leave the interpreting to you. This one
@@ -1108,23 +1342,23 @@ footer .cols a:hover{color:var(--highlight)}
 <!--RELEASES-->
 <aside class="releases" aria-labelledby="releases-h">
   <h2 id="releases-h">RECENT UPDATES</h2>
-  <p class="now">running <b>v0.5.1</b> · v0.5.5 in testing: a program left open all evening stays as good as when it started, the LAN finds people again after sleep, and the engineer calls the first lap after a break a warm-up</p>
+  <p class="now">running <b>v0.5.5</b></p>
   <ol>
     <li>
+      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.5.5"><b>v0.5.5</b></a><time>2026-10-29</time>
+      <p>**A program left open for an evening stays as good as it was when it started.** Most of what is below is one complaint from several sides — &quot;it needs restarting…</p>
+    </li>
+    <li>
       <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.5.1"><b>v0.5.1</b></a><time>2026-09-22</time>
-      <p>The bridge out of the Wine prefix is its own project now, and a session that has ended stops reading as the one you are in. Most cars get their own tyre pressures back…</p>
+      <p>The bridge out of the Wine prefix is its own project now — wineshm, MIT — and it stopped letting a session that has ended read as the one you are in.</p>
     </li>
     <li>
       <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.5.0"><b>v0.5.0</b></a><time>2026-09-20</time>
-      <p>The window's release. Here: rustls moved past GHSA-2mjx-qc3c-rqvc, and the panel, its manifest and the banner carry the same number.</p>
+      <p>The three programs ship under one number, and this is the window&#x27;s release — see its own changelog for what moved there. What changed here:</p>
     </li>
     <li>
       <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.9"><b>v0.4.9</b></a><time>2026-09-14</time>
-      <p>The core says what the brake pedal did wrong, follows up on what it said last time, and finds where a wheel let go — locking at T3 once is a lap, every lap is a setting…</p>
-    </li>
-    <li>
-      <a href="https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.4.8"><b>v0.4.8</b></a><time>2026-09-07</time>
-      <p>Findings that hold still long enough to be read, and five named palettes so the three front ends stop inventing their own colours.</p>
+      <p></p>
     </li>
   </ol>
   <a class="all" href="https://proengineer.app/changelog/">full changelog →</a>
@@ -1151,7 +1385,7 @@ footer .cols a:hover{color:var(--highlight)}
     </div>
 
     <div class="stats">
-      <div class="stat"><b>156</b><span>FEATURES</span></div>
+      <div class="stat"><b>218</b><span>FEATURES</span></div>
       <div class="stat"><b>9</b><span>TERMINAL TABS</span></div>
       <div class="stat"><b>5</b><span>GAME WINDOWS</span></div>
       <div class="stat"><b>16</b><span>GUIDE CHAPTERS</span></div>
@@ -1164,6 +1398,18 @@ footer .cols a:hover{color:var(--highlight)}
       <div class="card"><h3><span class="k" style="color:var(--warn)">◐</span> Medium</h3><p>Enough to raise. Not enough to bet a setup change on.</p></div>
       <div class="card"><h3><span class="k" style="color:var(--bad)">○</span> Low</h3><p>It is watching and has not decided. Being told that is worth more than a confident guess.</p></div>
     </div>
+    <figure>
+      <img src="/screenshots/rg/dashboard.png" alt="RG Pro Engineer's dashboard: tyre and brake temperatures at every corner, pressures, the car's state and the single most important finding at the top" loading="lazy" width="1280" height="800">
+      <figcaption>The window: what to fix first at the top, and every corner of the car under it.</figcaption>
+    </figure>
+    <figure>
+      <img src="/screenshots/rg/circuit.png" alt="The three-dimensional circuit map in RG Pro Engineer showing elevation, the road at its own width and a lap coloured by time gained and lost" loading="lazy" width="1280" height="800">
+      <figcaption>And the circuit in three dimensions — its own elevation, its own road width, your lap where you drove it.</figcaption>
+    </figure>
+    <figure>
+      <img src="/screenshots/rg/overlay.png" alt="The RG Pro Engineer overlay drawn inside the game: timing, delta, the engineer's lines, a rev ring with gear and speed, the four tyres, fuel, a map and a g-meter" loading="lazy" width="1280" height="720">
+      <figcaption>And <a href="https://proengineer.app/rg/#overlay">an overlay inside the game</a> — no Custom Shaders Patch and no mod, on Assetto Corsa, on Competizione and on every game it reads next.</figcaption>
+    </figure>
   </section>
 
   <section id="sims">
@@ -1179,12 +1425,12 @@ footer .cols a:hover{color:var(--highlight)}
 <!--SIMS-->
       <a class="card" href="https://proengineer.app/ac/">
         <h3><span class="k">▸</span> Assetto Corsa <span class="sim-badge live">FULL SUPPORT</span></h3>
-        <p>Terminal dashboard, the race engineer, corner-by-corner analysis and a five-window panel inside the game through Custom Shaders Patch. Windows, Linux and Steam Deck.</p>
+        <p>Terminal dashboard, the race engineer, corner-by-corner analysis and a five-window panel inside the game through Custom Shaders Patch — and RG Pro Engineer's overlay, drawn in the game without CSP. Windows, Linux and Steam Deck.</p>
         <span class="go">Everything for AC</span>
       </a>
       <a class="card" href="https://proengineer.app/acc/">
         <h3><span class="k">▸</span> Assetto Corsa Competizione <span class="sim-badge live">SUPPORTED</span></h3>
-        <p>Since v0.4.0: dashboard, tyres, brakes, fuel and lap analysis, measured off a real session rather than transcribed, with the engineer judging a GT3 by a GT3's numbers. No in-game panel — CSP is an Assetto Corsa mod. What it measures and what it does not is written down.</p>
+        <p>Since v0.4.0: dashboard, tyres, brakes, fuel and lap analysis, measured off a real session rather than transcribed, with the engineer judging a GT3 by a GT3's numbers. No CSP panel — CSP is an Assetto Corsa mod — but RG Pro Engineer's overlay is drawn inside ACC with no mod at all. What it measures and what it does not is written down.</p>
         <span class="go">Where ACC stands</span>
       </a>
       <a class="card pending" href="https://proengineer.app/technical/#games">
@@ -1207,20 +1453,21 @@ footer .cols a:hover{color:var(--highlight)}
            in the tab strip: it is the front end most people should start with,
            and the landing linked it only from the nav. -->
       <a class="card pick" href="https://proengineer.app/rg/">
-        <h3><span class="k">▸</span> RG Pro Engineer <span class="sim-badge">NEW</span></h3>
+        <h3><span class="k">▸</span> Pro Engineer, in a window <span class="sim-badge">NEW</span></h3>
         <p>
           The same engineer in a window rather than a terminal: every channel plotted,
-          the circuit and your car drawn from the game's own files, and findings that
-          name the corner and what it cost.
+          the circuit and your car drawn from the game's own files, findings that name
+          the corner and what it cost &mdash; and an overlay drawn inside the game
+          without CSP, for every game it reads.
         </p>
         <span class="go">See the window</span>
       </a>
       <a class="card" href="https://proengineer.app/features/">
-        <h3><span class="k">▸</span> Everything it does <span class="n">156</span></h3>
+        <h3><span class="k">▸</span> Everything it does <span class="n">218</span></h3>
         <p>The whole list, folded by area: tyres, the engineer, the debrief, corner
         analysis, ghosts and traces, driving style, fuel, force feedback, setups, the
         in-game panel, the built-in setup guide.</p>
-        <span class="go">All 156 features</span>
+        <span class="go">All 218 features</span>
       </a>
       <a class="card" href="https://proengineer.app/technical/">
         <h3><span class="k">▸</span> How it works</h3>
