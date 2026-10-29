@@ -371,11 +371,17 @@ async fn main() -> Result<(), anyhow::Error> {
                         KeyCode::Left => app.overlay_card_selection = 0,
                         KeyCode::Right => app.overlay_card_selection = 1,
                         KeyCode::Enter => {
-                            if app.overlay_card_selection == 0 {
-                                app.install_overlay_now();
-                                app.onboarding = ac_tui::OverlayOnboarding::Tips;
-                            } else {
+                            // **Tips only for a panel that is in the game.**
+                            // With no game found this said "THE OVERLAY IS IN
+                            // THE GAME" over "no Assetto Corsa found"; now
+                            // there is no install to offer there, and a
+                            // failed one stays on the offer, saying why.
+                            if app.overlay_report.game_root.is_none()
+                                || app.overlay_card_selection != 0
+                            {
                                 app.finish_onboarding();
+                            } else if app.install_overlay_now() {
+                                app.onboarding = ac_tui::OverlayOnboarding::Tips;
                             }
                         }
                         KeyCode::Esc => app.finish_onboarding(),
@@ -400,7 +406,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         KeyCode::Right => app.overlay_card_selection = 1,
                         KeyCode::Enter => {
                             if app.overlay_card_selection == 0 {
-                                app.install_overlay_now();
+                                let _ = app.install_overlay_now();
                             } else {
                                 app.show_overlay_card = false;
                             }
@@ -813,7 +819,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                         if app_lock.overlay_confirm_selection == 0 {
                                             match action {
                                                 ac_tui::OverlayAction::Install => {
-                                                    app_lock.install_overlay_now()
+                                                    let _ = app_lock.install_overlay_now();
                                                 }
                                                 ac_tui::OverlayAction::Uninstall => {
                                                     app_lock.uninstall_overlay_now()

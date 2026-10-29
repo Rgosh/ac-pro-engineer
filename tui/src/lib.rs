@@ -1013,24 +1013,28 @@ impl AppState {
     }
 
     /// Write the overlay app into the game folder now, and say what happened.
+    /// Returns whether the panel is in the game afterwards.
     ///
     /// The application already does this at startup; this is the button for
     /// when the game moved, the files were deleted, or the panel is being
     /// installed for a copy of AC that was not there at launch.
-    pub fn install_overlay_now(&mut self) {
+    pub fn install_overlay_now(&mut self) -> bool {
         use ac_core::overlay::install::{InstallOutcome, install};
 
-        self.overlay_install_status = match install(self.config.ac_install_override()) {
+        let (said, there) = match install(self.config.ac_install_override()) {
             Ok(InstallOutcome::Installed { updated }) => {
-                format!("installed, {updated} file(s) written")
+                (format!("installed, {updated} file(s) written"), true)
             }
-            Ok(InstallOutcome::AlreadyCurrent) => "already up to date".to_string(),
-            Ok(InstallOutcome::NoGameFound) => {
-                "no Assetto Corsa found — set ac_install_path in config.json".to_string()
-            }
-            Err(error) => format!("failed: {error}"),
+            Ok(InstallOutcome::AlreadyCurrent) => ("already up to date".to_string(), true),
+            Ok(InstallOutcome::NoGameFound) => (
+                "no Assetto Corsa found — set ac_install_path in config.json".to_string(),
+                false,
+            ),
+            Err(error) => (format!("failed: {error}"), false),
         };
+        self.overlay_install_status = said;
         self.refresh_overlay_report();
+        there
     }
 
     /// Work with another game from now on.

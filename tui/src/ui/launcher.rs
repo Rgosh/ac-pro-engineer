@@ -116,6 +116,40 @@ fn render_overlay_offer(f: &mut Frame<'_>, area: Rect, app: &AppState) {
 
     lines.push(Line::from(""));
 
+    // **Nothing to install into, so nothing offered.** A YES here led to a
+    // page headed "the overlay is in the game" above the line saying no game
+    // was found.
+    if app.overlay_report.game_root.is_none() {
+        lines.push(Line::from(vec![
+            Span::raw("      "),
+            Span::styled(
+                " [ OK ] ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::from(Span::styled(
+            "      once the game is found, Settings → OVERLAY → [I] installs it",
+            dim,
+        )));
+        f.render_widget(
+            Paragraph::new(lines)
+                .block(block)
+                .alignment(Alignment::Left),
+            popup_area,
+        );
+        return;
+    }
+    // A failed install stays here and says why.
+    if !app.overlay_install_status.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("      {}", app.overlay_install_status),
+            Style::default().fg(Color::Red),
+        )));
+    }
+
     let yes = if app.overlay_card_selection == 0 {
         Style::default()
             .fg(Color::Black)

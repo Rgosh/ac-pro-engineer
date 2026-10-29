@@ -51,6 +51,11 @@ it turned out to be a real fault rather than a feeling.
 
 ### Fixed
 
+- **The first-run overlay offer no longer claims an install that did not
+  happen.** With no Assetto Corsa found it still offered YES, INSTALL IT,
+  and pressing it opened a page headed "THE OVERLAY IS IN THE GAME" above
+  the line saying no game was found. Now there is only OK and where to
+  install it later; a failed install stays on the offer and says why.
 - **Pages made again under the same name are read again.** A mapping is of a
   file, not of a name: a bridge started again makes new pages, and the old
   connection went on reading the frame it stopped at. The window waited for a
