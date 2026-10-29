@@ -18,6 +18,12 @@ install-updater = true
 # tag. Set here rather than by editing release.yml, which `dist generate`
 # overwrites.
 pr-run-mode = "skip"
+# release.yml carries one line dist did not write: a `workflow_dispatch:`
+# trigger beside the tag push, so tag-release.yml can start a release on a tag
+# it made. Without this, `dist plan` refuses a workflow that differs from what
+# `dist generate` would write. Running `dist generate` drops that line again —
+# put it back.
+allow-dirty = ["ci"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu"]
 # gzip rather than the default xz: the in-app updater unpacks these itself, and

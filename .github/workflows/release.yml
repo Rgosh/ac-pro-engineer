@@ -42,6 +42,12 @@ on:
   push:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
+  # Added by hand, and allowed by `allow-dirty = ["ci"]` in dist-workspace.toml.
+  # Run against a tag (`--ref v0.5.5`) it is the same release: every step reads
+  # the version from `github.ref_name`, which is the tag either way. It exists
+  # because a tag pushed by a workflow's own token starts no workflow, so
+  # tag-release.yml has to start this one itself.
+  workflow_dispatch:
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do

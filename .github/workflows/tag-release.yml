@@ -1,0 +1,64 @@
+# Tags a release and starts it, from the Actions tab or the API.
+#
+# The usual way is still `git push origin vX.Y.Z`, and release.yml answers that
+# by itself. This is for when a tag cannot be pushed from where the release is
+# being made — a machine whose git access covers branches but not tags. It
+# makes the same annotated tag a person would, then starts release.yml on it:
+# a tag pushed with the workflow's own token starts no workflow on its own,
+# which is GitHub's guard against workflows triggering each other in a loop.
+name: Tag a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release, without the v — must be the one Cargo.toml carries"
+        required: true
+      commit:
+        description: "The commit to tag (default: the head of the branch this runs on)"
+        required: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit || github.ref }}
+
+      # A tag that disagrees with Cargo.toml publishes archives whose program
+      # reports another version than the release it came from — and the in-app
+      # updater then offers that release to itself for ever.
+      - name: Check the version is the one being built
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          built=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$built" != "$VERSION" ]; then
+            echo "::error::asked for $VERSION, Cargo.toml says $built"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is already tagged"
+            exit 1
+          fi
+
+      - name: Tag it
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Start the release on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "v$VERSION"
