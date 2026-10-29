@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.5.5] - 2026-10-27
+## [v0.5.5] - 2026-10-29
 
 **A program left open for an evening stays as good as it was when it
 started.** Most of what is below is one complaint from several sides — "it

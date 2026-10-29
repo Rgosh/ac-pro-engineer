@@ -1,0 +1,83 @@
+🧠 v0.5.5 — A Coach After Every Lap, And A Program That Stays Good All Evening
+
+This listing has been on v0.5.0 since September 20th. One release happened in between and did not reach here, so this is everything since the version you have. After every lap the engineer now picks the one corner that cost you the most and tells you the one thing to do there — then follows it until it is fixed. And "it needs restarting after it has been sitting there a while" turned out to be several real faults, every one of them below. Website: https://proengineer.app
+
+Still free. No account, no paid tier, nothing to unlock.
+
+
+ THE COACH — One Thing To Fix After Each Lap
+
+* After every lap, the corner that cost the most against your best becomes one instruction in units you can feel: "Brake 12 m later into T5", "Back on the throttle 0.20 s sooner out of T9", "Carry 6 km/h more through the middle of T3" — with what it cost, which part of the corner it went in, and what the next lap has to show.
+* It stays on that corner. Fixed when it costs half what it did, and on to the next one; let go after four laps without coming, because a corner that will not come is a corner to come back to another evening.
+* Load a faster lap as the ghost and it is that lap you are coached against, when it is of the same car and track.
+* It is first in the engineer's list — in the terminal, in the in-game panel, and on a watcher's screens — and the panel's debrief of that lap opens with it.
+
+
+ Consistency, A Report, And The Lap After A Break
+
+* The consistency trainer. How many laps in a row you have kept within half a percent of the session's best — 0.6 s round a two-minute lap, never tighter than three tenths — the longest run of the session, the share of laps inside the window and the lap-to-lap spread. A cut lap, a spin or an in-lap ends a run. It sits under the lap list on ANALYSIS.
+* A session report you can post. R on ANALYSIS writes the whole session as Markdown: every lap with its sectors (the best in bold, invalid laps struck through), the best sectors together, the lap of your own best corners, the consistency run, fuel per lap, the corners worth practising and what the engineer said — worst first. It renders as written on Discord, GitHub and forums. Nothing leaves your machine.
+* The first lap after a break is called a warm-up. Two minutes standing while the simulation runs, and when the car goes out again the engineer says how long it stood, how much the tyres lost, and that this lap is for temperature rather than for judging the balance. Over when the tyres are back within five degrees, a lap has been driven or four minutes have passed. Nothing is said on a game that publishes no tyre temperature.
+
+
+ Fixed — Reported By Drivers
+
+Most of these came from one person who reads this program against the game and does not let go. Thanks again to @1sad on GitHub.
+
+* Most cars still lost their own tyre pressure. v0.4.6 said every car's own PRESSURE_IDEAL is read now, including from data.acd for cars that ship it packed — and for 72 of the 83 packed cars on the test machine it never was. The key that decrypts a car's data is eight numbers made from its folder name, and the fifth walked the name in steps of five where the game steps by four. One wrong byte turns the whole file to noise, and noise is thrown away on purpose, so the failure was silent and looked exactly like a car that states no figure. Found on a 90s Miata told to deflate from 34.7 psi to 27.2, when the car itself says 34.
+* The engineer said the car understeers and oversteers at once. High-speed understeer and oversteer were two separate counters, a lap understeers into one corner and oversteers out of another, so the panel carried "More Front Wing" directly above "More Rear Wing" — two instructions that undo each other. There is one balance finding now, and the bigger tendency wins. And it no longer offers a wing to a car that has not got one.
+* The panel's tread numbers read inner-first on both sides of the car, so on the left the row ran the opposite way round to the tyre it describes. The left-hand tyres read outer, middle, inner now — across the car, the way the tyre actually sits.
+* "No finished laps yet" beside a best lap of 2:19.690. Both were true: a debrief is built from a lap the program watched from line to line, and a driver who starts the program after setting a time has none yet. The panel now says that, in those words, instead of the sentence for a session where nobody has finished anything.
+* The handbook sent people to a setting that does not exist — "tick Shared Memory in Content Manager". There is no such setting and never was; both games publish their telemetry whenever they run. Reported from Overtake by a driver on Bazzite who went looking for it and got stuck. It now says what is actually true on each system.
+* The bridge, started from a file manager or a desktop entry, created its pages and quit within a second. "Running it does nothing" was exactly right. It stays up now.
+
+
+ A Program Left Open For An Evening
+
+* Pages made again under the same name are read again. A bridge started a second time makes new shared-memory pages, and the old connection went on reading the frame it had stopped at — the terminal never reconnected at all. Each set of pages is now checked once a second.
+* A copy that changed networks can be found again. LAN discovery joined the group on the interfaces it had when it started, so after sleep, a new address or a start before the Wi-Fi came up, nobody could see it and it could see nobody. Asked again every ten seconds now.
+* The follow-up — what changed since your last session in this car at this track — was written to disk sixty times a second, with a full flush in each, from the first finished lap on. Now only when it changed.
+* The terminal wrote a friend's lap down as your best, and the demo's laps as well. Records are only written from your own game now.
+
+
+ Watching Each Other
+
+* A watcher can ask a driver to send to them. A driver who only shares is not listening, so nobody could send them anything — not even a request. The pick key on such a driver now asks; their list says "asks to watch you" beside the key that answers it, and nothing is sent until they press it.
+* Two drivers sending to one watcher are not one car any more. Their readings were spliced into one session; the first is followed until it goes quiet, and the other is said out loud.
+* BOTH in the terminal sent nothing of your own. It does now.
+
+Both machines need the same release to watch each other, and the terminal and the graphical version still speak one protocol in either direction.
+
+
+ The Bridge Is Its Own Project — wineshm
+
+On Linux and the Steam Deck the game's telemetry lives inside the Proton prefix, and a small Windows program running in there mirrors it out. That program is its own open-source project now, MIT: https://github.com/Rgosh/wineshm
+
+* A session that has ended no longer reads as the one you are in. When the game exited, its last frame sat in /dev/shm for ever — a car at some speed on some circuit, from a session that was over — and starting the game again read that old frame first. The bridge now knows which block moves while the game is alive, and zeroes everything when it goes quiet.
+* A bridge that was killed no longer reads as a working one. The launcher card and the diagnostics used to say "fine" about a process that was gone; a running bridge keeps a pulse now, and one without it is called out in red.
+* The bridge ran, published nothing and said nothing was wrong. It was started with the wine inside Proton where the game is started with proton run; it is started the way the game is now. And it is no longer a console window in your taskbar.
+* FETCH THE BRIDGE refused the very bridge that would have carried the panel. Fixed, and it installs wineshm 0.7.0.
+
+
+ Also
+
+* Ninety-two of ninety-six installed cars were invisible to the car catalogue. A car whose description file would not parse was skipped without a word, so its class, weight and power were simply missing and the engineer guessed. They are read now.
+* The first-run offer to install the in-game panel no longer says "the overlay is in the game" when no game was found. It shows OK and where to install it later, and a failed install stays on screen and says why.
+* The graphical version, RG Pro Engineer, got its own overlay this release — drawn inside the game itself, without CSP, for any game this family of programs reads. It is a different program with its own thread: https://proengineer.app/rg/
+
+
+ How to Update
+
+Windows: launch your current version and let the Auto-Updater install v0.5.5. Restart Assetto Corsa afterwards so it picks up the new panel — the application writes the panel into your AC folder, and AC reads its app list once, while it loads.
+
+Linux & Steam Deck: let the Auto-Updater install v0.5.5, then press FETCH THE BRIDGE on the launcher's overlay card to get wineshm 0.7.0, and restart Assetto Corsa. The bridge used to be called shm-bridge.exe; the new one is wineshm.exe, and the application finds either. The telemetry frame has not changed since v0.4.0, so an older bridge still carries your numbers — the new one is what stops an ended session from reading as a live one.
+
+For LAN: update both machines. Open LAN (key 0), one of you presses S and the other W, and pick each other out of the list.
+
+Prefer a clean install? The archive attached here contains both the Windows and Linux builds, wineshm.exe, and a loose copy of the in-game panel. The same release is on GitHub with a checksum beside every file: https://github.com/Rgosh/ac-pro-engineer/releases/tag/v0.5.5
+
+Not sure whether the panel is working? Press the diagnostics key on the launcher for a full report: it names the application, the panel and the bridge, and tells you which of the three does not fit.
+
+Enjoying Pro Engineer? Please leave a review here on Overtake.gg or give us a Star on GitHub — that's what keeps the project going!
+
+https://proengineer.app https://github.com/Rgosh/ac-pro-engineer
