@@ -288,6 +288,61 @@ pub fn new_path(car_dir: &Path, track_folder: &str, name: &str) -> PathBuf {
     candidate
 }
 
+/// One change the engineer asked for, as a change to a setup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Advice {
+    /// The adjustment it changes.
+    pub key: String,
+    /// How far, in the sheet's units.
+    pub by: f64,
+    /// What the engineer said, as it said it.
+    pub said: String,
+}
+
+/// The setup changes the engineer's findings ask for, on this car's sheet.
+///
+/// **Only what it gave a number for.** Most of what the engineer says is a
+/// direction — "more front wing", "brake later" — and turning a direction into
+/// a click count would be this module inventing advice the engineer did not
+/// give. What it does give a number for is tyre pressure, per corner: the hot
+/// pressure it measured and the hot pressure the car wants. The cold setting
+/// in a setup moves the hot one by about as much, so the change is that
+/// difference — which is the rule of thumb every engineer starts from, and
+/// the follow-up on the next session says whether it was enough.
+///
+/// Pressures are kept in psi whatever the driver reads them in, and AC's
+/// setup files are in psi too.
+pub fn advice_for(sheet: &[Adjustment], findings: &[crate::followup::Said]) -> Vec<Advice> {
+    let key_of = |corner: &str| match corner {
+        "FL" => Some("PRESSURE_LF"),
+        "FR" => Some("PRESSURE_RF"),
+        "RL" => Some("PRESSURE_LR"),
+        "RR" => Some("PRESSURE_RR"),
+        _ => None,
+    };
+    let mut out: Vec<Advice> = Vec::new();
+    for finding in findings {
+        for parameter in &finding.parameters {
+            let Some(key) = key_of(parameter.name.as_str()) else {
+                continue;
+            };
+            if !sheet.iter().any(|a| a.key == key) || out.iter().any(|a| a.key == key) {
+                continue;
+            }
+            let by = (parameter.target - parameter.current) as f64;
+            if by.abs() < 0.05 {
+                continue;
+            }
+            out.push(Advice {
+                key: key.to_string(),
+                by,
+                said: finding.message.clone(),
+            });
+        }
+    }
+    out
+}
+
 /// The sections of an INI text and their fields, keys upper-cased, in order.
 ///
 /// **Lenient, like the game.** AC's own files have comments after values,
@@ -470,6 +525,48 @@ VERSION=0.2.11
         wanted.insert("PRESSURE_LF".to_string(), 25.0);
         let out = with_values("[PRESSURE_LF]\r\nVALUE=27\r\n", &sheet, &wanted);
         assert_eq!(out, "[PRESSURE_LF]\r\nVALUE=25\r\n");
+    }
+
+    #[test]
+    fn the_engineer_s_pressures_become_changes_to_the_cold_setting() {
+        use crate::engineer::{Parameter, Severity};
+        use crate::followup::Said;
+        let sheet = read_sheet(SHEET);
+        let findings = vec![
+            Said {
+                component: "Tyres".into(),
+                category: "Pressure".into(),
+                severity: Severity::Warning,
+                message: "Front left pressure: 29.4 (target 27.5)".into(),
+                parameters: vec![
+                    Parameter {
+                        name: "FL".into(),
+                        current: 29.4,
+                        target: 27.5,
+                        unit: "psi".into(),
+                    },
+                    // A corner this sheet cannot set is not advice for it.
+                    Parameter {
+                        name: "RR".into(),
+                        current: 25.0,
+                        target: 26.0,
+                        unit: "psi".into(),
+                    },
+                ],
+            },
+            // A direction with no number is not turned into one.
+            Said {
+                component: "Aero".into(),
+                category: "Balance".into(),
+                severity: Severity::Info,
+                message: "More front wing".into(),
+                parameters: Vec::new(),
+            },
+        ];
+        let advice = advice_for(&sheet, &findings);
+        assert_eq!(advice.len(), 1, "{advice:?}");
+        assert_eq!(advice[0].key, "PRESSURE_LF");
+        assert!((advice[0].by + 1.9).abs() < 1e-5);
     }
 
     #[test]
