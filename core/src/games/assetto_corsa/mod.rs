@@ -12,6 +12,7 @@ pub mod content;
 pub mod csp;
 pub mod paths;
 pub mod reading;
+pub mod setup_sheet;
 pub mod setups;
 pub mod shm;
 pub mod structs;
