@@ -14,6 +14,7 @@ pub mod csp;
 pub mod csp_settings;
 pub mod ini;
 pub mod lobby;
+pub mod media;
 pub mod paths;
 pub mod reading;
 pub mod setup_sheet;
