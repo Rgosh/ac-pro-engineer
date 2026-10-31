@@ -17,6 +17,7 @@
 //! **"Not stated" is an answer.** A module neither file mentions is reported
 //! as `None`, not as off: the patch decides then, and it may well be on.
 
+pub use super::ini::with_value;
 use std::path::{Path, PathBuf};
 
 /// One of the patch's modules.
@@ -127,77 +128,14 @@ pub fn set(documents: &Path, module: &Module, on: bool) -> Result<PathBuf, Strin
 
 /// What `[BASIC] ENABLED` says in an ini's text, if it says.
 pub fn stated(text: &str) -> Option<bool> {
-    let mut in_section = false;
-    let mut said = None;
-    for line in text.lines() {
-        let line = line.split([';', '#']).next().unwrap_or("").trim();
-        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            in_section = name.trim().eq_ignore_ascii_case(SECTION);
-            continue;
-        }
-        if !in_section {
-            continue;
-        }
-        if let Some((key, value)) = line.split_once('=')
-            && key.trim().eq_ignore_ascii_case(KEY)
-        {
-            // The last one wins, as it does when the patch reads it.
-            said = match value.trim().to_ascii_lowercase().as_str() {
-                "1" | "true" | "yes" | "on" => Some(true),
-                "0" | "false" | "no" | "off" => Some(false),
-                _ => said,
-            };
-        }
+    match super::ini::value(text, SECTION, KEY)?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
     }
-    said
-}
-
-/// The text with `key` under `[section]` set to `value`: replaced where it
-/// is, added to the section where it is not, and the section added at the
-/// end when the file has none.
-pub fn with_value(text: &str, section: &str, key: &str, value: &str) -> String {
-    let mut out: Vec<String> = Vec::new();
-    let mut in_section = false;
-    let mut seen_section = false;
-    let mut done = false;
-    for line in text.lines() {
-        let bare = line.trim();
-        if let Some(name) = bare.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            // Leaving the section without having found the key: it goes at
-            // the section's end, before the next one starts.
-            if in_section && !done {
-                out.push(format!("{key}={value}"));
-                done = true;
-            }
-            in_section = name.trim().eq_ignore_ascii_case(section);
-            seen_section |= in_section;
-            out.push(line.to_string());
-            continue;
-        }
-        if in_section
-            && !done
-            && let Some((k, _)) = bare.split_once('=')
-            && k.trim().eq_ignore_ascii_case(key)
-            && !bare.starts_with(';')
-        {
-            out.push(format!("{key}={value}"));
-            done = true;
-            continue;
-        }
-        out.push(line.to_string());
-    }
-    if !done {
-        if !seen_section {
-            if out.last().is_some_and(|l| !l.trim().is_empty()) {
-                out.push(String::new());
-            }
-            out.push(format!("[{section}]"));
-        }
-        out.push(format!("{key}={value}"));
-    }
-    let mut joined = out.join("\n");
-    joined.push('\n');
-    joined
 }
 
 /// Whether a car or a circuit ships its own configuration for the patch —

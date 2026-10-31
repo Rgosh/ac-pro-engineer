@@ -11,6 +11,7 @@ pub mod car_data;
 pub mod content;
 pub mod csp;
 pub mod csp_settings;
+pub mod ini;
 pub mod lobby;
 pub mod paths;
 pub mod reading;
@@ -19,6 +20,7 @@ pub mod setups;
 pub mod shm;
 pub mod structs;
 pub mod tracks;
+pub mod video;
 
 use crate::games::{Capabilities, GameId, Reading, Source};
 
