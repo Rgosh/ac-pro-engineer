@@ -102,12 +102,12 @@ pub const SETTINGS: &[Setting] = &[
         name: "World detail",
         about: "How much of the scenery is drawn.",
         kind: Kind::Choice(&[
-            ("0", "Minimum"),
+            ("0", "Min"),
             ("1", "Low"),
             ("2", "Medium"),
             ("3", "High"),
             ("4", "Very high"),
-            ("5", "Maximum"),
+            ("5", "Max"),
         ]),
     },
     Setting {
@@ -125,6 +125,75 @@ pub const SETTINGS: &[Setting] = &[
         kind: Kind::Switch,
     },
 ];
+
+/// A whole look in one press: a name, a line about it, and the value it
+/// gives each setting it touches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Preset {
+    pub name: &'static str,
+    pub about: &'static str,
+    /// `(section, key, value)`; every one is a row of [`SETTINGS`] and one of
+    /// the values that row offers — a test holds both.
+    pub values: &'static [(&'static str, &'static str, &'static str)],
+}
+
+/// Three looks, from the frame rate first to the picture first. Full screen,
+/// vsync and the frame limit are left alone: they are about the screen, not
+/// the picture.
+pub const PRESETS: &[Preset] = &[
+    Preset {
+        name: "Performance",
+        about: "Every frame the machine can give.",
+        values: &[
+            ("VIDEO", "AASAMPLES", "1"),
+            ("VIDEO", "ANISOTROPIC", "4"),
+            ("VIDEO", "SHADOW_MAP_SIZE", "1024"),
+            ("ASSETTOCORSA", "WORLD_DETAIL", "3"),
+            ("POST_PROCESS", "ENABLED", "0"),
+            ("MIRROR", "HQ", "0"),
+        ],
+    },
+    Preset {
+        name: "Balanced",
+        about: "A good picture, and a steady frame rate.",
+        values: &[
+            ("VIDEO", "AASAMPLES", "2"),
+            ("VIDEO", "ANISOTROPIC", "8"),
+            ("VIDEO", "SHADOW_MAP_SIZE", "2048"),
+            ("ASSETTOCORSA", "WORLD_DETAIL", "4"),
+            ("POST_PROCESS", "ENABLED", "1"),
+            ("MIRROR", "HQ", "0"),
+        ],
+    },
+    Preset {
+        name: "Quality",
+        about: "The best the game can look.",
+        values: &[
+            ("VIDEO", "AASAMPLES", "4"),
+            ("VIDEO", "ANISOTROPIC", "16"),
+            ("VIDEO", "SHADOW_MAP_SIZE", "4096"),
+            ("ASSETTOCORSA", "WORLD_DETAIL", "5"),
+            ("POST_PROCESS", "ENABLED", "1"),
+            ("MIRROR", "HQ", "1"),
+        ],
+    },
+];
+
+/// Whether the file's text is exactly a preset.
+pub fn is_preset(text: &str, preset: &Preset) -> bool {
+    preset.values.iter().all(|(section, key, value)| {
+        ini::value(text, section, key).is_some_and(|now| same_value(&now, value))
+    })
+}
+
+/// Apply a preset, every other line left as it was.
+pub fn apply(documents: &Path, preset: &Preset) -> Result<PathBuf, String> {
+    let mut at = file(documents);
+    for (section, key, value) in preset.values {
+        at = set_raw(documents, section, key, value)?;
+    }
+    Ok(at)
+}
 
 /// Where the file is, under the game's own Documents folder.
 pub fn file(documents: &Path) -> PathBuf {
@@ -267,6 +336,42 @@ WORLD_DETAIL=5
             Some("5")
         );
         assert_eq!(after.lines().count(), GAME_WROTE.lines().count());
+        let _ = std::fs::remove_dir_all(&docs);
+    }
+
+    #[test]
+    fn every_preset_sets_only_rows_of_the_table_to_values_they_offer() {
+        for preset in PRESETS {
+            for (section, key, value) in preset.values {
+                let row = SETTINGS
+                    .iter()
+                    .find(|s| s.section == *section && s.key == *key)
+                    .unwrap_or_else(|| panic!("{} sets {section}/{key}", preset.name));
+                match row.kind {
+                    Kind::Switch => assert!(["0", "1"].contains(value)),
+                    Kind::Choice(options) => assert!(
+                        options.iter().any(|(v, _)| same_value(v, value)),
+                        "{} sets {key} to {value}, which the game does not offer",
+                        preset.name
+                    ),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn applying_a_preset_makes_the_file_that_preset_and_keeps_the_rest() {
+        let docs = std::env::temp_dir().join(format!("acpe-preset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&docs);
+        std::fs::create_dir_all(docs.join("cfg")).unwrap();
+        std::fs::write(file(&docs), GAME_WROTE).unwrap();
+        let quality = PRESETS.iter().find(|p| p.name == "Quality").unwrap();
+        assert!(!is_preset(GAME_WROTE, quality));
+        apply(&docs, quality).unwrap();
+        let after = read(&docs).unwrap();
+        assert!(is_preset(&after, quality));
+        assert!(PRESETS.iter().filter(|p| is_preset(&after, p)).count() == 1);
+        assert_eq!(resolution(&after), Some((2560, 1440)));
         let _ = std::fs::remove_dir_all(&docs);
     }
 
