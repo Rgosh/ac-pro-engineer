@@ -7,6 +7,7 @@
 //! Either way what arrives here is the same bytes in the same layout.
 
 pub mod adding;
+pub mod assists;
 pub mod car_data;
 pub mod content;
 pub mod csp;

@@ -76,6 +76,23 @@ pub fn with_value(text: &str, section: &str, key: &str, value: &str) -> String {
     joined
 }
 
+/// Set one value in a file, creating the file and its folder when they are
+/// not there, every other line left as it was.
+pub fn set_in_file(
+    at: &std::path::Path,
+    section: &str,
+    key: &str,
+    value: &str,
+) -> Result<std::path::PathBuf, String> {
+    let before = std::fs::read_to_string(at).unwrap_or_default();
+    let after = with_value(&before, section, key, value);
+    if let Some(folder) = at.parent() {
+        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    }
+    std::fs::write(at, after).map_err(|e| format!("{}: {e}", at.display()))?;
+    Ok(at.to_path_buf())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -256,14 +256,7 @@ pub fn set_resolution(documents: &Path, width: u32, height: u32) -> Result<PathB
 }
 
 fn set_raw(documents: &Path, section: &str, key: &str, value: &str) -> Result<PathBuf, String> {
-    let at = file(documents);
-    let before = std::fs::read_to_string(&at).unwrap_or_default();
-    let after = ini::with_value(&before, section, key, value);
-    if let Some(folder) = at.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-    }
-    std::fs::write(&at, after).map_err(|e| format!("{}: {e}", at.display()))?;
-    Ok(at)
+    ini::set_in_file(&file(documents), section, key, value)
 }
 
 /// Common resolutions, for the picker; whatever the file says is offered
