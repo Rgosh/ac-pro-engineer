@@ -345,8 +345,9 @@ WORLD_DETAIL=5
             for (section, key, value) in preset.values {
                 let row = SETTINGS
                     .iter()
-                    .find(|s| s.section == *section && s.key == *key)
-                    .unwrap_or_else(|| panic!("{} sets {section}/{key}", preset.name));
+                    .find(|s| s.section == *section && s.key == *key);
+                assert!(row.is_some(), "{} sets {section}/{key}", preset.name);
+                let Some(row) = row else { continue };
                 match row.kind {
                     Kind::Switch => assert!(["0", "1"].contains(value)),
                     Kind::Choice(options) => assert!(
