@@ -72,11 +72,12 @@ and no other.
 
 The one answer that is certain in advance is the answer to not asking.
 
-## RG Pro Engineer, the window
+## RG Pro Engineer and Pro Launcher
 
-There is one closed-source program built on this core, and it is the
-maintainer's own: **RG Pro Engineer**, the graphical front end. Its binaries
-are distributed without source, and that is deliberate and licensed — so it is
+There are two closed-source programs built on this core, and both are the
+maintainer's own: **RG Pro Engineer**, the graphical front end, and **Pro
+Launcher**, the launcher for Assetto Corsa. Their binaries are distributed
+without source, free of charge, and that is deliberate and licensed — so it is
 written down here rather than left to look like the thing this file spends the
 rest of its length refusing.
 
@@ -100,15 +101,19 @@ fact — **every line of this core is the maintainer's own or arrived under MIT.
   including v0.5.0 shipped that fork, under its own `LICENSE`, and nothing
   about those releases changes.
 - **No third-party dependency is copyleft.** The window's whole tree is 473
-  packages; the only copyleft licences in it are this project's own. Two
+  packages and the launcher's 511; the only copyleft licences in either are
+  this project's own. Two
   crates offer copyleft as one of several choices — `r-efi` is "MIT OR
   Apache-2.0 OR LGPL-2.1-or-later" and `self_cell` is "Apache-2.0 OR
   GPL-2.0-only" — and in both the permissive arm is the one taken. Any future
   dependency that is copyleft outright has to be refused or replaced before it
-  can ship in the window.
+  can ship in either program.
+- **The launcher's fonts are Inter and Rajdhani**, under the SIL Open Font
+  Licence, which permits embedding them in any program, closed or not; their
+  licence texts ship beside them.
 
-So: the window links this core under the maintainer's own separate grant, not
-under the AGPL, and its source is not owed to anybody. **This changes nothing
+So: both programs link this core under the maintainer's own separate grant, not
+under the AGPL, and their source is not owed to anybody. **This changes nothing
 for you.** The core you receive is AGPL and stays AGPL; the sections above and
 below apply to your use of it exactly as written. If you want the same
 arrangement for your own product, the two sections either side of this one are
