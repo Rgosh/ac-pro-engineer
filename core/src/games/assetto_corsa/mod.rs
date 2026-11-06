@@ -11,6 +11,7 @@ pub mod assists;
 pub mod car_data;
 pub mod content;
 pub mod csp;
+pub mod csp_config;
 pub mod csp_settings;
 pub mod game_log;
 pub mod ini;
