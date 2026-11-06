@@ -41,7 +41,7 @@ pub fn list_url(host: &str, guid: Option<&str>) -> String {
 }
 
 /// One server, as the lobby lists it.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Listing {
     #[serde(default)]
     pub ip: String,
@@ -84,6 +84,19 @@ pub struct Listing {
 }
 
 impl Listing {
+    /// The server's name without the marker Content Manager's servers end it
+    /// with — `ℹ` and a port, where extended details are served. Drawn as it
+    /// came, it read "STEWARDED | discord.gg/… ⓘ9013".
+    pub fn shown_name(&self) -> &str {
+        split_details(&self.name).0
+    }
+
+    /// The port that marker names, where a server says more about itself
+    /// than the lobby does.
+    pub fn details_port(&self) -> Option<u16> {
+        split_details(&self.name).1
+    }
+
     /// The circuit as installed folders are named, without the patch's
     /// marker.
     ///
@@ -283,8 +296,40 @@ pub fn fetch(hosts: &[String], timeout: Duration) -> Result<Vec<Listing>, String
     Err(last)
 }
 
+/// A name and the details port at its end, when it has one: `ℹ` (or the
+/// circled `ⓘ` some servers type instead) followed only by digits.
+fn split_details(name: &str) -> (&str, Option<u16>) {
+    let trimmed = name.trim_end();
+    for marker in ['\u{2139}', '\u{24D8}'] {
+        if let Some(at) = trimmed.rfind(marker) {
+            let after = trimmed.get(at + marker.len_utf8()..).unwrap_or("").trim();
+            if !after.is_empty() && after.chars().all(|c| c.is_ascii_digit()) {
+                let before = trimmed.get(..at).unwrap_or(trimmed).trim_end();
+                return (before, after.parse().ok());
+            }
+        }
+    }
+    (trimmed, None)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn content_managers_details_marker_is_taken_off_the_name() {
+        let mut one = super::Listing {
+            name: "AE001| FULL FORCE SIM | MONZA ℹ9013".to_string(),
+            ..super::Listing::default()
+        };
+        assert_eq!(one.shown_name(), "AE001| FULL FORCE SIM | MONZA");
+        assert_eq!(one.details_port(), Some(9013));
+        one.name = "Circled \u{24D8}8081 ".to_string();
+        assert_eq!(one.shown_name(), "Circled");
+        assert_eq!(one.details_port(), Some(8081));
+        // An ℹ that is not a port is part of the name.
+        one.name = "Info ℹ here".to_string();
+        assert_eq!(one.shown_name(), "Info ℹ here");
+        assert_eq!(one.details_port(), None);
+    }
 
     /// **A server that requires the patch is said to**, and its circuit is
     /// still found under its own folder name.
