@@ -154,16 +154,16 @@ pub const SETTINGS: &[Setting] = &[
         section: "CUBEMAP",
         key: "FACES_PER_FRAME",
         name: "Reflection rate",
-        about: "How much of the reflection is redrawn each frame — six is all of it, nought \
-                draws it once and never again.",
+        about: "Faces of the reflection redrawn each frame: six is all of them, static \
+                draws it once.",
         kind: Kind::Choice(&[
             ("0", "Static"),
-            ("1", "1 face"),
-            ("2", "2 faces"),
-            ("3", "3 faces"),
-            ("4", "4 faces"),
-            ("5", "5 faces"),
-            ("6", "6 faces"),
+            ("1", "1"),
+            ("2", "2"),
+            ("3", "3"),
+            ("4", "4"),
+            ("5", "5"),
+            ("6", "6"),
         ]),
     },
     Setting {
