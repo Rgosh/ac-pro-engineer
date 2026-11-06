@@ -13,6 +13,7 @@ pub mod content;
 pub mod csp;
 pub mod csp_settings;
 pub mod ini;
+pub mod levels;
 pub mod lobby;
 pub mod media;
 pub mod paths;

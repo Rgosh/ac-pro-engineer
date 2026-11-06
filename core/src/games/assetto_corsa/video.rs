@@ -124,7 +124,191 @@ pub const SETTINGS: &[Setting] = &[
         about: "Mirrors drawn at full detail.",
         kind: Kind::Switch,
     },
+    Setting {
+        section: "MIRROR",
+        key: "SIZE",
+        name: "Mirror resolution",
+        about: "How sharp the mirrors are. Off saves the most frames on a busy grid.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("256", "64×256"),
+            ("512", "128×512"),
+            ("1024", "256×1024"),
+            ("2048", "512×2048"),
+        ]),
+    },
+    Setting {
+        section: "CUBEMAP",
+        key: "SIZE",
+        name: "Reflections",
+        about: "How sharp the world reflected in the paint and the glass is.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("256", "256"),
+            ("512", "512"),
+            ("1024", "1024"),
+            ("2048", "2048"),
+        ]),
+    },
+    Setting {
+        section: "CUBEMAP",
+        key: "FACES_PER_FRAME",
+        name: "Reflection rate",
+        about: "How much of the reflection is redrawn each frame — six is all of it, nought \
+                draws it once and never again.",
+        kind: Kind::Choice(&[
+            ("0", "Static"),
+            ("1", "1 face"),
+            ("2", "2 faces"),
+            ("3", "3 faces"),
+            ("4", "4 faces"),
+            ("5", "5 faces"),
+            ("6", "6 faces"),
+        ]),
+    },
+    Setting {
+        section: "EFFECTS",
+        key: "SMOKE",
+        name: "Smoke",
+        about: "Tyre smoke and dust.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("1", "Min"),
+            ("2", "Low"),
+            ("3", "Medium"),
+            ("4", "High"),
+            ("5", "Max"),
+        ]),
+    },
+    Setting {
+        section: "EFFECTS",
+        key: "RENDER_SMOKE_IN_MIRROR",
+        name: "Smoke in the mirrors",
+        about: "Smoke drawn in the mirrors as well.",
+        kind: Kind::Switch,
+    },
+    Setting {
+        section: "EFFECTS",
+        key: "MOTION_BLUR",
+        name: "Motion blur",
+        about: "Blur at speed. Off is the sharpest picture; it costs a frame or two at high \
+                settings.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("2", "2"),
+            ("4", "4"),
+            ("6", "6"),
+            ("8", "8"),
+            ("10", "10"),
+            ("12", "12"),
+        ]),
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "QUALITY",
+        name: "Post-processing quality",
+        about: "How finely the filter, bloom and glare are drawn.",
+        kind: Kind::Choice(&[
+            ("0", "Min"),
+            ("1", "Low"),
+            ("2", "Medium"),
+            ("3", "High"),
+            ("4", "Very high"),
+            ("5", "Max"),
+        ]),
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "GLARE",
+        name: "Glare",
+        about: "Bright light blooming over the picture.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("1", "Low"),
+            ("2", "Medium"),
+            ("3", "High"),
+            ("4", "Very high"),
+            ("5", "Max"),
+        ]),
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "DOF",
+        name: "Depth of field",
+        about: "The distance softened where the eye would not be focused.",
+        kind: Kind::Choice(&[
+            ("0", "Off"),
+            ("1", "Low"),
+            ("2", "Medium"),
+            ("3", "High"),
+            ("4", "Very high"),
+            ("5", "Max"),
+        ]),
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "RAYS_OF_GOD",
+        name: "Sun rays",
+        about: "Light shafts from the sun.",
+        kind: Kind::Switch,
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "HEAT_SHIMMER",
+        name: "Heat shimmer",
+        about: "Hot air wobbling over the track and behind the exhausts.",
+        kind: Kind::Switch,
+    },
+    Setting {
+        section: "POST_PROCESS",
+        key: "FXAA",
+        name: "FXAA",
+        about: "A cheap smoothing of edges on top of anti-aliasing.",
+        kind: Kind::Switch,
+    },
 ];
+
+/// The colour filters the game offers: `system/cfg/ppfilters/*.ini` in the
+/// install, by the name the game writes as `[POST_PROCESS] FILTER`. Sorted,
+/// with `default` first when it is there, which is what the game uses when
+/// none is set.
+pub fn filters(root: &Path) -> Vec<String> {
+    let folder = root.join("system").join("cfg").join("ppfilters");
+    let mut found: Vec<String> = std::fs::read_dir(&folder)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    let is_ini = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| e.eq_ignore_ascii_case("ini"));
+                    if !is_ini {
+                        return None;
+                    }
+                    path.file_stem()
+                        .and_then(|n| n.to_str())
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort_by_key(|name| (name != "default", name.to_ascii_lowercase()));
+    found
+}
+
+/// The filter the file names, or the game's default when it names none.
+pub fn filter(text: &str) -> String {
+    ini::value(text, "POST_PROCESS", "FILTER")
+        .filter(|f| !f.is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+/// Choose a filter, every other line left as it was.
+pub fn set_filter(documents: &Path, name: &str) -> Result<PathBuf, String> {
+    set_raw(documents, "POST_PROCESS", "FILTER", name)
+}
 
 /// A whole look in one press: a name, a line about it, and the value it
 /// gives each setting it touches.
@@ -291,6 +475,21 @@ FPS_CAP_MS=16.666700
 [ASSETTOCORSA]
 WORLD_DETAIL=5
 ";
+
+    /// The filters are the install's own files, `default` first.
+    #[test]
+    fn the_filters_are_read_from_the_install() {
+        let root = std::env::temp_dir().join(format!("ac-ppfilters-{}", std::process::id()));
+        let folder = root.join("system").join("cfg").join("ppfilters");
+        std::fs::create_dir_all(&folder).unwrap();
+        for name in ["natural.ini", "default.ini", "Bright.INI", "notes.txt"] {
+            std::fs::write(folder.join(name), "").unwrap();
+        }
+        assert_eq!(filters(&root), vec!["default", "Bright", "natural"]);
+        assert_eq!(filter(""), "default");
+        assert_eq!(filter("[POST_PROCESS]\nFILTER=natural\n"), "natural");
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     fn setting(key: &str) -> &'static Setting {
         SETTINGS.iter().find(|s| s.key == key).unwrap()
