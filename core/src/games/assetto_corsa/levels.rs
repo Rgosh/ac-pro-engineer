@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 /// The file a setting lives in, under the game's Documents `cfg` folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum File {
+    Video,
     Audio,
     Controls,
     CameraOnboard,
@@ -30,6 +31,7 @@ impl File {
     /// Its name on disk.
     pub fn name(self) -> &'static str {
         match self {
+            Self::Video => "video.ini",
             Self::Audio => "audio.ini",
             Self::Controls => "controls.ini",
             Self::CameraOnboard => "camera_onboard.ini",
@@ -610,6 +612,222 @@ fn write(at: &Path, text: &str) -> Result<PathBuf, String> {
     Ok(at.to_path_buf())
 }
 
+// ── a whole set of settings, kept and shared ─────────────────────────────
+
+/// One value of a set: which file, section and key, and what it says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub file: File,
+    pub section: String,
+    pub key: String,
+    pub value: String,
+}
+
+/// Every key a set may hold: the video table, the colour filter and every
+/// table here — and nothing else. **A set somebody pasted can write these and
+/// only these**: a shared line is somebody else's text, and the files it lands
+/// in are read by the game.
+pub fn known() -> Vec<(File, &'static str, &'static str)> {
+    let mut all: Vec<(File, &'static str, &'static str)> = super::video::SETTINGS
+        .iter()
+        .map(|s| (File::Video, s.section, s.key))
+        .collect();
+    all.push((File::Video, "POST_PROCESS", "FILTER"));
+    for (_, rows) in GROUPS {
+        for row in *rows {
+            all.push((row.file, row.section, row.key));
+        }
+    }
+    all
+}
+
+/// What the files say now, for every known key they hold. A key the file
+/// does not have is left out, so applying the set later leaves it to the game.
+/// The wheel's bindings are never in it: a set is the picture, the sound and
+/// the feel, and a binding belongs to one machine's devices.
+pub fn snapshot(documents: &Path) -> Vec<Entry> {
+    let mut texts: Vec<(File, String)> = Vec::new();
+    let mut out = Vec::new();
+    for (file, section, key) in known() {
+        if !texts.iter().any(|(f, _)| *f == file) {
+            let text = std::fs::read_to_string(file.at(documents)).unwrap_or_default();
+            texts.push((file, text));
+        }
+        let Some((_, text)) = texts.iter().find(|(f, _)| *f == file) else {
+            continue;
+        };
+        if let Some(value) = ini::value(text, section, key) {
+            out.push(Entry {
+                file,
+                section: section.to_string(),
+                key: key.to_string(),
+                value,
+            });
+        }
+    }
+    out
+}
+
+/// Write a set, every line not in it left as it was. Only known keys, and
+/// only values that are a number, a word or a filter's name. Returns how many
+/// values were written.
+pub fn apply_set(documents: &Path, entries: &[Entry]) -> Result<usize, String> {
+    let known = known();
+    let mut by_file: Vec<(File, Vec<&Entry>)> = Vec::new();
+    for entry in entries {
+        let allowed = known.iter().any(|(f, s, k)| {
+            *f == entry.file
+                && s.eq_ignore_ascii_case(&entry.section)
+                && k.eq_ignore_ascii_case(&entry.key)
+        }) && plain(&entry.value);
+        if !allowed {
+            continue;
+        }
+        match by_file.iter_mut().find(|(f, _)| *f == entry.file) {
+            Some((_, list)) => list.push(entry),
+            None => by_file.push((entry.file, vec![entry])),
+        }
+    }
+    let mut written = 0;
+    for (file, list) in by_file {
+        let at = file.at(documents);
+        let mut text = std::fs::read_to_string(&at).unwrap_or_default();
+        for entry in list {
+            text = ini::with_value(&text, &entry.section, &entry.key, &entry.value);
+            written += 1;
+        }
+        write(&at, &text)?;
+    }
+    Ok(written)
+}
+
+/// A value safe to write: letters, digits, a point, a minus, a space or an
+/// underscore — no line breaks, no brackets, nothing that could open a
+/// section or end a line.
+fn plain(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
+}
+
+/// What a set's line starts with, so a pasted line is recognised as one.
+pub const LINE: &str = "PROSET1;";
+
+/// A set as one line of text, to paste to a friend.
+pub fn to_line(entries: &[Entry]) -> String {
+    let body: Vec<String> = entries
+        .iter()
+        .map(|e| format!("{}:{}:{}={}", file_code(e.file), e.section, e.key, e.value))
+        .collect();
+    format!("{LINE}{}", body.join(";"))
+}
+
+/// A line read back into a set — the known keys only, everything else
+/// dropped. `None` when it is not a set's line at all.
+pub fn from_line(line: &str) -> Option<Vec<Entry>> {
+    let body = line.trim().strip_prefix(LINE)?;
+    let known = known();
+    let entries = body
+        .split(';')
+        .filter_map(|part| {
+            let (path, value) = part.split_once('=')?;
+            let mut bits = path.splitn(3, ':');
+            let file = file_of_code(bits.next()?)?;
+            let section = bits.next()?;
+            let key = bits.next()?;
+            let row = known.iter().find(|(f, s, k)| {
+                *f == file && s.eq_ignore_ascii_case(section) && k.eq_ignore_ascii_case(key)
+            })?;
+            plain(value.trim()).then(|| Entry {
+                file,
+                section: row.1.to_string(),
+                key: row.2.to_string(),
+                value: value.trim().to_string(),
+            })
+        })
+        .collect();
+    Some(entries)
+}
+
+fn file_code(file: File) -> &'static str {
+    match file {
+        File::Video => "v",
+        File::Audio => "a",
+        File::Controls => "c",
+        File::CameraOnboard => "o",
+        File::Gameplay => "g",
+    }
+}
+
+fn file_of_code(code: &str) -> Option<File> {
+    match code {
+        "v" => Some(File::Video),
+        "a" => Some(File::Audio),
+        "c" => Some(File::Controls),
+        "o" => Some(File::CameraOnboard),
+        "g" => Some(File::Gameplay),
+        _ => None,
+    }
+}
+
+// ── whole control profiles ──────────────────────────────────────────────
+
+/// Keep the whole `controls.ini` under a name — bindings and all, for
+/// switching between a wheel and a pad on one machine. The name is reduced to
+/// letters, digits, spaces, `-` and `_`.
+pub fn save_controls_as(documents: &Path, into: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = profile_name(name).ok_or("a profile needs a name of letters or digits")?;
+    let from = File::Controls.at(documents);
+    let text = std::fs::read_to_string(&from)
+        .map_err(|_| "the game has not written its controls yet — set them up once in the game")?;
+    write(&into.join(format!("{name}.ini")), &text)
+}
+
+/// The profiles kept, by name.
+pub fn control_profiles(into: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(into)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let path = e.path();
+                    (path.extension().and_then(|x| x.to_str()) == Some("ini"))
+                        .then(|| path.file_stem()?.to_str().map(str::to_string))
+                        .flatten()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort_by_key(|n| n.to_ascii_lowercase());
+    names
+}
+
+/// Make a kept profile the game's controls.
+pub fn use_controls(documents: &Path, into: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = profile_name(name).ok_or("no such profile")?;
+    restore_controls(documents, &into.join(format!("{name}.ini")))
+}
+
+/// Forget a kept profile.
+pub fn forget_controls(into: &Path, name: &str) -> Result<(), String> {
+    let name = profile_name(name).ok_or("no such profile")?;
+    std::fs::remove_file(into.join(format!("{name}.ini"))).map_err(|e| e.to_string())
+}
+
+/// A name safe to be a file's name, or nothing.
+fn profile_name(name: &str) -> Option<String> {
+    let kept: String = name
+        .trim()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        .take(40)
+        .collect();
+    let kept = kept.trim().to_string();
+    (!kept.is_empty()).then_some(kept)
+}
+
 // ── the bindings, read and kept safe ─────────────────────────────────────
 
 /// The axes the game binds, each a section of `controls.ini`.
@@ -865,6 +1083,83 @@ mod tests {
                     [CLUTCH]\nJOY=1\nAXLE=2\n[HANDBRAKE]\nJOY=-1\nAXLE=-1\n";
         assert_eq!(bound_twice(text), vec![("brake", "clutch")]);
         assert!(bound_twice("[CLUTCH]\nJOY=-1\nAXLE=-1\n[BRAKES]\nJOY=-1\nAXLE=-1\n").is_empty());
+    }
+
+    /// **A set travels as one line and comes back the same** — and a line
+    /// carrying a key outside the tables, a binding or a value that could
+    /// open a section writes nothing of it.
+    #[test]
+    fn a_set_survives_its_line_and_a_hostile_line_writes_nothing_unknown() {
+        let documents = scratch("set");
+        std::fs::write(
+            File::Audio.at(&documents),
+            "[LEVELS]\nMASTER=0.8\nTYRES=1.2\n",
+        )
+        .unwrap();
+        std::fs::write(
+            File::Controls.at(&documents),
+            "[STEER]\nJOY=0\nAXLE=0\nLOCK=540\nFF_GAIN=0.7\n",
+        )
+        .unwrap();
+        std::fs::write(
+            File::Video.at(&documents),
+            "[POST_PROCESS]\nFILTER=natural\n",
+        )
+        .unwrap();
+        let set = snapshot(&documents);
+        assert!(set.iter().any(|e| e.key == "LOCK" && e.value == "540"));
+        assert!(
+            set.iter()
+                .any(|e| e.key == "FILTER" && e.value == "natural")
+        );
+        assert!(
+            !set.iter().any(|e| e.key == "JOY" || e.key == "AXLE"),
+            "no bindings"
+        );
+        let line = to_line(&set);
+        assert_eq!(from_line(&line).unwrap(), set);
+
+        let other = scratch("set-other");
+        let hostile = format!(
+            "{LINE}c:STEER:JOY=7;a:LEVELS:MASTER=0.5;c:STEER:LOCK=900\n[X]\n;x:Y:Z=1;a:LEVELS:WIND=0.3"
+        );
+        let parsed = from_line(&hostile).unwrap();
+        assert!(parsed.iter().all(|e| e.key != "JOY"));
+        apply_set(&other, &parsed).unwrap();
+        let audio = read(&other, File::Audio).unwrap();
+        assert_eq!(
+            ini::value(&audio, "LEVELS", "MASTER").as_deref(),
+            Some("0.5")
+        );
+        assert_eq!(ini::value(&audio, "LEVELS", "WIND").as_deref(), Some("0.3"));
+        // The lock's value carried a line break and a section: refused whole.
+        assert!(read(&other, File::Controls).is_none_or(|t| !t.contains("[X]")));
+        assert_eq!(from_line("not a set"), None);
+        std::fs::remove_dir_all(&documents).ok();
+        std::fs::remove_dir_all(&other).ok();
+    }
+
+    /// A whole profile is kept by name, switched to, and forgotten.
+    #[test]
+    fn control_profiles_are_kept_and_switched() {
+        let documents = scratch("profiles");
+        let into = documents.join("profiles");
+        assert!(
+            save_controls_as(&documents, &into, "wheel").is_err(),
+            "no file yet"
+        );
+        std::fs::write(File::Controls.at(&documents), "[STEER]\nJOY=0\nLOCK=900\n").unwrap();
+        save_controls_as(&documents, &into, "Wheel / DD!").unwrap();
+        std::fs::write(File::Controls.at(&documents), "[X360]\nSTEER_GAMMA=2\n").unwrap();
+        save_controls_as(&documents, &into, "pad").unwrap();
+        assert_eq!(control_profiles(&into), vec!["pad", "Wheel  DD"]);
+        use_controls(&documents, &into, "Wheel  DD").unwrap();
+        let text = read(&documents, File::Controls).unwrap();
+        assert_eq!(ini::value(&text, "STEER", "LOCK").as_deref(), Some("900"));
+        forget_controls(&into, "pad").unwrap();
+        assert_eq!(control_profiles(&into), vec!["Wheel  DD"]);
+        assert!(save_controls_as(&documents, &into, "  /// ").is_err());
+        std::fs::remove_dir_all(&documents).ok();
     }
 
     /// A copy is taken before a change, the oldest go past the limit, and a
