@@ -84,6 +84,29 @@ pub struct Listing {
 }
 
 impl Listing {
+    /// The circuit as installed folders are named, without the patch's
+    /// marker.
+    ///
+    /// **A server that requires Custom Shaders Patch says so in its track.**
+    /// It lists `csp/<build>/../<circuit>` (sometimes with a flag between,
+    /// `csp/2651/../H/../<circuit>`): a game without the patch reads that as
+    /// a folder that is not there and refuses to join, which is the point,
+    /// and the patch reads the build it needs from it. What is installed is
+    /// the part after the last `../`.
+    pub fn track_id(&self) -> &str {
+        match self.track.strip_prefix("csp/") {
+            Some(rest) => rest.rsplit("../").next().unwrap_or(rest),
+            None => &self.track,
+        }
+    }
+
+    /// The patch build a server requires, when it requires one.
+    pub fn needs_csp(&self) -> Option<u32> {
+        let rest = self.track.strip_prefix("csp/")?;
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok().or(Some(0))
+    }
+
     /// Where the circuit's folder name ends and its layout begins, given the
     /// circuits installed here.
     ///
@@ -94,12 +117,12 @@ impl Listing {
     /// its dash is the layout. With nothing installed that matches, the part
     /// before the first dash is the best guess there is.
     pub fn circuit(&self, installed: &[&str]) -> (String, String) {
+        let track = self.track_id();
         let best = installed
             .iter()
             .filter(|id| {
-                self.track == **id
-                    || self
-                        .track
+                track == **id
+                    || track
                         .strip_prefix(**id)
                         .is_some_and(|rest| rest.starts_with('-'))
             })
@@ -107,14 +130,11 @@ impl Listing {
         match best {
             Some(id) => (
                 id.to_string(),
-                self.track
-                    .get(id.len() + 1..)
-                    .unwrap_or_default()
-                    .to_string(),
+                track.get(id.len() + 1..).unwrap_or_default().to_string(),
             ),
-            None => match self.track.split_once('-') {
+            None => match track.split_once('-') {
                 Some((id, layout)) => (id.to_string(), layout.to_string()),
-                None => (self.track.clone(), String::new()),
+                None => (track.to_string(), String::new()),
             },
         }
     }
@@ -128,7 +148,7 @@ impl Listing {
     ) -> Vec<String> {
         let mut out = Vec::new();
         let (circuit, _) = self.circuit(&[]);
-        if !has_track(&self.track) && !has_track(&circuit) {
+        if !has_track(self.track_id()) && !has_track(&circuit) {
             out.push(circuit);
         }
         out.extend(self.cars.iter().filter(|car| !has_car(car)).cloned());
@@ -265,6 +285,46 @@ pub fn fetch(hosts: &[String], timeout: Duration) -> Result<Vec<Listing>, String
 
 #[cfg(test)]
 mod tests {
+
+    /// **A server that requires the patch is said to**, and its circuit is
+    /// still found under its own folder name.
+    #[test]
+    fn a_server_that_needs_the_patch_is_told_apart() {
+        let mut listing = Listing {
+            ip: String::new(),
+            port: 0,
+            http: 0,
+            race: 0,
+            name: String::new(),
+            clients: 0,
+            capacity: 0,
+            track: "csp/2651/../H/../ks_nordschleife-endurance".into(),
+            cars: Vec::new(),
+            session: 0,
+            sessions: Vec::new(),
+            time_left: 0,
+            country: Vec::new(),
+            password: false,
+            pickup: false,
+        };
+        assert_eq!(listing.needs_csp(), Some(2651));
+        assert_eq!(listing.track_id(), "ks_nordschleife-endurance");
+        assert_eq!(
+            listing.circuit(&["ks_nordschleife"]),
+            ("ks_nordschleife".to_string(), "endurance".to_string())
+        );
+        assert!(
+            listing
+                .missing(|t| t == "ks_nordschleife", |_| true)
+                .is_empty()
+        );
+        listing.track = "csp/2144/../imola".into();
+        assert_eq!(listing.track_id(), "imola");
+        listing.track = "spa".into();
+        assert_eq!(listing.needs_csp(), None);
+        assert_eq!(listing.track_id(), "spa");
+    }
+
     use super::*;
 
     const LIST: &str = r#"[
