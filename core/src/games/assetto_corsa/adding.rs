@@ -245,6 +245,17 @@ pub fn whats_in(dropped: &Path) -> Vec<Addition> {
                 under: String::new(),
             },
         )
+    } else if is_other_archive(dropped) {
+        // **7z and rar through the tools that read them**, unpacked to a
+        // folder of their own and read as a folder drop. Most mods on the
+        // sites people download from are 7z; the readers for both formats
+        // that a program could carry inside itself are either copyleft or
+        // under licences a closed program cannot take, and every machine
+        // that has these files has one of the tools.
+        return match unpack_elsewhere(dropped) {
+            Ok(folder) => whats_in(&folder),
+            Err(_) => Vec::new(),
+        };
     } else {
         return Vec::new();
     };
@@ -281,7 +292,20 @@ pub fn place(
         if !replacing {
             return Err(Trouble::AlreadyThere(to));
         }
-        fs::remove_dir_all(&to).map_err(|e| Trouble::Disk(format!("{}: {e}", to.display())))?;
+        // **Set aside, not deleted**, so the install can be undone: the one
+        // copy before this, under `content-replaced`. An older copy there is
+        // the install before last, and goes.
+        match mirrored(root, REPLACED, &to) {
+            Some(aside) => {
+                if aside.exists() {
+                    fs::remove_dir_all(&aside)
+                        .map_err(|e| Trouble::Disk(format!("{}: {e}", aside.display())))?;
+                }
+                move_tree(&to, &aside).map_err(Trouble::Disk)?;
+            }
+            None => fs::remove_dir_all(&to)
+                .map_err(|e| Trouble::Disk(format!("{}: {e}", to.display())))?,
+        }
     }
     if let Some(above) = to.parent() {
         fs::create_dir_all(above)
@@ -620,6 +644,168 @@ fn is_zip(path: &Path) -> bool {
         .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case("zip"))
 }
 
+/// A 7z or rar archive — read through a tool on the machine.
+pub fn is_other_archive(path: &Path) -> bool {
+    path.extension().is_some_and(|e| {
+        let e = e.to_string_lossy().to_ascii_lowercase();
+        e == "7z" || e == "rar"
+    })
+}
+
+/// The tools tried for a 7z or rar archive, in order, each as the program
+/// and its arguments with `{archive}` and `{into}` filled in. 7-Zip first
+/// (`7z`, `7zz`, its usual place on Windows), then libarchive's `bsdtar`
+/// (most Linux machines, and Windows' own `tar`), then `unrar` for rar.
+fn tools() -> Vec<(String, Vec<&'static str>)> {
+    let mut list: Vec<(String, Vec<&'static str>)> = vec![
+        ("7z".into(), vec!["x", "-y", "-o{into}", "{archive}"]),
+        ("7zz".into(), vec!["x", "-y", "-o{into}", "{archive}"]),
+        ("bsdtar".into(), vec!["-xf", "{archive}", "-C", "{into}"]),
+        ("unrar".into(), vec!["x", "-o+", "{archive}", "{into}/"]),
+    ];
+    if cfg!(target_os = "windows") {
+        list.insert(
+            0,
+            (
+                r"C:\Program Files\7-Zip\7z.exe".into(),
+                vec!["x", "-y", "-o{into}", "{archive}"],
+            ),
+        );
+        list.push(("tar".into(), vec!["-xf", "{archive}", "-C", "{into}"]));
+    }
+    list
+}
+
+/// Unpack a 7z or rar archive into a folder of its own under the system's
+/// temporary folder, through the first tool that works. The folder is named
+/// for the archive and its size, so dropping the same file twice reuses it.
+pub fn unpack_elsewhere(archive: &Path) -> Result<PathBuf, String> {
+    let size = fs::metadata(archive).map(|m| m.len()).unwrap_or_default();
+    let into = std::env::temp_dir()
+        .join("pro-unpacked")
+        .join(format!("{}-{size}", name_of(archive)));
+    if into.is_dir() && fs::read_dir(&into).is_ok_and(|mut d| d.next().is_some()) {
+        return Ok(into);
+    }
+    fs::create_dir_all(&into).map_err(|e| format!("{}: {e}", into.display()))?;
+    let (archive_s, into_s) = (archive.display().to_string(), into.display().to_string());
+    for (program, arguments) in tools() {
+        let arguments: Vec<String> = arguments
+            .iter()
+            .map(|a| {
+                a.replace("{archive}", &archive_s)
+                    .replace("{into}", &into_s)
+            })
+            .collect();
+        let ran = std::process::Command::new(&program)
+            .args(&arguments)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if ran.is_ok_and(|status| status.success())
+            && fs::read_dir(&into).is_ok_and(|mut d| d.next().is_some())
+        {
+            return Ok(into);
+        }
+    }
+    let _ = fs::remove_dir_all(&into);
+    Err(
+        "no tool here opens 7z or rar — install 7-Zip (Windows) or p7zip / libarchive (Linux)"
+            .to_string(),
+    )
+}
+
+// ---------------------------------------------------------------- set aside
+
+/// Where content switched off is kept: beside `content`, in the game's own
+/// folder, so turning a mod off and on is a rename on the same disk and costs
+/// nothing however big the mod is. The game never looks in it.
+pub const OFF: &str = "content-off";
+
+/// Where the copy an install replaced is kept, so the install can be undone.
+pub const REPLACED: &str = "content-replaced";
+
+/// The same place under another folder: `root/content/cars/x` under `OFF`
+/// is `root/content-off/cars/x`.
+fn mirrored(root: &Path, under: &str, at: &Path) -> Option<PathBuf> {
+    let rest = at.strip_prefix(root.join("content")).ok()?;
+    (!rest.as_os_str().is_empty()).then(|| root.join(under).join(rest))
+}
+
+/// Move a folder, by renaming where it can and copying where it must.
+fn move_tree(from: &Path, to: &Path) -> Result<(), String> {
+    if let Some(above) = to.parent() {
+        fs::create_dir_all(above).map_err(|e| format!("{}: {e}", above.display()))?;
+    }
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    copy_tree(from, to).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(from).map_err(|e| format!("{}: {e}", from.display()))
+}
+
+/// Switch off a car, a circuit or a livery without deleting it: its folder
+/// goes from `content/…` to `content-off/…`. Returns where it went.
+pub fn switch_off(root: &Path, folder: &Path) -> Result<PathBuf, String> {
+    let to =
+        mirrored(root, OFF, folder).ok_or("only something under content/ can be switched off")?;
+    if to.exists() {
+        return Err(format!("{} is already switched off", to.display()));
+    }
+    move_tree(folder, &to)?;
+    Ok(to)
+}
+
+/// Put something switched off back where the game reads it.
+pub fn switch_on(root: &Path, off: &Path) -> Result<PathBuf, String> {
+    let rest = off
+        .strip_prefix(root.join(OFF))
+        .map_err(|_| "not something that was switched off".to_string())?;
+    let to = root.join("content").join(rest);
+    if to.exists() {
+        return Err(format!("{} is installed again already", to.display()));
+    }
+    move_tree(off, &to)?;
+    Ok(to)
+}
+
+/// What is switched off: the cars and circuits under `content-off`, by kind
+/// folder (`cars`, `tracks`) and folder name.
+pub fn switched_off(root: &Path) -> Vec<(String, String, PathBuf)> {
+    let mut found = Vec::new();
+    for kind in ["cars", "tracks"] {
+        let Ok(entries) = fs::read_dir(root.join(OFF).join(kind)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
+                found.push((kind.to_string(), name.to_string(), path.clone()));
+            }
+        }
+    }
+    found.sort_by_key(|one| one.1.to_lowercase());
+    found
+}
+
+/// Undo an install: take away what was placed at `placed`, and put back the
+/// copy it replaced where there is one. Returns what was done, in words.
+pub fn undo(root: &Path, placed: &Path) -> Result<String, String> {
+    let aside =
+        mirrored(root, REPLACED, placed).ok_or("only something under content/ can be undone")?;
+    if placed.exists() {
+        fs::remove_dir_all(placed).map_err(|e| format!("{}: {e}", placed.display()))?;
+    }
+    if aside.exists() {
+        move_tree(&aside, placed)?;
+        return Ok("the copy it replaced is back".to_string());
+    }
+    Ok("taken out again".to_string())
+}
+
 /// The last part of a path, without its extension.
 fn name_of(path: &Path) -> String {
     path.file_stem()
@@ -708,6 +894,69 @@ fn unpack(archive: &Path, under: &str, to: &Path) -> Result<(), Trouble> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Off and on again, nothing lost**, and an install that replaced
+    /// something undone puts the old copy back.
+    #[test]
+    fn a_mod_is_switched_off_and_on_and_an_install_is_undone() {
+        let root = std::env::temp_dir().join(format!("ac-switch-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let car = root.join("content/cars/gt3");
+        fs::create_dir_all(car.join("data")).expect("the test's own files");
+        fs::write(car.join("data/car.ini"), "old").expect("the test's own files");
+
+        let off = switch_off(&root, &car).expect("the test's own files");
+        assert!(!car.exists() && off.join("data/car.ini").is_file());
+        assert_eq!(switched_off(&root).len(), 1);
+        assert!(switch_off(&root, &root.join("elsewhere")).is_err());
+        switch_on(&root, &off).expect("the test's own files");
+        assert!(car.join("data/car.ini").is_file());
+        assert!(switched_off(&root).is_empty());
+
+        // An install over it sets the old copy aside; undoing brings it back.
+        let new = root.join("dropped/gt3");
+        fs::create_dir_all(new.join("data")).expect("the test's own files");
+        fs::write(new.join("data/car.ini"), "new").expect("the test's own files");
+        let addition = Addition {
+            kind: Kind::Car,
+            id: "gt3".into(),
+            name: None,
+            car: None,
+            from: Source::Folder(new.clone()),
+        };
+        let placed = place(&root, &addition, None, true).expect("the test's own files");
+        assert_eq!(
+            fs::read_to_string(placed.join("data/car.ini")).expect("the test's own files"),
+            "new"
+        );
+        assert!(root.join(REPLACED).join("cars/gt3/data/car.ini").is_file());
+        undo(&root, &placed).expect("the test's own files");
+        assert_eq!(
+            fs::read_to_string(car.join("data/car.ini")).expect("the test's own files"),
+            "old"
+        );
+
+        // An install of something new is simply taken out again.
+        let addition = Addition {
+            id: "other".into(),
+            ..addition
+        };
+        let placed = place(&root, &addition, None, false).expect("the test's own files");
+        assert_eq!(
+            undo(&root, &placed).expect("the test's own files"),
+            "taken out again"
+        );
+        assert!(!placed.exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn seven_zip_and_rar_are_recognised_as_archives() {
+        assert!(is_other_archive(Path::new("a/car.7z")));
+        assert!(is_other_archive(Path::new("a/CAR.RAR")));
+        assert!(!is_other_archive(Path::new("a/car.zip")));
+        assert!(!is_other_archive(Path::new("a/car")));
+    }
     use std::io::Write;
 
     pub(super) fn scratch(name: &str) -> PathBuf {
