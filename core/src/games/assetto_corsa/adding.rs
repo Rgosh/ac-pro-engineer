@@ -31,7 +31,11 @@ use std::path::{Path, PathBuf};
 /// Everything any rule below asks about is within this many levels of the
 /// drop, and a car mod is thousands of textures — reading all of them to find
 /// out it is a car is work for nothing.
-const DEEP: usize = 5;
+///
+/// **Eight, not five.** Archives from download sites wrap the mod in its own
+/// name, often twice — `Mod v0.99/Mod/content/cars/<car>/ui/ui_car.json` is
+/// seven levels — and at five such a car was "nothing recognisable".
+const DEEP: usize = 8;
 
 /// The most paths any one recognition will consider, so a pathological archive
 /// cannot be read into memory by pointing at it.
@@ -358,7 +362,11 @@ fn read(paths: &[String], from: &Source, called: &str) -> Vec<Addition> {
 fn kind_at(paths: &[String], at: &str) -> Option<Kind> {
     let here = |name: &str| has(paths, &format!("{at}{name}"));
 
-    if here("ui/ui_car.json") || here("data.acd") || (here("sfx/") && beside(paths, at, "kn5")) {
+    if here("ui/ui_car.json")
+        || here("data.acd")
+        || here("data/car.ini")
+        || ((here("sfx/") || here("skins/")) && beside(paths, at, "kn5"))
+    {
         return Some(Kind::Car);
     }
     if here("ui/ui_track.json")
@@ -386,17 +394,25 @@ fn kind_at(paths: &[String], at: &str) -> Option<Kind> {
 
 /// A circuit with more than one layout keeps `ui/<layout>/ui_track.json`.
 fn deeper_ui_track(paths: &[String], at: &str) -> bool {
-    let under = format!("{at}ui/");
-    paths
-        .iter()
-        .any(|p| p.starts_with(&under) && p.ends_with("/ui_track.json"))
+    let under = format!("{at}ui/").to_ascii_lowercase();
+    paths.iter().any(|p| {
+        let p = p.to_ascii_lowercase();
+        p.starts_with(&under) && p.ends_with("/ui_track.json")
+    })
 }
 
 /// Whether an exact relative path is in the list.
+///
+/// **Whatever the case.** A mod packed on Windows writes `UI/ui_car.json` or
+/// `Data.acd` as often as not, and the game, reading through Windows's file
+/// system or Wine's, finds it either way; so does this.
 fn has(paths: &[String], what: &str) -> bool {
+    let what = what.to_ascii_lowercase();
     let folder = format!("{what}/");
-    paths.iter().any(|p| p == what || *p == folder)
-        || (what.ends_with('/') && paths.iter().any(|p| p.starts_with(what)))
+    paths.iter().any(|p| {
+        let p = p.to_ascii_lowercase();
+        p == what || p == folder || (what.ends_with('/') && p.starts_with(&what))
+    })
 }
 
 /// Whether a file with this extension sits directly in `at`, and not deeper.
@@ -408,7 +424,7 @@ fn beside(paths: &[String], at: &str, ext: &str) -> bool {
     let dot = format!(".{ext}");
     paths.iter().any(|p| {
         p.strip_prefix(at)
-            .is_some_and(|rest| !rest.contains('/') && rest.ends_with(&dot))
+            .is_some_and(|rest| !rest.contains('/') && rest.to_ascii_lowercase().ends_with(&dot))
     })
 }
 
@@ -455,8 +471,10 @@ fn content_roots(paths: &[String]) -> Vec<(String, Kind)> {
             ("weather", Kind::Weather),
         ] {
             let mark = format!("content/{folder}/");
-            if let Some(at) = path.find(&mark) {
-                let prefix = format!("{}{mark}", &path[..at]);
+            // Found in the lowercase, cut from the path as written: an ASCII
+            // lowercase keeps every byte where it was.
+            if let Some(at) = path.to_ascii_lowercase().find(&mark) {
+                let prefix = path.get(..at + mark.len()).unwrap_or_default().to_string();
                 if !roots.iter().any(|(seen, _)| *seen == prefix) {
                     roots.push((prefix, kind));
                 }
@@ -467,17 +485,28 @@ fn content_roots(paths: &[String]) -> Vec<(String, Kind)> {
 }
 
 /// A folder of several cars, or several circuits, which is how packs arrive.
+///
+/// **Looked for below the top as well**, a few folders down: a download is
+/// as often `Mod v0.99/Mod/<car>/` as `<car>/`, and the folders that wrap it
+/// are names, not content. A folder found to be something is not looked
+/// inside — a car's liveries are the car's.
 fn bag(paths: &[String], from: &Source) -> Vec<Addition> {
     let mut found = Vec::new();
-    for id in children(paths, "") {
-        let at = format!("{id}/");
-        if let Some(kind) = kind_at(paths, &at) {
-            // A bag of liveries is a car's `skins` folder handed over whole,
-            // and it still does not say which car. It is offered, and the
-            // caller asks.
-            push(&mut found, made(kind, &id, None, from, &at));
+    let mut look: Vec<(String, usize)> = vec![(String::new(), 0)];
+    while let Some((under, depth)) = look.pop() {
+        for id in children(paths, &under) {
+            let at = format!("{under}{id}/");
+            match kind_at(paths, &at) {
+                // A bag of liveries is a car's `skins` folder handed over
+                // whole, and it still does not say which car. It is offered,
+                // and the caller asks.
+                Some(kind) => push(&mut found, made(kind, &id, None, from, &at)),
+                None if depth < 3 => look.push((at, depth + 1)),
+                None => {}
+            }
         }
     }
+    found.sort_by(|a, b| a.id.cmp(&b.id));
     found
 }
 
@@ -570,9 +599,20 @@ fn ini_name(text: &str) -> Option<String> {
 fn fetch(from: &Source, relative: &str) -> Option<Vec<u8>> {
     match from {
         Source::Folder(root) => {
-            let at = relative
-                .split('/')
-                .fold(root.clone(), |at, part| at.join(part));
+            // Each part found whatever its case, as the game would.
+            let at = relative.split('/').fold(root.clone(), |at, part| {
+                fs::read_dir(&at)
+                    .ok()
+                    .and_then(|entries| {
+                        entries.flatten().find_map(|e| {
+                            e.file_name()
+                                .to_str()
+                                .is_some_and(|n| n.eq_ignore_ascii_case(part))
+                                .then(|| e.path())
+                        })
+                    })
+                    .unwrap_or_else(|| at.join(part))
+            });
             if fs::metadata(&at).ok()?.len() > SMALL {
                 return None;
             }
@@ -607,9 +647,13 @@ fn walk(root: &Path) -> Vec<String> {
         .take(MOST)
         .filter_map(|entry| {
             let rest = entry.path().strip_prefix(root).ok()?;
+            // **As written, not lowercased**: these are joined back onto
+            // the folder to copy from, and on Linux `MTRacing_Giulia` and
+            // `mtracing_giulia` are two different folders. Every comparison
+            // below ignores case on its own.
             let mut said = rest
                 .components()
-                .map(|part| part.as_os_str().to_string_lossy().to_lowercase())
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
                 .join("/");
             if said.is_empty() {
@@ -990,6 +1034,45 @@ mod tests {
         }
         zip.finish().expect("a fixture");
         path
+    }
+
+    /// **A download as Overtake hands it over**: the mod wrapped in its own
+    /// name twice, seven levels down to the car's description, the car's
+    /// parts in capitals and its data loose — found, named, and installed
+    /// from the folder as it is written.
+    #[test]
+    fn a_car_wrapped_twice_with_capitals_is_found_and_installed() {
+        let dir = scratch("wrapped");
+        let drop = dir.join("MTRacing_Alfa_Romeo_Giulia_Class_1_v0.99-102696325");
+        let car = drop.join("MTRacing Giulia").join("MTR_Alfa_Giulia_C1");
+        file(
+            &car,
+            "UI/ui_car.json",
+            r#"{"name":"Alfa Romeo Giulia Class 1"}"#,
+        );
+        file(&car, "data/car.ini", "[INFO]");
+        file(&car, "Giulia.KN5", "m");
+        file(&car, "Skins/00_red/preview.jpg", "p");
+        let found = whats_in(&drop);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].kind, Kind::Car);
+        assert_eq!(found[0].id, "MTR_Alfa_Giulia_C1");
+        assert_eq!(found[0].name.as_deref(), Some("Alfa Romeo Giulia Class 1"));
+        let root = dir.join("game");
+        fs::create_dir_all(root.join("content/cars")).unwrap_or_default();
+        let landed = place(&root, &found[0], None, false);
+        assert!(landed.is_ok(), "{landed:?}");
+        assert!(
+            root.join("content/cars/MTR_Alfa_Giulia_C1/UI/ui_car.json")
+                .is_file()
+        );
+
+        // Deeper still: `content/cars/` inside two wrappers.
+        let packed = dir.join("Pack v1/Pack/content/cars/mtr_giulia");
+        file(&packed, "ui/ui_car.json", r#"{"name":"G"}"#);
+        file(&packed, "data.acd", "x");
+        let found = whats_in(&dir.join("Pack v1"));
+        assert_eq!(found.first().map(|f| f.id.as_str()), Some("mtr_giulia"));
     }
 
     /// **The plainest drop there is, and the one everything else is judged

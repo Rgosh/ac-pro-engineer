@@ -185,16 +185,31 @@ fn has_kn5(dir: &Path) -> bool {
 /// livery, no ui_car.json": 174 errors on a real install, every one of them
 /// wrong. A folder with none of a car's or circuit's own parts is not one.
 pub fn present(kind: &str, at: &Path) -> bool {
-    let any = |names: &[&str]| names.iter().any(|n| child(at, n).is_some());
     match kind {
-        "cars" => any(&["data.acd", "data", "ui", "skins"]) || has_kn5(at),
+        // Data, a model or its description — not an empty `ui` or `skins`,
+        // which the unowned DLC folders on a real install had: eighty of
+        // them were still read as cars missing everything.
+        "cars" => {
+            child(at, "data.acd").is_some()
+                || child(at, "data").is_some_and(|d| d.is_dir())
+                || has_kn5(at)
+                || child(at, "ui")
+                    .and_then(|ui| child(&ui, "ui_car.json"))
+                    .is_some()
+        }
         _ => {
-            has_kn5(at)
-                || any(&["ui", "ai", "data"])
+            let place_is = |place: &Path| {
+                has_kn5(place)
+                    || child(place, "ai").is_some()
+                    || child(place, "data")
+                        .and_then(|d| child(&d, "surfaces.ini"))
+                        .is_some()
+            };
+            place_is(at)
                 || std::fs::read_dir(at).is_ok_and(|entries| {
                     entries
                         .flatten()
-                        .any(|e| e.path().join("data").is_dir() || e.path().join("ai").is_dir())
+                        .any(|e| e.path().is_dir() && place_is(&e.path()))
                 })
         }
     }
@@ -357,7 +372,13 @@ mod tests {
         file(&cars.join("mod_bare"), "bare.kn5", "m");
         file(&cars.join("mod_bare"), "ui/ui_car.json", "{ not json");
         // Half a car: no data, no model.
+        // Half a car: its description and a livery, no data, no model.
         file(&cars.join("mod_half"), "skins/a/x.jpg", "p");
+        file(
+            &cars.join("mod_half"),
+            "ui/ui_car.json",
+            r#"{"name":"Half"}"#,
+        );
         // A whole circuit with two layouts.
         for layout in ["gp", "short"] {
             file(
@@ -383,6 +404,11 @@ mod tests {
             "sfx/GUIDs.txt",
             "x",
         );
+        // As the owner's install has them: with an empty `ui` and `skins`.
+        file(&cars.join("ks_audi_r8_lms"), "sfx/GUIDs.txt", "x");
+        file(&cars.join("ks_audi_r8_lms"), "ui/badge.png", "b");
+        std::fs::create_dir_all(cars.join("ks_audi_r8_lms/skins")).unwrap_or_default();
+        file(&tracks.join("ks_highlands"), "ui/preview.png", "p");
         // A mod packed on Windows, its parts in other cases: whole.
         file(&cars.join("mod_caps"), "Data.acd", "x");
         file(&cars.join("mod_caps"), "caps.KN5", "m");
@@ -400,7 +426,11 @@ mod tests {
                 .iter()
                 .map(|a| a.1.as_str())
                 .collect::<Vec<_>>(),
-            vec!["ks_porsche_919_hybrid_2016"],
+            vec![
+                "ks_audi_r8_lms",
+                "ks_porsche_919_hybrid_2016",
+                "ks_highlands"
+            ],
             "a folder with only its sounds is not a broken car"
         );
         assert!(
@@ -437,18 +467,13 @@ mod tests {
                     Severity::Warning
                 ),
                 (
-                    "mod_half",
-                    "No ui_car.json — it is listed by its folder name, with no class or specs",
-                    Severity::Warning
-                ),
-                (
                     "mod_ring",
                     "No AI line — no opponents and no racing line here",
                     Severity::Warning
                 ),
             ]
         );
-        assert_eq!(report.counts(), (3, 3));
+        assert_eq!(report.counts(), (3, 2));
         assert_eq!((report.cars, report.tracks), (4, 2));
         assert_eq!(report.sizes.first().map(|s| s.1.as_str()), Some("ks_good"));
         assert_eq!(
@@ -458,7 +483,7 @@ mod tests {
         assert_eq!(report.of_kind("cars").0, 4);
         assert_eq!(report.of_kind("tracks").0, 2);
         let reasons = report.reasons();
-        assert_eq!(reasons.len(), 6);
+        assert_eq!(reasons.len(), 5);
         assert!(reasons.first().is_some_and(|r| r.1 == Severity::Broken));
         assert!(report.size_of("cars", "ks_good").is_some_and(|b| b >= 5000));
         // Something switched off is counted apart, with its size.

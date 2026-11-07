@@ -464,6 +464,8 @@ mod tests {
         ] {
             std::fs::create_dir_all(root.join(folder).join("data")).unwrap_or_default();
         }
+        // A circuit is its model, not a `data` folder alone.
+        std::fs::write(root.join("content/tracks/rss_ring/ring.kn5"), "m").unwrap_or_default();
         let packs = read(&root);
         let rss = packs.iter().find(|p| p.key == "rss").cloned();
         let Some(rss) = rss else {
