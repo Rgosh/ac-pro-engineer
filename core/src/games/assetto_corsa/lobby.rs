@@ -81,6 +81,56 @@ pub struct Listing {
     /// Whether anybody may simply join, rather than book a place first.
     #[serde(default)]
     pub pickup: bool,
+    /// How long each session in `sessions` lasts, in the same order — see
+    /// [`Listing::planned`] for what the numbers mean.
+    #[serde(default, deserialize_with = "numbers_or_text")]
+    pub durations: Vec<u32>,
+    /// Whether the race is run to a time rather than a number of laps.
+    #[serde(default)]
+    pub timed: bool,
+    /// Whether one more lap is run after the race's time is up.
+    #[serde(default)]
+    pub extra: bool,
+    /// Whether a pit stop is required in the race.
+    #[serde(default)]
+    pub pit: bool,
+    /// How many of the qualifying order start the race reversed.
+    #[serde(default, deserialize_with = "number_or_text")]
+    pub inverted: u32,
+}
+
+/// How long a session lasts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Length {
+    Minutes(u32),
+    Laps(u32),
+    /// The server did not say.
+    Unknown,
+}
+
+/// One session of what a server runs, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Planned {
+    /// The game's number for it (1 practice, 2 qualifying, 3 race…).
+    pub kind: u32,
+    pub length: Length,
+    /// Whether it is the one running now.
+    pub now: bool,
+}
+
+/// A session's name, from the game's number for it.
+pub fn session_kind(kind: u32) -> &'static str {
+    match kind {
+        0 => "Booking",
+        1 => "Practice",
+        2 => "Qualifying",
+        3 => "Race",
+        4 => "Hotlap",
+        5 => "Time attack",
+        6 => "Drift",
+        7 => "Drag",
+        _ => "Session",
+    }
 }
 
 impl Listing {
@@ -170,17 +220,34 @@ impl Listing {
 
     /// The session running now, in words.
     pub fn session_name(&self) -> &'static str {
-        match self.session {
-            0 => "Booking",
-            1 => "Practice",
-            2 => "Qualifying",
-            3 => "Race",
-            4 => "Hotlap",
-            5 => "Time attack",
-            6 => "Drift",
-            7 => "Drag",
-            _ => "Session",
-        }
+        session_kind(self.session)
+    }
+
+    /// Every session the server runs, in order, and how long each lasts.
+    ///
+    /// **The lobby writes every length in seconds but one**: a race run to
+    /// laps is its number of laps. `timed` should say which a race is, and
+    /// does not always — the live lobby lists a traffic server's race as
+    /// `5400` with `timed` false, which is ninety minutes and not five
+    /// thousand laps. Nobody runs six hundred laps, so a race at or above
+    /// that is read as seconds whatever `timed` says.
+    pub fn planned(&self) -> Vec<Planned> {
+        self.sessions
+            .iter()
+            .enumerate()
+            .map(|(at, &kind)| {
+                let length = match self.durations.get(at).copied() {
+                    None | Some(0) => Length::Unknown,
+                    Some(laps) if kind == 3 && !self.timed && laps < 600 => Length::Laps(laps),
+                    Some(seconds) => Length::Minutes(seconds.div_ceil(60)),
+                };
+                Planned {
+                    kind,
+                    length,
+                    now: kind == self.session,
+                }
+            })
+            .collect()
     }
 
     /// The country code, when the lobby gave one.
@@ -209,6 +276,20 @@ where
             _ => None,
         })
         .collect())
+}
+
+/// A number the lobby may write as a number or as text, or leave out.
+fn number_or_text<'de, D>(from: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(from)?;
+    Ok(match value {
+        serde_json::Value::Number(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()),
+        serde_json::Value::String(text) => text.trim().parse().ok(),
+        _ => None,
+    }
+    .unwrap_or(0))
 }
 
 /// The lobby's answer, read leniently: an entry that does not parse is left
@@ -351,6 +432,7 @@ mod tests {
             country: Vec::new(),
             password: false,
             pickup: false,
+            ..Listing::default()
         };
         assert_eq!(listing.needs_csp(), Some(2651));
         assert_eq!(listing.track_id(), "ks_nordschleife-endurance");
@@ -415,6 +497,52 @@ mod tests {
         assert_eq!(listed.len(), 1, "the live lobby's shape must parse");
         assert_eq!(listed[0].sessions, vec![1, 3]);
         assert_eq!(listed[0].http, 8113);
+    }
+
+    /// **Every length in seconds but a race's laps** — and a race the
+    /// lobby calls untimed at ninety minutes is ninety minutes.
+    #[test]
+    fn the_sessions_a_server_runs_and_how_long_each_lasts() {
+        let listed = parse(LIST);
+        let spa: Vec<Planned> = listed[0].planned();
+        assert_eq!(
+            spa,
+            vec![
+                Planned {
+                    kind: 1,
+                    length: Length::Minutes(10),
+                    now: false
+                },
+                Planned {
+                    kind: 2,
+                    length: Length::Minutes(10),
+                    now: false
+                },
+                Planned {
+                    kind: 3,
+                    length: Length::Minutes(30),
+                    now: true
+                },
+            ]
+        );
+        let mut laps = listed[0].clone();
+        laps.durations = vec![600, 600, 15];
+        assert_eq!(
+            laps.planned().last().map(|p| p.length),
+            Some(Length::Laps(15))
+        );
+        laps.timed = true;
+        laps.durations = vec![600, 600, 15];
+        assert_eq!(
+            laps.planned().last().map(|p| p.length),
+            Some(Length::Minutes(1))
+        );
+        laps.durations.clear();
+        assert_eq!(
+            laps.planned().first().map(|p| p.length),
+            Some(Length::Unknown)
+        );
+        assert_eq!(session_kind(2), "Qualifying");
     }
 
     #[test]
