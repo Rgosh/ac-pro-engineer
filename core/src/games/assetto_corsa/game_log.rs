@@ -52,12 +52,42 @@ pub fn read(documents: &Path) -> Option<String> {
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// The log as it is now, when the game wrote it after `since` — or, when it
+/// has not been written since, the reason that is: the game closed before it
+/// got as far as its log.
+///
+/// **A log from the session before is not this one's reason.** The game
+/// rewrites it early on each start, so a start that dies sooner leaves the
+/// last one in place — a session that went well, read as the reason this one
+/// did not. The commonest such start is a game that found Steam still
+/// signing in, asked Steam to start it again and closed.
+pub fn why_since(documents: &Path, since: std::time::SystemTime) -> Option<Reason> {
+    let at = file(documents);
+    let written = std::fs::metadata(&at).and_then(|m| m.modified()).ok();
+    if written.is_some_and(|written| written < since) {
+        return Some(Reason {
+            said: "The game closed before it wrote its log — most often Steam was still \
+                   signing in. Press DRIVE again once Steam is up."
+                .to_string(),
+            subject: Some(Subject::Steam),
+            line: "log.txt is still the one from the session before".to_string(),
+        });
+    }
+    why(&read(documents)?)
+}
+
 /// Whether a line reports something going wrong. Not the INI reader's notes
 /// about keys a file lacks: every session writes dozens of those, and they
-/// are the game falling back to a default, not failing.
+/// are the game falling back to a default, not failing. Not a `WARNING`
+/// either — the game and the patch write them in sessions that go well,
+/// `TaskBarIcon :: COULD NOT FIND TEXTURES FOR …` for every app without an
+/// icon among them.
 fn is_error(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
-    if lower.contains("key_not_found") || lower.contains("inireader") {
+    if lower.contains("key_not_found")
+        || lower.contains("inireader")
+        || lower.starts_with("warning")
+    {
         return false;
     }
     [
@@ -94,6 +124,11 @@ fn named(line: &str, kind: &str) -> Option<String> {
 /// Why the game stopped, from its log. `None` when the log holds no error at
 /// all — a session somebody quit on purpose.
 pub fn why(text: &str) -> Option<Reason> {
+    // A session that ended as the game ends one on purpose went as far as it
+    // was meant to.
+    if text.lines().rev().take(8).any(|l| l.trim() == "CLEAN EXIT") {
+        return None;
+    }
     let errors: Vec<&str> = text
         .lines()
         .map(str::trim)
@@ -141,7 +176,7 @@ pub fn why(text: &str) -> Option<Reason> {
     }
     if let Some(line) = errors.iter().find(|l| {
         let lower = l.to_ascii_lowercase();
-        lower.contains("shaders patch") || lower.contains("extension/") || lower.contains("csp")
+        lower.contains("shaders patch") || lower.contains("extension/") || has_word(&lower, "csp")
     }) {
         return Some(Reason {
             said: "Custom Shaders Patch stopped the session. Try another build of it, or \
@@ -158,6 +193,17 @@ pub fn why(text: &str) -> Option<Reason> {
     })
 }
 
+/// Whether `word` is in `text` on its own, not inside a longer name:
+/// `csp` is the patch, `csprstats` is an app's.
+fn has_word(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + word.len()..].chars().next();
+        !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !after.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -169,6 +215,49 @@ mod tests {
                     LOADING CAR ks_ferrari_488_gt3\nRACE STARTED\n";
         assert_eq!(why(text), None);
         assert_eq!(why(""), None);
+    }
+
+    /// What stopped the owner's session read as the patch: a warning about
+    /// an app's icon, in a log that ended as a clean session ends.
+    #[test]
+    fn a_warning_about_an_icon_is_not_the_patch_stopping_anything() {
+        let text = "WARNING: TaskBarIcon :: COULD NOT FIND TEXTURES FOR CSPRSTATS_ICON\n\
+                    LAP VALID: 1 CUTS:0, COUNT: 1\n";
+        assert_eq!(why(text), None);
+        let text = "ERROR: something about csprstats_app could not start\n";
+        assert_ne!(why(text).unwrap().subject, Some(Subject::Patch));
+        let text = "ERROR: CSP could not load its config\n";
+        assert_eq!(why(text).unwrap().subject, Some(Subject::Patch));
+    }
+
+    #[test]
+    fn a_clean_exit_is_no_reason() {
+        let text = "ERROR: cannot open file content/cars/x/data.acd\nSaving replay\nCLEAN EXIT\n";
+        assert_eq!(why(text), None);
+    }
+
+    /// A start that died before the log was written is not explained by the
+    /// session before it.
+    #[test]
+    fn a_log_from_before_the_start_is_not_this_start_s_reason() {
+        let documents = std::env::temp_dir().join("game_log_stale");
+        let _ = std::fs::remove_dir_all(&documents);
+        std::fs::create_dir_all(documents.join("logs")).unwrap();
+        std::fs::write(
+            file(&documents),
+            "ERROR: cannot open content/cars/x/data.acd\n",
+        )
+        .unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        assert_eq!(
+            why_since(&documents, later).unwrap().subject,
+            Some(Subject::Steam)
+        );
+        let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        assert_eq!(
+            why_since(&documents, earlier).unwrap().subject,
+            Some(Subject::Car("x".to_string()))
+        );
     }
 
     #[test]
