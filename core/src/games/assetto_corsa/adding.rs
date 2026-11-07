@@ -236,6 +236,30 @@ impl std::error::Error for Trouble {}
 /// is refused by the caller rather than put somewhere plausible, because a
 /// wrong guess here writes hundreds of megabytes into the wrong folder.
 pub fn whats_in(dropped: &Path) -> Vec<Addition> {
+    whats_in_at(dropped, 0)
+}
+
+/// How many archives inside archives are opened, one inside the next.
+///
+/// **Archives arrive inside archives.** A download from a mod site is as
+/// often a zip holding a readme, a livery template and the car's own `.rar`
+/// as it is the car — and that inner archive was left unopened, so a car
+/// that was there was "nothing found". Three deep is every real case; the
+/// bound is what keeps an archive that contains itself from going on.
+const NESTED: usize = 3;
+
+/// The most archives opened inside any one drop.
+const MOST_NESTED: usize = 24;
+
+/// Whether a path names an archive of any kind this reads.
+fn is_any_archive(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [".zip", ".7z", ".rar"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
+fn whats_in_at(dropped: &Path, depth: usize) -> Vec<Addition> {
     let (paths, from) = if dropped.is_dir() {
         (walk(dropped), Source::Folder(dropped.to_path_buf()))
     } else if is_zip(dropped) {
@@ -257,7 +281,7 @@ pub fn whats_in(dropped: &Path) -> Vec<Addition> {
         // under licences a closed program cannot take, and every machine
         // that has these files has one of the tools.
         return match unpack_elsewhere(dropped) {
-            Ok(folder) => whats_in(&folder),
+            Ok(folder) => whats_in_at(&folder, depth),
             Err(_) => Vec::new(),
         };
     } else {
@@ -268,7 +292,55 @@ pub fn whats_in(dropped: &Path) -> Vec<Addition> {
     for one in &mut found {
         one.name = describes(one);
     }
+    // **Every archive inside, at any level, opened and read the same way**
+    // — a pack of cars as a folder of zips, a car as a zip inside a zip.
+    if depth < NESTED {
+        let inner: Vec<&String> = paths
+            .iter()
+            .filter(|p| !p.ends_with('/') && is_any_archive(p))
+            .take(MOST_NESTED)
+            .collect();
+        for rel in inner {
+            let opened = match &from {
+                Source::Folder(root) => {
+                    Some(rel.split('/').fold(root.clone(), |at, part| at.join(part)))
+                }
+                Source::InArchive { archive, .. } => extract_one(archive, rel),
+            };
+            if let Some(opened) = opened {
+                for one in whats_in_at(&opened, depth + 1) {
+                    push(&mut found, one);
+                }
+            }
+        }
+    }
     found
+}
+
+/// One file out of a zip, into a folder of its own under the system's
+/// temporary folder, for an archive inside an archive to be opened.
+fn extract_one(archive: &Path, wanted: &str) -> Option<PathBuf> {
+    let file = fs::File::open(archive).ok()?;
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).ok()?;
+    let at = zip.file_names().position(|name| {
+        name.is_ok_and(|name| name.replace('\\', "/").to_lowercase() == wanted.to_lowercase())
+    })?;
+    let mut entry = zip.by_index(at).ok()?;
+    let size = fs::metadata(archive).map(|m| m.len()).unwrap_or_default();
+    let base = Path::new(wanted)
+        .file_name()?
+        .to_string_lossy()
+        .into_owned();
+    let into = std::env::temp_dir()
+        .join("pro-unpacked")
+        .join(format!("{}-{size}-{at}", name_of(archive)));
+    fs::create_dir_all(&into).ok()?;
+    let to = into.join(base);
+    if !to.is_file() {
+        let mut out = fs::File::create(&to).ok()?;
+        std::io::copy(&mut entry, &mut out).ok()?;
+    }
+    Some(to)
 }
 
 /// Put one addition in place, returning where it landed.
@@ -1034,6 +1106,74 @@ mod tests {
         }
         zip.finish().expect("a fixture");
         path
+    }
+
+    /// **An archive inside an archive**, as the owner's download was: a zip
+    /// holding a readme, a livery template and the car's own archive — and
+    /// a pack folder holding cars as zips. Each car inside is found, named
+    /// and installed.
+    #[test]
+    fn a_car_inside_an_archive_inside_an_archive_is_found() {
+        let dir = scratch("nested");
+        let inner = archive(
+            &dir,
+            "mt_alfa_giulia_class_1.zip",
+            &[
+                (
+                    "mt_alfa_giulia_class_1/ui/ui_car.json",
+                    r#"{"name":"Alfa Romeo Giulia Class 1"}"#,
+                ),
+                ("mt_alfa_giulia_class_1/data.acd", "x"),
+                ("mt_alfa_giulia_class_1/giulia.kn5", "m"),
+                ("mt_alfa_giulia_class_1/skins/red/preview.jpg", "p"),
+            ],
+        );
+        let bytes = fs::read(&inner).expect("a fixture");
+        let outer_path = dir.join("MTRacing_Alfa_Romeo_Giulia_Class_1_v0.99.zip");
+        {
+            let file = fs::File::create(&outer_path).expect("a fixture");
+            let mut zip = zip::ZipWriter::new(file);
+            let plain = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("Read me.txt", plain).expect("a fixture");
+            zip.write_all(b"Install it.").expect("a fixture");
+            zip.start_file("Template/livery.psd", plain)
+                .expect("a fixture");
+            zip.write_all(b"psd").expect("a fixture");
+            zip.start_file("mt_alfa_giulia_class_1.zip", plain)
+                .expect("a fixture");
+            zip.write_all(&bytes).expect("a fixture");
+            zip.finish().expect("a fixture");
+        }
+        fs::remove_file(&inner).expect("a fixture");
+        let found = whats_in(&outer_path);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].kind, Kind::Car);
+        assert_eq!(found[0].id, "mt_alfa_giulia_class_1");
+        assert_eq!(found[0].name.as_deref(), Some("Alfa Romeo Giulia Class 1"));
+        let root = dir.join("game");
+        fs::create_dir_all(root.join("content/cars")).expect("a fixture");
+        assert!(place(&root, &found[0], None, false).is_ok());
+        assert!(
+            root.join("content/cars/mt_alfa_giulia_class_1/data.acd")
+                .is_file()
+        );
+
+        // A pack folder of zips, one of them inside a subfolder.
+        let pack = dir.join("GT pack");
+        fs::create_dir_all(pack.join("extra")).expect("a fixture");
+        archive(
+            &pack,
+            "one.zip",
+            &[("car_one/data.acd", "x"), ("car_one/ui/ui_car.json", "{}")],
+        );
+        archive(
+            &pack.join("extra"),
+            "two.zip",
+            &[("car_two/data.acd", "x"), ("car_two/ui/ui_car.json", "{}")],
+        );
+        let ids: Vec<String> = whats_in(&pack).into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, vec!["car_one".to_string(), "car_two".to_string()]);
     }
 
     /// **A download as Overtake hands it over**: the mod wrapped in its own
