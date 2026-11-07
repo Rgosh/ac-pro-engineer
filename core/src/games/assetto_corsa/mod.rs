@@ -18,6 +18,7 @@ pub mod ini;
 pub mod levels;
 pub mod lobby;
 pub mod media;
+pub mod packs;
 pub mod paths;
 pub mod preflight;
 pub mod reading;
