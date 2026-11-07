@@ -6,14 +6,13 @@
 //! mods is broken? Each check here is one the game itself trips over — a car
 //! with no data, no model or no livery does not load; a circuit with no
 //! surfaces has no grip anywhere; one with no AI line has no opponents — so
-//! every finding is a reason, not a style note. [`preflight`] asks the same
+//! every finding is a reason, not a style note. `preflight` asks the same
 //! of the one car and circuit about to be driven; this asks it of all of
 //! them.
 //!
 //! **Blocking and proportional to the install**: it walks every folder for
 //! the sizes. Called on a thread.
 
-use super::preflight;
 use std::path::Path;
 
 /// How bad a finding is.
@@ -48,6 +47,9 @@ pub struct Report {
     /// What is switched off — out of the game's sight in `content-off/`,
     /// still on the disk — with its size, largest first.
     pub off: Vec<(&'static str, String, u64)>,
+    /// Folders that are not a car or circuit at all — see [`present`] —
+    /// with their size. Not checked and not counted.
+    pub absent: Vec<(&'static str, String, u64)>,
 }
 
 impl Report {
@@ -111,6 +113,10 @@ pub fn check(root: &Path) -> Report {
         ids.sort();
         for id in ids {
             let at = root.join("content").join(folder).join(&id);
+            if !present(kind, &at) {
+                report.absent.push((kind, id.clone(), size_of(&at)));
+                continue;
+            }
             let mut said = |severity, what| {
                 report.findings.push(Finding {
                     kind,
@@ -122,7 +128,7 @@ pub fn check(root: &Path) -> Report {
             match kind {
                 "cars" => {
                     report.cars += 1;
-                    check_car(root, &id, &at, &mut said);
+                    check_car(&at, &mut said);
                 }
                 _ => {
                     report.tracks += 1;
@@ -144,22 +150,73 @@ pub fn check(root: &Path) -> Report {
     report
 }
 
-fn check_car(root: &Path, id: &str, at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
-    if !at.join("data.acd").is_file() && !at.join("data").is_dir() {
+/// A file or folder in `dir` by name, whatever its case — a mod packed on
+/// Windows writes `Data.acd` or `UI` as often as not, and the game, running
+/// on Windows's file system or Wine's, finds it either way.
+fn child(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let exact = dir.join(name);
+    if exact.exists() {
+        return Some(exact);
+    }
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|e| {
+        e.file_name()
+            .to_str()
+            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            .then(|| e.path())
+    })
+}
+
+fn has_kn5(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("kn5"))
+        })
+    })
+}
+
+/// Whether a folder under `content/` is a car or circuit at all, broken or
+/// not, rather than a folder that only holds its sounds.
+///
+/// **Steam puts a folder for every DLC car in the game, owned or not**, with
+/// only its `sfx` in it — the sound banks ship with the base game. Read as
+/// cars, every DLC somebody does not own was "not installed completely, no
+/// livery, no ui_car.json": 174 errors on a real install, every one of them
+/// wrong. A folder with none of a car's or circuit's own parts is not one.
+pub fn present(kind: &str, at: &Path) -> bool {
+    let any = |names: &[&str]| names.iter().any(|n| child(at, n).is_some());
+    match kind {
+        "cars" => any(&["data.acd", "data", "ui", "skins"]) || has_kn5(at),
+        _ => {
+            has_kn5(at)
+                || any(&["ui", "ai", "data"])
+                || std::fs::read_dir(at).is_ok_and(|entries| {
+                    entries
+                        .flatten()
+                        .any(|e| e.path().join("data").is_dir() || e.path().join("ai").is_dir())
+                })
+        }
+    }
+}
+
+fn check_car(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
+    let has_data = child(at, "data.acd").is_some_and(|p| p.is_file())
+        || child(at, "data").is_some_and(|p| p.is_dir());
+    if !has_data {
         said(
             Severity::Broken,
             "No data — it was not installed completely",
         );
     }
-    if preflight::car_ready(root, id).is_err()
-        && (at.join("data.acd").is_file() || at.join("data").is_dir())
-    {
+    if has_data && !has_kn5(at) {
         said(
             Severity::Broken,
             "No model (.kn5) — it was not installed completely",
         );
     }
-    let skins = std::fs::read_dir(at.join("skins"))
+    let skins = child(at, "skins")
+        .and_then(|skins| std::fs::read_dir(skins).ok())
         .map(|entries| entries.flatten().filter(|e| e.path().is_dir()).count())
         .unwrap_or(0);
     if skins == 0 {
@@ -168,7 +225,11 @@ fn check_car(root: &Path, id: &str, at: &Path, said: &mut impl FnMut(Severity, &
             "No livery — the game cannot load a car without one",
         );
     }
-    match std::fs::read_to_string(at.join("ui").join("ui_car.json")) {
+    let ui_car = child(at, "ui").and_then(|ui| child(&ui, "ui_car.json"));
+    match ui_car
+        .map(std::fs::read_to_string)
+        .unwrap_or_else(|| Err(std::io::Error::from(std::io::ErrorKind::NotFound)))
+    {
         Err(_) => said(
             Severity::Warning,
             "No ui_car.json — it is listed by its folder name, with no class or specs",
@@ -190,14 +251,7 @@ fn check_car(root: &Path, id: &str, at: &Path, said: &mut impl FnMut(Severity, &
 }
 
 fn check_track(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
-    let has_kn5 = std::fs::read_dir(at).is_ok_and(|entries| {
-        entries.flatten().any(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|x| x.eq_ignore_ascii_case("kn5"))
-        })
-    });
-    if !has_kn5 {
+    if !has_kn5(at) {
         said(
             Severity::Broken,
             "No model (.kn5) — it was not installed completely",
@@ -218,25 +272,27 @@ fn check_track(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
         true => vec![at.to_path_buf()],
         false => layouts,
     };
-    if places
-        .iter()
-        .any(|place| !place.join("data").join("surfaces.ini").is_file())
-    {
+    if places.iter().any(|place| {
+        child(place, "data")
+            .and_then(|data| child(&data, "surfaces.ini"))
+            .is_none()
+    }) {
         said(
             Severity::Broken,
             "No surfaces.ini — no grip anywhere, the game will not load it",
         );
     }
-    if places
-        .iter()
-        .any(|place| !place.join("ai").join("fast_lane.ai").is_file())
-    {
+    if places.iter().any(|place| {
+        child(place, "ai")
+            .and_then(|ai| child(&ai, "fast_lane.ai"))
+            .is_none()
+    }) {
         said(
             Severity::Warning,
             "No AI line — no opponents and no racing line here",
         );
     }
-    if !at.join("ui").is_dir() {
+    if child(at, "ui").is_none() {
         said(
             Severity::Warning,
             "No ui folder — it is listed by its folder name, with no picture",
@@ -321,7 +377,37 @@ mod tests {
         file(&tracks.join("mod_ring"), "ring.kn5", "m");
         file(&tracks.join("mod_ring"), "ui/ui_track.json", "{}");
 
+        // A DLC nobody here owns: Steam's folder with its sounds alone.
+        file(
+            &cars.join("ks_porsche_919_hybrid_2016"),
+            "sfx/GUIDs.txt",
+            "x",
+        );
+        // A mod packed on Windows, its parts in other cases: whole.
+        file(&cars.join("mod_caps"), "Data.acd", "x");
+        file(&cars.join("mod_caps"), "caps.KN5", "m");
+        file(&cars.join("mod_caps"), "Skins/one/preview.jpg", "p");
+        file(
+            &cars.join("mod_caps"),
+            "UI/UI_car.json",
+            r#"{"name":"Caps"}"#,
+        );
+
         let report = check(&root);
+        assert_eq!(
+            report
+                .absent
+                .iter()
+                .map(|a| a.1.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ks_porsche_919_hybrid_2016"],
+            "a folder with only its sounds is not a broken car"
+        );
+        assert!(
+            report.findings.iter().all(|f| f.id != "mod_caps"),
+            "{:?}",
+            report.findings
+        );
         let found: Vec<(&str, &str, Severity)> = report
             .findings
             .iter()
@@ -363,13 +449,13 @@ mod tests {
             ]
         );
         assert_eq!(report.counts(), (3, 3));
-        assert_eq!((report.cars, report.tracks), (3, 2));
+        assert_eq!((report.cars, report.tracks), (4, 2));
         assert_eq!(report.sizes.first().map(|s| s.1.as_str()), Some("ks_good"));
         assert_eq!(
             report.total(),
             report.sizes.iter().map(|s| s.2).sum::<u64>()
         );
-        assert_eq!(report.of_kind("cars").0, 3);
+        assert_eq!(report.of_kind("cars").0, 4);
         assert_eq!(report.of_kind("tracks").0, 2);
         let reasons = report.reasons();
         assert_eq!(reasons.len(), 6);
@@ -386,7 +472,7 @@ mod tests {
             again.off.first().map(|o| (o.0, o.1.as_str())),
             Some(("cars", "mod_old"))
         );
-        assert_eq!(again.cars, 3, "what is off is not checked as installed");
+        assert_eq!(again.cars, 4, "what is off is not checked as installed");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
