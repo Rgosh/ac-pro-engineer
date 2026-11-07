@@ -453,11 +453,7 @@ fn read(paths: &[String], from: &Source, called: &str) -> Vec<Addition> {
 fn kind_at(paths: &[String], at: &str) -> Option<Kind> {
     let here = |name: &str| has(paths, &format!("{at}{name}"));
 
-    if here("ui/ui_car.json")
-        || here("data.acd")
-        || here("data/car.ini")
-        || ((here("sfx/") || here("skins/")) && beside(paths, at, "kn5"))
-    {
+    if here("ui/ui_car.json") || here("data.acd") || here("data/car.ini") {
         return Some(Kind::Car);
     }
     if here("ui/ui_track.json")
@@ -466,6 +462,13 @@ fn kind_at(paths: &[String], at: &str) -> Option<Kind> {
         || deeper_ui_track(paths, at)
     {
         return Some(Kind::Track);
+    }
+    // **After the circuit's signs, not before.** A model beside `skins/` is
+    // what a car without its ui looks like, and also what Kunos's Black Cat
+    // County is: three layouts, a `skins/` of billboards and its `.kn5`s at
+    // the top. Asked first, this installed a circuit into the cars.
+    if (here("sfx/") || here("skins/")) && beside(paths, at, "kn5") {
+        return Some(Kind::Car);
     }
     // **Before the livery test, and before weather.** The patch carries
     // hundreds of `.dds` at various depths and a `weather.ini` of its own
@@ -1370,6 +1373,24 @@ mod tests {
             found[0].where_it_goes(Path::new("/game"), None),
             Some(PathBuf::from("/game/content/tracks/ks_nordschleife"))
         );
+    }
+
+    /// **A circuit with billboards is not a car.** Black Cat County ships a
+    /// `skins/` folder and its models at the top, which is also what a car
+    /// without its ui looks like; it was installed into the cars until the
+    /// circuit's own signs were asked first.
+    #[test]
+    fn a_circuit_with_skins_and_models_is_still_a_circuit() {
+        let dir = scratch("billboards");
+        let track = dir.join("ks_black_cat_county");
+        file(&track, "ui/layout_long/ui_track.json", r#"{"name":"Long"}"#);
+        file(&track, "layout_long/ai/fast_lane.ai", "");
+        file(&track, "skins/default/billboards.dds", "");
+        file(&track, "ks_black_cat_county.kn5", "");
+
+        let found = whats_in(&track);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].kind, Kind::Track);
     }
 
     /// **A car holds liveries, and a livery holds textures.** Asking "are
