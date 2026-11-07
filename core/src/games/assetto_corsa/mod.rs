@@ -14,6 +14,7 @@ pub mod csp;
 pub mod csp_config;
 pub mod csp_settings;
 pub mod game_log;
+pub mod health;
 pub mod ini;
 pub mod levels;
 pub mod lobby;
