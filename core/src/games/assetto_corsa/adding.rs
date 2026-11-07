@@ -734,8 +734,15 @@ fn fetch(from: &Source, relative: &str) -> Option<Vec<u8>> {
 
 /// Reduce a folder to the relative paths inside it, lowercased.
 fn walk(root: &Path) -> Vec<String> {
+    // **The same order on every system**: a folder's files before its
+    // folders, each by name. The order the disk hands them over is ext4's
+    // on Linux and alphabetical on NTFS, so a pack installed — and a test
+    // that read it — in one order on one machine and another on the next.
     walkdir::WalkDir::new(root)
         .max_depth(DEEP)
+        .sort_by(|a, b| {
+            (a.file_type().is_dir(), a.file_name()).cmp(&(b.file_type().is_dir(), b.file_name()))
+        })
         .into_iter()
         .filter_map(Result::ok)
         .take(MOST)
