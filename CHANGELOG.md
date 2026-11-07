@@ -42,6 +42,10 @@ untouched: `OVERLAY_VERSION` stays at 6 and no bridge has to be rebuilt.
 - **The screenshots and replays** the game leaves in Documents; a car's card
   read without its model.
 
+- **Which of a server's cars are free**: `server_slots` asks the server's
+  own HTTP port (`/JSON|-1`) for every place in its entry list and whether
+  somebody is in it, and counts the free places per car.
+
 ### Fixed
 
 - **The lobby answers again**: it lists servers only for the game's own
