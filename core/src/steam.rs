@@ -55,6 +55,53 @@ pub fn signed_in() -> Option<Account> {
     accounts_in(&text).into_iter().next()
 }
 
+/// Whether the Steam client has signed in since `since`, read from its own
+/// connection log. `None` when there is no log to read.
+///
+/// **A running Steam is not a ready one.** The client's process is up a
+/// second after it is started and signs in ten or twenty seconds later; a
+/// game started in between finds no Steam to talk to, asks Steam to start it
+/// again (`steam://run/…`) and closes at once — a session that never began,
+/// on the press that started Steam for it. `logs/connection_log.txt` says
+/// each change of the connection's state as it happens, `[Logged On, …]`
+/// among them. A log not written since `since` is a Steam that has not
+/// signed in yet.
+pub fn signed_in_since(since: std::time::SystemTime) -> Option<bool> {
+    let at = roots()
+        .into_iter()
+        .map(|root| root.join("logs").join("connection_log.txt"))
+        .find(|at| at.is_file())?;
+    let written = std::fs::metadata(&at).and_then(|m| m.modified()).ok()?;
+    if written < since {
+        return Some(false);
+    }
+    // The end of the log is enough, and the whole of it is megabytes.
+    let mut file = std::fs::File::open(&at).ok()?;
+    let length = file.metadata().ok()?.len();
+    let mut tail = Vec::new();
+    {
+        use std::io::{Read, Seek, SeekFrom};
+        file.seek(SeekFrom::Start(length.saturating_sub(64 * 1024)))
+            .ok()?;
+        file.read_to_end(&mut tail).ok()?;
+    }
+    Some(connection_state(&String::from_utf8_lossy(&tail)) == Some("Logged On"))
+}
+
+/// The connection's state as the last line that names one says it:
+/// `[2026-11-07 21:55:43] [Logged On, 4, 7] [U:1:…] …` is `Logged On`.
+pub fn connection_state(log: &str) -> Option<&str> {
+    log.lines().rev().find_map(|line| {
+        let rest = line.split_once("] [")?.1;
+        let state = rest.split_once(',')?.0;
+        matches!(
+            state,
+            "Logged On" | "Logged Off" | "Logging On" | "Logging Off" | "Connecting"
+        )
+        .then_some(state)
+    })
+}
+
 /// Every account in a `loginusers.vdf`, best first.
 ///
 /// Apart from [`signed_in`] so the rule can be tested against the file's own
@@ -547,6 +594,20 @@ mod tests {
     use std::io::Write;
 
     /// A scratch directory of its own per test, so the suite stays parallel.
+    /// The state is the last one the log names, whatever else follows it.
+    #[test]
+    fn the_connection_state_is_the_last_one_said() {
+        let log = "[2026-11-07 21:55:31] [Logged Off, 0, 0] [U:1:0] CCMInterface::SetSteamID( [U:1:0] )\n\
+                   [2026-11-07 21:55:42] [Connecting, 4, 0] [U:1:5] PingWebSocketCM() starting...\n\
+                   [2026-11-07 21:55:43] [Logged On, 4, 7] [U:1:5] RecvMsgClientLogOnResponse() : processing complete\n\
+                   [2026-11-07 21:55:44] GetCMListForConnect -- got 18 Netfilter CMs\n";
+        assert_eq!(connection_state(log), Some("Logged On"));
+        let log = "[2026-11-07 21:55:31] [Logged Off, 0, 0] [U:1:0] SetSteamID\n\
+                   [2026-11-07 21:55:42] [Connecting, 4, 0] [U:1:5] PingWebSocketCM() starting...\n";
+        assert_eq!(connection_state(log), Some("Connecting"));
+        assert_eq!(connection_state("Connectivity test: OK!\n"), None);
+    }
+
     fn scratch_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(name);
         let _ = std::fs::remove_dir_all(&dir);
