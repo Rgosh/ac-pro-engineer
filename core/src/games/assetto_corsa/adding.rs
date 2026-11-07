@@ -35,11 +35,24 @@ use std::path::{Path, PathBuf};
 /// **Eight, not five.** Archives from download sites wrap the mod in its own
 /// name, often twice — `Mod v0.99/Mod/content/cars/<car>/ui/ui_car.json` is
 /// seven levels — and at five such a car was "nothing recognisable".
-const DEEP: usize = 8;
+///
+/// **And twenty-four, not eight.** A pack unpacked by hand, then zipped
+/// again with the folder it was unpacked into, then put in a "Mods" folder
+/// of somebody's own, is four more wrappers than any author meant; eight was
+/// enough for every archive seen and not for every drop. Twenty-four is
+/// deeper than anybody nests folders on purpose, and still a bound: the
+/// walk never follows links, and [`MOST`] caps what it reads.
+const DEEP: usize = 24;
 
 /// The most paths any one recognition will consider, so a pathological archive
 /// cannot be read into memory by pointing at it.
-const MOST: usize = 40_000;
+///
+/// **Two hundred thousand**: a car is a few hundred files, a circuit with
+/// its liveries of grass a few thousand, and a folder of a hundred cars
+/// dropped at once is past forty thousand — which was the old bound, and
+/// the cars after it were not there. Two hundred thousand paths are a few
+/// tens of megabytes, once, while a drop is read.
+const MOST: usize = 200_000;
 
 /// The largest description file worth reading to learn a mod's name.
 const SMALL: u64 = 512 * 1024;
@@ -244,12 +257,18 @@ pub fn whats_in(dropped: &Path) -> Vec<Addition> {
 /// **Archives arrive inside archives.** A download from a mod site is as
 /// often a zip holding a readme, a livery template and the car's own `.rar`
 /// as it is the car — and that inner archive was left unopened, so a car
-/// that was there was "nothing found". Three deep is every real case; the
-/// bound is what keeps an archive that contains itself from going on.
-const NESTED: usize = 3;
+/// that was there was "nothing found". Three deep is every real case seen,
+/// and six is the bound — what keeps an archive that contains itself from
+/// going on, with room for a pack re-zipped by whoever passed it along.
+const NESTED: usize = 6;
 
-/// The most archives opened inside any one drop.
-const MOST_NESTED: usize = 24;
+/// The most archives opened inside any one archive or folder.
+///
+/// **A pack is a folder of a hundred zips**, one per car, and at
+/// twenty-four the twenty-fifth car onwards was simply not there. Each one
+/// is opened only to be read, into a temporary folder, so the bound is
+/// about time, not memory.
+const MOST_NESTED: usize = 500;
 
 /// Whether a path names an archive of any kind this reads.
 fn is_any_archive(name: &str) -> bool {
@@ -558,10 +577,10 @@ fn content_roots(paths: &[String]) -> Vec<(String, Kind)> {
 
 /// A folder of several cars, or several circuits, which is how packs arrive.
 ///
-/// **Looked for below the top as well**, a few folders down: a download is
-/// as often `Mod v0.99/Mod/<car>/` as `<car>/`, and the folders that wrap it
-/// are names, not content. A folder found to be something is not looked
-/// inside — a car's liveries are the car's.
+/// **Looked for below the top as well**, as far down as the walk goes: a
+/// download is as often `Mod v0.99/Mod/<car>/` as `<car>/`, and the folders
+/// that wrap it are names, not content. A folder found to be something is
+/// not looked inside — a car's liveries are the car's.
 fn bag(paths: &[String], from: &Source) -> Vec<Addition> {
     let mut found = Vec::new();
     let mut look: Vec<(String, usize)> = vec![(String::new(), 0)];
@@ -573,7 +592,7 @@ fn bag(paths: &[String], from: &Source) -> Vec<Addition> {
                 // whole, and it still does not say which car. It is offered,
                 // and the caller asks.
                 Some(kind) => push(&mut found, made(kind, &id, None, from, &at)),
-                None if depth < 3 => look.push((at, depth + 1)),
+                None if depth < DEEP => look.push((at, depth + 1)),
                 None => {}
             }
         }
@@ -1106,6 +1125,100 @@ mod tests {
         }
         zip.finish().expect("a fixture");
         path
+    }
+
+    /// A zip of these entries, as bytes, for putting inside another.
+    fn zipped(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut out);
+            let plain = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, said) in entries {
+                zip.start_file(name.as_str(), plain).expect("a fixture");
+                zip.write_all(said).expect("a fixture");
+            }
+            zip.finish().expect("a fixture");
+        }
+        out.into_inner()
+    }
+
+    /// A car's files under a prefix, as zip entries.
+    fn car_entries(under: &str, id: &str) -> Vec<(String, Vec<u8>)> {
+        vec![
+            (format!("{under}{id}/data.acd"), b"x".to_vec()),
+            (format!("{under}{id}/ui/ui_car.json"), b"{}".to_vec()),
+            (format!("{under}{id}/{id}.kn5"), b"m".to_vec()),
+        ]
+    }
+
+    /// **Everything, however deep it was put**: the worst drops the owner
+    /// asked to be read in full — wrappers far past the eight levels an
+    /// author uses, a pack of more cars as zips than the old bound of
+    /// twenty-four, an archive five times inside an archive, and a pack
+    /// folder six wrappers down. Every car in each is found.
+    #[test]
+    fn everything_is_found_however_deep_it_was_put() {
+        let dir = scratch("deepest");
+
+        // A car under ten wrapping folders, dropped as a folder.
+        let wrappers = "Mods/Downloads/2026/Unpacked/MTRacing v0.99/MTRacing/Install/\
+            Copy to game/assettocorsa/content/cars/";
+        file(
+            &dir.join("deep"),
+            &format!("{wrappers}deep_car/data.acd"),
+            "x",
+        );
+        file(
+            &dir.join("deep"),
+            &format!("{wrappers}deep_car/ui/ui_car.json"),
+            "{}",
+        );
+        let ids: Vec<String> = whats_in(&dir.join("deep"))
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+        assert_eq!(ids, vec!["deep_car".to_string()]);
+
+        // Thirty cars, each its own zip, in one zip.
+        let pack: Vec<(String, Vec<u8>)> = (0..30)
+            .map(|n| {
+                let id = format!("pack_car_{n:02}");
+                (format!("cars/{id}.zip"), zipped(&car_entries("", &id)))
+            })
+            .collect();
+        let pack_path = dir.join("Thirty cars.zip");
+        fs::write(&pack_path, zipped(&pack)).expect("a fixture");
+        let found = whats_in(&pack_path);
+        assert_eq!(
+            found.len(),
+            30,
+            "{:?}",
+            found.iter().map(|a| &a.id).collect::<Vec<_>>()
+        );
+
+        // A car in a zip in a zip in a zip in a zip in a zip.
+        let mut bytes = zipped(&car_entries("Car v1/", "nested_car"));
+        for level in 0..5 {
+            bytes = zipped(&[
+                (format!("Read me {level}.txt"), b"hi".to_vec()),
+                (format!("level {level}/inner.zip"), bytes),
+            ]);
+        }
+        let nested_path = dir.join("Russian doll.zip");
+        fs::write(&nested_path, bytes).expect("a fixture");
+        let ids: Vec<String> = whats_in(&nested_path).into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, vec!["nested_car".to_string()]);
+
+        // Two cars side by side, six folders down, with no `content/cars`.
+        let mut bag = car_entries("A/B/C/D/E/F/", "bag_one");
+        bag.extend(car_entries("A/B/C/D/E/F/", "bag_two"));
+        let bag_path = dir.join("bag.zip");
+        fs::write(&bag_path, zipped(&bag)).expect("a fixture");
+        let ids: Vec<String> = whats_in(&bag_path).into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, vec!["bag_one".to_string(), "bag_two".to_string()]);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// **An archive inside an archive**, as the owner's download was: a zip
