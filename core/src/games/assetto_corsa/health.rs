@@ -45,6 +45,9 @@ pub struct Report {
     pub sizes: Vec<(&'static str, String, u64)>,
     pub cars: usize,
     pub tracks: usize,
+    /// What is switched off — out of the game's sight in `content-off/`,
+    /// still on the disk — with its size, largest first.
+    pub off: Vec<(&'static str, String, u64)>,
 }
 
 impl Report {
@@ -61,6 +64,35 @@ impl Report {
     /// Everything's size together.
     pub fn total(&self) -> u64 {
         self.sizes.iter().map(|(_, _, bytes)| bytes).sum()
+    }
+
+    /// How many of a kind (`cars` or `tracks`), and their size together.
+    pub fn of_kind(&self, kind: &str) -> (usize, u64) {
+        self.sizes
+            .iter()
+            .filter(|(k, _, _)| *k == kind)
+            .fold((0, 0), |(n, bytes), (_, _, b)| (n + 1, bytes + b))
+    }
+
+    /// Each reason found, with how many it was found for, broken first.
+    pub fn reasons(&self) -> Vec<(&'static str, Severity, usize)> {
+        let mut out: Vec<(&'static str, Severity, usize)> = Vec::new();
+        for finding in &self.findings {
+            match out.iter_mut().find(|(what, _, _)| *what == finding.what) {
+                Some((_, _, n)) => *n += 1,
+                None => out.push((finding.what, finding.severity, 1)),
+            }
+        }
+        out.sort_by_key(|a| (a.1, std::cmp::Reverse(a.2)));
+        out
+    }
+
+    /// The size of one car or circuit, when it was measured.
+    pub fn size_of(&self, kind: &str, id: &str) -> Option<u64> {
+        self.sizes
+            .iter()
+            .find(|(k, i, _)| *k == kind && i == id)
+            .map(|(_, _, b)| *b)
     }
 }
 
@@ -100,6 +132,11 @@ pub fn check(root: &Path) -> Report {
             report.sizes.push((kind, id.clone(), size_of(&at)));
         }
     }
+    for (kind, id, path) in super::adding::switched_off(root) {
+        let kind = if kind == "cars" { "cars" } else { "tracks" };
+        report.off.push((kind, id, size_of(&path)));
+    }
+    report.off.sort_by_key(|o| std::cmp::Reverse(o.2));
     report
         .findings
         .sort_by(|a, b| (a.severity, a.kind, &a.id).cmp(&(b.severity, b.kind, &b.id)));
@@ -332,6 +369,24 @@ mod tests {
             report.total(),
             report.sizes.iter().map(|s| s.2).sum::<u64>()
         );
+        assert_eq!(report.of_kind("cars").0, 3);
+        assert_eq!(report.of_kind("tracks").0, 2);
+        let reasons = report.reasons();
+        assert_eq!(reasons.len(), 6);
+        assert!(reasons.first().is_some_and(|r| r.1 == Severity::Broken));
+        assert!(report.size_of("cars", "ks_good").is_some_and(|b| b >= 5000));
+        // Something switched off is counted apart, with its size.
+        file(
+            &root.join("content-off/cars/mod_old"),
+            "data.acd",
+            &"x".repeat(300),
+        );
+        let again = check(&root);
+        assert_eq!(
+            again.off.first().map(|o| (o.0, o.1.as_str())),
+            Some(("cars", "mod_old"))
+        );
+        assert_eq!(again.cars, 3, "what is off is not checked as installed");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
