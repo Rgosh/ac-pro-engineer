@@ -217,15 +217,23 @@ fn ai_line(path: &Path) -> Vec<LinePoint> {
 /// reported as absent. That is a real property of the data and not a shortcut.
 pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
     let root = install.join("content").join("cars").join(car);
-    let ui = root.join("ui");
     // The shape is read whether or not the metadata is: a car may ship a model
     // and no `ui_car.json`, and its outline is worth having on its own.
-    let shape = kn5::car_shape(&root);
+    crate::track::CarData {
+        shape: kn5::car_shape(&root),
+        ..read_car_card(install, car)
+    }
+}
+
+/// [`read_car`] without the outline: `ui_car.json` alone.
+///
+/// **For anything that wants the words and the curves and not the model** —
+/// a library panel opening on a car. The outline is the car's whole KN5
+/// read, megabytes for a modern car; the card is one small file.
+pub fn read_car_card(install: &Path, car: &str) -> crate::track::CarData {
+    let ui = install.join("content").join("cars").join(car).join("ui");
     let Ok(raw) = std::fs::read_to_string(ui.join("ui_car.json")) else {
-        return crate::track::CarData {
-            shape,
-            ..Default::default()
-        };
+        return crate::track::CarData::default();
     };
     let cleaned: String = raw
         .chars()
@@ -234,10 +242,7 @@ pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
         .collect();
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else {
         debug!("{} is not readable as JSON", ui.display());
-        return crate::track::CarData {
-            shape,
-            ..Default::default()
-        };
+        return crate::track::CarData::default();
     };
 
     let text = |key: &str| {
@@ -311,7 +316,7 @@ pub fn read_car(install: &Path, car: &str) -> crate::track::CarData {
         torque: curve("torqueCurve"),
         power: curve("powerCurve"),
         badge: Some(ui.join("badge.png")).filter(|path| path.is_file()),
-        shape,
+        shape: None,
     }
 }
 
