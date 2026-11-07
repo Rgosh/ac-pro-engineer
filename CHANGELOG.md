@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.6] - 2026-11-07
+
+**The core behind Pro Launcher.** Most of what is new in this release is
+the launcher's — the core is what it reads the game with, so it grew every
+piece of Assetto Corsa a launcher has to understand. The terminal and the
+in-game panel are unchanged in what they do, and the frame layout is
+untouched: `OVERLAY_VERSION` stays at 6 and no bridge has to be rebuilt.
+
+### Added
+
+- **The game's settings, read and written without starting it**: video and
+  its presets, the driving aids, sound, force feedback and the wheel's values,
+  the cockpit camera and the in-game display, whole sets kept and shared as
+  one line, and control profiles — each written back in the game's own
+  format, with what it does not know left alone.
+- **Why a session never began**, read from the game's own log, and what can
+  be checked before it starts: a car or circuit not all there, the game on
+  NTFS under Linux, Documents in OneDrive.
+- **The public server list**, asked the way the game asks; a server that
+  requires Custom Shaders Patch told apart; each server's sessions, lengths
+  and race rules; for servers on Content Manager's wrapper, the aids they
+  force, their weather, their description and the links to what they run.
+- **Servers on the local network**, found the way the game finds them.
+- **Mods**: switched off without deleting and back on, an install undone,
+  7z and rar read through the system's tools, archives inside archives and
+  folders opened at any level, and every name found whatever its case.
+- **Content in packs** — Kunos's own, its originals from before the `ks_`
+  prefix among them, and each mod team's — opened into folders by brand.
+- **Every car and circuit checked** for what the game trips over, with their
+  sizes and what is switched off; Steam's folders for DLC not owned are told
+  apart from broken mods.
+- **Championships**: rounds, points and the table, from the game's own
+  `race_out.json`.
+- **Custom Shaders Patch**: its module switches, and every setting as the
+  patch describes it.
+- **Setups**: a car's setup sheet read, setups written in the units they were
+  read in, and the engineer's pressure advice turned into setup changes.
+- **The screenshots and replays** the game leaves in Documents; a car's card
+  read without its model.
+
+### Fixed
+
+- **The lobby answers again**: it lists servers only for the game's own
+  client and a signed-in Steam account, and was being asked otherwise — an
+  empty list for a lobby with thousands on it.
+
 ## [v0.5.5] - 2026-10-29
 
 **A program left open for an evening stays as good as it was when it
