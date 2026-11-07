@@ -56,6 +56,17 @@ untouched: `OVERLAY_VERSION` stays at 6 and no bridge has to be rebuilt.
   static database's answer (`World Record`, dated `Global DB`) into
   records.json as a personal best; the records page then showed a lap at
   Monza in a car never driven. Such entries are no longer read as laps.
+- **"Custom Shaders Patch stopped the session" when it had not.** Any line
+  with "could not" counted as an error and any "csp" in it as the patch, so
+  `WARNING: TaskBarIcon :: COULD NOT FIND TEXTURES FOR CSPRSTATS_ICON` — an
+  app without an icon, written in sessions that go well — was the reason.
+  Warnings are not errors, the patch is named only as a word of its own, and
+  a log that ends in `CLEAN EXIT` is no reason at all.
+- **A log from the session before, read as this one's reason.** A start that
+  dies before the game rewrites its log left the last session's in place.
+  `game_log::why_since` says so instead of quoting it, and
+  `steam::signed_in_since` reads Steam's connection log for whether the
+  client has signed in, for whoever is about to start the game.
 
 ## [v0.5.5] - 2026-10-29
 
