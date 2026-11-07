@@ -77,6 +77,78 @@ pub struct Details {
     /// counts collisions.
     #[serde(default)]
     pub max_contacts_per_km: Option<i32>,
+    /// Where the server's owner says its cars and circuit can be had — see
+    /// [`Details::offered`]. Kept as it came: the wrapper's versions write
+    /// it in more than one shape.
+    #[serde(default)]
+    pub content: Option<serde_json::Value>,
+}
+
+/// Something a server offers to download: a car or its circuit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offered {
+    /// `car` or `track`.
+    pub kind: &'static str,
+    /// The folder it installs as.
+    pub id: String,
+    /// Where to get it, absolute.
+    pub url: String,
+    pub version: Option<String>,
+}
+
+impl Details {
+    /// What the server offers to download, with each link made absolute
+    /// against the server's details port — the wrapper can serve a file
+    /// itself and then writes only its path.
+    ///
+    /// **Read leniently**: the wrapper writes cars as an object by folder
+    /// name, the circuit as one entry, and an entry as an object with a
+    /// `url` or as the link alone. An entry with no link offers nothing.
+    pub fn offered(&self, ip: &str, port: u16) -> Vec<Offered> {
+        let Some(content) = self.content.as_ref() else {
+            return Vec::new();
+        };
+        let absolute = |url: &str| -> Option<String> {
+            let url = url.trim();
+            if url.starts_with("https://") || url.starts_with("http://") {
+                Some(url.to_string())
+            } else if url.starts_with('/') {
+                Some(format!("http://{ip}:{port}{url}"))
+            } else {
+                None
+            }
+        };
+        let entry = |kind: &'static str, id: &str, value: &serde_json::Value| -> Option<Offered> {
+            let (url, version) = match value {
+                serde_json::Value::String(url) => (url.as_str(), None),
+                serde_json::Value::Object(fields) => (
+                    fields.get("url").and_then(|u| u.as_str())?,
+                    fields
+                        .get("version")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                ),
+                _ => return None,
+            };
+            Some(Offered {
+                kind,
+                id: id.to_string(),
+                url: absolute(url)?,
+                version,
+            })
+        };
+        let mut out = Vec::new();
+        if let Some(cars) = content.get("cars").and_then(|c| c.as_object()) {
+            for (id, value) in cars {
+                out.extend(entry("car", id, value));
+            }
+        }
+        if let Some(track) = content.get("track") {
+            let id = track.get("id").and_then(|i| i.as_str()).unwrap_or_default();
+            out.extend(entry("track", id, track));
+        }
+        out
+    }
 }
 
 /// How a server treats one aid.
@@ -229,6 +301,47 @@ mod tests {
             ]
         );
         assert_eq!(rules.len(), 9);
+    }
+
+    /// **Every link a server offers, made absolute**: a car as an object
+    /// with a link, a car as the link alone, a file the wrapper serves
+    /// itself by its path, and an entry with no link left out.
+    #[test]
+    fn what_a_server_offers_to_download_is_read() {
+        let Some(details) = parse(
+            r#"{"content": {
+                "cars": {
+                    "rss_gt_m4": {"url": "https://example.com/m4.7z", "version": "1.2"},
+                    "vrc_lmp": "https://example.com/lmp.zip",
+                    "ks_ferrari_488_gt3": {"version": "1.0"}
+                },
+                "track": {"id": "imola_2020", "url": "/content/track"}
+            }}"#,
+        ) else {
+            unreachable!("the shape must read");
+        };
+        let offered = details.offered("203.0.113.4", 9013);
+        let ids: Vec<(&str, &str, &str)> = offered
+            .iter()
+            .map(|o| (o.kind, o.id.as_str(), o.url.as_str()))
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                ("car", "rss_gt_m4", "https://example.com/m4.7z"),
+                ("car", "vrc_lmp", "https://example.com/lmp.zip"),
+                (
+                    "track",
+                    "imola_2020",
+                    "http://203.0.113.4:9013/content/track"
+                ),
+            ]
+        );
+        assert_eq!(
+            offered.first().and_then(|o| o.version.as_deref()),
+            Some("1.2")
+        );
+        assert!(Details::default().offered("x", 1).is_empty());
     }
 
     /// **A field left out is the game's own default**, never a refusal: an
