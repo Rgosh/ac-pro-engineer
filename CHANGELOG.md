@@ -47,6 +47,15 @@ untouched: `OVERLAY_VERSION` stays at 6 and no bridge has to be rebuilt.
 - **The lobby answers again**: it lists servers only for the game's own
   client and a signed-in Steam account, and was being asked otherwise — an
   empty list for a lobby with thousands on it.
+- **Black Cat County was recognised as a car.** It ships a `skins/` folder
+  of billboards and its models at the top, which is also what a car without
+  its ui looks like, and that was asked before the circuit's own signs. A
+  circuit dropped on the launcher went into the cars. Found by the test that
+  holds the recogniser to a real install; the circuit's signs come first now.
+- **A reference time read back as your own lap.** An older build saved the
+  static database's answer (`World Record`, dated `Global DB`) into
+  records.json as a personal best; the records page then showed a lap at
+  Monza in a car never driven. Such entries are no longer read as laps.
 
 ## [v0.5.5] - 2026-10-29
 
