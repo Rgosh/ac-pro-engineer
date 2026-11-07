@@ -17,10 +17,15 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-/// The address the places are asked for at. `-1` is "no account": the
-/// server answers for everybody rather than holding a place for one.
-pub fn url(ip: &str, http_port: u16) -> String {
-    format!("http://{ip}:{http_port}/JSON%7C-1")
+/// The address the places are asked for at, as the game's own launcher and
+/// Content Manager ask: with the Steam account that will join, so a place the
+/// server keeps for that account is marked (`IsRequestedGUID`). `-1` asks for
+/// nobody in particular.
+pub fn url(ip: &str, http_port: u16, steam_id: Option<&str>) -> String {
+    format!(
+        "http://{ip}:{http_port}/JSON%7C{}",
+        steam_id.unwrap_or("-1")
+    )
 }
 
 /// One place in the entry list.
@@ -32,6 +37,9 @@ pub struct Place {
     pub skin: String,
     #[serde(default, rename = "IsConnected")]
     pub taken: bool,
+    /// Kept by the server for the account that asked.
+    #[serde(default, rename = "IsRequestedGUID")]
+    pub yours: bool,
 }
 
 #[derive(Deserialize)]
@@ -59,7 +67,7 @@ pub fn rooms(places: &[Place]) -> BTreeMap<String, Room> {
     for place in places {
         let room = by_car.entry(place.model.to_ascii_lowercase()).or_default();
         room.places += 1;
-        if !place.taken {
+        if !place.taken || place.yours {
             room.free += 1;
         }
     }
@@ -67,12 +75,17 @@ pub fn rooms(places: &[Place]) -> BTreeMap<String, Room> {
 }
 
 /// Ask the server for its places.
-pub fn fetch(ip: &str, http_port: u16, timeout: Duration) -> Result<Vec<Place>, String> {
+pub fn fetch(
+    ip: &str,
+    http_port: u16,
+    steam_id: Option<&str>,
+    timeout: Duration,
+) -> Result<Vec<Place>, String> {
     let text = reqwest::blocking::Client::builder()
         .timeout(timeout)
         .build()
         .map_err(|why| format!("could not make a client: {why}"))?
-        .get(url(ip, http_port))
+        .get(url(ip, http_port, steam_id))
         .send()
         .and_then(|answer| answer.error_for_status())
         .and_then(|answer| answer.text())
@@ -100,6 +113,10 @@ mod tests {
         assert_eq!(rooms["ks_audi_r8_plus"], Room { free: 1, places: 2 });
         // Matched without regard to case, as the game does.
         assert_eq!(rooms["bmw_1m_s3"], Room { free: 0, places: 2 });
+        // A place kept for the account that asked is free to it.
+        let kept = r#"{"Cars":[{"Model":"x","IsConnected":false,"IsRequestedGUID":true},
+                                {"Model":"x","IsConnected":true}]}"#;
+        assert_eq!(super::rooms(&parse(kept).unwrap())["x"].free, 1);
     }
 
     #[test]
@@ -110,6 +127,10 @@ mod tests {
 
     #[test]
     fn the_address_asks_for_everybody() {
-        assert_eq!(url("1.2.3.4", 8081), "http://1.2.3.4:8081/JSON%7C-1");
+        assert_eq!(url("1.2.3.4", 8081, None), "http://1.2.3.4:8081/JSON%7C-1");
+        assert_eq!(
+            url("1.2.3.4", 8081, Some("76561198000000000")),
+            "http://1.2.3.4:8081/JSON%7C76561198000000000"
+        );
     }
 }
