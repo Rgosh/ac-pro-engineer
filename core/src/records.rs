@@ -18,6 +18,20 @@ pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// Whether a stored record is a lap somebody drove.
+///
+/// **A reference is not a lap.** `get_record` answers with the static
+/// database's time (`World Record`, dated `Global DB`) or an estimate (`AI
+/// Calculation`) when nobody has driven there, and an older build saved such
+/// an answer into records.json as if it were the driver's own best. Read back,
+/// it showed on the records page as a lap at Monza in a car never driven. The
+/// references stay where they belong, in the static database.
+fn was_driven(rec: &TrackRecord) -> bool {
+    rec.date != "Global DB"
+        && rec.driver_name != "World Record"
+        && rec.driver_name != "AI Calculation"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackRecord {
     pub car_id: String,
@@ -165,7 +179,11 @@ impl RecordManager {
 
         let mut map = HashMap::new();
         for rec in list {
-            if rec.time_ms > 0 && !rec.car_id.is_empty() && !rec.track_name.is_empty() {
+            if rec.time_ms > 0
+                && !rec.car_id.is_empty()
+                && !rec.track_name.is_empty()
+                && was_driven(&rec)
+            {
                 let key = format!("{}|{}|{}", rec.car_id, rec.track_name, rec.track_config);
                 map.insert(key, rec);
             }
@@ -434,6 +452,23 @@ mod tests {
             .next()
             .expect("a record was stored")
             .time_ms
+    }
+
+    /// A reference saved by an older build is not read back as a lap.
+    #[test]
+    fn a_saved_world_record_is_not_a_lap_of_ours() {
+        let m = manager("records_reference");
+        let mut reference = record(105_000);
+        reference.driver_name = "World Record".to_string();
+        reference.date = "Global DB".to_string();
+        let mut ours = record(176_852);
+        ours.track_name = "spa".to_string();
+        let text = serde_json::to_string(&vec![reference, ours]).expect("json");
+        std::fs::write(&m.db_path, text).expect("write");
+
+        let read = RecordManager::load_from_path(&m.db_path).expect("read");
+        assert_eq!(read.len(), 1);
+        assert!(read.values().all(|r| r.track_name == "spa"));
     }
 
     #[test]
