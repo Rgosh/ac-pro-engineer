@@ -9,6 +9,7 @@
 pub mod adding;
 pub mod assists;
 pub mod car_data;
+pub mod championship;
 pub mod content;
 pub mod csp;
 pub mod csp_config;
