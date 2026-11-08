@@ -1,0 +1,16 @@
+# The Linux builds of the window and the launcher, against an old glibc.
+#
+# A binary linked on a rolling distro asks for that distro's glibc: built on
+# Arch with 2.44 it refused to start on 2.43 ("GLIBC_2.44 not found"), which
+# is most of the Linux installs in the world. Ubuntu 22.04 has 2.35, so what
+# is built here runs on it and on everything newer. The Rust is pinned to the
+# one the gates run, so the container builds what was tested.
+FROM docker.io/library/ubuntu:22.04
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl build-essential pkg-config git \
+ && rm -rf /var/lib/apt/lists/*
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+ARG RUST=1.98.0
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $RUST \
+ && rustc --version
