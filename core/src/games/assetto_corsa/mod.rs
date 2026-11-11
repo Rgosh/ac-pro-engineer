@@ -22,6 +22,7 @@ pub mod levels;
 pub mod lobby;
 pub mod local_servers;
 pub mod media;
+pub mod mod_config;
 pub mod packs;
 pub mod paths;
 pub mod preflight;
