@@ -57,6 +57,10 @@ pub struct Setting {
     pub default: String,
     /// The driver's, when they changed it.
     pub mine: Option<String>,
+    /// The folder the patch says the value is chosen from — "all ZIPs and
+    /// non-empty dirs from “extension/weather”" — relative to the game
+    /// folder. See [`options`].
+    pub from: Option<String>,
 }
 
 impl Setting {
@@ -163,6 +167,7 @@ pub fn sections(defaults: &str, mine: &str) -> Vec<Section> {
             continue;
         }
         let (label, about, kind) = described(key, value, comment);
+        let from = folder_named(comment);
         let theirs = super::ini::value(mine, &section.name, key);
         section.settings.push(Setting {
             section: section.name.clone(),
@@ -172,6 +177,7 @@ pub fn sections(defaults: &str, mine: &str) -> Vec<Section> {
             kind,
             default: value.to_string(),
             mine: theirs,
+            from,
         });
     }
     out.retain(|s| !s.settings.is_empty() && !s.name.starts_with('_'));
@@ -226,6 +232,77 @@ fn described(key: &str, value: &str, comment: &str) -> (String, String, Kind) {
         (None, _) => Kind::Text,
     };
     (label, about, kind)
+}
+
+/// The folder a comment says a value is chosen from: the first quoted text
+/// in it — straight or typographic quotes — that reads as a path inside the
+/// game folder. `None` for a comment that names none.
+fn folder_named(comment: &str) -> Option<String> {
+    let mut inside: Option<String> = None;
+    for c in comment.chars() {
+        match (c, &mut inside) {
+            ('"' | '\u{201c}' | '\u{201d}', None) => inside = Some(String::new()),
+            ('"' | '\u{201c}' | '\u{201d}', Some(said)) => {
+                let said = said.trim().replace('\\', "/");
+                let said = said.trim_matches('/');
+                let a_path = said.contains('/')
+                    && !said.contains("..")
+                    && !said.contains(':')
+                    && said
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'));
+                if a_path {
+                    return Some(said.to_string());
+                }
+                inside = None;
+            }
+            (c, Some(said)) => said.push(c),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// What a setting may be set to, when the patch says it is chosen from a
+/// folder: the folders in it that hold something, and its archives and
+/// scripts by name — which is how a weather style or a controller installed
+/// yesterday is in the list today. Empty when the setting names no folder
+/// or the folder is not there; the value is then typed.
+///
+/// **This is how Pure, Sol or any other weather script is chosen**: the
+/// patch's `weather_fx.ini` says its style comes from `extension/weather`,
+/// and whatever is installed there is offered.
+pub fn options(root: &Path, setting: &Setting) -> Vec<String> {
+    let Some(from) = &setting.from else {
+        return Vec::new();
+    };
+    let folder = from
+        .split('/')
+        .fold(root.to_path_buf(), |at, part| at.join(part));
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.starts_with('_') {
+                return None;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                let holds =
+                    std::fs::read_dir(&path).is_ok_and(|mut inside| inside.next().is_some());
+                return holds.then_some(name);
+            }
+            let (stem, ext) = name.rsplit_once('.')?;
+            matches!(ext.to_ascii_lowercase().as_str(), "zip" | "lua" | "ini")
+                .then(|| stem.to_string())
+        })
+        .collect();
+    found.sort_by_key(|name| name.to_lowercase());
+    found.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    found
 }
 
 /// `RAIN_FX` and `rain_fx` as "Rain fx".
@@ -371,6 +448,37 @@ X = 1
         assert_eq!(switch_value("true", false), "false");
         assert_eq!(switch_value("1", true), "1");
         assert!(is_on("TRUE") && !is_on("0"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **A weather style is chosen from what is installed**: the patch says
+    /// the folder, and what is in it is what is offered — Pure the day it
+    /// is unpacked there, with nothing here knowing its name.
+    #[test]
+    fn a_setting_chosen_from_a_folder_offers_what_is_in_it() {
+        let root = std::env::temp_dir().join(format!("acpe-csp-options-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let weather = root.join("extension").join("weather");
+        for (folder, file) in [("pure", "weather.lua"), ("sol", "weather.lua")] {
+            std::fs::create_dir_all(weather.join(folder)).expect("a fixture");
+            std::fs::write(weather.join(folder).join(file), "--").expect("a fixture");
+        }
+        std::fs::create_dir_all(weather.join("empty")).expect("a fixture");
+        std::fs::write(weather.join("default.zip"), "z").expect("a fixture");
+        let found = sections(
+            "[BASIC]\nENABLED=1 ; Active\nIMPLEMENTATION=default ; Weather style; hidden with \
+             ENABLED=0; all ZIPs and non-empty dirs from \u{201c}extension/weather\u{201d}\n\
+             NAME=x ; A name (said \"like this\")\n",
+            "",
+        );
+        let style = &found[0].settings[1];
+        assert_eq!(style.from.as_deref(), Some("extension/weather"));
+        assert_eq!(options(&root, style), vec!["default", "pure", "sol"]);
+        // A quotation that is not a path names no folder, and offers nothing.
+        assert_eq!(found[0].settings[2].from, None);
+        assert!(options(&root, &found[0].settings[2]).is_empty());
+        // Nor does one that tries to leave the game folder.
+        assert_eq!(folder_named("from \"../../etc\""), None);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
