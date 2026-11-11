@@ -13,6 +13,7 @@ pub mod backup;
 pub mod car_data;
 pub mod championship;
 pub mod content;
+pub mod content_manager;
 pub mod csp;
 pub mod csp_config;
 pub mod csp_presets;
