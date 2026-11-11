@@ -40,6 +40,42 @@ pub struct Place {
     /// Kept by the server for the account that asked.
     #[serde(default, rename = "IsRequestedGUID")]
     pub yours: bool,
+    /// Who is in it — `null` for an empty place, and for a place whose
+    /// driver has left, which keeps the name and is no longer connected.
+    #[serde(default, rename = "DriverName")]
+    pub driver: Option<String>,
+    #[serde(default, rename = "DriverTeam")]
+    pub team: Option<String>,
+    #[serde(default, rename = "DriverNation")]
+    pub nation: Option<String>,
+}
+
+/// Somebody on a server right now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Driver {
+    pub name: String,
+    /// The car they are in, by folder.
+    pub car: String,
+}
+
+/// Who is on a server: the places that are taken and say by whom, by name.
+///
+/// **Only the connected ones.** A place keeps the name of whoever sat in it
+/// last; listing those would show a friend "online" who left an hour ago.
+pub fn drivers(places: &[Place]) -> Vec<Driver> {
+    let mut found: Vec<Driver> = places
+        .iter()
+        .filter(|place| place.taken)
+        .filter_map(|place| {
+            let name = place.driver.as_deref()?.trim();
+            (!name.is_empty()).then(|| Driver {
+                name: name.to_string(),
+                car: place.model.clone(),
+            })
+        })
+        .collect();
+    found.sort_by_key(|driver| driver.name.to_lowercase());
+    found
 }
 
 #[derive(Deserialize)]
@@ -117,6 +153,22 @@ mod tests {
         let kept = r#"{"Cars":[{"Model":"x","IsConnected":false,"IsRequestedGUID":true},
                                 {"Model":"x","IsConnected":true}]}"#;
         assert_eq!(super::rooms(&parse(kept).unwrap())["x"].free, 1);
+    }
+
+    /// **Who is there now, not who was**: a place that names a driver and is
+    /// not connected is somebody who left.
+    #[test]
+    fn the_drivers_on_a_server_are_the_connected_ones_by_name() {
+        let mut places = parse(ANSWER).unwrap();
+        places.push(Place {
+            model: "bmw_1m_s3".into(),
+            driver: Some("Left an hour ago".into()),
+            taken: false,
+            ..Place::default()
+        });
+        let names: Vec<String> = drivers(&places).into_iter().map(|d| d.name).collect();
+        assert_eq!(names, vec!["A", "B", "Somebody"]);
+        assert_eq!(drivers(&places)[2].car, "ks_audi_r8_plus");
     }
 
     #[test]
