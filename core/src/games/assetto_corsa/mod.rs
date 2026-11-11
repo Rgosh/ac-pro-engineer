@@ -27,6 +27,7 @@ pub mod packs;
 pub mod paths;
 pub mod preflight;
 pub mod reading;
+pub mod real_weather;
 pub mod results;
 pub mod server_details;
 pub mod server_slots;
