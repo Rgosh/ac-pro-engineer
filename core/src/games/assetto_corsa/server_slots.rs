@@ -129,6 +129,76 @@ pub fn fetch(
     parse(&text).ok_or_else(|| "the server's answer was not its list of places".to_string())
 }
 
+/// Where a driver was found: a server's place in the list asked, and who
+/// matched on it.
+pub type Matches = Vec<(usize, Vec<Driver>)>;
+
+/// Whether a driver's name matches what was typed: a part of it, without
+/// regard to case or to the clan tags people put round their names.
+pub fn matches(name: &str, typed: &str) -> bool {
+    let typed = typed.trim().to_lowercase();
+    !typed.is_empty() && name.to_lowercase().contains(&typed)
+}
+
+/// Look for a driver on many servers at once: each server's list of places
+/// asked on one of `workers` threads, the answers matched by name. Returns,
+/// for every server where somebody matches, its place in `servers` and who
+/// matched. Blocking; servers that do not answer within `timeout` are
+/// passed over.
+///
+/// **Nobody publishes who is where.** The lobby lists how many, not who;
+/// each server says who is on it when asked. Asking the fullest few hundred
+/// at a dozen at a time takes seconds, and is the only way to answer
+/// "where is my friend racing tonight".
+pub fn find_driver(
+    servers: &[(String, u16)],
+    typed: &str,
+    timeout: Duration,
+    workers: usize,
+) -> Matches {
+    use std::sync::{Arc, Mutex};
+    let queue: Arc<Mutex<Vec<(usize, String, u16)>>> = Arc::new(Mutex::new(
+        servers
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(at, (ip, http))| (at, ip.clone(), *http))
+            .collect(),
+    ));
+    let found: Arc<Mutex<Matches>> = Arc::new(Mutex::new(Vec::new()));
+    let threads: Vec<_> = (0..workers.max(1))
+        .map(|_| {
+            let queue = queue.clone();
+            let found = found.clone();
+            let typed = typed.to_string();
+            std::thread::spawn(move || {
+                loop {
+                    let next = queue.lock().ok().and_then(|mut q| q.pop());
+                    let Some((at, ip, http)) = next else { break };
+                    let Ok(places) = fetch(&ip, http, None, timeout) else {
+                        continue;
+                    };
+                    let who: Vec<Driver> = drivers(&places)
+                        .into_iter()
+                        .filter(|d| matches(&d.name, &typed))
+                        .collect();
+                    if !who.is_empty()
+                        && let Ok(mut found) = found.lock()
+                    {
+                        found.push((at, who));
+                    }
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        let _ = thread.join();
+    }
+    let mut out = found.lock().map(|f| f.clone()).unwrap_or_default();
+    out.sort_by_key(|(at, _)| *at);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -169,6 +239,24 @@ mod tests {
         let names: Vec<String> = drivers(&places).into_iter().map(|d| d.name).collect();
         assert_eq!(names, vec!["A", "B", "Somebody"]);
         assert_eq!(drivers(&places)[2].car, "ks_audi_r8_plus");
+    }
+
+    #[test]
+    fn a_name_matches_a_part_of_it_whatever_its_case() {
+        assert!(matches("[RG] Rgosh_Racing", "rgosh"));
+        assert!(matches("K. Tanaka", " tanaka "));
+        assert!(!matches("K. Tanaka", ""));
+        assert!(!matches("K. Tanaka", "moreau"));
+    }
+
+    /// **Servers that do not answer are passed over**, quickly: nothing
+    /// listens on these ports, and the search still comes back.
+    #[test]
+    fn a_search_over_silent_servers_finds_nobody_and_returns() {
+        let servers = vec![("127.0.0.1".to_string(), 1), ("127.0.0.1".to_string(), 2)];
+        let started = std::time::Instant::now();
+        assert!(find_driver(&servers, "anybody", Duration::from_millis(300), 4).is_empty());
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
