@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Race invitations read** — `acmanager://` links and acstuff join pages,
+  as chats and forums mangle them (`join_link`).
+- **Who is on a server**, by name, from its own list of places
+  (`server_slots::drivers`).
+- **Custom Shaders Patch's weather**: its thirty-three types, rain and
+  snow included; a schedule of types the patch walks through a session;
+  the weather controllers installed, Pure's included (`weather_fx`).
+- **The weather at a circuit, now**, from its geotags and Open-Meteo —
+  rain as rain through the patch (`real_weather`).
+- **Every mod's own settings** — weather scripts, controllers, the patch's
+  per-mod folders, Lua and Python apps, filters — read with their authors'
+  labels and ranges, changed in place with the original kept (`mod_config`).
+- **A patch setting chosen from a folder** offers what is installed there
+  — Pure and Sol as weather styles (`csp_config::options`).
+- **Every session's result kept** from `race_out.json`, read as a
+  classification (`results`).
+- **Python apps switched on and off** in the game's own file, Lua apps
+  listed (`apps`).
+- **The game's settings and setups backed up** to one zip and restored,
+  the restore itself undoable (`backup`).
+
 ## [v0.5.6] - 2026-11-07
 
 **The core behind Pro Launcher.** Most of what is new in this release is
