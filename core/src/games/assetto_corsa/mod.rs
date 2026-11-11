@@ -5,7 +5,6 @@
 //! directly; on Linux the game is a Windows process under Proton, so
 //! `wineshm.exe` runs inside the prefix and mirrors them out to `/dev/shm`.
 //! Either way what arrives here is the same bytes in the same layout.
-pub mod weather_fx;
 
 pub mod adding;
 pub mod apps;
@@ -40,6 +39,7 @@ pub mod shm;
 pub mod structs;
 pub mod tracks;
 pub mod video;
+pub mod weather_fx;
 
 use crate::games::{Capabilities, GameId, Reading, Source};
 
