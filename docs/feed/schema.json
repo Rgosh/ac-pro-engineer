@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rgosh/ac-pro-engineer/blob/main/docs/feed/schema.json",
+  "title": "Pro Engineer frame feed",
+  "description": "One UDP datagram: the computed frame, as broadcast::udp sends it. Ask for it with broadcast::subscribe; see docs/feed/README.md.",
+  "type": "object",
+  "required": [
+    "magic",
+    "schema",
+    "app_version",
+    "game",
+    "driver",
+    "sequence",
+    "speed_kmh",
+    "rpm",
+    "max_rpm",
+    "gear",
+    "fuel_litres",
+    "fuel_laps_remaining",
+    "fuel_per_lap",
+    "delta_seconds",
+    "position",
+    "lap_count",
+    "last_lap_ms",
+    "best_lap_ms",
+    "current_lap_ms",
+    "stint_laps",
+    "air_temp_c",
+    "road_temp_c",
+    "surface_grip",
+    "flags",
+    "corners",
+    "advice",
+    "debrief"
+  ],
+  "properties": {
+    "magic": {
+      "const": "acpe",
+      "description": "Always \"acpe\": tells these datagrams from anybody else's on a shared port."
+    },
+    "schema": {
+      "const": 1,
+      "description": "Changes when a key changes meaning or disappears. New keys may appear without it changing: ignore what you do not know."
+    },
+    "app_version": {
+      "type": "string",
+      "description": "The sending program's release."
+    },
+    "game": {
+      "type": "string",
+      "description": "Which simulator: \"assetto_corsa\" or \"assetto_corsa_competizione\"."
+    },
+    "driver": {
+      "type": "string",
+      "description": "The name the sender travels under; empty when not set."
+    },
+    "sequence": {
+      "type": "integer",
+      "description": "Grows with every frame. A datagram with a smaller one arrived late: drop it."
+    },
+    "speed_kmh": {
+      "type": "number",
+      "description": "Speed, km/h."
+    },
+    "rpm": {
+      "type": "integer",
+      "description": "Engine speed."
+    },
+    "max_rpm": {
+      "type": "integer",
+      "description": "The engine's limit, for a rev bar."
+    },
+    "gear": {
+      "type": "integer",
+      "description": "-1 reverse, 0 neutral, 1 and up forward."
+    },
+    "fuel_litres": {
+      "type": "number",
+      "description": "Fuel in the tank, litres."
+    },
+    "fuel_laps_remaining": {
+      "type": "number",
+      "description": "Laps the fuel lasts at the measured use."
+    },
+    "fuel_per_lap": {
+      "type": "number",
+      "description": "Litres a lap, measured."
+    },
+    "delta_seconds": {
+      "type": "number",
+      "description": "Against the best lap, seconds; negative is faster."
+    },
+    "position": {
+      "type": "integer",
+      "description": "Race position; 0 when the session has none."
+    },
+    "lap_count": {
+      "type": "integer",
+      "description": "Laps completed."
+    },
+    "last_lap_ms": {
+      "type": "integer",
+      "description": "Last lap, milliseconds; 0 before one."
+    },
+    "best_lap_ms": {
+      "type": "integer",
+      "description": "Best lap, milliseconds; 0 before one."
+    },
+    "current_lap_ms": {
+      "type": "integer",
+      "description": "Time into the current lap, milliseconds."
+    },
+    "stint_laps": {
+      "type": "integer",
+      "description": "Laps since the last pit stop."
+    },
+    "air_temp_c": {
+      "type": "number",
+      "description": "Air temperature, °C."
+    },
+    "road_temp_c": {
+      "type": "number",
+      "description": "Track temperature, °C."
+    },
+    "surface_grip": {
+      "type": "number",
+      "description": "Track grip as the game reports it, 0 to 1."
+    },
+    "flags": {
+      "type": "integer",
+      "description": "Bits: 1 pit limiter, 2 connected (live telemetry rather than held values), 16 fuel warning, 256 the sender runs in Russian, 512 somebody else's numbers relayed. The others are the sender's own panel choices."
+    },
+    "corners": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/corner"
+      },
+      "description": "Front-left, front-right, rear-left, rear-right."
+    },
+    "advice": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/advice"
+      },
+      "description": "The engineer's advice now, in the order to act on it: most serious first, and a pressure change before the temperatures it moves."
+    },
+    "debrief": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/lap"
+      },
+      "description": "The last laps, newest first, and what the engineer said about each."
+    }
+  },
+  "$defs": {
+    "corner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pressure_psi",
+        "temp_c",
+        "temp_inner_c",
+        "temp_outer_c",
+        "wear_percent",
+        "brake_temp_c",
+        "laps_remaining"
+      ],
+      "properties": {
+        "pressure_psi": {
+          "type": "number",
+          "description": "Hot pressure, psi."
+        },
+        "temp_c": {
+          "type": "number",
+          "description": "Tyre temperature, °C: the core reading, middle of the tread where the game publishes one."
+        },
+        "temp_inner_c": {
+          "type": "number",
+          "description": "Inner edge of the tread, °C. Zero where the game does not publish it."
+        },
+        "temp_outer_c": {
+          "type": "number",
+          "description": "Outer edge of the tread, °C. Zero where the game does not publish it."
+        },
+        "wear_percent": {
+          "type": "number",
+          "description": "Tyre life as the game reports it, percent; 100 is new."
+        },
+        "brake_temp_c": {
+          "type": "number",
+          "description": "Brake disc temperature, °C."
+        },
+        "laps_remaining": {
+          "type": "number",
+          "description": "Laps the core expects this tyre to last at the current rate of wear."
+        }
+      }
+    },
+    "advice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "text"
+      ],
+      "properties": {
+        "severity": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "description": "0 info, 1 warning, 2 critical."
+        },
+        "text": {
+          "type": "string",
+          "description": "The engineer's sentence, already in the driver's language and units."
+        }
+      }
+    },
+    "lap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lap_number",
+        "lap_time_ms",
+        "sectors_ms",
+        "lines"
+      ],
+      "properties": {
+        "lap_number": {
+          "type": "integer",
+          "description": "Which lap of the session."
+        },
+        "lap_time_ms": {
+          "type": "integer",
+          "description": "Its time, milliseconds."
+        },
+        "sectors_ms": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Sector times, milliseconds."
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/advice"
+          },
+          "description": "What the engineer said about the lap."
+        }
+      }
+    }
+  }
+}

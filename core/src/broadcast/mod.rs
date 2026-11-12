@@ -44,6 +44,7 @@ pub mod discovery;
 pub mod receiver;
 pub mod session;
 pub mod shm;
+pub mod subscribe;
 pub mod udp;
 
 use crate::overlay::frame::OverlayFrame;
@@ -91,6 +92,8 @@ struct Entry {
 #[derive(Default)]
 pub struct Broadcaster {
     entries: Vec<Entry>,
+    /// Programs that asked for the feed themselves — see [`subscribe`].
+    subscriptions: Option<subscribe::Subscriptions>,
 }
 
 impl Broadcaster {
@@ -136,8 +139,42 @@ impl Broadcaster {
             .collect()
     }
 
+    /// Whether a frame has nowhere to go. Listening for subscribers counts
+    /// as somewhere: a frame has to be offered for one to be answered.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.subscriptions.is_none()
+    }
+
+    /// Let programs subscribe to the feed themselves, on [`subscribe::PORT`]
+    /// — this machine's always, the local network's when `allow_lan`.
+    ///
+    /// A port already taken — a second copy of this program — is logged and
+    /// leaves everything else as it was: the first copy answers.
+    pub fn accept_subscriptions(
+        &mut self,
+        port: u16,
+        allow_lan: bool,
+        game: &str,
+        driver: &str,
+    ) -> std::io::Result<std::net::SocketAddr> {
+        self.stop_subscriptions();
+        let subscriptions = subscribe::Subscriptions::open(port, allow_lan, game, driver)?;
+        let at = subscriptions.listening_on()?;
+        info!(%at, allow_lan, "Listening for programs that want the feed");
+        self.subscriptions = Some(subscriptions);
+        Ok(at)
+    }
+
+    /// Stop listening, and stop sending to everyone who subscribed.
+    pub fn stop_subscriptions(&mut self) {
+        if self.subscriptions.take().is_some() {
+            self.retain_sinks(|name| !name.starts_with(subscribe::SINK_PREFIX));
+        }
+    }
+
+    /// How many programs are subscribed, when listening at all.
+    pub fn subscribers(&self) -> Option<usize> {
+        self.subscriptions.as_ref().map(|s| s.count())
     }
 
     /// Send a frame to every sink that is due one.
@@ -147,6 +184,24 @@ impl Broadcaster {
     /// the sake of every other sink.
     pub fn publish(&mut self, frame: &OverlayFrame) {
         let now = Instant::now();
+
+        if let Some(subscriptions) = self.subscriptions.as_mut() {
+            let live: Vec<String> = self
+                .entries
+                .iter()
+                .map(|entry| entry.sink.name().to_string())
+                .collect();
+            for change in subscriptions.poll(now, |name| live.iter().any(|n| n == name)) {
+                match change {
+                    subscribe::Change::Add(sink) => {
+                        let name = sink.name().to_string();
+                        self.entries.retain(|entry| entry.sink.name() != name);
+                        self.add(Box::new(sink));
+                    }
+                    subscribe::Change::Drop(name) => self.retain_sinks(|n| n != name),
+                }
+            }
+        }
 
         self.entries.retain_mut(|entry| {
             let interval = entry.sink.min_interval();

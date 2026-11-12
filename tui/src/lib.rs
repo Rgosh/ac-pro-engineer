@@ -527,6 +527,19 @@ impl AppState {
                     ),
                 }
             }
+            // Anything on this machine may ask for the feed itself — see
+            // `broadcast::subscribe`. A port already taken is a second copy
+            // of this program, and the first one answers.
+            if config.overlay.subscriptions
+                && let Err(error) = broadcaster.accept_subscriptions(
+                    ac_core::broadcast::subscribe::PORT,
+                    config.overlay.subscriptions_from_lan,
+                    game.id,
+                    &config.overlay.broadcast_name,
+                )
+            {
+                warn!(error = ?error, "Could not listen for feed subscriptions");
+            }
             broadcaster
         };
 

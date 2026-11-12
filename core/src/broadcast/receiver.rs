@@ -154,7 +154,7 @@ impl FrameReceiver {
             let Some(datagram) = self.buffer.get(..size) else {
                 break;
             };
-            match self.decode(datagram) {
+            match decode(datagram) {
                 Ok(message) => {
                     // A datagram that overtook a newer one is stale. UDP does
                     // not promise order, and drawing an older frame after a
@@ -193,31 +193,34 @@ impl FrameReceiver {
             (None, None) => Received::Idle,
         }
     }
+}
 
-    /// Is this ours, and can this build read it?
-    fn decode(&self, datagram: &[u8]) -> Result<Message, Rejected> {
-        // The magic is checked before parsing rather than after, so a port
-        // shared with an unrelated program costs a substring search and not a
-        // full JSON parse ten times a second.
-        let looks_like_ours = datagram
-            .windows(MAGIC.len())
-            .any(|window| window == MAGIC.as_bytes());
-        if !looks_like_ours {
-            return Err(Rejected::NotOurs);
-        }
-
-        let message: Message = serde_json::from_slice(datagram).map_err(|_| Rejected::Malformed)?;
-        if message.magic != MAGIC {
-            return Err(Rejected::NotOurs);
-        }
-        if message.schema != SCHEMA_VERSION {
-            return Err(Rejected::WrongSchema {
-                theirs: message.schema,
-                ours: SCHEMA_VERSION,
-            });
-        }
-        Ok(message)
+/// Is this datagram one of ours, and can this build read it?
+///
+/// Public because it is the whole of what a program of somebody else's needs
+/// to read the feed in Rust — [`super::subscribe::Client`] is built on it.
+pub fn decode(datagram: &[u8]) -> Result<Message, Rejected> {
+    // The magic is checked before parsing rather than after, so a port
+    // shared with an unrelated program costs a substring search and not a
+    // full JSON parse ten times a second.
+    let looks_like_ours = datagram
+        .windows(MAGIC.len())
+        .any(|window| window == MAGIC.as_bytes());
+    if !looks_like_ours {
+        return Err(Rejected::NotOurs);
     }
+
+    let message: Message = serde_json::from_slice(datagram).map_err(|_| Rejected::Malformed)?;
+    if message.magic != MAGIC {
+        return Err(Rejected::NotOurs);
+    }
+    if message.schema != SCHEMA_VERSION {
+        return Err(Rejected::WrongSchema {
+            theirs: message.schema,
+            ours: SCHEMA_VERSION,
+        });
+    }
+    Ok(message)
 }
 
 /// Turn a received message back into the frame that produced it.

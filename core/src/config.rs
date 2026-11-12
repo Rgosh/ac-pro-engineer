@@ -273,6 +273,19 @@ pub struct OverlayConfig {
     /// [`Self::broadcast_enabled`].
     #[serde(default = "default_true")]
     pub receive_enabled: bool,
+    /// Whether a program on this machine may ask for the feed itself, on
+    /// `broadcast::subscribe::PORT`, with nothing typed here.
+    ///
+    /// On by default because what it sends never leaves the machine: a
+    /// dashboard, a stream overlay or a button box asks and gets the same
+    /// JSON `broadcast_to` sends, at the rate it asked for, until it stops
+    /// asking.
+    #[serde(default = "default_true")]
+    pub subscriptions: bool,
+    /// Whether a machine on the local network may ask as well. Off unless
+    /// set: telemetry about a person crosses a wire because they said so.
+    #[serde(default)]
+    pub subscriptions_from_lan: bool,
 }
 
 /// The half of the streaming settings that is not an address.
@@ -351,6 +364,8 @@ impl Default for OverlayConfig {
             broadcast_name: String::new(),
             receive_from: String::new(),
             receive_enabled: true,
+            subscriptions: true,
+            subscriptions_from_lan: false,
         }
     }
 }

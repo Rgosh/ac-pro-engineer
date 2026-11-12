@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **The feed, for anybody's program, with nothing to configure** — a
+  program sends one line to UDP port 9003 and gets the engineer's frame as
+  JSON at the rate it asked, for as long as it keeps asking; this machine
+  always, the local network when the driver allows it, the internet never
+  (`broadcast::subscribe`). A reader for Rust (`subscribe::Client`), Python
+  and Node, a JSON schema of every key that a test holds to the wire, and a
+  demo server with a made-up car for writing a dashboard without a game
+  (`docs/feed/`, `--example feed`, `--example feed_demo`).
 - **Race invitations read** — `acmanager://` links and acstuff join pages,
   as chats and forums mangle them (`join_link`).
 - **Who is on a server**, by name, from its own list of places

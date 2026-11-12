@@ -913,7 +913,27 @@ shared-memory mapping, which is the right transport inside the game and no use
 outside it: it needs a bridge under Proton and it cannot cross a machine. So
 everything else reads UDP.
 
-Set an address and it starts:
+**Ask for it, and it comes.** While Pro Engineer runs it answers on UDP port
+9003; a program sends one line and gets the feed at the rate it wanted, for as
+long as it keeps asking — nothing to configure on either side:
+
+```json
+{"magic":"acpe","subscribe":{"hz":20,"name":"my dashboard"}}
+```
+
+Ready-made readers in Python, JavaScript and Rust, the JSON schema of every
+key, and a demo server that sends a made-up car for writing a dashboard with
+no game running are in [`docs/feed/`](docs/feed/README.md):
+
+```bash
+python3 docs/feed/feed.py
+```
+
+This machine may always ask, because nothing leaves it. Another machine on
+the network only when `overlay.subscriptions_from_lan` is on, and the internet
+never.
+
+Or push it to one fixed address, for a relay:
 
 ```json
 "overlay": { "broadcast_to": "127.0.0.1:9001", "broadcast_hz": 10 }

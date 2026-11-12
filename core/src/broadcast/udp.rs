@@ -277,6 +277,13 @@ impl UdpSink {
             warned_about_size: false,
         })
     }
+
+    /// The same sink under another name — what the broadcaster and the
+    /// diagnostics screen call it.
+    pub fn named(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
 }
 
 /// How many bytes this frame would put on the wire.
@@ -476,5 +483,100 @@ mod tests {
              should stay under",
             bytes.len()
         );
+    }
+
+    /// **The published schema is the wire, key for key.** `docs/feed/schema.json`
+    /// is what somebody writing a dashboard in another language reads, and
+    /// generates types from; a key it does not list, or one it promises that
+    /// never arrives, is their program broken by ours. So a full message —
+    /// advice and debrief filled — is walked against it, both ways.
+    #[test]
+    fn the_published_schema_describes_every_key_on_the_wire() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/feed/schema.json");
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let schema: serde_json::Value = serde_json::from_str(&text).expect("the schema parses");
+
+        let mut frame = OverlayFrame::empty();
+        frame.set_messages(&[advice_line("one")]);
+        frame.set_debrief(
+            &[crate::overlay::frame::DebriefLap {
+                lap_number: 3,
+                lap_time_ms: 91_234,
+                sectors: [28_540, 31_120, 31_574],
+                advice: vec![advice_line("lap")],
+            }],
+            DEBRIEF_LINES,
+        );
+        let wire = serde_json::to_value(message(&frame, "assetto_corsa", "d"))
+            .expect("the message serialises");
+
+        fn resolve<'a>(
+            root: &'a serde_json::Value,
+            node: &'a serde_json::Value,
+        ) -> &'a serde_json::Value {
+            match node.get("$ref").and_then(|r| r.as_str()) {
+                Some(reference) => reference
+                    .strip_prefix("#/$defs/")
+                    .and_then(|name| root.get("$defs")?.get(name))
+                    .expect("every reference resolves"),
+                None => node,
+            }
+        }
+        fn walk(
+            root: &serde_json::Value,
+            node: &serde_json::Value,
+            value: &serde_json::Value,
+            at: &str,
+        ) {
+            let node = resolve(root, node);
+            match value {
+                serde_json::Value::Object(fields) => {
+                    let properties = node["properties"].as_object();
+                    assert!(
+                        properties.is_some(),
+                        "{at} is an object the schema does not describe"
+                    );
+                    let Some(properties) = properties else { return };
+                    for (key, inner) in fields {
+                        let described = properties.get(key);
+                        assert!(
+                            described.is_some(),
+                            "{at}.{key} is sent and not in the schema"
+                        );
+                        if let Some(described) = described {
+                            walk(root, described, inner, &format!("{at}.{key}"));
+                        }
+                    }
+                    for required in node["required"].as_array().into_iter().flatten() {
+                        let key = required.as_str().unwrap_or_default();
+                        assert!(
+                            fields.contains_key(key),
+                            "{at}.{key} is promised by the schema and never sent"
+                        );
+                    }
+                    assert_eq!(
+                        required_count(node),
+                        properties.len(),
+                        "{at}: every described key is required"
+                    );
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        walk(root, &node["items"], item, &format!("{at}[]"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn required_count(node: &serde_json::Value) -> usize {
+            node["required"].as_array().map_or(0, |r| r.len())
+        }
+        assert!(!wire["advice"].as_array().is_none_or(|a| a.is_empty()));
+        assert!(!wire["debrief"].as_array().is_none_or(|a| a.is_empty()));
+        walk(&schema, &schema, &wire, "message");
+        assert_eq!(schema["properties"]["schema"]["const"], SCHEMA_VERSION);
+        assert_eq!(schema["properties"]["magic"]["const"], MAGIC);
     }
 }
