@@ -56,6 +56,7 @@ pub mod shifts;
 pub mod slips;
 pub mod steady;
 pub mod steam;
+pub mod steam_profile;
 pub mod stint;
 pub mod track;
 pub mod updater;

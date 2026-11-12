@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Who the driver is on Steam, and their friends, with no account to
+  make** — the friends' names (and the names they raced under before) from
+  the Steam client's own `localconfig.vdf`, the avatar it cached, the
+  account id from the SteamID; read offline, nothing sent anywhere
+  (`steam_profile`, with a small key-value reader that nothing in a file
+  can make panic).
 - **Wheel and button-box bindings, set by pressing the button** — every
   action the game binds to a button (paddles, DRS, brake bias, TC, ABS,
   engine brake, hybrid, lights, horn, views, an H-pattern shifter's
