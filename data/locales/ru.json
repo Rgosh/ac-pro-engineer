@@ -703,5 +703,9 @@
   "📋 POST-STINT": "📋 ДЕБРИФИНГ",
   "🔥 UPDATE AVAILABLE": "🔥 ДОСТУПНО ОБНОВЛЕНИЕ",
   "🔴 LIVE FEED [<-]": "🔴 РЕАЛЬНОЕ ВРЕМЯ [<-]",
-  "🛑 Lockups detected: ": "🛑 Блокировки колес: "
+  "🛑 Lockups detected: ": "🛑 Блокировки колес: ",
+  "Pressure moves this too — change the pressure first, then judge this again after three laps.": "Давление влияет и на это — сначала поменяйте давление, а это оцените заново через три круга.",
+  "The brake bias decides which brakes work hardest — change the bias first, then look at this again.": "Баланс тормозов решает, какие тормоза греются сильнее — сначала поменяйте баланс, затем посмотрите на это снова.",
+  "Change the finding above first.": "Сначала выполните совет выше.",
+  "Start here: one change at a time, then three clean laps before the next.": "Начните с этого: одно изменение за раз, затем три чистых круга перед следующим."
 }

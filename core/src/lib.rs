@@ -14,6 +14,7 @@ pub mod games;
 // Assetto Corsa — its own folder, the overlay that installs a mod into it, the
 // fake-telemetry simulator and the layout tests — say so by importing it under
 // its own name.
+pub mod advice_order;
 pub mod analyzer;
 pub mod atomic_file;
 pub mod braking;

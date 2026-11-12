@@ -4,7 +4,6 @@ use crate::i18n::{Translate, tr_fmt};
 use crate::session_info::SessionInfo;
 use crate::setup_manager::CarSetup;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
@@ -1031,16 +1030,10 @@ impl Engineer {
         self.analyze_strategy(car, session, &mut recommendations);
         self.analyze_ffb_clipping(car, &mut recommendations);
 
-        recommendations.sort_by(|a, b| {
-            b.severity
-                .partial_cmp(&a.severity)
-                .unwrap_or(Ordering::Equal)
-                .then(
-                    b.confidence
-                        .partial_cmp(&a.confidence)
-                        .unwrap_or(Ordering::Equal),
-                )
-        });
+        // **A plan, not a pile**: the order a race engineer changes things
+        // in, and a finding that waits on another says so — see
+        // `advice_order`.
+        crate::advice_order::into_a_plan(&mut recommendations, self.is_ru());
 
         recommendations
     }
