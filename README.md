@@ -71,6 +71,7 @@ overlay app.
 | [Configuration file](#configuration-file) | every key, and where it lives |
 | [Troubleshooting](#troubleshooting) | symptoms, causes, fixes |
 | [Linux / Steam Deck / Proton](#linux--steam-deck--proton) | getting AC + CSP + CM to run at all |
+| [The family](#the-family-and-the-core-underneath) | RG Pro Engineer, Pro Launcher, and what the core gives them |
 | [For developers](#for-developers) | architecture, tests, contributing |
 | [Security](#security--why-your-antivirus-might-complain) | why a telemetry reader looks suspicious |
 
@@ -87,6 +88,19 @@ overlay app.
 - **A race engineer that groups what it sees.** Four cold tyres is one sentence,
   not four. Advice is ranked by severity, and the same lines reach the in-game
   overlay — up to eight of them, however many you ask for.
+- **Advice as a plan, not a pile.** Within a severity the findings follow the
+  order a race engineer changes things in — pressures, then what the tyre does
+  at that pressure, then camber, the brake bias and the car around it — and a
+  finding another one moves says it waits for it: tyre heat and camber wait
+  for the pressure, the brakes' heat waits for the bias. When there is more
+  than one change to make, the first one says *start here: one change at a
+  time, three clean laps before the next*.
+- **Every finding explains itself.** The mechanism, the measurement, and what
+  to look at on the next run to know whether the change worked — with the
+  setting to change and the number to change it to, in the car's own units.
+- **A coach after every lap.** The corner that cost the most against your best
+  becomes one instruction — "brake 12 m later into T5" — and stays on that
+  corner until it is fixed.
 - **Fuel and stint strategy.** Consumption per lap measured from your own laps,
   laps remaining, fuel needed to finish, and how short you are.
 - **Lap timing with a real ghost.** Delta against your own recorded best lap
@@ -116,7 +130,7 @@ overlay app.
 **And the things that are usually missing:**
 
 - **It computes nothing in the game.** The desktop side does the work; the CSP
-  panel reads a 712-byte struct and draws it. Lua runs on Assetto Corsa's render
+  panel reads a 2484-byte struct and draws it. Lua runs on Assetto Corsa's render
   thread, so anything else would be a stutter.
 - **Everything in the overlay can be switched off**, block by block.
 - **Every keyboard shortcut can be rebound**, and every on-screen hint is printed
@@ -1094,6 +1108,39 @@ config directory in `logs/ac_engineer.log`. Run with `--log-level debug` if the
 problem is a connection that comes and goes.
 
 ---
+
+## The family, and the core underneath
+
+Three programs read one core, so they can never tell you two different
+things about the same lap:
+
+| Program | What it is | Source |
+|---|---|---|
+| **Pro Engineer** | this terminal, and the in-game CSP panel | here, AGPL |
+| **[RG Pro Engineer](https://proengineer.app/rg/)** | the same engineer in a desktop window — analysis, traces, a map of the real circuit, an overlay drawn inside the game's own picture | closed, free |
+| **[Pro Launcher](https://proengineer.app/launcher/)** | an Assetto Corsa launcher for Windows and Linux, with the engineer on both sides of every drive | closed, free |
+
+Everything that *decides* anything lives in this repository's `core`, and the
+two closed programs only draw what it says. That is also why the core reads
+far more of Assetto Corsa than a telemetry tool needs — it is the launcher's
+whole understanding of the game:
+
+| Module (`core/src/games/assetto_corsa/`) | What it reads or does |
+|---|---|
+| `lobby`, `server_details`, `server_slots`, `local_servers` | the public server list the way the game asks for it; each server's sessions, rules and forced aids; who is on it and which cars have a free place; servers on the local network |
+| `join_link` | race invitations — `acmanager://` links and acstuff join pages, as chats mangle them |
+| `weather_fx`, `real_weather` | Custom Shaders Patch's thirty-three weather types, rain and snow included, and schedules of them; the weather at the real circuit now from its geotags |
+| `csp`, `csp_settings`, `csp_config`, `csp_presets` | the patch installed or not, its modules, every setting as the patch describes it, and presets in Content Manager's format both ways |
+| `mod_config`, `apps` | every mod's own INI settings (weather scripts such as Pure and Sol, controllers, filters, apps) with their authors' labels, changed in place with the original kept; Python apps switched on and off |
+| `adding`, `packs`, `health` | mods installed from any archive at any depth, archives inside archives; content grouped by pack and brand; every car and circuit checked for what the game will not load |
+| `video`, `assists`, `levels`, `setups`, `setup_sheet` | the game's settings and setups, read and written in its own format |
+| `results`, `championship`, `backup` | every session's result kept, championships scored from them, the game's settings backed up and restored |
+| `content_manager` | what a driver built up in Content Manager — server lists, aid presets, patch presets — found so it can come along |
+| `game_log`, `preflight` | why a session never began, and what can be checked before it starts |
+
+Every reader of outside text — links, presets, lists, results, server and
+weather answers — is fed thousands of seeded pieces of nonsense by a test
+(`robustness`) and must answer or refuse, never fall over.
 
 ## Linux / Steam Deck / Proton
 
