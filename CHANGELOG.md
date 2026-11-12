@@ -26,6 +26,17 @@ All notable changes to this project will be documented in this file.
   listed (`apps`).
 - **The game's settings and setups backed up** to one zip and restored,
   the restore itself undoable (`backup`).
+- **The engineer's findings as a plan** (`advice_order`): within a
+  severity, the order a race engineer changes things in; a finding another
+  one moves says it waits for it; the first change says where to start.
+- **The patch's presets in Content Manager's format**, read and written
+  (`csp_presets`).
+- **A driver looked for on many servers at once** (`server_slots::find_driver`).
+- **What a driver built up in Content Manager** — server lists, aid presets,
+  patch presets — found beside the game's Documents, on Windows and inside a
+  Proton prefix (`content_manager`).
+- **Every reader of outside text is fed nonsense by a test** and must answer
+  or refuse, never fall over (`robustness`).
 
 ## [v0.5.6] - 2026-11-07
 
