@@ -179,6 +179,47 @@ impl Outcome {
     }
 }
 
+/// What a driver's kept results add up to, for a profile.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Record {
+    /// Results kept with a session driven in them.
+    pub sessions: usize,
+    /// Of those, races against at least one other car.
+    pub races: usize,
+    pub wins: usize,
+    /// First, second or third.
+    pub podiums: usize,
+    /// Laps completed, every session counted.
+    pub laps: u64,
+}
+
+/// Add up results. **A race alone is not a win**: a race is counted only
+/// when there was somebody to beat, so a hot-lap session on an empty grid
+/// does not fill the trophy cabinet.
+pub fn record<'a>(outcomes: impl IntoIterator<Item = &'a Outcome>) -> Record {
+    let mut out = Record::default();
+    for outcome in outcomes {
+        let driven: Vec<&Session> = outcome.sessions.iter().filter(|s| s.driven()).collect();
+        if driven.is_empty() {
+            continue;
+        }
+        out.sessions += 1;
+        out.laps += driven.iter().map(|s| u64::from(s.laps_of(0))).sum::<u64>();
+        let race = driven
+            .iter()
+            .rev()
+            .find(|s| s.kind == 3 && outcome.players.len() > 1);
+        if let Some(race) = race
+            && let Some(you) = race.table(&outcome.players).into_iter().find(|r| r.you)
+        {
+            out.races += 1;
+            out.wins += usize::from(you.place == 1);
+            out.podiums += usize::from(you.place <= 3);
+        }
+    }
+    out
+}
+
 /// The game's result, read leniently. `None` when it is not one.
 pub fn parse(json: &str) -> Option<Outcome> {
     serde_json::from_str(json).ok()
@@ -372,5 +413,68 @@ mod tests {
         assert_eq!(lap_time(108_123), "1:48.123");
         assert_eq!(lap_time(48_005), "48.005");
         assert_eq!(lap_time(600_000), "10:00.000");
+    }
+
+    /// **Wins and podiums from races with somebody to beat** — a race on an
+    /// empty grid, and a practice, count as sessions and nothing more.
+    #[test]
+    fn a_record_counts_races_with_somebody_to_beat() {
+        let player = |name: &str| Player {
+            name: name.into(),
+            ..Player::default()
+        };
+        let lap = |car: usize| Lap {
+            car,
+            time: 90_000,
+            ..Lap::default()
+        };
+        let race = |order: Vec<usize>| Session {
+            kind: 3,
+            laps: vec![lap(0), lap(1), lap(2)],
+            race_result: order,
+            ..Session::default()
+        };
+        let field = vec![player("me"), player("a"), player("b"), player("c")];
+        let won = Outcome {
+            players: field.clone(),
+            sessions: vec![race(vec![0, 1, 2, 3])],
+            ..Outcome::default()
+        };
+        let third = Outcome {
+            players: field.clone(),
+            sessions: vec![race(vec![1, 2, 0, 3])],
+            ..Outcome::default()
+        };
+        let fourth = Outcome {
+            players: field,
+            sessions: vec![race(vec![1, 2, 3, 0])],
+            ..Outcome::default()
+        };
+        let alone = Outcome {
+            players: vec![player("me")],
+            sessions: vec![race(vec![0])],
+            ..Outcome::default()
+        };
+        let practice = Outcome {
+            players: vec![player("me"), player("a")],
+            sessions: vec![Session {
+                kind: 1,
+                laps: vec![lap(0), lap(0)],
+                ..Session::default()
+            }],
+            ..Outcome::default()
+        };
+        let all = [won, third, fourth, alone, practice, Outcome::default()];
+        let said = record(&all);
+        assert_eq!(
+            said,
+            Record {
+                sessions: 5,
+                races: 3,
+                wins: 1,
+                podiums: 2,
+                laps: 6,
+            }
+        );
     }
 }
