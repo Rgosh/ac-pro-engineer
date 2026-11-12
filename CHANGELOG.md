@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Wheel and button-box bindings, set by pressing the button** — every
+  action the game binds to a button (paddles, DRS, brake bias, TC, ABS,
+  engine brake, hybrid, lights, horn, views, an H-pattern shifter's
+  gears), read and written in `controls.ini` with the section names the
+  game and Content Manager use; the device matched by its DirectInput
+  product rather than its place, added when new, and a copy kept before
+  every change (`bindings`).
 - **The feed, for anybody's program, with nothing to configure** — a
   program sends one line to UDP port 9003 and gets the engineer's frame as
   JSON at the rate it asked, for as long as it keeps asking; this machine

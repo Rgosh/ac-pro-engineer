@@ -10,6 +10,7 @@ pub mod adding;
 pub mod apps;
 pub mod assists;
 pub mod backup;
+pub mod bindings;
 pub mod car_data;
 pub mod championship;
 pub mod content;
