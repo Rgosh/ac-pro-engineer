@@ -30,6 +30,7 @@ pub mod media;
 pub mod mod_config;
 pub mod packs;
 pub mod paths;
+pub mod pedals;
 pub mod preflight;
 pub mod reading;
 pub mod real_weather;
