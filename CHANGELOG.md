@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **The pedals' curves** — each pedal's dead zone, saturation, direction
+  and gamma read and written in `controls.ini`, the output worked out by
+  the game's own arithmetic so a curve drawn from it is the curve the car
+  gets; the wheel's rotation as the game takes it, and whether it agrees
+  with the wheel's own (`pedals`).
+- **A whole button layout kept and put back** — every binding at once, by
+  each device's own identity, so a layout for GT cars and one for Formula
+  cars survive the devices being plugged in another order
+  (`bindings::layout`, `with_layout`).
 - **Who the driver is on Steam, and their friends, with no account to
   make** — the friends' names (and the names they raced under before) from
   the Steam client's own `localconfig.vdf`, the avatar it cached, the

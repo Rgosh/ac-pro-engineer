@@ -169,7 +169,9 @@ pub fn bound(text: &str, action: &Action) -> Option<(Controller, u32)> {
 
 /// The actions already on this button of this device, but `except`.
 pub fn taken_by(text: &str, pressed: &Pressed, except: &Action) -> Vec<Action> {
-    let Some(index) = find_controller(&controllers(text), pressed) else {
+    let product = pressed.ids.map(|(v, p)| product_guid(v, p));
+    let Some(index) = find_controller(&controllers(text), &pressed.device, product.as_deref())
+    else {
         return Vec::new();
     };
     ACTIONS
@@ -185,20 +187,18 @@ pub fn taken_by(text: &str, pressed: &Pressed, except: &Action) -> Vec<Action> {
         .collect()
 }
 
-fn find_controller(known: &[Controller], pressed: &Pressed) -> Option<u32> {
-    let wanted = pressed.ids.map(|(v, p)| product_guid(v, p));
+fn find_controller(known: &[Controller], device: &str, product: Option<&str>) -> Option<u32> {
     known
         .iter()
         .find(|c| {
-            wanted
-                .as_deref()
+            product
                 .zip(c.product.as_deref())
                 .is_some_and(|(a, b)| same_product(a, b))
         })
         .or_else(|| {
             known
                 .iter()
-                .find(|c| c.name.trim().eq_ignore_ascii_case(pressed.device.trim()))
+                .find(|c| c.name.trim().eq_ignore_ascii_case(device.trim()))
         })
         .map(|c| c.index)
 }
@@ -206,37 +206,91 @@ fn find_controller(known: &[Controller], pressed: &Pressed) -> Option<u32> {
 /// The text with `action` bound to the button pressed — the device added to
 /// `[CONTROLLERS]` when the file does not know it, every other line as it was.
 pub fn bind(text: &str, action: &Action, pressed: &Pressed) -> String {
+    let product = pressed.ids.map(|(v, p)| product_guid(v, p));
+    bind_to(
+        text,
+        action,
+        &pressed.device,
+        product.as_deref(),
+        pressed.button,
+    )
+}
+
+fn bind_to(
+    text: &str,
+    action: &Action,
+    device: &str,
+    product: Option<&str>,
+    button: u32,
+) -> String {
     let known = controllers(text);
-    let (mut out, index) = match find_controller(&known, pressed) {
+    let (mut out, index) = match find_controller(&known, device, product) {
         Some(index) => (text.to_string(), index),
         None => {
             let index = known.len() as u32;
-            let mut out = ini::with_value(
-                text,
-                "CONTROLLERS",
-                &format!("CON{index}"),
-                pressed.device.trim(),
-            );
-            if let Some((vendor, product)) = pressed.ids {
-                out = ini::with_value(
-                    &out,
-                    "CONTROLLERS",
-                    &format!("PGUID{index}"),
-                    &product_guid(vendor, product),
-                );
+            let mut out =
+                ini::with_value(text, "CONTROLLERS", &format!("CON{index}"), device.trim());
+            if let Some(product) = product {
+                out = ini::with_value(&out, "CONTROLLERS", &format!("PGUID{index}"), product);
             }
             (out, index)
         }
     };
     out = ini::with_value(&out, action.section, "JOY", &index.to_string());
-    out = ini::with_value(
-        &out,
-        action.section,
-        action.key,
-        &pressed.button.to_string(),
-    );
+    out = ini::with_value(&out, action.section, action.key, &button.to_string());
     if action.section == "SHIFTER" {
         out = ini::with_value(&out, "SHIFTER", "ACTIVE", "1");
+    }
+    out
+}
+
+/// One action of a layout: what it is on, by the device's own identity
+/// rather than its place — so a layout kept today binds the same buttons
+/// after the devices are plugged in another order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Placed {
+    pub section: String,
+    pub key: String,
+    pub device: String,
+    #[serde(default)]
+    pub product: Option<String>,
+    pub button: u32,
+}
+
+/// Every button binding at once: a button box set for GT cars, another for
+/// Formula cars.
+pub type Layout = Vec<Placed>;
+
+/// The layout the file holds now: every action that is bound.
+pub fn layout(text: &str) -> Layout {
+    ACTIONS
+        .iter()
+        .filter_map(|action| {
+            let (controller, button) = bound(text, action)?;
+            Some(Placed {
+                section: action.section.to_string(),
+                key: action.key.to_string(),
+                device: controller.name,
+                product: controller.product,
+                button,
+            })
+        })
+        .collect()
+}
+
+/// The text with a whole layout in force: every action it names bound,
+/// every other action bound to nothing. Axes and every other line stay.
+pub fn with_layout(text: &str, layout: &Layout) -> String {
+    let mut out = text.to_string();
+    for action in ACTIONS {
+        let placed = layout
+            .iter()
+            .find(|p| p.section == action.section && p.key == action.key);
+        out = match placed {
+            Some(p) => bind_to(&out, action, &p.device, p.product.as_deref(), p.button),
+            None if bound(&out, action).is_some() => unbind(&out, action),
+            None => out,
+        };
     }
     out
 }
@@ -385,5 +439,45 @@ mod tests {
         assert_eq!(copies.len(), 1);
         assert_eq!(std::fs::read_to_string(&copies[0]).unwrap(), FILE);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **A whole layout kept and put back**: every binding it names in
+    /// force, the ones it does not name cleared, the devices found by
+    /// product in a file that lists them in another order — and the axes
+    /// untouched.
+    #[test]
+    fn a_layout_is_kept_and_put_back_whatever_the_order_of_devices() {
+        let drs = ACTIONS.iter().find(|a| a.section == "DRS").unwrap();
+        let horn = ACTIONS.iter().find(|a| a.section == "ACTION_HORN").unwrap();
+        let with_box = bind(
+            &bind(FILE, drs, &g29(7)),
+            horn,
+            &Pressed {
+                device: "Button Box".into(),
+                ids: Some((0x1234, 0xabcd)),
+                button: 2,
+            },
+        );
+        let kept = layout(&with_box);
+        assert_eq!(kept.len(), 4, "two paddles, DRS and the horn");
+
+        // Another evening: the box enumerated first, DRS moved, a new binding.
+        let other = "[CONTROLLERS]\nCON0=Button Box\nPGUID0=ABCD1234-0000-0000-0000-504944564944\n\
+                     CON1=Logitech G29\nPGUID1=C24F046D-0000-0000-0000-504944564944\n\
+                     [STEER]\nJOY=1\nAXLE=0\n[DRS]\nJOY=1\nBUTTON=1\n[KERS]\nJOY=0\nBUTTON=9\n";
+        let back = with_layout(other, &kept);
+        let on = |section: &str| {
+            let action = ACTIONS.iter().find(|a| a.section == section).unwrap();
+            bound(&back, action).map(|(c, b)| (c.name, b))
+        };
+        assert_eq!(on("DRS"), Some(("Logitech G29".to_string(), 7)));
+        assert_eq!(on("ACTION_HORN"), Some(("Button Box".to_string(), 2)));
+        assert_eq!(on("GEARUP"), Some(("Logitech G29".to_string(), 4)));
+        assert_eq!(on("KERS"), None, "not in the layout: cleared");
+        assert_eq!(ini::value(&back, "STEER", "JOY").as_deref(), Some("1"));
+        assert_eq!(controllers(&back).len(), 2);
+        // It survives being written down.
+        let json = serde_json::to_string(&kept).unwrap();
+        assert_eq!(serde_json::from_str::<Layout>(&json).unwrap(), kept);
     }
 }
