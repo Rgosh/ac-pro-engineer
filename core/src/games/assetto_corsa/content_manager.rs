@@ -127,6 +127,91 @@ pub struct Found {
     pub lists: Vec<List>,
     /// How many of the patch's presets Content Manager keeps.
     pub csp_presets: usize,
+    /// Its driving-aid presets, read into the game's own keys.
+    pub assists: Vec<AssistsPreset>,
+}
+
+/// One of Content Manager's driving-aid presets, as `cfg/assists.ini`
+/// values the game reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistsPreset {
+    pub name: String,
+    /// `(KEY, value)` under `[ASSISTS]`.
+    pub values: Vec<(&'static str, String)>,
+}
+
+/// Read one of Content Manager's aid presets — JSON with its own names for
+/// each aid — into the game's keys. Aids it does not name are left out, so
+/// applying it leaves them as they were.
+pub fn parse_assists(json: &str) -> Vec<(&'static str, String)> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let flag = |b: bool| if b { "1" } else { "0" }.to_string();
+    let number = |v: &serde_json::Value| -> Option<f64> {
+        v.as_f64()
+            .or_else(|| v.as_bool().map(|b| if b { 1.0 } else { 0.0 }))
+    };
+    let mut out = Vec::new();
+    for (theirs, ours) in [
+        ("Abs", "ABS"),
+        ("TractionControl", "TRACTION_CONTROL"),
+        ("StabilityControl", "STABILITY_CONTROL"),
+        ("AutoClutch", "AUTO_CLUTCH"),
+        ("AutoBlip", "AUTO_BLIP"),
+        ("AutoShifter", "AUTO_SHIFTER"),
+        ("IdealLine", "IDEAL_LINE"),
+        ("Damage", "DAMAGE"),
+        ("TyreWear", "TYRE_WEAR"),
+        ("FuelConsumption", "FUEL_RATE"),
+        ("TyreBlankets", "TYRE_BLANKETS"),
+        ("VisualDamage", "VISUALDAMAGE"),
+        ("SlipSteam", "SLIPSTREAM"),
+    ] {
+        let Some(v) = value.get(theirs) else { continue };
+        let written = match (ours, v) {
+            (_, serde_json::Value::Bool(b)) => flag(*b),
+            // Percentages and multipliers as the game writes them: whole
+            // numbers where they are whole.
+            (_, v) => match number(v) {
+                Some(n) if n.fract() == 0.0 => format!("{}", n as i64),
+                Some(n) => format!("{n}"),
+                None => continue,
+            },
+        };
+        out.push((ours, written));
+    }
+    out
+}
+
+/// Content Manager's aid presets, by name.
+pub fn assists_presets(folder: &Path) -> Vec<AssistsPreset> {
+    let Ok(entries) = std::fs::read_dir(folder.join("Presets").join("Assists")) else {
+        return Vec::new();
+    };
+    let mut found: Vec<AssistsPreset> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stem = name.strip_suffix(".cmpreset")?;
+            let values = parse_assists(&std::fs::read_to_string(entry.path()).ok()?);
+            (!values.is_empty()).then(|| AssistsPreset {
+                name: stem.to_string(),
+                values,
+            })
+        })
+        .collect();
+    found.sort_by_key(|p| p.name.to_lowercase());
+    found
+}
+
+/// Apply an aid preset to the game's `cfg/assists.ini`, every other line
+/// left as it was.
+pub fn apply_assists(game_documents: &Path, preset: &AssistsPreset) -> Result<(), String> {
+    for (key, value) in &preset.values {
+        super::ini::set_in_file(&super::assists::file(game_documents), "ASSISTS", key, value)?;
+    }
+    Ok(())
 }
 
 impl Found {
@@ -170,6 +255,7 @@ pub fn find(game_documents: &Path) -> Found {
             .unwrap_or(0);
     Found {
         lists: lists(&folder),
+        assists: assists_presets(&folder),
         folder: Some(folder),
         csp_presets,
     }
@@ -206,6 +292,44 @@ mod tests {
             ]
         );
         assert_eq!(servers[0].key(), "203.0.113.7:8081");
+    }
+
+    /// **Content Manager's aid presets in the game's own words**: its JSON
+    /// names turned into `assists.ini` keys, written into the game's file
+    /// with the rest of it left alone.
+    #[test]
+    fn an_aid_preset_becomes_the_games_own_values() {
+        let pro = r#"{"IdealLine":false,"AutoBlip":true,"StabilityControl":0.0,"Abs":1,
+            "TractionControl":2,"Damage":100.0,"TyreWear":1.0,"FuelConsumption":1.5,
+            "TyreBlankets":false,"Unknown":7}"#;
+        let values = parse_assists(pro);
+        let get = |k: &str| {
+            values
+                .iter()
+                .find(|(key, _)| *key == k)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(get("IDEAL_LINE"), Some("0"));
+        assert_eq!(get("AUTO_BLIP"), Some("1"));
+        assert_eq!(get("ABS"), Some("1"));
+        assert_eq!(get("TRACTION_CONTROL"), Some("2"));
+        assert_eq!(get("DAMAGE"), Some("100"));
+        assert_eq!(get("FUEL_RATE"), Some("1.5"));
+        assert_eq!(get("STABILITY_CONTROL"), Some("0"));
+        assert!(parse_assists("not json").is_empty());
+        let dir = std::env::temp_dir().join(format!("acpe-cm-aids-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("cfg")).expect("a fixture");
+        std::fs::write(dir.join("cfg/assists.ini"), "[ASSISTS]\nABS=0\nKEEP=me\n")
+            .expect("a fixture");
+        let preset = AssistsPreset {
+            name: "Pro".into(),
+            values,
+        };
+        apply_assists(&dir, &preset).expect("it is written");
+        let text = std::fs::read_to_string(dir.join("cfg/assists.ini")).unwrap_or_default();
+        assert!(text.contains("ABS=1") && text.contains("KEEP=me") && text.contains("DAMAGE=100"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// **Found where Content Manager keeps it** — in a Proton prefix's
