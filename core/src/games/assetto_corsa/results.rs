@@ -191,6 +191,37 @@ pub struct Record {
     pub podiums: usize,
     /// Laps completed, every session counted.
     pub laps: u64,
+    /// Laps with a time the game kept, and of those the ones without a cut
+    /// — what a clean-lap rate is worked out from. **Its own count**, not
+    /// `laps`: the game's lap total includes laps it kept no time for, and a
+    /// rate over those would call an untimed lap dirty.
+    pub timed_laps: u64,
+    pub clean_laps: u64,
+    /// The places of every counted race, added up — with `races`, the
+    /// average finish.
+    pub places: usize,
+}
+
+impl Record {
+    /// Wins per counted race, 0 → 1. `None` before the first race.
+    pub fn win_rate(&self) -> Option<f32> {
+        (self.races > 0).then(|| self.wins as f32 / self.races as f32)
+    }
+
+    /// Podiums per counted race, 0 → 1.
+    pub fn podium_rate(&self) -> Option<f32> {
+        (self.races > 0).then(|| self.podiums as f32 / self.races as f32)
+    }
+
+    /// The average place over counted races.
+    pub fn average_finish(&self) -> Option<f32> {
+        (self.races > 0).then(|| self.places as f32 / self.races as f32)
+    }
+
+    /// Timed laps without a cut, 0 → 1. `None` before the first timed lap.
+    pub fn clean_rate(&self) -> Option<f32> {
+        (self.timed_laps > 0).then(|| self.clean_laps as f32 / self.timed_laps as f32)
+    }
 }
 
 /// Add up results. **A race alone is not a win**: a race is counted only
@@ -205,6 +236,14 @@ pub fn record<'a>(outcomes: impl IntoIterator<Item = &'a Outcome>) -> Record {
         }
         out.sessions += 1;
         out.laps += driven.iter().map(|s| u64::from(s.laps_of(0))).sum::<u64>();
+        for lap in driven
+            .iter()
+            .flat_map(|s| s.laps.iter())
+            .filter(|lap| lap.car == 0 && lap.time > 0)
+        {
+            out.timed_laps += 1;
+            out.clean_laps += u64::from(lap.cuts == 0);
+        }
         let race = driven
             .iter()
             .rev()
@@ -215,9 +254,48 @@ pub fn record<'a>(outcomes: impl IntoIterator<Item = &'a Outcome>) -> Record {
             out.races += 1;
             out.wins += usize::from(you.place == 1);
             out.podiums += usize::from(you.place <= 3);
+            out.places += you.place;
         }
     }
     out
+}
+
+/// The days something was driven, and how many sessions each — a key per
+/// day counted from 1970 in the driver's own time, `utc_offset` seconds
+/// from UTC, so a session at half past midnight belongs to the day the
+/// driver would say it did.
+pub fn days_driven(
+    stamps: impl IntoIterator<Item = u64>,
+    utc_offset: i64,
+) -> std::collections::BTreeMap<i64, usize> {
+    let mut days = std::collections::BTreeMap::new();
+    for at in stamps {
+        let local = i64::try_from(at)
+            .unwrap_or(i64::MAX)
+            .saturating_add(utc_offset);
+        *days.entry(local.div_euclid(86_400)).or_insert(0) += 1;
+    }
+    days
+}
+
+/// Days in a row with something driven: the run that reaches `today` or the
+/// day before it — a streak is not broken by a day that has not finished —
+/// and the longest there has been.
+pub fn streaks(days: &std::collections::BTreeMap<i64, usize>, today: i64) -> (u32, u32) {
+    let (mut longest, mut run, mut last) = (0u32, 0u32, None::<i64>);
+    for &day in days.keys() {
+        run = match last {
+            Some(before) if day == before + 1 => run + 1,
+            _ => 1,
+        };
+        longest = longest.max(run);
+        last = Some(day);
+    }
+    let current = match last {
+        Some(day) if day >= today - 1 => run,
+        _ => 0,
+    };
+    (current, longest)
 }
 
 /// The game's result, read leniently. `None` when it is not one.
@@ -459,7 +537,7 @@ mod tests {
             players: vec![player("me"), player("a")],
             sessions: vec![Session {
                 kind: 1,
-                laps: vec![lap(0), lap(0)],
+                laps: vec![lap(0), Lap { cuts: 2, ..lap(0) }],
                 ..Session::default()
             }],
             ..Outcome::default()
@@ -474,7 +552,32 @@ mod tests {
                 wins: 1,
                 podiums: 2,
                 laps: 6,
+                timed_laps: 6,
+                clean_laps: 5,
+                places: 8,
             }
         );
+        assert_eq!(said.win_rate(), Some(1.0 / 3.0));
+        assert_eq!(said.average_finish(), Some(8.0 / 3.0));
+        assert_eq!(said.clean_rate(), Some(5.0 / 6.0));
+        assert_eq!(Record::default().win_rate(), None);
+    }
+
+    /// **A day is the driver's day**, and a streak runs to today or
+    /// yesterday — tonight's session has not been driven yet.
+    #[test]
+    fn days_are_the_drivers_own_and_a_streak_survives_until_tomorrow() {
+        let day = 86_400u64;
+        // 23:30 UTC on day 10 is 01:30 on day 11 two hours east.
+        let days = days_driven([10 * day + 84_600], 2 * 3600);
+        assert_eq!(days.keys().copied().collect::<Vec<_>>(), vec![11]);
+        let stamps = [1, 2, 3, 7, 8, 8, 9, 10, 11].map(|d| d * day + 3600);
+        let days = days_driven(stamps, 0);
+        assert_eq!(days.get(&8), Some(&2));
+        // Days 7–11 are a run of five; 1–3 one of three.
+        assert_eq!(streaks(&days, 11), (5, 5));
+        assert_eq!(streaks(&days, 12), (5, 5));
+        assert_eq!(streaks(&days, 13), (0, 5));
+        assert_eq!(streaks(&Default::default(), 13), (0, 0));
     }
 }
