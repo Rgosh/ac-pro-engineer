@@ -641,6 +641,308 @@ pub fn recap(stamped: &[(u64, &Outcome)], from: u64, to: u64, utc_offset: i64) -
     out
 }
 
+// ── quests, experience and levels ────────────────────────────────────────
+
+/// How often a quest comes round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Every {
+    Day,
+    Week,
+}
+
+/// What a quest asks for, measured over its day or its week.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ask {
+    Laps(u64),
+    CleanInARow(u64),
+    Races(u64),
+    Podiums(u64),
+    Wins(u64),
+    NewBests(u64),
+    Cars(u64),
+    Circuits(u64),
+    /// Minutes actually lapping.
+    Minutes(u64),
+    Days(u64),
+}
+
+impl Ask {
+    pub fn target(self) -> u64 {
+        match self {
+            Ask::Laps(n)
+            | Ask::CleanInARow(n)
+            | Ask::Races(n)
+            | Ask::Podiums(n)
+            | Ask::Wins(n)
+            | Ask::NewBests(n)
+            | Ask::Cars(n)
+            | Ask::Circuits(n)
+            | Ask::Minutes(n)
+            | Ask::Days(n) => n,
+        }
+    }
+}
+
+/// Every quest there is: an id that never changes, how often, what it asks
+/// and the experience it gives.
+pub const QUESTS: [(&str, Every, Ask, u32); 15] = [
+    ("day_laps", Every::Day, Ask::Laps(15), 60),
+    ("day_clean", Every::Day, Ask::CleanInARow(5), 70),
+    ("day_race", Every::Day, Ask::Races(1), 80),
+    ("day_best", Every::Day, Ask::NewBests(1), 90),
+    ("day_two_cars", Every::Day, Ask::Cars(2), 60),
+    ("day_half_hour", Every::Day, Ask::Minutes(30), 70),
+    ("day_podium", Every::Day, Ask::Podiums(1), 100),
+    ("week_laps", Every::Week, Ask::Laps(120), 300),
+    ("week_races", Every::Week, Ask::Races(5), 350),
+    ("week_podium", Every::Week, Ask::Podiums(2), 350),
+    ("week_clean", Every::Week, Ask::CleanInARow(25), 300),
+    ("week_circuits", Every::Week, Ask::Circuits(3), 250),
+    ("week_bests", Every::Week, Ask::NewBests(3), 300),
+    ("week_days", Every::Week, Ask::Days(4), 300),
+    ("week_win", Every::Week, Ask::Wins(1), 400),
+];
+
+/// How many quests a day and a week bring.
+pub const PER_PERIOD: usize = 3;
+
+/// Experience for each achievement, by id.
+pub fn achievement_xp(id: &str) -> u32 {
+    match id {
+        "first_win" | "first_podium" | "ten_circuits" | "week_streak" => 300,
+        "marathon" | "thousand_laps" | "fifty_races" | "clean_hundred" => 600,
+        "ten_wins" | "twenty_five_cars" | "one_car_thousand" => 1000,
+        "month_streak" => 1500,
+        _ => 200,
+    }
+}
+
+/// A quest as it stands in its period.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Quest {
+    pub id: &'static str,
+    pub every: Every,
+    pub ask: Ask,
+    pub xp: u32,
+    pub progress: u64,
+    /// The period it belongs to: a day number or a week number in the
+    /// driver's own time.
+    pub period: i64,
+}
+
+impl Quest {
+    pub fn done(&self) -> bool {
+        self.progress >= self.ask.target()
+    }
+
+    /// What it is kept under once done: one entry per quest per period, so
+    /// a day's quest counts once however many computers report it.
+    pub fn key(&self) -> String {
+        let every = match self.every {
+            Every::Day => "d",
+            Every::Week => "w",
+        };
+        format!("{every}:{}:{}", self.period, self.id)
+    }
+}
+
+/// The week a day falls in, Monday first.
+pub fn week_of(day: i64) -> i64 {
+    (day + 3).div_euclid(7)
+}
+
+/// A small, stable hash: the same on every computer and every build.
+fn stir(a: i64, b: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in a.to_le_bytes().iter().chain(b.as_bytes()) {
+        h ^= u64::from(*byte);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    h
+}
+
+/// The quests a day or a week brings: three of its pool, **the same three on
+/// every computer**, picked by the period's number.
+pub fn picked(every: Every, period: i64) -> Vec<(&'static str, Every, Ask, u32)> {
+    let mut pool: Vec<_> = QUESTS.iter().filter(|q| q.1 == every).copied().collect();
+    pool.sort_by_key(|q| stir(period, q.0));
+    pool.truncate(PER_PERIOD);
+    pool
+}
+
+/// How far along each quest of a period is, from the results kept in it.
+/// `before` are the bests set before the period, which a new best is
+/// measured against.
+fn progress_in(
+    inside: &[(u64, &Outcome)],
+    before: &std::collections::BTreeMap<(String, String), u64>,
+    utc_offset: i64,
+    ask: Ask,
+) -> u64 {
+    match ask {
+        Ask::Laps(_) => inside
+            .iter()
+            .flat_map(|(_, o)| o.sessions.iter().filter(|s| s.driven()))
+            .map(|s| u64::from(s.laps_of(0)))
+            .sum(),
+        Ask::CleanInARow(_) => {
+            let (mut run, mut most) = (0u64, 0u64);
+            for lap in inside
+                .iter()
+                .flat_map(|(_, o)| o.sessions.iter().flat_map(|s| s.laps.iter()))
+                .filter(|lap| lap.car == 0 && lap.time > 0)
+            {
+                run = if lap.cuts == 0 { run + 1 } else { 0 };
+                most = most.max(run);
+            }
+            most
+        }
+        Ask::Races(_) | Ask::Podiums(_) | Ask::Wins(_) => {
+            let r = record(inside.iter().map(|(_, o)| *o));
+            match ask {
+                Ask::Races(_) => r.races as u64,
+                Ask::Podiums(_) => r.podiums as u64,
+                _ => r.wins as u64,
+            }
+        }
+        Ask::NewBests(_) => {
+            let mut bests = before.clone();
+            let mut new = 0u64;
+            for (_, outcome) in inside {
+                let (Some(car), Some(ms)) = (own_car(outcome), own_best(outcome)) else {
+                    continue;
+                };
+                let key = (car.to_string(), outcome.track.clone());
+                if bests.get(&key).is_none_or(|had| ms < *had) {
+                    new += 1;
+                    bests.insert(key, ms);
+                }
+            }
+            new
+        }
+        Ask::Cars(_) => inside
+            .iter()
+            .filter_map(|(_, o)| own_car(o))
+            .collect::<std::collections::BTreeSet<_>>()
+            .len() as u64,
+        Ask::Circuits(_) => inside
+            .iter()
+            .map(|(_, o)| o.track.as_str())
+            .filter(|t| !t.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len() as u64,
+        Ask::Minutes(_) => {
+            inside
+                .iter()
+                .flat_map(|(_, o)| o.sessions.iter().flat_map(|s| s.laps.iter()))
+                .filter(|l| l.car == 0 && l.time > 0)
+                .map(|l| l.time as u64)
+                .sum::<u64>()
+                / 60_000
+        }
+        Ask::Days(_) => days_driven(inside.iter().map(|(at, _)| *at), utc_offset).len() as u64,
+    }
+}
+
+/// Every quest of every day and week there are results in, in order —
+/// today's and this week's among them, `today` being the driver's day
+/// number. Done ones from the past are what experience is counted from,
+/// so a driver's level is the same on every computer that holds the same
+/// results.
+pub fn quests(stamped: &[(u64, &Outcome)], today: i64, utc_offset: i64) -> Vec<Quest> {
+    let mut order: Vec<(u64, &Outcome)> = stamped.iter().map(|(at, o)| (*at, *o)).collect();
+    order.sort_by_key(|(at, _)| *at);
+    let day_of = |at: u64| {
+        i64::try_from(at)
+            .unwrap_or(i64::MAX)
+            .saturating_add(utc_offset)
+            .div_euclid(86_400)
+    };
+    let mut periods: std::collections::BTreeSet<(Every, i64)> = order
+        .iter()
+        .flat_map(|(at, _)| {
+            let day = day_of(*at);
+            [(Every::Day, day), (Every::Week, week_of(day))]
+        })
+        .collect();
+    periods.insert((Every::Day, today));
+    periods.insert((Every::Week, week_of(today)));
+    let mut out = Vec::new();
+    for (every, period) in periods {
+        let inside: Vec<(u64, &Outcome)> = order
+            .iter()
+            .filter(|(at, _)| {
+                let day = day_of(*at);
+                match every {
+                    Every::Day => day == period,
+                    Every::Week => week_of(day) == period,
+                }
+            })
+            .copied()
+            .collect();
+        let starts = |at: u64| {
+            let day = day_of(at);
+            match every {
+                Every::Day => day < period,
+                Every::Week => week_of(day) < period,
+            }
+        };
+        let mut before: std::collections::BTreeMap<(String, String), u64> = Default::default();
+        for (_, outcome) in order.iter().filter(|(at, _)| starts(*at)) {
+            if let (Some(car), Some(ms)) = (own_car(outcome), own_best(outcome)) {
+                let had = before
+                    .entry((car.to_string(), outcome.track.clone()))
+                    .or_insert(ms);
+                *had = (*had).min(ms);
+            }
+        }
+        for (id, every, ask, xp) in picked(every, period) {
+            out.push(Quest {
+                id,
+                every,
+                ask,
+                xp,
+                progress: progress_in(&inside, &before, utc_offset, ask).min(ask.target()),
+                period,
+            });
+        }
+    }
+    out
+}
+
+/// A level from experience: each one costs 100 more than the one before,
+/// starting at 300 — reachable in a few evenings at first, a season at the
+/// top. Returns the level, the experience into it, and what it takes.
+pub fn level(xp: u64) -> (u32, u64, u64) {
+    let (mut level, mut left, mut cost) = (1u32, xp, 300u64);
+    while left >= cost && level < 99 {
+        left -= cost;
+        level += 1;
+        cost += 100;
+    }
+    (level, left, cost)
+}
+
+/// The title a level carries, and from which level each is had.
+pub const TITLES: [(u32, &str); 8] = [
+    (1, "rookie"),
+    (3, "club_racer"),
+    (5, "regular"),
+    (8, "contender"),
+    (12, "pro"),
+    (16, "ace"),
+    (20, "master"),
+    (30, "legend"),
+];
+
+pub fn title(level: u32) -> &'static str {
+    TITLES
+        .iter()
+        .rev()
+        .find(|(from, _)| level >= *from)
+        .map_or("rookie", |(_, t)| t)
+}
+
 /// One kept result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kept {
@@ -1023,5 +1325,70 @@ mod tests {
         let gain = r.biggest_gain.expect("a gain");
         assert_eq!((gain.from_ms, gain.to_ms), (92_000, 90_000));
         assert_eq!(recap(&stamped, 1000, 2000, 0), Recap::default());
+    }
+
+    /// **The same three quests on every computer**, never the same quest
+    /// twice in a period, and a period's quests done by its own results.
+    #[test]
+    fn quests_are_picked_the_same_everywhere_and_count_their_own_period() {
+        for period in 0..200 {
+            let a = picked(Every::Day, period);
+            assert_eq!(a, picked(Every::Day, period));
+            assert_eq!(a.len(), PER_PERIOD);
+            let ids: std::collections::BTreeSet<_> = a.iter().map(|q| q.0).collect();
+            assert_eq!(ids.len(), PER_PERIOD);
+            assert!(
+                picked(Every::Week, period)
+                    .iter()
+                    .all(|q| q.1 == Every::Week)
+            );
+        }
+        // Not the same three every day.
+        assert_ne!(picked(Every::Day, 10), picked(Every::Day, 11));
+        let day = 86_400u64;
+        let today = 20_000i64;
+        let morning = (today as u64) * day + 3600;
+        let laps: Vec<i64> = vec![90_000; 20];
+        let driven_today = driven("mx5", "vallelunga", &laps, &[]);
+        let yesterday = driven("mx5", "vallelunga", &[95_000], &[]);
+        let stamped = [(morning - day, &yesterday), (morning, &driven_today)];
+        let got = quests(&stamped, today, 0);
+        let todays: Vec<&Quest> = got
+            .iter()
+            .filter(|q| q.every == Every::Day && q.period == today)
+            .collect();
+        assert_eq!(todays.len(), PER_PERIOD);
+        for q in todays {
+            let expected = match q.ask {
+                Ask::Laps(t) => 20.min(t),
+                Ask::CleanInARow(t) => 20.min(t),
+                Ask::NewBests(t) => 1.min(t),
+                Ask::Cars(t) => 1.min(t),
+                Ask::Minutes(t) => 30.min(t),
+                Ask::Races(_) | Ask::Podiums(_) | Ask::Wins(_) => 0,
+                Ask::Circuits(t) => 1.min(t),
+                Ask::Days(t) => 1.min(t),
+            };
+            assert_eq!(q.progress, expected, "{q:?}");
+        }
+        // Yesterday's own quests are there too, counted from yesterday.
+        assert!(
+            got.iter()
+                .any(|q| q.every == Every::Day && q.period == today - 1)
+        );
+        assert!(got.iter().all(|q| !q.key().is_empty()));
+    }
+
+    #[test]
+    fn levels_cost_more_as_they_go_and_titles_follow() {
+        assert_eq!(level(0), (1, 0, 300));
+        assert_eq!(level(299), (1, 299, 300));
+        assert_eq!(level(300), (2, 0, 400));
+        assert_eq!(level(300 + 400 + 50), (3, 50, 500));
+        assert_eq!(title(1), "rookie");
+        assert_eq!(title(4), "club_racer");
+        assert_eq!(title(31), "legend");
+        assert_eq!(week_of(4), 1, "1970-01-05 was a Monday");
+        assert_eq!(week_of(3), 0);
     }
 }
