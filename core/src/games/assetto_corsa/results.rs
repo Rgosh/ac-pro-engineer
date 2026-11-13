@@ -10,7 +10,7 @@
 //! [`championship`](super::championship) reads the same file for one thing,
 //! the finishing order. This reads all of it.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// One car in a result.
@@ -303,6 +303,344 @@ pub fn parse(json: &str) -> Option<Outcome> {
     serde_json::from_str(json).ok()
 }
 
+/// A driver's best lap on one car at one circuit, and when it was set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalBest {
+    pub car: String,
+    pub track: String,
+    /// Milliseconds.
+    pub ms: u64,
+    /// When the result it came from was kept, seconds since 1970.
+    pub at: u64,
+}
+
+/// The driver's own car in a result: the game's car 0.
+fn own_car(outcome: &Outcome) -> Option<&str> {
+    outcome
+        .players
+        .first()
+        .map(|p| p.car.as_str())
+        .filter(|c| !c.is_empty())
+}
+
+/// The quickest lap the driver timed in a result, over every session in it.
+fn own_best(outcome: &Outcome) -> Option<u64> {
+    outcome
+        .sessions
+        .iter()
+        .filter_map(|session| session.best_of(0))
+        .min()
+}
+
+/// Every car and circuit's best lap over kept results, `(when, result)`.
+/// **A minimum, so merging is safe**: bests from two computers put together
+/// are each pair's quicker one, and nothing is counted twice.
+pub fn personal_bests(stamped: &[(u64, &Outcome)]) -> Vec<PersonalBest> {
+    let mut bests: std::collections::BTreeMap<(String, String), (u64, u64)> = Default::default();
+    for (at, outcome) in stamped {
+        let (Some(car), Some(ms)) = (own_car(outcome), own_best(outcome)) else {
+            continue;
+        };
+        if outcome.track.is_empty() {
+            continue;
+        }
+        let key = (car.to_string(), outcome.track.clone());
+        let entry = bests.entry(key).or_insert((ms, *at));
+        if ms < entry.0 {
+            *entry = (ms, *at);
+        }
+    }
+    bests
+        .into_iter()
+        .map(|((car, track), (ms, at))| PersonalBest { car, track, ms, at })
+        .collect()
+}
+
+/// Two lists of bests as one: each pair's quicker lap, the earlier when
+/// equal — so merging in either order gives the same list.
+pub fn merge_bests(mine: &[PersonalBest], theirs: &[PersonalBest]) -> Vec<PersonalBest> {
+    let mut all: std::collections::BTreeMap<(String, String), PersonalBest> = Default::default();
+    for one in mine.iter().chain(theirs) {
+        let key = (one.car.clone(), one.track.clone());
+        match all.get(&key) {
+            Some(had) if (had.ms, had.at) <= (one.ms, one.at) => {}
+            _ => {
+                all.insert(key, one.clone());
+            }
+        }
+    }
+    all.into_values().collect()
+}
+
+/// One achievement: how far along, and when it was reached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Achievement {
+    /// Never changes; the front ends name and draw it.
+    pub id: &'static str,
+    pub progress: u64,
+    pub target: u64,
+    /// When the result that reached it was kept.
+    pub at: Option<u64>,
+}
+
+impl Achievement {
+    pub fn done(&self) -> bool {
+        self.progress >= self.target
+    }
+}
+
+/// What can be achieved, and how much of it it takes.
+pub const ACHIEVEMENTS: [(&str, u64); 12] = [
+    ("first_win", 1),
+    ("first_podium", 1),
+    ("ten_wins", 10),
+    ("fifty_races", 50),
+    ("clean_hundred", 100),
+    ("week_streak", 7),
+    ("month_streak", 30),
+    ("thousand_laps", 1_000),
+    ("one_car_thousand", 1_000),
+    ("ten_circuits", 10),
+    ("twenty_five_cars", 25),
+    ("marathon", 50),
+];
+
+/// Every achievement, worked out from kept results in the order they were
+/// driven. **Counted from what the game wrote**, so nothing here can be had
+/// without driving it — and the moment each was reached is the result that
+/// reached it, not the day the launcher was first opened.
+pub fn achievements(stamped: &[(u64, &Outcome)], utc_offset: i64) -> Vec<Achievement> {
+    let mut order: Vec<&(u64, &Outcome)> = stamped.iter().collect();
+    order.sort_by_key(|(at, _)| *at);
+    let mut reached: std::collections::BTreeMap<&str, u64> = Default::default();
+    let mut best: std::collections::BTreeMap<&str, u64> = Default::default();
+    let mut note = |id: &'static str,
+                    value: u64,
+                    at: u64,
+                    best: &mut std::collections::BTreeMap<&str, u64>| {
+        let had = best.entry(id).or_insert(0);
+        *had = (*had).max(value);
+        let target = ACHIEVEMENTS
+            .iter()
+            .find(|(k, _)| *k == id)
+            .map_or(u64::MAX, |(_, t)| *t);
+        if value >= target {
+            reached.entry(id).or_insert(at);
+        }
+    };
+    let (mut wins, mut podiums, mut races, mut laps, mut clean_run) =
+        (0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut per_car: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut tracks: std::collections::BTreeSet<String> = Default::default();
+    let mut cars: std::collections::BTreeSet<String> = Default::default();
+    let mut days: std::collections::BTreeMap<i64, usize> = Default::default();
+    for (at, outcome) in order {
+        let driven: Vec<&Session> = outcome.sessions.iter().filter(|s| s.driven()).collect();
+        if driven.is_empty() {
+            continue;
+        }
+        let at = *at;
+        let local = i64::try_from(at)
+            .unwrap_or(i64::MAX)
+            .saturating_add(utc_offset);
+        *days.entry(local.div_euclid(86_400)).or_insert(0) += 1;
+        let (_, longest) = streaks(&days, i64::MAX);
+        note("week_streak", u64::from(longest), at, &mut best);
+        note("month_streak", u64::from(longest), at, &mut best);
+        let these: u64 = driven.iter().map(|s| u64::from(s.laps_of(0))).sum();
+        laps += these;
+        note("thousand_laps", laps, at, &mut best);
+        let most_in_one = driven
+            .iter()
+            .map(|s| u64::from(s.laps_of(0)))
+            .max()
+            .unwrap_or(0);
+        note("marathon", most_in_one, at, &mut best);
+        if let Some(car) = own_car(outcome) {
+            let on_car = per_car.entry(car.to_string()).or_insert(0);
+            *on_car += these;
+            let most = *on_car;
+            note("one_car_thousand", most, at, &mut best);
+            cars.insert(car.to_string());
+            note("twenty_five_cars", cars.len() as u64, at, &mut best);
+        }
+        if !outcome.track.is_empty() {
+            tracks.insert(outcome.track.clone());
+            note("ten_circuits", tracks.len() as u64, at, &mut best);
+        }
+        for lap in driven
+            .iter()
+            .flat_map(|s| s.laps.iter())
+            .filter(|lap| lap.car == 0 && lap.time > 0)
+        {
+            clean_run = match lap.cuts {
+                0 => clean_run + 1,
+                _ => 0,
+            };
+            note("clean_hundred", clean_run, at, &mut best);
+        }
+        let race = driven
+            .iter()
+            .rev()
+            .find(|s| s.kind == 3 && outcome.players.len() > 1);
+        if let Some(race) = race
+            && let Some(you) = race.table(&outcome.players).into_iter().find(|r| r.you)
+        {
+            races += 1;
+            wins += u64::from(you.place == 1);
+            podiums += u64::from(you.place <= 3);
+            note("fifty_races", races, at, &mut best);
+            note("first_win", wins, at, &mut best);
+            note("ten_wins", wins, at, &mut best);
+            note("first_podium", podiums, at, &mut best);
+        }
+    }
+    ACHIEVEMENTS
+        .iter()
+        .map(|(id, target)| Achievement {
+            id,
+            progress: best.get(id).copied().unwrap_or(0).min(*target),
+            target: *target,
+            at: reached.get(id).copied(),
+        })
+        .collect()
+}
+
+/// A stretch of driving, told back: what a monthly or yearly recap shows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Recap {
+    pub sessions: usize,
+    pub races: usize,
+    pub wins: usize,
+    pub podiums: usize,
+    pub laps: u64,
+    pub timed_laps: u64,
+    pub clean_laps: u64,
+    /// Time spent on timed laps, milliseconds — the time a driver was
+    /// actually lapping, not the time the game was open.
+    pub lapping_ms: u64,
+    pub days: usize,
+    pub longest_streak: u32,
+    /// The car and the circuit with the most laps, and how many.
+    pub top_car: Option<(String, u64)>,
+    pub top_track: Option<(String, u64)>,
+    /// The biggest drop in a best lap on one car and circuit over the
+    /// stretch: from the best before it (or its first in it) to its best in
+    /// it.
+    pub biggest_gain: Option<Gain>,
+    /// New bests set in the stretch.
+    pub new_bests: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Gain {
+    pub car: String,
+    pub track: String,
+    pub from_ms: u64,
+    pub to_ms: u64,
+}
+
+/// Recap results kept from `from` (inclusive) to `to` (exclusive), seconds
+/// since 1970; results before `from` only set the bests the stretch is
+/// measured against.
+pub fn recap(stamped: &[(u64, &Outcome)], from: u64, to: u64, utc_offset: i64) -> Recap {
+    let mut order: Vec<&(u64, &Outcome)> = stamped.iter().collect();
+    order.sort_by_key(|(at, _)| *at);
+    let mut out = Recap::default();
+    let mut before: std::collections::BTreeMap<(String, String), u64> = Default::default();
+    let mut first_in: std::collections::BTreeMap<(String, String), u64> = Default::default();
+    let mut best_in: std::collections::BTreeMap<(String, String), u64> = Default::default();
+    let mut car_laps: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut track_laps: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut inside: Vec<&Outcome> = Vec::new();
+    let mut stamps: Vec<u64> = Vec::new();
+    for (at, outcome) in order {
+        let key = own_car(outcome).map(|car| (car.to_string(), outcome.track.clone()));
+        let lap = own_best(outcome);
+        if *at < from {
+            if let (Some(key), Some(ms)) = (key, lap) {
+                let had = before.entry(key).or_insert(ms);
+                *had = (*had).min(ms);
+            }
+            continue;
+        }
+        if *at >= to {
+            continue;
+        }
+        if !outcome.sessions.iter().any(|s| s.driven()) {
+            continue;
+        }
+        inside.push(outcome);
+        stamps.push(*at);
+        let laps: u64 = outcome
+            .sessions
+            .iter()
+            .filter(|s| s.driven())
+            .map(|s| u64::from(s.laps_of(0)))
+            .sum();
+        out.lapping_ms += outcome
+            .sessions
+            .iter()
+            .flat_map(|s| s.laps.iter())
+            .filter(|l| l.car == 0 && l.time > 0)
+            .map(|l| l.time as u64)
+            .sum::<u64>();
+        if let Some(car) = own_car(outcome) {
+            *car_laps.entry(car.to_string()).or_insert(0) += laps;
+        }
+        if !outcome.track.is_empty() {
+            *track_laps.entry(outcome.track.clone()).or_insert(0) += laps;
+        }
+        if let (Some(key), Some(ms)) = (key, lap) {
+            let was = best_in
+                .get(&key)
+                .copied()
+                .or_else(|| before.get(&key).copied());
+            if was.is_none_or(|was| ms < was) {
+                out.new_bests += 1;
+            }
+            first_in.entry(key.clone()).or_insert(ms);
+            let b = best_in.entry(key).or_insert(ms);
+            *b = (*b).min(ms);
+        }
+    }
+    let record = record(inside.iter().copied());
+    out.sessions = record.sessions;
+    out.races = record.races;
+    out.wins = record.wins;
+    out.podiums = record.podiums;
+    out.laps = record.laps;
+    out.timed_laps = record.timed_laps;
+    out.clean_laps = record.clean_laps;
+    let days = days_driven(stamps, utc_offset);
+    out.days = days.len();
+    out.longest_streak = streaks(&days, i64::MAX).1;
+    out.top_car = car_laps
+        .into_iter()
+        .max_by_key(|(_, n)| *n)
+        .filter(|(_, n)| *n > 0);
+    out.top_track = track_laps
+        .into_iter()
+        .max_by_key(|(_, n)| *n)
+        .filter(|(_, n)| *n > 0);
+    out.biggest_gain = best_in
+        .iter()
+        .filter_map(|(key, now)| {
+            let was = before
+                .get(key)
+                .copied()
+                .or_else(|| first_in.get(key).copied())?;
+            (was > *now).then(|| Gain {
+                car: key.0.clone(),
+                track: key.1.clone(),
+                from_ms: was,
+                to_ms: *now,
+            })
+        })
+        .max_by_key(|gain| gain.from_ms - gain.to_ms);
+    out
+}
+
 /// One kept result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kept {
@@ -579,5 +917,111 @@ mod tests {
         assert_eq!(streaks(&days, 12), (5, 5));
         assert_eq!(streaks(&days, 13), (0, 5));
         assert_eq!(streaks(&Default::default(), 13), (0, 0));
+    }
+
+    fn driven(car: &str, track: &str, times: &[i64], cuts: &[u32]) -> Outcome {
+        Outcome {
+            track: track.into(),
+            players: vec![Player {
+                name: "me".into(),
+                car: car.into(),
+                ..Player::default()
+            }],
+            sessions: vec![Session {
+                kind: 1,
+                laps: times
+                    .iter()
+                    .zip(cuts.iter().chain(std::iter::repeat(&0)))
+                    .enumerate()
+                    .map(|(n, (time, cuts))| Lap {
+                        lap: n as u32,
+                        car: 0,
+                        time: *time,
+                        cuts: *cuts,
+                        ..Lap::default()
+                    })
+                    .collect(),
+                ..Session::default()
+            }],
+        }
+    }
+
+    /// **A best is a minimum**, per car and circuit; merging two computers'
+    /// lists in either order gives the same list.
+    #[test]
+    fn bests_are_the_quickest_and_merge_either_way() {
+        let a = driven("mx5", "vallelunga", &[92_000, 90_500], &[]);
+        let b = driven("mx5", "vallelunga", &[89_900], &[]);
+        let c = driven("gt3", "spa", &[140_000, -1], &[]);
+        let stamped = [(10, &a), (20, &b), (30, &c)];
+        let bests = personal_bests(&stamped);
+        assert_eq!(bests.len(), 2);
+        let mx5 = bests.iter().find(|b| b.car == "mx5").expect("the mx5 best");
+        assert_eq!((mx5.ms, mx5.at), (89_900, 20));
+        let other = vec![PersonalBest {
+            car: "mx5".into(),
+            track: "vallelunga".into(),
+            ms: 89_000,
+            at: 50,
+        }];
+        assert_eq!(merge_bests(&bests, &other), merge_bests(&other, &bests));
+        assert_eq!(
+            merge_bests(&bests, &other)
+                .iter()
+                .find(|b| b.car == "mx5")
+                .map(|b| b.ms),
+            Some(89_000)
+        );
+    }
+
+    /// **Reached when the driving reached it**: the moment is the result that
+    /// crossed the line, and a cut resets the clean run.
+    #[test]
+    fn achievements_are_reached_by_the_result_that_reaches_them() {
+        let day = 86_400u64;
+        let mut results = Vec::new();
+        for d in 0..8u64 {
+            // 15 clean laps a day, the 5th day with one cut in the middle.
+            let cuts: Vec<u32> = (0..15).map(|n| u32::from(d == 4 && n == 7)).collect();
+            results.push((
+                d * day + 3600,
+                driven("mx5", "vallelunga", &[90_000; 15], &cuts),
+            ));
+        }
+        let stamped: Vec<(u64, &Outcome)> = results.iter().map(|(at, o)| (*at, o)).collect();
+        let got = achievements(&stamped, 0);
+        let find = |id: &str| got.iter().find(|a| a.id == id).expect("every id").clone();
+        let week = find("week_streak");
+        assert!(week.done());
+        assert_eq!(week.at, Some(6 * day + 3600), "the seventh day reached it");
+        assert!(!find("month_streak").done());
+        assert_eq!(find("month_streak").progress, 8);
+        // The longest clean run is before the cut: four days of 15 and 7
+        // more — 67. After it, 7 and three days of 15 make only 52.
+        assert_eq!(find("clean_hundred").progress, 67);
+        assert_eq!(find("thousand_laps").progress, 120);
+        assert_eq!(find("ten_circuits").progress, 1);
+        assert!(!find("first_win").done());
+        assert_eq!(got.len(), ACHIEVEMENTS.len());
+    }
+
+    /// **A recap measures against what came before**: a best set in the
+    /// stretch counts as a gain only against the best before it.
+    #[test]
+    fn a_recap_tells_back_its_stretch() {
+        let before = driven("mx5", "vallelunga", &[92_000], &[]);
+        let first = driven("mx5", "vallelunga", &[91_000, 90_000], &[0, 1]);
+        let then = driven("gt3", "spa", &[140_000], &[]);
+        let after = driven("mx5", "vallelunga", &[80_000], &[]);
+        let stamped = [(5, &before), (100, &first), (200, &then), (500, &after)];
+        let r = recap(&stamped, 100, 400, 0);
+        assert_eq!(r.sessions, 2);
+        assert_eq!((r.timed_laps, r.clean_laps), (3, 2));
+        assert_eq!(r.lapping_ms, 91_000 + 90_000 + 140_000);
+        assert_eq!(r.top_car, Some(("mx5".into(), 2)));
+        assert_eq!(r.new_bests, 2, "the mx5 beat 92.0, and the gt3 had none");
+        let gain = r.biggest_gain.expect("a gain");
+        assert_eq!((gain.from_ms, gain.to_ms), (92_000, 90_000));
+        assert_eq!(recap(&stamped, 1000, 2000, 0), Recap::default());
     }
 }
