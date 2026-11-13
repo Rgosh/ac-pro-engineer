@@ -12,9 +12,13 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 checkout="$(cd "$1" && pwd)"; shift
 parent="$(dirname "$checkout")"
-image=pe-linux-build:22.04
-podman image exists "$image" || podman build -q -t "$image" "$here" >&2
-target="${PE_LINUX_TARGET:-$HOME/.cache/pe-linux-build/target}"
+# Ubuntu 20.04's glibc 2.31 unless told otherwise — see the Containerfile.
+base="${PE_LINUX_BASE:-20.04}"
+image="pe-linux-build:$base"
+podman image exists "$image" || podman build -q --build-arg "BASE=$base" -t "$image" "$here" >&2
+# A target folder per base: artefacts linked against one glibc are never
+# reused by a build against another.
+target="${PE_LINUX_TARGET:-$HOME/.cache/pe-linux-build/target-$base}"
 mkdir -p "$target" "$HOME/.cargo/registry" "$HOME/.cargo/git"
 # Variables a build reads, passed through by name: PE_ENV="RGPE_EMBED_HOOK".
 pass=()
