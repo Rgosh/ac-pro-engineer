@@ -67,6 +67,45 @@ All notable changes to this project will be documented in this file.
   Proton prefix (`content_manager`).
 - **Every reader of outside text is fed nonsense by a test** and must answer
   or refuse, never fall over (`robustness`).
+- **A driver's record from the results kept** — sessions, races against
+  other cars, wins, podiums, laps, timed and clean laps, the average
+  finish, the days driven and the current and longest run of days
+  (`results::record`, `days_driven`, `streaks`).
+- **Personal bests by car and circuit**, merged from any number of
+  computers the same way in either order (`personal_bests`,
+  `merge_bests`).
+- **Twelve achievements**, each with the day it was reached or how far
+  along it is — first win and podium, ten wins, fifty races, a hundred
+  clean laps in a row, seven and thirty days running, a thousand laps, a
+  thousand in one car, ten circuits, twenty-five cars, fifty laps in one
+  session (`achievements`).
+- **A recap of any stretch** — time lapping, sessions, laps, days, wins,
+  clean laps, the car and circuit most driven, the new bests and the
+  biggest drop in one (`recap`).
+- **Quests of a driver's own** — three a day from three slots (driving,
+  clean driving, pace and range), all doable alone in practice on any
+  server, and three longer ones a week (a week of driving, skill, racing),
+  from 388 day and 281 week quests. A permutation keyed by the driver's
+  own number takes a slot through every quest it holds before any comes
+  back — 90 to 182 days, 66 to 136 weeks — and two drivers through them
+  in different orders. **Counted by driving, not by farming**: a lap
+  needs a pace within 15 % of the driver's best in that session, a race
+  another car and three laps, a top half four cars, a podium or a win
+  five; a period's quests give what they give. All three of a day add 50
+  experience, of a week 150 (`quests`, `space`, `chosen`).
+- **What a kept quest is worth, checked** — a key the table does not give
+  is worth nothing, so experience arriving from another computer cannot
+  claim more than its quest gives (`ledger_xp`).
+- **Levels and titles from experience** — each level a hundred dearer
+  than the one before, from 300, and eight titles from Rookie to Legend
+  (`level`, `TITLES`, `title`).
+
+### Changed
+
+- **The Linux build runs on glibc 2.31 and newer** — Ubuntu 20.04, Debian
+  11, SteamOS and everything since; it needed 2.35 before. The build
+  container is Ubuntu 20.04 now, with `PE_LINUX_BASE=22.04` for the newer
+  one (`tools/linux-build`).
 
 ## [v0.5.6] - 2026-11-07
 
