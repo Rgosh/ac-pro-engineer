@@ -111,8 +111,7 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     let target = (alerts.tyre_pressure_min + alerts.tyre_pressure_max) / 2.0;
     let mut over: Vec<usize> = Vec::new();
     let mut under: Vec<usize> = Vec::new();
-    for corner in 0..4 {
-        let psi = lap.avg_wheels_pressure[corner];
+    for (corner, &psi) in lap.avg_wheels_pressure.iter().enumerate().take(4) {
         // A lap that published no pressure at all is not a lap with flat
         // tyres. The live engineer learned this about wear; the same zero
         // arrives here from a session that ended before the analyser had
@@ -177,8 +176,7 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
     // --- tyre temperature window -----------------------------------------
     let mut cold: Vec<usize> = Vec::new();
     let mut hot: Vec<usize> = Vec::new();
-    for corner in 0..4 {
-        let temp = lap.avg_tyre_temp[corner];
+    for (corner, &temp) in lap.avg_tyre_temp.iter().enumerate().take(4) {
         if temp <= 0.0 {
             continue;
         }
@@ -317,10 +315,10 @@ pub fn debrief(lap: &LapData, config: &AppConfig) -> Vec<Recommendation> {
 
     // --- brakes -----------------------------------------------------------
     let mut cooking: Vec<usize> = Vec::new();
-    for corner in 0..4 {
+    for (corner, &peak) in lap.max_brake_temp.iter().enumerate().take(4) {
         // Per axle, because that is how brakes work — a rear at 520 °C is
         // cooking and a front at 520 °C is working.
-        if lap.max_brake_temp[corner] > brake_ceiling(alerts, class, corner) {
+        if peak > brake_ceiling(alerts, class, corner) {
             cooking.push(corner);
         }
     }

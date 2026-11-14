@@ -2180,8 +2180,8 @@ impl AppState {
         frame.tyre_pressure_psi = car.tyre_pressure_psi;
         frame.tyre_wear_percent = car.tyre_wear;
         frame.brake_temp_c = car.brake_temp_c;
-        for i in 0..4 {
-            frame.tyre_temp_c[i] = car.avg_tyre_temp_c(i);
+        for (i, slot) in frame.tyre_temp_c.iter_mut().enumerate().take(4) {
+            *slot = car.avg_tyre_temp_c(i);
         }
 
         frame.last_lap_ms = session.last_lap_ms;

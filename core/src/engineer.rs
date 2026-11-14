@@ -1716,8 +1716,7 @@ impl Engineer {
 
         let mut too_little: Vec<usize> = Vec::new();
         let mut too_much: Vec<usize> = Vec::new();
-        for i in 0..4 {
-            let spread = self.stats.camber_spread[i];
+        for (i, &spread) in self.stats.camber_spread.iter().enumerate().take(4) {
             if spread < 2.0 {
                 too_little.push(i);
             } else if spread > 15.0 {
@@ -2037,12 +2036,12 @@ impl Engineer {
         };
 
         let mut cooking: Vec<usize> = Vec::new();
-        for i in 0..4 {
+        for (i, &temp) in car.brake_temp_c.iter().enumerate().take(4) {
             // Gated the way the pressure and wear alerts already are. Without
             // it this pushed a fresh recommendation on every single frame the
             // brake was over temperature — dozens a second, burying every
             // other message in the list.
-            let too_hot = car.brake_temp_c[i] > self.brake_ceiling(i);
+            let too_hot = temp > self.brake_ceiling(i);
             if self.check_hysteresis(&format!("brake_temp_{}", i), too_hot) && too_hot {
                 cooking.push(i);
             }
@@ -4148,11 +4147,8 @@ mod tests {
     #[test]
     fn tyre_life_says_not_measured_with_a_value_laps_cannot_take() {
         let engineer = Engineer::new(&AppConfig::default());
-        for corner in 0..4 {
-            assert!(
-                engineer.stats.tyre_laps_remaining[corner] < 0.0,
-                "corner {corner} should start unmeasured"
-            );
+        for (corner, laps) in engineer.stats.tyre_laps_remaining.iter().enumerate() {
+            assert!(*laps < 0.0, "corner {corner} should start unmeasured");
         }
     }
 
