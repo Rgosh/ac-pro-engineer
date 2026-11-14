@@ -2,7 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.5.7] - 2026-11-14
+
+What the launcher's new profile, quests and online page are built on —
+all of it in the public core, so the terminal, RG Pro Engineer and the
+in-game panel read the same answers: the driver's record and personal
+bests from the game's own results, achievements, recaps and quests of a
+driver's own; the wheel's pedals, rotation and every button binding;
+Steam friends read offline; a feed any program can subscribe to; race
+invitations, Custom Shaders Patch's weather and every mod's settings.
+And the Linux build runs on glibc 2.31.
 
 ### Added
 
