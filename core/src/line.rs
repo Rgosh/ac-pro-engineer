@@ -185,13 +185,22 @@ impl LineComparison {
 /// `None` when either lap carries no positions — laps saved before they were
 /// recorded — or the two are not the same circuit.
 pub fn compare(lap: &LapData, reference: &LapData) -> Option<LineComparison> {
-    if lap.track_name != reference.track_name
-        || !has_positions(&lap.telemetry_trace)
-        || !has_positions(&reference.telemetry_trace)
-    {
+    if lap.track_name != reference.track_name {
         return None;
     }
-    let corners = detect(&reference.telemetry_trace);
+    compare_traces(&lap.telemetry_trace, &reference.telemetry_trace)
+}
+
+/// The same, for two traces a caller already knows are of one circuit — a
+/// front end holding the lap being driven, or a reference it has decimated.
+pub fn compare_traces(
+    lap: &[TelemetryPoint],
+    reference: &[TelemetryPoint],
+) -> Option<LineComparison> {
+    if !has_positions(lap) || !has_positions(reference) {
+        return None;
+    }
+    let corners = detect(reference);
     let mut measured = Vec::with_capacity(corners.len());
     for (index, corner) in corners.iter().enumerate() {
         let section_end = corners.get(index + 1).map(|next| next.entry).unwrap_or(1.0);
@@ -201,9 +210,12 @@ pub fn compare(lap: &LapData, reference: &LapData) -> Option<LineComparison> {
 }
 
 /// One corner of the reference, and where the lap went through it.
-fn measure(lap: &LapData, reference: &LapData, corner: &Corner, section_end: f32) -> CornerLine {
-    let mine = &lap.telemetry_trace;
-    let theirs = &reference.telemetry_trace;
+fn measure(
+    mine: &[TelemetryPoint],
+    theirs: &[TelemetryPoint],
+    corner: &Corner,
+    section_end: f32,
+) -> CornerLine {
     let inside = turning(theirs, corner.entry, corner.exit);
     let gap =
         |distance: f32| inside.and_then(|sign| gap_m(mine, theirs, distance).map(|m| m * sign));

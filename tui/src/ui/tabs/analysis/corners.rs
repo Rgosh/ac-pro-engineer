@@ -80,13 +80,24 @@ pub fn render(
         .constraints([
             Constraint::Length(3),
             Constraint::Min(6),
-            Constraint::Length(9),
+            Constraint::Length(10),
         ])
         .split(area);
 
     render_header(f, layout[0], app, lap, reference, &decomposition, is_ru);
     render_table(f, layout[1], app, &decomposition, is_ru);
-    render_detail(f, layout[2], app, lap, &decomposition, is_ru);
+    let line = decomposition
+        .losses_over(LOSS_THRESHOLD_S)
+        .first()
+        .and_then(|worst| worst.reference.as_ref())
+        .and_then(|matched| {
+            app.ui_state
+                .analysis
+                .corner_cache
+                .borrow_mut()
+                .line_at(lap, reference, matched.apex)
+        });
+    render_detail(f, layout[2], app, lap, &decomposition, line.as_ref(), is_ru);
 }
 
 fn message(f: &mut Frame<'_>, area: Rect, border: Style, text: &str) {
@@ -307,6 +318,7 @@ fn render_detail(
     app: &AppState,
     lap: &LapData,
     decomposition: &Decomposition,
+    line: Option<&ac_core::line::CornerLine>,
     is_ru: bool,
 ) {
     let theme = &app.ui_state.theme;
@@ -477,6 +489,20 @@ fn render_detail(
                 false,
             ),
             None => {}
+        }
+
+        // **Where across the road**, which none of the numbers above can
+        // say: a corner braked identically and still slower was usually a
+        // different line. Withheld for laps that carry no positions.
+        if let Some(line) = line {
+            match line.said(is_ru) {
+                Some(said) => row("Line".tr(is_ru), said, false),
+                None => row(
+                    "Line".tr(is_ru),
+                    "the same line as the reference".tr(is_ru).to_string(),
+                    true,
+                ),
+            }
         }
     }
 

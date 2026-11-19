@@ -480,6 +480,11 @@ pub struct TelemetryAnalyzer {
     /// A front end that says "7004 m" should be able to say where that came
     /// from, and nothing else can tell afterwards: both are an `f32` in metres.
     track_length_measured: bool,
+    /// The session's corners measured over every clean lap, worked out when
+    /// a lap is added rather than whenever a screen asks — it walks every
+    /// lap's trace, and a front end draws sixty times a second. See
+    /// [`crate::repeatability::of_session`].
+    repeatable: Option<crate::repeatability::Repeatability>,
 }
 
 pub type Analyzer = TelemetryAnalyzer;
@@ -501,6 +506,7 @@ impl TelemetryAnalyzer {
             track_length_m: 0.0,
             measured_length: crate::track::MeasuredLength::default(),
             track_length_measured: false,
+            repeatable: None,
         }
     }
 
@@ -524,6 +530,19 @@ impl TelemetryAnalyzer {
         self.track_length_m = 0.0;
         self.track_length_measured = false;
         self.measured_length = crate::track::MeasuredLength::default();
+        self.repeatable = None;
+    }
+
+    /// How repeatable the session's corners are, and the lap of the driver's
+    /// own best corners — or `None` until there are three clean laps.
+    pub fn repeatability(&self) -> Option<&crate::repeatability::Repeatability> {
+        self.repeatable.as_ref()
+    }
+
+    /// Measure the corners again, for a front end that changed `laps`
+    /// itself. Laps added by [`Self::process_lap`] already do this.
+    pub fn refresh_repeatability(&mut self) {
+        self.repeatable = crate::repeatability::of_session(&self.laps);
     }
 
     pub fn set_world_record(&mut self, record: TrackRecord) {
@@ -1095,6 +1114,7 @@ impl TelemetryAnalyzer {
 
         self.laps.push(lap_data);
         info!("Lap {} successfully added to telemetry stack.", lap_number);
+        self.refresh_repeatability();
 
         // **A lap the game called invalid is not a best lap.** The best
         // sectors have always filtered on this; the best *lap* did not, so on

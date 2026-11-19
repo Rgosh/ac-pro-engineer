@@ -89,6 +89,9 @@ pub struct CornerCache {
     /// it here costs one extra pass over the corners and saves the BRAKING
     /// sub-tab detecting and decomposing all over again for the same answer.
     braking: ac_core::braking::Report,
+    /// Where the car was across the road against the reference, for the
+    /// same pair — `None` when either lap carries no positions.
+    line: Option<ac_core::line::LineComparison>,
 }
 
 impl CornerCache {
@@ -121,6 +124,7 @@ impl CornerCache {
             &reference.telemetry_trace,
             lap.track_length_m,
         );
+        self.line = ac_core::line::compare(lap, reference);
         self.key = Some(key);
     }
 
@@ -143,7 +147,24 @@ impl CornerCache {
         self.braking.clone()
     }
 
+    /// The line through the reference's corner with this apex, if measured.
+    pub fn line_at(
+        &mut self,
+        lap: &ac_core::analyzer::LapData,
+        reference: &ac_core::analyzer::LapData,
+        apex: f32,
+    ) -> Option<ac_core::line::CornerLine> {
+        self.refresh(lap, reference);
+        self.line.as_ref().and_then(|line| {
+            line.corners
+                .iter()
+                .find(|corner| (corner.apex - apex).abs() < 1e-4)
+                .cloned()
+        })
+    }
+
     pub fn clear(&mut self) {
+        self.line = None;
         self.key = None;
         self.decomposition = ac_core::corners::Decomposition::default();
         self.braking = ac_core::braking::Report::default();
@@ -362,10 +383,15 @@ pub fn render(f: &mut Frame<'_>, area: Rect, app: &AppState) {
         // arithmetic while driving.
         let left = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(5), Constraint::Length(6)])
+            .constraints([
+                Constraint::Min(5),
+                Constraint::Length(6),
+                Constraint::Length(6),
+            ])
             .split(main_layout[0]);
         render_laps_list(f, left[0], app);
         render_consistency(f, left[1], app);
+        render_best_corners(f, left[2], app);
 
         let right_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -565,6 +591,74 @@ fn render_consistency(f: &mut Frame<'_>, area: Rect, app: &AppState) {
             Style::default().fg(Color::DarkGray),
         )),
     ];
+    f.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// The lap of the driver's own best corners: what the session's quickest
+/// time through every corner adds up to, how much that is under the best lap,
+/// and the corners that wander most from lap to lap. Kept by the analyser
+/// when a lap finishes — see `ac_core::repeatability`.
+fn render_best_corners(f: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let theme = &app.ui_state.theme;
+    let is_ru = app.config.language == ac_core::config::Language::Russian;
+    let block = Block::default()
+        .title("YOUR BEST CORNERS".tr(is_ru).to_string())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.ui_state.get_color(&theme.border)));
+
+    let Some(measured) = app
+        .analyzer
+        .repeatability()
+        .filter(|measured| measured.own_best_lap_ms > 0)
+    else {
+        f.render_widget(
+            Paragraph::new("three clean laps first".tr(is_ru))
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block),
+            area,
+        );
+        return;
+    };
+
+    let gain = measured.to_find_ms();
+    let mut lines = vec![
+        Line::from(Span::styled(
+            ac_core::consistency::lap_time(measured.own_best_lap_ms),
+            Style::default()
+                .fg(app.ui_state.get_color(&theme.text))
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            tr_fmt(
+                "{0} quicker than your best",
+                is_ru,
+                &[&format!("{:.3} s", gain as f32 / 1000.0)],
+            ),
+            Style::default().fg(if gain >= 20 {
+                Color::Green
+            } else {
+                Color::DarkGray
+            }),
+        )),
+    ];
+    let practise: Vec<String> = measured
+        .worst()
+        .iter()
+        .take(3)
+        .map(|section| {
+            format!(
+                "T{} ±{:.2}",
+                section.number,
+                section.spread_ms as f32 / 1000.0
+            )
+        })
+        .collect();
+    if !practise.is_empty() {
+        lines.push(Line::from(Span::styled(
+            tr_fmt("practise {0}", is_ru, &[&practise.join(" · ")]),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
     f.render_widget(Paragraph::new(lines).block(block), area);
 }
 

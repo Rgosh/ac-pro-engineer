@@ -41,6 +41,8 @@ pub mod i18n;
 pub mod lan;
 pub mod laps;
 pub mod library;
+/// The racing line against the reference, in metres across the road.
+pub mod line;
 pub mod memory;
 pub mod net;
 pub mod overlay;

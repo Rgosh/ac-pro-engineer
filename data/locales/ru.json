@@ -707,5 +707,15 @@
   "Pressure moves this too — change the pressure first, then judge this again after three laps.": "Давление влияет и на это — сначала поменяйте давление, а это оцените заново через три круга.",
   "The brake bias decides which brakes work hardest — change the bias first, then look at this again.": "Баланс тормозов решает, какие тормоза греются сильнее — сначала поменяйте баланс, затем посмотрите на это снова.",
   "Change the finding above first.": "Сначала выполните совет выше.",
-  "Start here: one change at a time, then three clean laps before the next.": "Начните с этого: одно изменение за раз, затем три чистых круга перед следующим."
+  "Start here: one change at a time, then three clean laps before the next.": "Начните с этого: одно изменение за раз, затем три чистых круга перед следующим.",
+  "{0}: {1} wide of your reference at the apex · {2}": "{0}: на {1} шире эталона в апексе · {2}",
+  "{0}: turned in early and ran {1} wider on the exit · {2}": "{0}: ранний вход в поворот и на {1} шире на выходе · {2}",
+  "{0}: {1} wider on the way in, a later apex · {2}": "{0}: на {1} шире на входе, поздний апекс · {2}",
+  "{0}: a different line, up to {1} off the reference · {2}": "{0}: другая траектория, до {1} от эталона · {2}",
+  "Line": "Траектория",
+  "the same line as the reference": "та же траектория, что у эталона",
+  "YOUR BEST CORNERS": "ВАШИ ЛУЧШИЕ ПОВОРОТЫ",
+  "three clean laps first": "сначала три чистых круга",
+  "{0} quicker than your best": "на {0} быстрее лучшего круга",
+  "practise {0}": "отработать {0}"
 }
