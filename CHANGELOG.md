@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.8] - 2026-11-19
+
+Where across the road the time went, and a lap of your best corners you
+can trust. The core now measures the racing line against the reference
+in metres, and the best-corners lap no longer counts corners a lap was
+never there for.
+
+### Added
+
+- **The racing line, in metres** — where the car was across the road
+  against the reference lap, at every corner's turn-in, apex and exit;
+  toward the inside of the corner or away from it, whichever way round
+  the game's axes go; and in one sentence when it cost time ("T5: 1.8 m
+  wide of your reference at the apex · +0.21 s"). Under a metre is the
+  same line, and a lap saved before positions were kept, or two cars on
+  different roads, is no measurement rather than a number (`line`).
+- **The terminal: YOUR BEST CORNERS** under CONSISTENCY — the lap your
+  own best corners add up to, how far under your best lap it is, and the
+  corners that wander most; and a **Line** row in the worst corner's
+  breakdown on CORNERS.
+
+### Fixed
+
+- **A lap of your best corners that nobody drove.** A lap whose trace
+  began late — joined halfway round, or recorded from after the line —
+  was counted as driving every corner before it in a fraction of a
+  second, so the best-corners lap came out seconds too quick and
+  WHAT TO PRACTISE pointed at a lap that never went through the corner.
+  A lap now counts only in corners it was there for; a trace whose clock
+  runs backwards is left out; and a corner a fifth quicker than the
+  session's typical time there is a gap in the data, not a better corner.
+- **Worked out once a lap, not once a frame** — the analyser keeps the
+  corners' repeatability when a lap finishes, so no screen walks the
+  whole session to draw it.
+
 ## [v0.5.7] - 2026-11-14
 
 What the launcher's new profile, quests and online page are built on —
