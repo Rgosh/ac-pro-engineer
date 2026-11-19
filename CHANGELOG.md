@@ -29,6 +29,10 @@ engineer keeping quiet about grip while somebody is sideways on purpose.
   only those two values in `ui_car.json`, every other byte the author's;
   read back before it is written, the original kept to put back exactly
   (`ui_car`). Cars now carry their tags.
+- **The same car or circuit installed twice, found** — grouped by their
+  model and confirmed byte for byte: identical copies, with the space
+  they waste, and copies of the same model with other files different,
+  said and not judged (`duplicates`).
 - **The mod check finds the crashes it missed**: a model a car's
   `lods.ini` or a circuit's `models.ini` names and the disk does not
   have, and layouts with no description — and it checks several folders
