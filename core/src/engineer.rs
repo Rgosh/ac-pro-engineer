@@ -146,6 +146,9 @@ const FUEL_HISTORY_LAPS: usize = 3;
 
 pub struct Engineer {
     config: AppConfig,
+    /// Whether the driving is drifting — see [`crate::drift::Style`]. While
+    /// it is, every rule that treats a slide as a fault keeps quiet.
+    drift_style: crate::drift::Style,
     /// What the game feeding this engineer can actually measure.
     ///
     /// Starts at nothing measured, and every rule that rests on a measurement
@@ -477,6 +480,7 @@ impl Engineer {
         info!("Engineer module initialized.");
         Self {
             config: config.clone(),
+            drift_style: crate::drift::Style::default(),
             capabilities: Capabilities::default(),
             car_class: crate::games::CarClass::default(),
             car_adjustable: None,
@@ -682,7 +686,15 @@ impl Engineer {
         self.capabilities
     }
 
+    /// Whether this is drifting rather than racing: a drift session, or
+    /// driving that has been mostly sideways for the last twenty seconds.
+    pub fn drifting(&self, session: &Session) -> bool {
+        session.kind == crate::games::SessionKind::Drift || self.drift_style.drifting()
+    }
+
     pub fn update(&mut self, car: &Car, session: &Session, _info: &SessionInfo) {
+        let dt_s = (self.config.update_rate as f32 / 1000.0).clamp(0.001, 1.0);
+        self.drift_style.observe(car, dt_s);
         self.update_stats(car, session);
         self.analyze_driving_style(car);
 
@@ -986,6 +998,22 @@ impl Engineer {
         let mut recommendations = Vec::new();
 
         self.analyze_rejoin(Instant::now(), car, session, &mut recommendations);
+
+        // **Drifting is not a fault.** Every rule below that is about grip —
+        // the balance counters, the tyres' temperature and wear, camber,
+        // pressure, rake — reads a car held sideways on purpose as a car in
+        // trouble, and told drifters to fix the thing they were doing. Those
+        // keep quiet in a drift session and while the driving is mostly
+        // sideways; the brakes, the wheel and the fuel still speak. Drifting
+        // has its own measure in `crate::drift`.
+        if self.drifting(session) {
+            self.analyze_brakes(car, &mut recommendations);
+            self.analyze_strategy(car, session, &mut recommendations);
+            self.analyze_ffb_clipping(car, &mut recommendations);
+            crate::advice_order::into_a_plan(&mut recommendations, self.is_ru());
+            return recommendations;
+        }
+
         self.analyze_tyre_pressure(car, session, &mut recommendations);
         // Both of these are built on measurements a game may simply not make,
         // and a missing measurement reads as zero — which is a confident
@@ -4404,6 +4432,50 @@ mod tests {
                 "{quiet:?} has no finish, so there is nothing to be short for"
             );
         }
+    }
+
+    /// **A drifter is not told to fix their oversteer.** The same counters
+    /// that make a balance finding in practice say nothing in a drift
+    /// session, nor in practice once the driving has been mostly sideways.
+    #[test]
+    fn drifting_is_not_told_about_its_oversteer() {
+        use crate::games::SessionKind;
+        let config = AppConfig::default();
+        let session = |kind| Session {
+            kind,
+            ..Default::default()
+        };
+        let balance = |engineer: &mut Engineer, kind| {
+            engineer.stats.total_frames = 600;
+            engineer.stats.oversteer_frames = 200;
+            engineer
+                .analyze_live(&Car::default(), &session(kind), None)
+                .iter()
+                .any(|rec| rec.component == "Balance")
+        };
+
+        let mut racing = Engineer::new(&config);
+        assert!(
+            balance(&mut racing, SessionKind::Practice),
+            "a racer is told"
+        );
+        let mut drifting = Engineer::new(&config);
+        assert!(!balance(&mut drifting, SessionKind::Drift));
+
+        // A drift server is a practice session: the driving decides.
+        let mut sideways = Engineer::new(&config);
+        let info = crate::session_info::SessionInfo::default();
+        let ms = 70.0 / 3.6;
+        let car = Car {
+            speed_kmh: 70.0,
+            local_velocity_ms: [ms * 0.57, 0.0, ms * 0.82],
+            ..Default::default()
+        };
+        for _ in 0..2_000 {
+            sideways.update(&car, &session(SessionKind::Practice), &info);
+        }
+        assert!(sideways.drifting(&session(SessionKind::Practice)));
+        assert!(!balance(&mut sideways, SessionKind::Practice));
     }
 
     /// Burn measured across a refuel is meaningless, and the stale estimate

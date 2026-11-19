@@ -122,6 +122,7 @@ impl From<&AcPhysics> for Car {
 
             damage: p.car_damage,
             tyres_off_track: p.number_of_tyres_out,
+            local_velocity_ms: p.local_velocity,
             reference_delta_s: p.performance_meter,
             force_feedback: p.final_ff,
             pit_limiter: p.pit_limiter_on != 0,

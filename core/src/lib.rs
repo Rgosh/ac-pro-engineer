@@ -27,6 +27,8 @@ pub mod content_manager;
 pub mod corners;
 pub mod crash_logger;
 pub mod debrief;
+/// Drifting: the angle, the score, and what to work on.
+pub mod drift;
 pub mod driver_vs_car;
 pub mod engineer;
 /// The handbook both front ends draw. The words live here; the styling does
@@ -60,6 +62,8 @@ pub mod steady;
 pub mod steam;
 pub mod steam_profile;
 pub mod stint;
+/// Speed runs through traffic, scored the way those servers score them.
+pub mod street;
 pub mod track;
 pub mod updater;
 

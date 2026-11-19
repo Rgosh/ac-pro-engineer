@@ -299,6 +299,13 @@ pub struct Car {
     pub damage: [f32; 5],
     /// How many wheels are off the track, where the game counts them.
     pub tyres_off_track: i32,
+    /// The car's velocity in its own axes, metres a second: sideways, up and
+    /// forwards. **The angle between the last and the first is a drift
+    /// angle** — the one number drifting is judged on, and the reason this is
+    /// carried past the reader at all. Both games publish it; a reading from
+    /// before it was carried has zeros, which read as a car standing still.
+    #[serde(default)]
+    pub local_velocity_ms: [f32; 3],
 
     /// The game's own delta to its reference lap, in seconds.
     pub reference_delta_s: f32,
