@@ -11,7 +11,11 @@
 //! them.
 //!
 //! **Blocking and proportional to the install**: it walks every folder for
-//! the sizes. Called on a thread.
+//! the sizes. Called on a thread — and it spreads the walk over as many more
+//! as the machine has cores, because on an SSD a folder walk is waiting on
+//! the disk one request at a time, and eight requests in flight finish in
+//! not much more than the time of one. The report is the same whatever the
+//! order the folders were finished in.
 
 use std::path::Path;
 
@@ -98,45 +102,106 @@ impl Report {
     }
 }
 
+/// What one folder under `content/` turned out to be.
+struct Looked {
+    kind: &'static str,
+    id: String,
+    /// `None` for a folder that is not a car or circuit at all.
+    findings: Option<Vec<(Severity, &'static str)>>,
+    bytes: u64,
+}
+
+/// Look at one folder: is it a car or circuit, what is wrong with it, and
+/// how much room it takes.
+fn look(kind: &'static str, id: String, at: &Path) -> Looked {
+    let bytes = size_of(at);
+    if !present(kind, at) {
+        return Looked {
+            kind,
+            id,
+            findings: None,
+            bytes,
+        };
+    }
+    let mut found = Vec::new();
+    let mut said = |severity, what| found.push((severity, what));
+    match kind {
+        "cars" => check_car(at, &mut said),
+        _ => check_track(at, &mut said),
+    }
+    Looked {
+        kind,
+        id,
+        findings: Some(found),
+        bytes,
+    }
+}
+
 /// Check every car and circuit in an install.
 pub fn check(root: &Path) -> Report {
-    let mut report = Report::default();
+    let mut work: Vec<(&'static str, String, std::path::PathBuf)> = Vec::new();
     for (kind, folder) in [("cars", "cars"), ("tracks", "tracks")] {
         let Ok(entries) = std::fs::read_dir(root.join("content").join(folder)) else {
             continue;
         };
-        let mut ids: Vec<String> = entries
-            .flatten()
-            .filter(|e| e.path().is_dir())
-            .filter_map(|e| e.file_name().to_str().map(str::to_string))
-            .collect();
-        ids.sort();
-        for id in ids {
-            let at = root.join("content").join(folder).join(&id);
-            if !present(kind, &at) {
-                report.absent.push((kind, id.clone(), size_of(&at)));
-                continue;
+        for entry in entries.flatten().filter(|e| e.path().is_dir()) {
+            if let Some(id) = entry.file_name().to_str() {
+                work.push((kind, id.to_string(), entry.path()));
             }
-            let mut said = |severity, what| {
-                report.findings.push(Finding {
-                    kind,
-                    id: id.clone(),
-                    severity,
-                    what,
-                })
-            };
-            match kind {
-                "cars" => {
-                    report.cars += 1;
-                    check_car(&at, &mut said);
-                }
-                _ => {
-                    report.tracks += 1;
-                    check_track(&at, &mut said);
-                }
-            }
-            report.sizes.push((kind, id.clone(), size_of(&at)));
         }
+    }
+
+    // **Several folders at once.** Each worker takes the next folder off a
+    // shared counter, so a circuit of four gigabytes holds up one worker and
+    // not the queue behind it.
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(1, 8)
+        .min(work.len().max(1));
+    let mut looked: Vec<Looked> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some((kind, id, path)) = work.get(at) else {
+                            break;
+                        };
+                        mine.push(look(kind, id.clone(), path));
+                    }
+                    mine
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap_or_default())
+            .collect()
+    });
+    looked.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
+
+    let mut report = Report::default();
+    for one in looked {
+        let Some(found) = one.findings else {
+            report.absent.push((one.kind, one.id, one.bytes));
+            continue;
+        };
+        match one.kind {
+            "cars" => report.cars += 1,
+            _ => report.tracks += 1,
+        }
+        for (severity, what) in found {
+            report.findings.push(Finding {
+                kind: one.kind,
+                id: one.id.clone(),
+                severity,
+                what,
+            });
+        }
+        report.sizes.push((one.kind, one.id, one.bytes));
     }
     for (kind, id, path) in super::adding::switched_off(root) {
         let kind = if kind == "cars" { "cars" } else { "tracks" };
@@ -215,6 +280,40 @@ pub fn present(kind: &str, at: &Path) -> bool {
     }
 }
 
+/// Every model file an ini names under `FILE=`, as written.
+///
+/// `lods.ini` names a car's levels of detail and `models.ini` a circuit's
+/// pieces; the game loads each by that name and stops — on the loading
+/// screen, or worse when the car first drives far enough away to switch —
+/// if one is not there.
+fn files_named(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.split(';').next().unwrap_or("").trim();
+            let (key, value) = line.split_once('=')?;
+            key.trim()
+                .eq_ignore_ascii_case("FILE")
+                .then(|| value.trim().to_string())
+        })
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// Whether every model an ini at `ini` names is in `dir`.
+fn all_models_there(dir: &Path, ini: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(ini) else {
+        return true;
+    };
+    files_named(&text).iter().all(|name| {
+        // A name may carry a folder of its own, as the game allows.
+        name.replace('\\', "/")
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .try_fold(dir.to_path_buf(), |at, part| child(&at, part))
+            .is_some()
+    })
+}
+
 fn check_car(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
     let has_data = child(at, "data.acd").is_some_and(|p| p.is_file())
         || child(at, "data").is_some_and(|p| p.is_dir());
@@ -238,6 +337,15 @@ fn check_car(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
         said(
             Severity::Broken,
             "No livery — the game cannot load a car without one",
+        );
+    }
+    // Only an unpacked `data/` can be read: `data.acd` is encrypted.
+    if let Some(lods) = child(at, "data").and_then(|data| child(&data, "lods.ini"))
+        && !all_models_there(at, &lods)
+    {
+        said(
+            Severity::Broken,
+            "A model its lods.ini names is missing — the game stops when it switches to it",
         );
     }
     let ui_car = child(at, "ui").and_then(|ui| child(&ui, "ui_car.json"));
@@ -270,6 +378,23 @@ fn check_track(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
         said(
             Severity::Broken,
             "No model (.kn5) — it was not installed completely",
+        );
+    }
+    // `models.ini`, and `models_<layout>.ini` per layout: the pieces a
+    // circuit is assembled from. One named and not there is the loading
+    // screen that never ends.
+    let models_missing = std::fs::read_dir(at).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            name.starts_with("models")
+                && name.ends_with(".ini")
+                && !all_models_there(at, &entry.path())
+        })
+    });
+    if models_missing {
+        said(
+            Severity::Broken,
+            "A model its models.ini names is missing — the game will not finish loading it",
         );
     }
     // Its layouts: folders beside `ui` with a `data` of their own, or the
@@ -307,11 +432,29 @@ fn check_track(at: &Path, said: &mut impl FnMut(Severity, &'static str)) {
             "No AI line — no opponents and no racing line here",
         );
     }
-    if child(at, "ui").is_none() {
-        said(
+    match child(at, "ui") {
+        None => said(
             Severity::Warning,
             "No ui folder — it is listed by its folder name, with no picture",
-        );
+        ),
+        // A layout's description lives in `ui/<layout>/`; one without it is
+        // a layout listed by its folder name, with no length and no picture.
+        Some(ui) => {
+            let undescribed = places.iter().any(|place| {
+                place != at
+                    && place
+                        .file_name()
+                        .and_then(|layout| child(&ui, &layout.to_string_lossy()))
+                        .and_then(|folder| child(&folder, "ui_track.json"))
+                        .is_none()
+            });
+            if undescribed {
+                said(
+                    Severity::Warning,
+                    "A layout has no ui_track.json — it is listed by its folder name",
+                );
+            }
+        }
     }
 }
 
@@ -394,6 +537,7 @@ mod tests {
         }
         file(&tracks.join("spa"), "spa.kn5", "m");
         file(&tracks.join("spa"), "ui/gp/ui_track.json", "{}");
+        file(&tracks.join("spa"), "ui/short/ui_track.json", "{}");
         // A circuit with no AI line and no surfaces.
         file(&tracks.join("mod_ring"), "ring.kn5", "m");
         file(&tracks.join("mod_ring"), "ui/ui_track.json", "{}");
@@ -499,5 +643,76 @@ mod tests {
         );
         assert_eq!(again.cars, 4, "what is off is not checked as installed");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **A model a file names and the disk does not have** is the crash that
+    /// sends people to a forum: a circuit's `models.ini`, a car's
+    /// `lods.ini`. And a layout with no description is listed by its folder.
+    #[test]
+    fn named_models_that_are_not_there_are_found() {
+        let root = std::env::temp_dir().join(format!("ac-health-models-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let cars = root.join("content/cars");
+        let tracks = root.join("content/tracks");
+
+        // A car unpacked, its LOD B missing; and one whose LODs are all there.
+        for id in ["mod_lods", "mod_lods_whole"] {
+            file(&cars.join(id), "data/car.ini", "x");
+            file(&cars.join(id), "car.kn5", "m");
+            file(&cars.join(id), "skins/a/preview.jpg", "p");
+            file(&cars.join(id), "ui/ui_car.json", r#"{"name":"L"}"#);
+            file(
+                &cars.join(id),
+                "data/lods.ini",
+                "[LOD_0]\nFILE=car.kn5\nIN=0\n[LOD_1]\nFILE=car_lod_b.kn5 ; far\n",
+            );
+        }
+        file(&cars.join("mod_lods_whole"), "Car_LOD_B.kn5", "m");
+
+        // A circuit in pieces, one piece missing, and a layout with no ui.
+        let ring = tracks.join("mod_pieces");
+        file(&ring, "base.kn5", "m");
+        file(
+            &ring,
+            "models.ini",
+            "[MODEL_0]\nFILE=base.kn5\n[MODEL_1]\nFILE=trees.kn5\n",
+        );
+        for layout in ["full", "club"] {
+            file(&ring, &format!("{layout}/data/surfaces.ini"), "s");
+            file(&ring, &format!("{layout}/ai/fast_lane.ai"), "a");
+        }
+        file(&ring, "ui/full/ui_track.json", "{}");
+
+        let report = check(&root);
+        let said = |id: &str| -> Vec<&str> {
+            report
+                .findings
+                .iter()
+                .filter(|f| f.id == id)
+                .map(|f| f.what)
+                .collect()
+        };
+        assert!(
+            said("mod_lods").iter().any(|w| w.contains("lods.ini")),
+            "{report:#?}"
+        );
+        assert!(said("mod_lods_whole").is_empty(), "{report:#?}");
+        let pieces = said("mod_pieces");
+        assert!(
+            pieces.iter().any(|w| w.contains("models.ini")),
+            "{pieces:?}"
+        );
+        assert!(pieces.iter().any(|w| w.contains("A layout")), "{pieces:?}");
+        assert_eq!(report.cars, 2);
+        assert_eq!(report.tracks, 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_ini_names_its_files_and_nothing_else() {
+        assert_eq!(
+            files_named("[LOD_0]\nFILE = a.kn5\nfile=b/c.kn5 ; note\nIN=0\nFILE=\n"),
+            vec!["a.kn5".to_string(), "b/c.kn5".to_string()]
+        );
     }
 }
