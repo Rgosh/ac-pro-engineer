@@ -7,9 +7,32 @@ All notable changes to this project will be documented in this file.
 Where across the road the time went, and a lap of your best corners you
 can trust. The core now measures the racing line against the reference
 in metres, and the best-corners lap no longer counts corners a lap was
-never there for.
+never there for. **And for the two crowds a racing engineer had nothing
+for — drifters and traffic runners — a measure of their own**, with the
+engineer keeping quiet about grip while somebody is sideways on purpose.
 
 ### Added
+
+- **Drifting, measured** — the drift angle from the velocity in the
+  car's own axes (both games publish it; the neutral reading now carries
+  it); a drift from 15° and 30 km/h until it straightens; points for
+  angle and speed, a combo that grows with every transition; a spin, a
+  hit or four wheels off keeps nothing. After five drifts the coach says
+  whether you spin out, drift too shallow, or let the angle wander
+  (`drift`).
+- **Traffic runs ("шашки")** — a run from 100 km/h until you slow down
+  for three seconds; points for speed squared and a multiplier that
+  climbs every fifteen clean seconds above 140, to ×5; contact ends it
+  with nothing. No near misses: AC publishes nothing about other cars,
+  and a score built on guesses rewards the guess (`street`).
+- **A car's class and tags changed in place, for one car or hundreds** —
+  only those two values in `ui_car.json`, every other byte the author's;
+  read back before it is written, the original kept to put back exactly
+  (`ui_car`). Cars now carry their tags.
+- **The mod check finds the crashes it missed**: a model a car's
+  `lods.ini` or a circuit's `models.ini` names and the disk does not
+  have, and layouts with no description — and it checks several folders
+  at once (`health`).
 
 - **The racing line, in metres** — where the car was across the road
   against the reference lap, at every corner's turn-in, apex and exit;
@@ -22,6 +45,14 @@ never there for.
   own best corners add up to, how far under your best lap it is, and the
   corners that wander most; and a **Line** row in the worst corner's
   breakdown on CORNERS.
+
+### Changed
+
+- **The engineer does not tell drifters to fix their oversteer.** In a
+  drift session, and whenever the last twenty seconds or so were mostly
+  sideways, the rules about grip — balance, tyre temperatures and wear,
+  camber, pressures, rake — keep quiet; brakes, the wheel and fuel still
+  speak.
 
 ### Fixed
 
