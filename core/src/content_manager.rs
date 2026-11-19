@@ -36,6 +36,7 @@ mod tests {
     fn car(id: &str) -> CarSpecs {
         CarSpecs {
             id: id.to_string(),
+            tags: Vec::new(),
             name: id.to_string(),
             brand: "Brand".to_string(),
             description: String::new(),

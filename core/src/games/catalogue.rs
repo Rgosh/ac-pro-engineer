@@ -110,6 +110,10 @@ pub struct CarSpecs {
     pub brand: String,
     pub description: String,
     pub class: String,
+    /// The tags its `ui_car.json` carries, as written. Empty for a car with
+    /// none, and for a game that keeps no such file.
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub power: String,
     pub torque: String,
     pub weight: String,

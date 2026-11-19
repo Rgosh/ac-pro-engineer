@@ -43,6 +43,8 @@ pub mod setups;
 pub mod shm;
 pub mod structs;
 pub mod tracks;
+/// A car's class and tags changed in place, one car or many.
+pub mod ui_car;
 pub mod video;
 pub mod weather_fx;
 

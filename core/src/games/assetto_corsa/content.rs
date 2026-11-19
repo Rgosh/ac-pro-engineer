@@ -67,6 +67,14 @@ pub fn scan_cars(ac_root: &Path) -> Vec<CarSpecs> {
                 brand,
                 description: desc,
                 class,
+                tags: json_val["tags"]
+                    .as_array()
+                    .map(|tags| {
+                        tags.iter()
+                            .filter_map(|tag| tag.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
                 power: power_s,
                 torque: torque_s,
                 weight: weight_s,
