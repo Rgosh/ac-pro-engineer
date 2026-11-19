@@ -54,6 +54,16 @@ pub struct Report {
     /// Folders that are not a car or circuit at all — see [`present`] —
     /// with their size. Not checked and not counted.
     pub absent: Vec<(&'static str, String, u64)>,
+    /// The same car or circuit installed under more than one folder — see
+    /// [`super::duplicates`].
+    pub duplicates: Vec<super::duplicates::Group>,
+}
+
+impl Report {
+    /// What the identical copies take, beyond one of each.
+    pub fn wasted_on_copies(&self) -> u64 {
+        self.duplicates.iter().map(|group| group.wasted()).sum()
+    }
 }
 
 impl Report {
@@ -208,6 +218,7 @@ pub fn check(root: &Path) -> Report {
         report.off.push((kind, id, size_of(&path)));
     }
     report.off.sort_by_key(|o| std::cmp::Reverse(o.2));
+    report.duplicates = super::duplicates::find(root);
     report
         .findings
         .sort_by(|a, b| (a.severity, a.kind, &a.id).cmp(&(b.severity, b.kind, &b.id)));

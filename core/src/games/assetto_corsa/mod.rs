@@ -19,6 +19,8 @@ pub mod csp;
 pub mod csp_config;
 pub mod csp_presets;
 pub mod csp_settings;
+/// The same car or circuit installed twice under two folder names.
+pub mod duplicates;
 pub mod game_log;
 pub mod health;
 pub mod ini;
