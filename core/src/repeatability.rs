@@ -41,6 +41,22 @@ use crate::analyzer::TelemetryPoint;
 use crate::corners::{Corner, time_at};
 use serde::{Deserialize, Serialize};
 
+/// How much of the lap a trace may be missing at the line and still be said
+/// to cover it, as a fraction of a lap.
+///
+/// The analyser records from the first tick after the line — a metre and a
+/// half at 300 km/h and 60 Hz, a thousandth of a short lap. Half a percent is
+/// generous for that and far short of a corner.
+const EDGE: f32 = 0.005;
+
+/// How much quicker than the session's typical time through a section one lap
+/// may be before it is a hole in the samples rather than a better corner.
+///
+/// A corner driven perfectly against one driven badly is a few tenths in a
+/// section of five or ten seconds — a few percent. A fifth is a corner that
+/// was not driven: a pause, a reset to the pits, a jump in the feed.
+const IMPLAUSIBLY_QUICK: f32 = 0.20;
+
 /// How repeatable one corner was over the laps it was driven.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Section {
@@ -157,6 +173,7 @@ pub fn of_session(laps: &[crate::analyzer::LapData]) -> Option<Repeatability> {
     let driven: Vec<&crate::analyzer::LapData> = laps
         .iter()
         .filter(|lap| !lap.from_file && lap.valid && !lap.telemetry_trace.is_empty())
+        .filter(|lap| in_order(&lap.telemetry_trace))
         .collect();
     if driven.len() < 3 {
         return None;
@@ -210,6 +227,17 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
         let mut brakes = Vec::with_capacity(laps.len());
 
         for (which, lap) in laps.iter().enumerate() {
+            // **Only a lap that was there for the whole section.** `time_at`
+            // answers outside a trace with the trace's first or last time
+            // rather than with nothing, so a lap joined halfway round — or
+            // one whose recording began late — came back as having driven
+            // every section before it in no time at all. The quickest time
+            // through T1 became a few milliseconds, the lap of best corners
+            // seconds quicker than anything driven, and the corner nobody
+            // drove was the one it said to go and watch.
+            if !covers(lap, from, to) {
+                continue;
+            }
             let (Some(start), Some(end)) = (time_at(lap, from), time_at(lap, to)) else {
                 continue;
             };
@@ -239,9 +267,20 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
         if times.is_empty() {
             continue;
         }
+        // Held to the session's typical time here, not to the quickest lap's:
+        // a glitch quick enough to matter usually made its lap the quickest,
+        // and would then be its own yardstick. The upper middle, so two laps
+        // are judged by the slower of them.
+        let typical = {
+            let mut sorted = times.clone();
+            sorted.sort_unstable();
+            sorted[sorted.len() / 2]
+        };
+        let floor = (typical as f32 * (1.0 - IMPLAUSIBLY_QUICK)) as i32;
         let quickest = times
             .iter()
             .enumerate()
+            .filter(|(_, took)| **took >= floor)
             .min_by_key(|(_, took)| **took)
             .map(|(at, took)| (at, *took));
         let (best_at, best) = quickest.unwrap_or((0, 0));
@@ -269,6 +308,7 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
     // way `decompose` charges it separately.
     let opening_best = laps
         .iter()
+        .filter(|lap| covers(lap, 0.0, skeleton[0].entry))
         .filter_map(|lap| time_at(lap, skeleton[0].entry))
         .min()
         .unwrap_or(0);
@@ -286,6 +326,26 @@ pub fn measure(laps: &[&[TelemetryPoint]], skeleton: &[Corner]) -> Repeatability
         own_best_lap_ms: own_best_sum + opening_best,
         best_lap_ms,
     }
+}
+
+/// Whether a trace holds the stretch from one distance to another, rather than
+/// clamping to it. The line at either end is allowed [`EDGE`] of slack.
+fn covers(trace: &[TelemetryPoint], from: f32, to: f32) -> bool {
+    let (Some(first), Some(last)) = (trace.first(), trace.last()) else {
+        return false;
+    };
+    let start = if from <= EDGE { EDGE } else { from };
+    let end = if to >= 1.0 - EDGE { 1.0 - EDGE } else { to };
+    first.distance <= start && last.distance >= end
+}
+
+/// Whether the clock and the distance only ever move forward. A clock that
+/// runs backwards is a trace from two places stitched together, and every
+/// time read off it is a guess at a moment that happened twice.
+fn in_order(trace: &[TelemetryPoint]) -> bool {
+    trace
+        .windows(2)
+        .all(|pair| pair[1].time_ms >= pair[0].time_ms && pair[1].distance >= pair[0].distance)
 }
 
 fn mean(values: &[f32]) -> f32 {
@@ -540,6 +600,49 @@ mod tests {
             measured.own_best_lap_ms,
             measured.best_lap_ms
         );
+    }
+
+    /// **A lap joined halfway round drove nothing before it.** Its trace
+    /// starts after T7, and the time it was given there by clamping was a
+    /// few milliseconds — which made it the "best" T7 and the lap of best
+    /// corners seconds quicker than anything driven.
+    #[test]
+    fn a_lap_that_was_not_there_drives_no_section() {
+        let mut joined = lap(5_000, 90.0, 0.22);
+        joined.retain(|point| point.distance >= 0.45);
+        let laps: Vec<Vec<TelemetryPoint>> =
+            vec![lap(5_200, 90.0, 0.22), lap(5_300, 90.0, 0.22), joined];
+        let borrowed: Vec<&[TelemetryPoint]> = laps.iter().map(|lap| lap.as_slice()).collect();
+        let measured = measure(&borrowed, &skeleton());
+        let seven = &measured.sections[0];
+        assert_eq!(seven.laps, 2, "only two laps drove T7");
+        assert_eq!(seven.best_ms, 5_200);
+        // T8 runs from 0.40 to the line, and the joined lap starts at 0.45:
+        // clamped, it "drove" it 2.5 s quicker than anybody did.
+        let eight = &measured.sections[1];
+        assert_eq!(eight.laps, 2, "nor T8: it began after T8's entry");
+        assert_eq!(eight.best_ms, 30_000);
+        assert_eq!(
+            measured.own_best_lap_ms, 45_200,
+            "the opening, the best T7 and T8 as somebody drove them"
+        );
+    }
+
+    /// **A section crossed in a fraction of the time anybody can is a hole in
+    /// the samples**, and it is not allowed to be the best corner — even
+    /// when, as it usually would, it made its own lap the quickest.
+    #[test]
+    fn a_section_no_car_could_drive_is_not_the_best() {
+        let laps: Vec<Vec<TelemetryPoint>> = vec![
+            lap(5_000, 90.0, 0.22),
+            lap(5_100, 90.0, 0.22),
+            lap(900, 90.0, 0.22),
+        ];
+        let borrowed: Vec<&[TelemetryPoint]> = laps.iter().map(|lap| lap.as_slice()).collect();
+        let measured = measure(&borrowed, &skeleton());
+        let seven = &measured.sections[0];
+        assert_eq!(seven.best_ms, 5_000);
+        assert_eq!(seven.best_on, 0);
     }
 
     /// Nothing to measure is not a crash and not a row of zeros.
