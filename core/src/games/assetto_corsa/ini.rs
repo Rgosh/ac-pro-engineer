@@ -28,6 +28,49 @@ pub fn value(text: &str, section: &str, key: &str) -> Option<String> {
     said
 }
 
+/// One `key=value` in a file, under its section, with the comment after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub section: String,
+    pub key: String,
+    pub value: String,
+    pub comment: String,
+}
+
+/// Every `key=value` in a file, in order, under the section it is in —
+/// for a page that shows a whole file. A key outside any section is under
+/// the empty one; a commented-out line is not an entry.
+pub fn entries(text: &str) -> Vec<Entry> {
+    let mut section = String::new();
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let bare = line.trim();
+        if bare.starts_with(';') || bare.starts_with('#') || bare.starts_with("//") {
+            continue;
+        }
+        if let Some(name) = bare.strip_prefix('[').and_then(|l| l.split(']').next()) {
+            section = name.trim().to_string();
+            continue;
+        }
+        let (body, comment) = match bare.find([';', '#']) {
+            Some(at) => (&bare[..at], bare[at + 1..].trim()),
+            None => (bare, ""),
+        };
+        if let Some((k, v)) = body.split_once('=') {
+            let key = k.trim();
+            if !key.is_empty() {
+                out.push(Entry {
+                    section: section.clone(),
+                    key: key.to_string(),
+                    value: v.trim().to_string(),
+                    comment: comment.to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// The text with `key` under `[section]` set to `value`: replaced where it
 /// is, added to the section where it is not, and the section added at the
 /// end when the file has none.
@@ -96,6 +139,26 @@ pub fn set_in_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_entry_is_listed_under_its_section() {
+        let text = "; top\n[A]\nX=1 ; one\n;Y=2\n[B]\nZ = hello\n";
+        let all = entries(text);
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            (
+                all[0].section.as_str(),
+                all[0].key.as_str(),
+                all[0].value.as_str()
+            ),
+            ("A", "X", "1")
+        );
+        assert_eq!(all[0].comment, "one");
+        assert_eq!(
+            (all[1].section.as_str(), all[1].value.as_str()),
+            ("B", "hello")
+        );
+    }
 
     #[test]
     fn a_value_is_read_from_its_own_section_without_its_comment() {

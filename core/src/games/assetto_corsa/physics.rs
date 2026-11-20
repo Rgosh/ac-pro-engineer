@@ -356,6 +356,39 @@ pub struct Tune {
     /// Brake torque scaled by this.
     pub brakes: f32,
     pub brake_front: f32,
+    /// Any other value in any of the car's ini files, as typed — written
+    /// after the numbers above, so one set here wins over a slider.
+    #[serde(default)]
+    pub raw: Vec<Edit>,
+}
+
+/// One value in one of the car's files, set by hand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Edit {
+    pub file: String,
+    pub section: String,
+    pub key: String,
+    pub value: String,
+}
+
+impl Edit {
+    /// Whether this could only ever be a value in a car's ini file: a plain
+    /// file name, no line breaks, nothing that would start a new section or
+    /// key. Anything else is dropped rather than written.
+    fn writable(&self) -> bool {
+        let plain = |s: &str, most: usize| {
+            !s.is_empty() && s.len() <= most && !s.contains(['\n', '\r', '[', ']', '='])
+        };
+        let file = self.file.to_lowercase();
+        plain(&self.file, 64)
+            && file.ends_with(".ini")
+            && !self.file.contains(['/', '\\'])
+            && !self.file.starts_with('.')
+            && plain(&self.section, 64)
+            && plain(&self.key, 64)
+            && self.value.len() <= 200
+            && !self.value.contains(['\n', '\r'])
+    }
 }
 
 impl Tune {
@@ -369,6 +402,7 @@ impl Tune {
             final_drive: car.final_drive,
             brakes: 1.0,
             brake_front: car.brake_front,
+            raw: Vec::new(),
         }
     }
 
@@ -401,6 +435,20 @@ impl Tune {
             final_drive: within(self.final_drive, 1.5, 9.0, car.final_drive),
             brakes: within(self.brakes, 0.5, 2.0, 1.0),
             brake_front: within(self.brake_front, 0.3, 0.8, car.brake_front),
+            raw: {
+                // The last one for each value wins, as when it is typed twice.
+                let mut kept: Vec<Edit> = Vec::new();
+                for edit in self.raw.iter().filter(|e| e.writable()) {
+                    let same = |k: &Edit| {
+                        k.file.eq_ignore_ascii_case(&edit.file)
+                            && k.section.eq_ignore_ascii_case(&edit.section)
+                            && k.key.eq_ignore_ascii_case(&edit.key)
+                    };
+                    kept.retain(|k| !same(k));
+                    kept.push(edit.clone());
+                }
+                kept
+            },
         }
     }
 
@@ -522,6 +570,26 @@ pub fn apply(car_folder: &Path, tune: &Tune) -> Result<Note, String> {
         changed.push(("brakes.ini".into(), brakes));
     }
 
+    // Every value set by hand, on top — into a file the sliders changed, or
+    // into the original text of one they did not.
+    for edit in &tune.raw {
+        let at = changed
+            .iter()
+            .position(|(name, _)| name.eq_ignore_ascii_case(&edit.file));
+        let base = match at {
+            Some(k) => changed[k].1.clone(),
+            None => match source.file(&edit.file, true) {
+                Some(text) => text,
+                None => continue,
+            },
+        };
+        let text = ini::with_value(&base, &edit.section, &edit.key, &edit.value);
+        match at {
+            Some(k) => changed[k].1 = text,
+            None => changed.push((edit.file.clone(), text)),
+        }
+    }
+
     for (name, text) in &changed {
         let at = data.join(name);
         // A mod's own file is kept once, the first time it is changed.
@@ -581,6 +649,44 @@ pub fn restore(car_folder: &Path) -> Result<(), String> {
         std::fs::rename(&kept, car_folder.join("data.acd")).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Every ini file of the car as it came, by name, with its text — what the
+/// lab's ALL FILES lists. Read through a tune that is on, so the values
+/// shown are the originals a tune is made against.
+pub fn data_files(car_folder: &Path) -> Vec<(String, String)> {
+    let note = on(car_folder);
+    let data = car_folder.join("data");
+    let mut out: Vec<(String, String)> = Vec::new();
+    let from_archive = |bytes: &[u8]| -> Vec<(String, String)> {
+        car_data::unpack_all(car_folder, bytes)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(name, body)| Some((name, String::from_utf8(body).ok()?)))
+            .collect()
+    };
+    if note.as_ref().is_some_and(|n| n.unpacked) {
+        if let Ok(bytes) = std::fs::read(car_folder.join(ARCHIVE_KEPT)) {
+            out = from_archive(&bytes);
+        }
+    } else if data.is_dir() {
+        for entry in std::fs::read_dir(&data).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == NOTE || name.ends_with(KEPT_SUFFIX) || !entry.path().is_file() {
+                continue;
+            }
+            let kept = data.join(format!("{name}{KEPT_SUFFIX}"));
+            let at = if kept.is_file() { kept } else { entry.path() };
+            if let Ok(text) = std::fs::read_to_string(at) {
+                out.push((name, text));
+            }
+        }
+    } else if let Ok(bytes) = std::fs::read(car_folder.join("data.acd")) {
+        out = from_archive(&bytes);
+    }
+    out.retain(|(name, _)| name.to_lowercase().ends_with(".ini"));
+    out.sort_by_key(|(name, _)| name.to_lowercase());
+    out
 }
 
 /// The files a tune touches, for whoever has to explain it.
@@ -751,6 +857,52 @@ mod tests {
         );
     }
 
+    /// **Any value in any file can be set by hand**, written over the
+    /// sliders' own, and nothing that could break out of a value is written.
+    #[test]
+    fn any_value_can_be_set_and_nothing_else() {
+        let car = packed_car("ks_raw");
+        let p = Physics::read(&car).unwrap();
+        let files = data_files(&car);
+        assert!(files.iter().any(|(n, _)| n == "tyres.ini"));
+        assert!(
+            files.iter().all(|(n, _)| n.ends_with(".ini")),
+            "the curve is not an ini"
+        );
+        let edit = |file: &str, section: &str, key: &str, value: &str| Edit {
+            file: file.into(),
+            section: section.into(),
+            key: key.into(),
+            value: value.into(),
+        };
+        let mut tune = Tune::of(&p);
+        tune.mass_kg = 1100.0;
+        tune.raw = vec![
+            edit("tyres.ini", "FRONT", "RADIUS", "0.31"),
+            edit("car.ini", "BASIC", "TOTALMASS", "1050"),
+            edit("car.ini", "BASIC", "TOTALMASS", "1000"),
+            edit("../evil.ini", "A", "B", "1"),
+            edit("car.ini", "BASIC", "X", "1\n[HACK]"),
+            edit("power.lut", "A", "B", "1"),
+        ];
+        apply(&car, &tune).unwrap();
+        let tyres = std::fs::read_to_string(car.join("data/tyres.ini")).unwrap();
+        assert!(tyres.contains("RADIUS=0.31"), "{tyres}");
+        assert_eq!(
+            Physics::read(&car).unwrap().mass_kg,
+            1000.0,
+            "the hand-set value wins, the last one"
+        );
+        let car_ini = std::fs::read_to_string(car.join("data/car.ini")).unwrap();
+        assert!(!car_ini.contains("HACK"));
+        assert!(!car.parent().unwrap().join("evil.ini").exists());
+        // ALL FILES still shows the car as it came.
+        let shown = data_files(&car);
+        let tyres_shown = &shown.iter().find(|(n, _)| n == "tyres.ini").unwrap().1;
+        assert!(tyres_shown.contains("RADIUS=0.30"));
+        restore(&car).unwrap();
+    }
+
     /// Nonsense is held to what a car can take.
     #[test]
     fn a_wild_tune_is_held_in_range() {
@@ -763,6 +915,7 @@ mod tests {
             final_drive: 0.0,
             brakes: 9.0,
             brake_front: 1.0,
+            raw: Vec::new(),
         }
         .settled(&p);
         assert_eq!(wild.mass_kg, 600.0);
