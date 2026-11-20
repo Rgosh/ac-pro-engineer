@@ -23,8 +23,11 @@
 //! * a Kunos car's `data.acd` is unpacked to `data/` once and the archive
 //!   set aside as `data.acd.pro-launcher-original` — the game reads `data/`
 //!   when there is no archive beside it;
-//! * a mod's own `data/` keeps each file it changes once, beside it, as
-//!   `<file>.pro-launcher-original`;
+//! * a car with its own `data/` keeps each file it changes once, beside
+//!   it, as `<file>.pro-launcher-original` — and if a `data.acd` sits
+//!   beside the folder too, the archive is set aside the same way, because
+//!   the game reads an archive before a folder and would never see the
+//!   tune. The folder is never overwritten by an unpacked archive;
 //! * a note, `data/pro-launcher-tune.json`, says which it was and what tune
 //!   is on.
 //!
@@ -93,8 +96,12 @@ struct Source {
 impl Source {
     fn of(car_folder: &Path, original: bool) -> Option<Self> {
         let name = car_folder.file_name()?.to_str()?.to_string();
+        // The archive set aside is the original only when the tune was
+        // unpacked from it; set aside from beside a folder, it is not what
+        // the folder's own originals are.
+        let from_archive = on(car_folder).is_some_and(|note| note.unpacked);
         let kept = car_folder.join(ARCHIVE_KEPT);
-        let archive = match (original, std::fs::read(&kept)) {
+        let archive = match (original && from_archive, std::fs::read(&kept)) {
             (true, Ok(bytes)) => Some((bytes, name)),
             _ => None,
         };
@@ -408,6 +415,10 @@ impl Tune {
 pub struct Note {
     /// The car shipped a `data.acd` and it was unpacked here.
     pub unpacked: bool,
+    /// A `data.acd` beside the car's own folder was set aside so the game
+    /// reads the folder.
+    #[serde(default)]
+    pub archive_aside: bool,
     pub tune: Tune,
 }
 
@@ -425,10 +436,16 @@ pub fn apply(car_folder: &Path, tune: &Tune) -> Result<Note, String> {
     let note_before = on(car_folder);
     let archive = car_folder.join("data.acd");
 
-    // First time, from an archive: unpack every file, then set it aside.
+    // From an archive only when there is no folder of the car's own: a
+    // folder beside an archive is what somebody who unpacked it uses, and
+    // it is never written over.
     let unpacked = match &note_before {
         Some(note) => note.unpacked,
-        None => archive.is_file(),
+        None => archive.is_file() && !data.is_dir(),
+    };
+    let archive_aside = match &note_before {
+        Some(note) => note.archive_aside,
+        None => !unpacked && archive.is_file(),
     };
     if note_before.is_none() && unpacked {
         let bytes = std::fs::read(&archive).map_err(|e| e.to_string())?;
@@ -516,7 +533,16 @@ pub fn apply(car_folder: &Path, tune: &Tune) -> Result<Note, String> {
         }
         crate::atomic_file::write_atomic(&at, text.as_bytes()).map_err(|e| e.to_string())?;
     }
-    let note = Note { unpacked, tune };
+    // The archive beside a folder goes aside last, once the folder holds
+    // the tune: until then the game still reads the car as it came.
+    if archive_aside && archive.is_file() {
+        std::fs::rename(&archive, car_folder.join(ARCHIVE_KEPT)).map_err(|e| e.to_string())?;
+    }
+    let note = Note {
+        unpacked,
+        archive_aside,
+        tune,
+    };
     let text = serde_json::to_string_pretty(&note).map_err(|e| e.to_string())?;
     crate::atomic_file::write_atomic(&data.join(NOTE), text.as_bytes())
         .map_err(|e| e.to_string())?;
@@ -550,6 +576,10 @@ pub fn restore(car_folder: &Path) -> Result<(), String> {
         }
     }
     std::fs::remove_file(data.join(NOTE)).map_err(|e| e.to_string())?;
+    let kept = car_folder.join(ARCHIVE_KEPT);
+    if note.archive_aside && kept.is_file() {
+        std::fs::rename(&kept, car_folder.join("data.acd")).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -686,6 +716,39 @@ mod tests {
             );
         }
         assert!(!car.join("data").join(NOTE).exists());
+    }
+
+    /// **A folder beside an archive is tuned in place and never written
+    /// over**: the archive goes aside so the game reads the folder, and
+    /// both come back as they were — even an archive that cannot be read.
+    #[test]
+    fn a_folder_beside_an_archive_is_tuned_in_place() {
+        let car = loose_car("mod_both");
+        crate::atomic_file::write_atomic(&car.join("data.acd"), b"not an archive").unwrap();
+        let p = Physics::read(&car).unwrap();
+        let mut tune = Tune::of(&p);
+        tune.mass_kg = 1000.0;
+        let note = apply(&car, &tune).unwrap();
+        assert!(!note.unpacked && note.archive_aside);
+        assert!(
+            !car.join("data.acd").exists(),
+            "the game reads the folder now"
+        );
+        assert_eq!(Physics::read(&car).unwrap().mass_kg, 1000.0);
+        assert_eq!(
+            Physics::original(&car).unwrap(),
+            p,
+            "the folder's own originals"
+        );
+        restore(&car).unwrap();
+        assert_eq!(
+            std::fs::read(car.join("data.acd")).unwrap(),
+            b"not an archive"
+        );
+        assert_eq!(
+            std::fs::read_to_string(car.join("data/car.ini")).unwrap(),
+            CAR
+        );
     }
 
     /// Nonsense is held to what a car can take.
