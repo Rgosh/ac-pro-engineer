@@ -47,6 +47,8 @@
 mod model;
 mod outline;
 mod reader;
+/// The whole of a model — meshes, materials and textures — for a showroom.
+pub mod scene;
 
 pub use model::{Marker, Mesh, Model, Point, read};
 pub use outline::{Shape, shape};

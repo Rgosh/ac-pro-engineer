@@ -89,6 +89,11 @@ impl<'a> Reader<'a> {
         self.take(count).map(|_| ())
     }
 
+    /// The next `count` bytes, borrowed — a texture, an index buffer.
+    pub fn bytes(&mut self, count: usize) -> Result<&'a [u8]> {
+        self.take(count)
+    }
+
     pub fn u8(&mut self) -> Result<u8> {
         Ok(self.take(1)?[0])
     }
