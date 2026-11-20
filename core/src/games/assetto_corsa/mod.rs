@@ -35,6 +35,7 @@ pub mod pack;
 pub mod packs;
 pub mod paths;
 pub mod pedals;
+pub mod physics;
 pub mod preflight;
 pub mod reading;
 pub mod real_weather;

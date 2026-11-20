@@ -248,7 +248,50 @@ fn packing_key(folder: &str) -> String {
 /// Every length is checked against what is left of the file. A truncated or
 /// mis-parsed archive then ends the walk instead of asking for a gigabyte.
 fn unpack_one(archive: &[u8], key: &str, want: &str) -> Option<Vec<u8>> {
+    let mut found = None;
+    walk(
+        archive,
+        key,
+        |name| name.eq_ignore_ascii_case(want),
+        |_, bytes| {
+            found = Some(bytes);
+            false
+        },
+    )?;
+    found
+}
+
+/// Every file in a `data.acd`, by name, decrypted — what unpacking a car
+/// to a `data/` folder writes out. `None` when the archive does not walk
+/// to its end cleanly, so a half-read archive is never half-written.
+pub fn unpack_all(car_folder: &Path, archive: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
+    let folder = car_folder.file_name()?.to_str()?;
+    let mut all = Vec::new();
+    let finished = walk(
+        archive,
+        &packing_key(folder),
+        |_| true,
+        |name, bytes| {
+            all.push((name.to_string(), bytes));
+            true
+        },
+    )?;
+    (finished && !all.is_empty()).then_some(all)
+}
+
+/// Walk an archive's entries, decrypting those `wanted` says yes to and
+/// handing each to `each`, which says whether to go on. Returns whether the
+/// walk reached the end of the archive, `None` when it broke on the way.
+fn walk(
+    archive: &[u8],
+    key: &str,
+    wanted: impl Fn(&str) -> bool,
+    mut each: impl FnMut(&str, Vec<u8>) -> bool,
+) -> Option<bool> {
     let key: Vec<i64> = key.chars().map(|c| c as i64).collect();
+    if key.is_empty() {
+        return None;
+    }
     let mut at = 0usize;
 
     let u32_at = |at: &mut usize| -> Option<u32> {
@@ -285,22 +328,47 @@ fn unpack_one(archive: &[u8], key: &str, want: &str) -> Option<Vec<u8>> {
         let body = archive.get(at..at + bytes)?;
         at += bytes;
 
-        if !name.eq_ignore_ascii_case(want) {
+        if !wanted(name) {
             continue;
         }
-        return Some(
-            body.as_chunks::<4>()
-                .0
-                .iter()
-                .enumerate()
-                .map(|(i, four)| {
-                    let raw = u32::from_le_bytes(*four) as i64;
-                    (raw - key[i % key.len()]) as u8
-                })
-                .collect(),
-        );
+        let plain = body
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .map(|(i, four)| {
+                let raw = u32::from_le_bytes(*four) as i64;
+                (raw - key[i % key.len()]) as u8
+            })
+            .collect();
+        if !each(name, plain) {
+            return Some(false);
+        }
     }
-    None
+    Some(true)
+}
+
+/// One file out of a `data.acd` held in memory, keyed on `folder` — for an
+/// archive kept aside under another name, as the physics lab keeps one.
+pub fn file_from_archive(archive: &[u8], folder: &str, name: &str) -> Option<String> {
+    String::from_utf8(unpack_one(archive, &packing_key(folder), name)?).ok()
+}
+
+/// An archive as the game packs one, for tests elsewhere in the crate that
+/// need a Kunos car without shipping one.
+#[cfg(test)]
+pub(crate) fn pack_for_test(folder: &str, files: &[(String, Vec<u8>)]) -> Vec<u8> {
+    let key: Vec<u32> = packing_key(folder).chars().map(|c| c as u32).collect();
+    let mut out = Vec::new();
+    for (name, body) in files {
+        out.extend_from_slice(&(name.len() as u32).to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        for (i, byte) in body.iter().enumerate() {
+            out.extend_from_slice(&(u32::from(*byte) + key[i % key.len()]).to_le_bytes());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
