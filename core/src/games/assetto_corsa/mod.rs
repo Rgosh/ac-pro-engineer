@@ -30,6 +30,8 @@ pub mod lobby;
 pub mod local_servers;
 pub mod media;
 pub mod mod_config;
+/// A car or circuit packed into one archive, ready to send.
+pub mod pack;
 pub mod packs;
 pub mod paths;
 pub mod pedals;
