@@ -10,6 +10,7 @@ pub mod adding;
 pub mod apps;
 pub mod assists;
 pub mod backup;
+pub mod balance;
 pub mod bindings;
 pub mod car_data;
 pub mod championship;
@@ -46,6 +47,7 @@ pub mod server_slots;
 pub mod setup_sheet;
 pub mod setups;
 pub mod shm;
+pub mod skin_info;
 pub mod structs;
 pub mod tracks;
 /// A car's class and tags changed in place, one car or many.

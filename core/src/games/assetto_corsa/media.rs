@@ -83,9 +83,142 @@ pub fn size(bytes: u64) -> String {
     }
 }
 
+/// What a replay file says about itself at its start: which circuit, which
+/// layout and which weather it was recorded on.
+///
+/// **Read the way Content Manager reads it** (its `ReplayDetails`): a
+/// little-endian version, then — from version 14 — eight bytes it skips,
+/// the weather, the circuit and the layout; before 14, the circuit alone.
+/// A string is a little-endian `u32` length and that many bytes.
+///
+/// The game needs the circuit named in `race.ini` to play a replay, so a
+/// misread here would load the wrong one. Nothing is believed that is not a
+/// folder name: printable, no path in it, a sensible length. The caller
+/// checks the circuit is installed before using it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayHeader {
+    pub version: u32,
+    pub weather: String,
+    pub track: String,
+    pub track_config: String,
+}
+
+/// The header of a replay file's first bytes, or `None` if it does not read
+/// as one.
+pub fn replay_header(bytes: &[u8]) -> Option<ReplayHeader> {
+    let mut at = 0usize;
+    let u32_at = |at: &mut usize| -> Option<u32> {
+        let four: [u8; 4] = bytes.get(*at..*at + 4)?.try_into().ok()?;
+        *at += 4;
+        Some(u32::from_le_bytes(four))
+    };
+    let text = |at: &mut usize, may_be_empty: bool| -> Option<String> {
+        let len = u32_at(at)? as usize;
+        if len > 128 || (len == 0 && !may_be_empty) {
+            return None;
+        }
+        let raw = bytes.get(*at..*at + len)?;
+        *at += len;
+        let s = std::str::from_utf8(raw).ok()?;
+        let plain = s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ' '));
+        (plain && !s.contains("..")).then(|| s.to_string())
+    };
+    let version = u32_at(&mut at)?;
+    if !(1..=64).contains(&version) {
+        return None;
+    }
+    let (weather, track, track_config) = if version >= 14 {
+        at += 8;
+        let weather = text(&mut at, true)?;
+        let track = text(&mut at, false)?;
+        let config = text(&mut at, true)?;
+        (weather, track, config)
+    } else {
+        (String::new(), text(&mut at, false)?, String::new())
+    };
+    Some(ReplayHeader {
+        version,
+        weather,
+        track,
+        track_config,
+    })
+}
+
+/// `race.ini` for watching a replay: the session that would be driven next,
+/// with the replay switched on, named by its file name in the replay folder,
+/// and the circuit, layout and weather it was recorded on — the game loads
+/// the circuit `race.ini` names before it plays anything.
+pub fn watch_race_ini(base: &str, file_name: &str, header: &ReplayHeader) -> String {
+    let mut text = super::ini::with_value(base, "REPLAY", "ACTIVE", "1");
+    text = super::ini::with_value(&text, "REPLAY", "FILENAME", file_name);
+    text = super::ini::with_value(&text, "RACE", "TRACK", &header.track);
+    text = super::ini::with_value(&text, "RACE", "CONFIG_TRACK", &header.track_config);
+    if !header.weather.is_empty() {
+        text = super::ini::with_value(&text, "WEATHER", "NAME", &header.weather);
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    fn string(s: &str) -> Vec<u8> {
+        let mut out = (s.len() as u32).to_le_bytes().to_vec();
+        out.extend_from_slice(s.as_bytes());
+        out
+    }
+
+    /// A version-16 header, a version-12 one, and files that are not one.
+    #[test]
+    fn a_replay_says_where_it_was_recorded() {
+        let mut v16 = 16u32.to_le_bytes().to_vec();
+        v16.extend_from_slice(&40.0f64.to_le_bytes());
+        for s in ["3_clear", "ks_nordschleife", "nordschleife"] {
+            v16.extend(string(s));
+        }
+        v16.extend_from_slice(&[9, 9, 9, 9]);
+        let header = super::replay_header(&v16).unwrap();
+        assert_eq!(header.track, "ks_nordschleife");
+        assert_eq!(header.track_config, "nordschleife");
+        assert_eq!(header.weather, "3_clear");
+
+        let mut v12 = 12u32.to_le_bytes().to_vec();
+        v12.extend(string("monza"));
+        let old = super::replay_header(&v12).unwrap();
+        assert_eq!(
+            (old.track.as_str(), old.track_config.as_str()),
+            ("monza", "")
+        );
+
+        assert!(super::replay_header(b"not a replay").is_none());
+        let mut evil = 16u32.to_le_bytes().to_vec();
+        evil.extend_from_slice(&[0; 8]);
+        evil.extend(string("3_clear"));
+        evil.extend(string("../../windows"));
+        evil.extend(string(""));
+        assert!(
+            super::replay_header(&evil).is_none(),
+            "a path is not a circuit"
+        );
+    }
+
+    #[test]
+    fn watching_switches_the_replay_on_at_its_circuit() {
+        let base = "[RACE]\nTRACK=monza\nCONFIG_TRACK=\nMODEL=ks_bmw\n[REPLAY]\nACTIVE=0\n";
+        let header = super::ReplayHeader {
+            version: 16,
+            weather: "7_heavy_clouds".into(),
+            track: "spa".into(),
+            track_config: String::new(),
+        };
+        let ini = super::watch_race_ini(base, "evening.acreplay", &header);
+        assert!(ini.contains("ACTIVE=1") && ini.contains("FILENAME=evening.acreplay"));
+        assert!(ini.contains("TRACK=spa") && ini.contains("MODEL=ks_bmw"));
+        assert!(ini.contains("NAME=7_heavy_clouds"));
+    }
     use super::*;
 
     #[test]
