@@ -207,10 +207,19 @@ fn node(reader: &mut Reader<'_>, model: &mut Model) -> Result<()> {
                 reader.skip(indices * 2)?;
                 reader.u32()?; // material
                 reader.u32()?; // layer
-                reader.f32()?; // lod in
-                reader.f32()?; // lod out
-                reader.skip(4 * 3 + 4)?; // bounding sphere and its radius
-                reader.u8()?; // renderable
+                if kind == MESH {
+                    reader.f32()?; // lod in
+                    reader.f32()?; // lod out
+                    reader.skip(4 * 3 + 4)?; // bounding sphere and its radius
+                    reader.u8()?; // renderable
+                } else {
+                    // **A skinned mesh ends differently**: eight bytes, and
+                    // none of the level of detail, sphere or renderable flag
+                    // a plain one carries. Read as a plain one, every node
+                    // after the first skinned part was read seventeen bytes
+                    // out of step — a float 1.0 taken for a length.
+                    reader.skip(8)?;
+                }
 
                 model.meshes.push(Mesh { name, vertices });
             }

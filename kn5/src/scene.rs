@@ -266,17 +266,40 @@ pub fn read(bytes: &[u8]) -> Result<Scene> {
                 }
                 let index_count = reader.u32()? as usize;
                 let raw = reader.bytes(index_count * 2)?;
-                let indices = raw
+                let read: Vec<u16> = raw
                     .chunks_exact(2)
                     .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                    .filter(|i| (*i as usize) < vertices.len().max(1))
+                    .collect();
+                // **Whole triangles or none.** Dropping one bad index shifted
+                // every triangle after it by a corner, which draws a mesh as
+                // shards; a triangle naming a vertex that is not there is
+                // left out whole.
+                let indices = read
+                    .chunks_exact(3)
+                    .filter(|tri| tri.iter().all(|i| (*i as usize) < vertices.len()))
+                    .flatten()
+                    .copied()
                     .collect();
                 let material = reader.u32()? as usize;
                 reader.u32()?; // layer
-                let lod_in = reader.f32()?;
-                let lod_out = reader.f32()?;
-                reader.skip(4 * 4)?; // bounding sphere
-                let renderable = reader.u8()? != 0;
+                // **A skinned mesh ends in eight bytes**, and carries none of
+                // the level of detail, bounding sphere or renderable flag a
+                // plain one does. Read as a plain one, every node after the
+                // first skinned part was seventeen bytes out of step, and the
+                // car failed with a float 1.0 read as a length:
+                // "wants 1065353213 bytes".
+                let (lod_in, lod_out, renderable) = match skinned {
+                    true => {
+                        reader.skip(8)?;
+                        (0.0, 0.0, true)
+                    }
+                    false => {
+                        let lod_in = reader.f32()?;
+                        let lod_out = reader.f32()?;
+                        reader.skip(4 * 4)?; // bounding sphere
+                        (lod_in, lod_out, reader.u8()? != 0)
+                    }
+                };
                 scene.meshes.push(Mesh {
                     name,
                     vertices,
@@ -472,6 +495,64 @@ mod tests {
             lod_in: 0.0,
             lod_out: 0.0,
         }
+    }
+
+    /// **A skinned part does not throw out everything after it.** It ends
+    /// in eight bytes where a plain mesh has its level of detail, sphere and
+    /// renderable flag; read as a plain one, the next node was read out of
+    /// step and the car failed — "the file wants 1065353213 bytes", which is
+    /// a float 1.0 taken for a length.
+    #[test]
+    fn a_skinned_part_is_read_and_the_part_after_it_too() {
+        let mesh_bytes = write(&[], &[], &Node::Mesh(triangle(0)));
+        let header = 6 + 4 + 4 + 4 + 4;
+        let plain = &mesh_bytes[header..];
+        let mut skinned = Vec::new();
+        put_u32(&mut skinned, SKINNED_MESH);
+        put_text(&mut skinned, "belt");
+        put_u32(&mut skinned, 0); // children
+        skinned.push(1);
+        skinned.extend_from_slice(&[1, 1, 0]);
+        put_u32(&mut skinned, 1); // one bone
+        put_text(&mut skinned, "bone");
+        for _ in 0..16 {
+            put_f32(&mut skinned, 0.0);
+        }
+        put_u32(&mut skinned, 3);
+        for k in 0..3 {
+            for x in [k as f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] {
+                put_f32(&mut skinned, x);
+            }
+            for _ in 0..3 + 4 + 4 {
+                put_f32(&mut skinned, 0.0);
+            }
+        }
+        put_u32(&mut skinned, 3);
+        for i in [0u16, 1, 2] {
+            skinned.extend_from_slice(&i.to_le_bytes());
+        }
+        put_u32(&mut skinned, 0); // material
+        put_u32(&mut skinned, 0); // layer
+        skinned.extend_from_slice(&[0; 8]);
+
+        let root = Node::Dummy {
+            name: "root".into(),
+            transform: IDENTITY,
+            children: vec![Node::Mesh(triangle(0))],
+        };
+        let mut file = write(&[], &[], &root);
+        // Three children: the plain mesh written, the skinned one, another.
+        let children_at = header + 4 + 4 + "root".len();
+        file[children_at..children_at + 4].copy_from_slice(&3u32.to_le_bytes());
+        file.extend_from_slice(&skinned);
+        file.extend_from_slice(plain);
+
+        let scene = read(&file).expect("reads past the skinned part");
+        assert_eq!(scene.meshes.len(), 3);
+        assert_eq!(scene.meshes[1].name, "belt");
+        assert_eq!(scene.meshes[1].indices, vec![0, 1, 2]);
+        assert_eq!(scene.meshes[2].name, "body", "the part after it is whole");
+        assert_eq!(scene.meshes[2].vertices[1].position, [1.0, 0.0, 0.0]);
     }
 
     /// **What is written is what is read**, transforms composed down the
