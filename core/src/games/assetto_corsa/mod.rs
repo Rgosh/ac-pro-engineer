@@ -48,6 +48,7 @@ pub mod setup_sheet;
 pub mod setups;
 pub mod shm;
 pub mod skin_info;
+pub mod special_events;
 pub mod structs;
 pub mod tracks;
 /// A car's class and tags changed in place, one car or many.
