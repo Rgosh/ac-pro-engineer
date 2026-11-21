@@ -13,6 +13,7 @@ pub mod backup;
 pub mod balance;
 pub mod bindings;
 pub mod car_data;
+pub mod career;
 pub mod championship;
 pub mod content;
 pub mod content_manager;
