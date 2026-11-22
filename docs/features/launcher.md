@@ -21,4 +21,8 @@ Pro Launcher computes nothing about driving; what it needs is here, in
 | `backup.rs`, `preflight.rs`, `game_log.rs`, `robustness.rs` | backups of what is changed, checks before starting, the game's log read when it stops |
 
 The model files themselves (`.kn5`) are read by the `kn5` crate beside the core:
-the outline for maps and, in full, the scene the launcher's showroom draws.
+the outline for maps; in full, the scene the launcher's showroom draws; and as
+their tree (`kn5::tree`) — read, changed and written back whole, every node
+nothing changed byte for byte — which is what the launcher's studio edits a
+car's model with: parts hidden or taken out, textures and materials changed,
+a model of your own put on a car's wheels.
