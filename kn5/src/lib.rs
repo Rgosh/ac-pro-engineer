@@ -49,6 +49,8 @@ mod outline;
 mod reader;
 /// The whole of a model — meshes, materials and textures — for a showroom.
 pub mod scene;
+/// A model as its tree, kept whole: read, changed and written back.
+pub mod tree;
 
 pub use model::{Marker, Mesh, Model, Point, read};
 pub use outline::{Shape, shape};

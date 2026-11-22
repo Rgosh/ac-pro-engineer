@@ -12,12 +12,8 @@
 //! [`write`] is the inverse, for tests and for a model made by hand: a reader
 //! nobody can feed a known file is a reader nobody has checked.
 
-use crate::reader::{Error, Reader, Result};
-
-const DUMMY: u32 = 1;
-const MESH: u32 = 2;
-const SKINNED_MESH: u32 = 3;
-const KNOWN_VERSIONS: [u32; 2] = [5, 6];
+use crate::reader::Result;
+use crate::tree::{DUMMY, MESH};
 
 /// A 4×4 transform, row-major, row vectors — translation in the last row,
 /// the way the file writes it.
@@ -152,194 +148,9 @@ impl Scene {
     }
 }
 
-/// Read a whole model.
+/// Read a whole model: its tree read whole, then drawn — see `tree`.
 pub fn read(bytes: &[u8]) -> Result<Scene> {
-    let mut reader = Reader::new(bytes);
-    if bytes.get(..6) != Some(b"sc6969".as_slice()) {
-        return Err(Error::NotAModel);
-    }
-    reader.skip(6)?;
-    let version = reader.u32()?;
-    if !KNOWN_VERSIONS.contains(&version) {
-        return Err(Error::Version(version));
-    }
-    if version > 5 {
-        reader.u32()?;
-    }
-
-    let mut scene = Scene::default();
-    for _ in 0..reader.u32()? {
-        reader.u32()?; // kind
-        let name = reader.text()?;
-        let size = reader.u32()? as usize;
-        let bytes = reader.bytes(size)?.to_vec();
-        scene.textures.push(Texture { name, bytes });
-    }
-    for _ in 0..reader.u32()? {
-        let name = reader.text()?;
-        let shader = reader.text()?;
-        let blend = reader.u8()?;
-        let alpha_tested = reader.u8()? != 0;
-        let depth_mode = reader.u32()?;
-        let mut properties = Vec::new();
-        for _ in 0..reader.u32()? {
-            let name = reader.text()?;
-            let value = reader.f32()?;
-            reader.skip(4 * 2)?;
-            let vector = [reader.f32()?, reader.f32()?, reader.f32()?];
-            reader.skip(4 * 4)?;
-            properties.push(Property {
-                name,
-                value,
-                vector,
-            });
-        }
-        let mut textures = Vec::new();
-        for _ in 0..reader.u32()? {
-            let slot = reader.text()?;
-            reader.u32()?;
-            textures.push((slot, reader.text()?));
-        }
-        scene.materials.push(Material {
-            name,
-            shader,
-            blend,
-            alpha_tested,
-            depth_mode,
-            properties,
-            textures,
-        });
-    }
-
-    // Depth first, an explicit stack of (children left, the parent's
-    // transform) — never recursion, since a corrupt file can claim any depth.
-    let mut stack: Vec<(usize, Matrix)> = vec![(1, IDENTITY)];
-    while let Some(top) = stack.last_mut() {
-        if top.0 == 0 {
-            stack.pop();
-            continue;
-        }
-        top.0 -= 1;
-        let parent = top.1;
-        let at = reader.at();
-        let kind = reader.u32()?;
-        let name = reader.text()?;
-        let children = reader.u32()? as usize;
-        reader.u8()?; // active
-        let mut here = parent;
-        match kind {
-            DUMMY => {
-                let mut local = [[0.0; 4]; 4];
-                for row in &mut local {
-                    for cell in row.iter_mut() {
-                        *cell = reader.f32()?;
-                    }
-                }
-                here = multiply(&local, &parent);
-            }
-            MESH | SKINNED_MESH => {
-                reader.u8()?; // casts shadows
-                let visible = reader.u8()? != 0;
-                let transparent = reader.u8()? != 0;
-                let skinned = kind == SKINNED_MESH;
-                if skinned {
-                    for _ in 0..reader.u32()? {
-                        reader.text()?;
-                        reader.skip(4 * 16)?;
-                    }
-                }
-                let count = reader.u32()? as usize;
-                let mut vertices = Vec::with_capacity(count.min(1 << 20));
-                for _ in 0..count {
-                    let p = [reader.f32()?, reader.f32()?, reader.f32()?];
-                    let n = [reader.f32()?, reader.f32()?, reader.f32()?];
-                    let uv = [reader.f32()?, reader.f32()?];
-                    reader.skip(4 * 3)?; // tangent
-                    if skinned {
-                        reader.skip(4 * 4 + 4 * 4)?;
-                    }
-                    vertices.push(Vertex {
-                        position: point(&parent, p),
-                        normal: direction(&parent, n),
-                        uv,
-                    });
-                }
-                let index_count = reader.u32()? as usize;
-                let raw = reader.bytes(index_count * 2)?;
-                let read: Vec<u16> = raw
-                    .chunks_exact(2)
-                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                    .collect();
-                // **Whole triangles or none.** Dropping one bad index shifted
-                // every triangle after it by a corner, which draws a mesh as
-                // shards; a triangle naming a vertex that is not there is
-                // left out whole.
-                let indices = read
-                    .chunks_exact(3)
-                    .filter(|tri| tri.iter().all(|i| (*i as usize) < vertices.len()))
-                    .flatten()
-                    .copied()
-                    .collect();
-                let material = reader.u32()? as usize;
-                reader.u32()?; // layer
-                // **A skinned mesh ends in eight bytes**, and carries none of
-                // the level of detail, bounding sphere or renderable flag a
-                // plain one does. Read as a plain one, every node after the
-                // first skinned part was seventeen bytes out of step, and the
-                // car failed with a float 1.0 read as a length:
-                // "wants 1065353213 bytes".
-                let (lod_in, lod_out, renderable) = match skinned {
-                    true => {
-                        reader.skip(8)?;
-                        (0.0, 0.0, true)
-                    }
-                    false => {
-                        let lod_in = reader.f32()?;
-                        let lod_out = reader.f32()?;
-                        reader.skip(4 * 4)?; // bounding sphere
-                        (lod_in, lod_out, reader.u8()? != 0)
-                    }
-                };
-                scene.meshes.push(Mesh {
-                    name,
-                    vertices,
-                    indices,
-                    material,
-                    visible: visible && renderable,
-                    transparent,
-                    lod_in,
-                    lod_out,
-                });
-            }
-            other => return Err(Error::UnknownNode { at, kind: other }),
-        }
-        if children > 0 {
-            stack.push((children, here));
-        }
-    }
-    Ok(scene)
-}
-
-fn point(m: &Matrix, p: [f32; 3]) -> [f32; 3] {
-    let mut out = [0.0; 3];
-    for (k, o) in out.iter_mut().enumerate() {
-        *o = p[0] * m[0][k] + p[1] * m[1][k] + p[2] * m[2][k] + m[3][k];
-    }
-    out
-}
-
-fn direction(m: &Matrix, n: [f32; 3]) -> [f32; 3] {
-    let mut out = [0.0; 3];
-    for (k, o) in out.iter_mut().enumerate() {
-        *o = n[0] * m[0][k] + n[1] * m[1][k] + n[2] * m[2][k];
-    }
-    let length = (out[0] * out[0] + out[1] * out[1] + out[2] * out[2]).sqrt();
-    if length > 1e-6 {
-        for o in &mut out {
-            *o /= length;
-        }
-    }
-    out
+    crate::tree::read(bytes)?.scene()
 }
 
 /// One node of a model to be written.
@@ -467,6 +278,7 @@ fn put_text(out: &mut Vec<u8>, text: &str) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::tree::SKINNED_MESH;
 
     fn triangle(material: usize) -> Mesh {
         Mesh {
