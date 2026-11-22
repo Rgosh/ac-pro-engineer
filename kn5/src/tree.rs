@@ -683,6 +683,36 @@ impl Model {
         found
     }
 
+    /// Drop every node nothing reaches any more — what [`Model::remove`]
+    /// left behind — so a model edited many times does not carry every
+    /// version of itself. Places change; the old place of each node, its
+    /// new one or `None`.
+    pub fn compact(&mut self) -> Vec<Option<usize>> {
+        let order: Vec<usize> = self.walk().into_iter().map(|(id, _)| id).collect();
+        let mut map = vec![None; self.nodes.len()];
+        for (new, old) in order.iter().enumerate() {
+            if let Some(slot) = map.get_mut(*old) {
+                *slot = Some(new);
+            }
+        }
+        let mut old = std::mem::take(&mut self.nodes);
+        self.nodes = order
+            .iter()
+            .filter_map(|id| {
+                old.get_mut(*id)
+                    .map(|n| std::mem::replace(n, Node::dummy("", &IDENTITY)))
+            })
+            .collect();
+        for node in &mut self.nodes {
+            node.children = node
+                .children
+                .iter()
+                .filter_map(|c| map.get(*c).copied().flatten())
+                .collect();
+        }
+        map
+    }
+
     /// A node put under `parent`; its place in the list.
     pub fn add(&mut self, parent: usize, node: Node) -> Option<usize> {
         let id = self.nodes.len();
@@ -864,6 +894,21 @@ mod tests {
         model.material_mut(0).unwrap().name = "PAINT_NEW".to_string();
         let back = read(&model.write()).unwrap();
         assert_eq!(back.materials[0].material.name, "PAINT_NEW");
+    }
+
+    /// **Compacted, the same model**: what was removed is gone from the
+    /// list, what was kept writes the same file.
+    #[test]
+    fn a_compacted_model_writes_the_same() {
+        let mut model = built();
+        let wheel = model.find("WHEEL_LF").unwrap();
+        model.remove(wheel);
+        let before = model.write();
+        let map = model.compact();
+        assert_eq!(model.nodes.len(), 2);
+        assert_eq!(map[wheel], None);
+        assert_eq!(model.write(), before);
+        assert_eq!(model.find("body"), Some(1));
     }
 
     /// **A real car comes back as it was**: every car in the folder named
