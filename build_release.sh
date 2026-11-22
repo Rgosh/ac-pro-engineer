@@ -26,7 +26,19 @@ mkdir -p "${LIN_DIR}"
 
 echo ""
 echo "[2/5] Building Linux TUI (ac_pro_engineer)..."
-cargo build -p ac_tui --release
+# **Against an old glibc**, as the window and the launcher are: built on the
+# host it asked for the host's glibc, and a terminal from a rolling distro
+# would not start on Ubuntu 20.04, Debian 11 or SteamOS. tools/linux-build
+# builds in its container, or with cargo-zigbuild where there is no podman.
+LINUX_TARGET="$(tools/linux-build/build.sh . build -p ac_tui --release --locked)"
+LINUX_BIN="${LINUX_TARGET}/release/ac_pro_engineer"
+case "${PE_LINUX_BASE:-20.04}" in 22.04) CEILING=2.35 ;; *) CEILING=2.31 ;; esac
+NEWEST="$(objdump -T "${LINUX_BIN}" | grep -oE 'GLIBC_[0-9.]+' | sort -V -u | tail -1)"
+if [ "$(printf '%s\nGLIBC_%s\n' "${NEWEST}" "${CEILING}" | sort -V | tail -1)" != "GLIBC_${CEILING}" ]; then
+    echo "  ${LINUX_BIN} needs ${NEWEST}, newer than ${CEILING} — stopping" >&2
+    exit 1
+fi
+echo "  - newest glibc it asks for: ${NEWEST}"
 
 echo ""
 echo "[3/5] Building the Windows binaries (x86_64-pc-windows-gnu)..."
@@ -88,8 +100,8 @@ if [ -f "${BRIDGE_BUILT_PATH}" ]; then
     BRIDGE_BUILT=1
 fi
 
-if [ -f "target/release/ac_pro_engineer" ]; then
-    cp "target/release/ac_pro_engineer" "${LIN_DIR}/"
+if [ -f "${LINUX_BIN}" ]; then
+    cp "${LINUX_BIN}" "${LIN_DIR}/"
     echo "  - Linux ac_pro_engineer binary copied."
 fi
 

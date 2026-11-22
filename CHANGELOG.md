@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.5.8] - 2026-11-19
+## [v0.5.8] - 2026-11-22
 
 Where across the road the time went, and a lap of your best corners you
 can trust. The core now measures the racing line against the reference
