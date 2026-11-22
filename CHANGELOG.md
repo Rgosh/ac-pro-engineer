@@ -20,7 +20,7 @@ engineer keeping quiet about grip while somebody is sideways on purpose.
   hit or four wheels off keeps nothing. After five drifts the coach says
   whether you spin out, drift too shallow, or let the angle wander
   (`drift`).
-- **Traffic runs ("шашки")** — a run from 100 km/h until you slow down
+- **Traffic runs (weaving at speed)** — a run from 100 km/h until you slow down
   for three seconds; points for speed squared and a multiplier that
   climbs every fifteen clean seconds above 140, to ×5; contact ends it
   with nothing. No near misses: AC publishes nothing about other cars,
