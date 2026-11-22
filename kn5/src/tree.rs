@@ -752,11 +752,17 @@ impl Model {
     /// Drawn as a showroom draws it: every mesh reachable from the root,
     /// placed by every transform above it.
     pub fn scene(&self) -> Result<Scene> {
-        let mut scene = Scene {
+        Ok(Scene {
             textures: self.textures.iter().map(|t| t.texture.clone()).collect(),
             materials: self.materials.iter().map(|m| m.material.clone()).collect(),
-            meshes: Vec::new(),
-        };
+            meshes: self.placed()?.into_iter().map(|(_, mesh)| mesh).collect(),
+        })
+    }
+
+    /// Every mesh reachable from the root, placed, with the node it is —
+    /// what lets a press on a picture of the model say which part it is.
+    pub fn placed(&self) -> Result<Vec<(usize, Mesh)>> {
+        let mut out = Vec::new();
         let mut stack = vec![(0usize, IDENTITY)];
         let mut steps = 0usize;
         while let Some((id, parent)) = stack.pop() {
@@ -773,13 +779,11 @@ impl Model {
             };
             if node.kind != DUMMY {
                 let mut reader = Reader::new(&node.body);
-                scene
-                    .meshes
-                    .push(parse_mesh(&mut reader, node.kind, &node.name, &parent)?);
+                out.push((id, parse_mesh(&mut reader, node.kind, &node.name, &parent)?));
             }
             stack.extend(node.children.iter().rev().map(|c| (*c, here)));
         }
-        Ok(scene)
+        Ok(out)
     }
 }
 
@@ -894,6 +898,20 @@ mod tests {
         model.material_mut(0).unwrap().name = "PAINT_NEW".to_string();
         let back = read(&model.write()).unwrap();
         assert_eq!(back.materials[0].material.name, "PAINT_NEW");
+    }
+
+    /// **Each placed mesh says which node it is**, in the order the scene
+    /// draws them.
+    #[test]
+    fn a_placed_mesh_knows_its_node() {
+        let model = built();
+        let placed = model.placed().unwrap();
+        let names: Vec<&str> = placed
+            .iter()
+            .map(|(id, _)| model.nodes[*id].name.as_str())
+            .collect();
+        assert_eq!(names, ["rim", "body"]);
+        assert_eq!(placed[0].1.vertices[0].position, [0.0, 2.0, 0.0]);
     }
 
     /// **Compacted, the same model**: what was removed is gone from the
