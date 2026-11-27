@@ -92,14 +92,13 @@ impl Node {
         let mut body = Vec::new();
         body.extend_from_slice(&[1, u8::from(mesh.visible), u8::from(mesh.transparent)]);
         put_u32(&mut body, mesh.vertices.len() as u32);
-        for v in &mesh.vertices {
+        let tangents = tangents(mesh);
+        for (v, t) in mesh.vertices.iter().zip(&tangents) {
             for x in v.position.iter().chain(&v.normal).chain(&v.uv) {
                 put_f32(&mut body, *x);
             }
-            // The tangent: along the texture's u, as near as one can say
-            // without the neighbours — the game's shaders take any.
-            for x in tangent(v.normal) {
-                put_f32(&mut body, x);
+            for x in t {
+                put_f32(&mut body, *x);
             }
         }
         put_u32(&mut body, mesh.indices.len() as u32);
@@ -149,6 +148,35 @@ impl Node {
             }
         }
         Some(m)
+    }
+
+    /// How many corners the mesh has, and its triangles' corners exactly as
+    /// the file has them — what the game reads, before [`Node::geometry`]
+    /// leaves out a triangle it could not draw. For [`crate::lint`], which
+    /// has to see what the game will see.
+    pub fn raw_corners(&self) -> Result<Option<(usize, Vec<u16>)>> {
+        if self.kind == DUMMY {
+            return Ok(None);
+        }
+        let mut reader = Reader::new(&self.body);
+        reader.skip(3)?;
+        let skinned = self.kind == SKINNED_MESH;
+        if skinned {
+            for _ in 0..reader.u32()? {
+                reader.text()?;
+                reader.skip(4 * 16)?;
+            }
+        }
+        let count = reader.u32()? as usize;
+        let each = 4 * 11 + if skinned { 4 * 8 } else { 0 };
+        reader.skip(count.saturating_mul(each))?;
+        let index_count = reader.u32()? as usize;
+        let raw = reader.bytes(index_count.saturating_mul(2))?;
+        let indices = raw
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        Ok(Some((count, indices)))
     }
 
     /// The geometry, in the node's parent's space.
@@ -430,6 +458,61 @@ fn direction(m: &Matrix, n: [f32; 3]) -> [f32; 3] {
         }
     }
     out
+}
+
+/// Each vertex's tangent: the direction its texture's u runs along the
+/// surface, square to the normal.
+///
+/// **From the texture, not any direction square to the normal.** A shader
+/// with a normal map — the game's own `ksPerPixelNM` and most of the
+/// patch's — bends the light along this direction; one picked at random
+/// lights a bump as a dent on half the faces. Summed over the triangles
+/// round a vertex, then made square to its normal; where the texture gives
+/// nothing to go by (no area in u and v) any square direction will do.
+fn tangents(mesh: &Mesh) -> Vec<[f32; 3]> {
+    let mut sums = vec![[0.0f32; 3]; mesh.vertices.len()];
+    for tri in mesh.indices.chunks_exact(3) {
+        let [Some(a), Some(b), Some(c)] =
+            [0, 1, 2].map(|k| tri.get(k).and_then(|i| mesh.vertices.get(usize::from(*i))))
+        else {
+            continue;
+        };
+        let e1 = [0, 1, 2].map(|k| b.position[k] - a.position[k]);
+        let e2 = [0, 1, 2].map(|k| c.position[k] - a.position[k]);
+        let (du1, dv1) = (b.uv[0] - a.uv[0], b.uv[1] - a.uv[1]);
+        let (du2, dv2) = (c.uv[0] - a.uv[0], c.uv[1] - a.uv[1]);
+        let det = du1 * dv2 - du2 * dv1;
+        if !det.is_finite() || det.abs() < 1e-12 {
+            continue;
+        }
+        let r = 1.0 / det;
+        let t = [0, 1, 2].map(|k| (e1[k] * dv2 - e2[k] * dv1) * r);
+        if t.iter().any(|x| !x.is_finite()) {
+            continue;
+        }
+        for i in tri {
+            if let Some(sum) = sums.get_mut(usize::from(*i)) {
+                for k in 0..3 {
+                    sum[k] += t[k];
+                }
+            }
+        }
+    }
+    mesh.vertices
+        .iter()
+        .zip(sums)
+        .map(|(v, t)| {
+            let n = v.normal;
+            let along = t[0] * n[0] + t[1] * n[1] + t[2] * n[2];
+            let square = [0, 1, 2].map(|k| t[k] - n[k] * along);
+            let length =
+                (square[0] * square[0] + square[1] * square[1] + square[2] * square[2]).sqrt();
+            match length.is_finite() && length > 1e-6 {
+                true => square.map(|x| x / length),
+                false => tangent(n),
+            }
+        })
+        .collect()
 }
 
 /// Any direction square to a normal.

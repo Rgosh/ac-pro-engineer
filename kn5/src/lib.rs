@@ -44,10 +44,11 @@
 //! transform is the identity in every car checked. A nested marker's position
 //! is therefore relative and is not used.
 
+/// The whole of a model — meshes, materials and textures — for a showroom.
+pub mod lint;
 mod model;
 mod outline;
 mod reader;
-/// The whole of a model — meshes, materials and textures — for a showroom.
 pub mod scene;
 /// A model as its tree, kept whole: read, changed and written back.
 pub mod tree;
