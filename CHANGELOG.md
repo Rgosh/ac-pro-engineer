@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+The engineer on the team radio. **What it found, said aloud** — what is
+happening, why, and what to do — in a male or a female voice, through a
+team radio, on the straights and never under braking.
+
+### Added
+
+- **The radio** (`radio`): one line for every finding the engineer can
+  make, written for the ear, plus the radio check, a personal best, fuel
+  every five laps and the start of a drift. The core decides when: a calm
+  line waits for 0.9 s of straight road, an urgent one (a locking rear,
+  fuel gone) only for the brakes to come off and goes first; one line at a
+  time, a finding said once and again only when it gets worse, a line
+  that waited 45 s dropped rather than said late. `radio::Station` is the
+  whole of it as a front end holds it; the terminal and the window each
+  tick one, so the two engineers say the same.
+- **Two voices, built in.** Made by `tools/voicebank/build.sh` with nobody
+  recording a word: Kokoro voices blended into a voice that belongs to no
+  real person, every line spoken and then checked by recognition, packed
+  at 1.2 MB a voice. Saying a line is decoding its Ogg in pure Rust and a
+  few filters — the radio's band, saturation, compression, hiss and the
+  button's click — on a thread that sleeps between lines; played through
+  PlaySound on Windows and pw-play, paplay or aplay on Linux.
+- **Subtitles everywhere the engineer speaks.** The terminal's footer, the
+  in-game panel (a flag and three message slots, no frame version), and the
+  UDP message, as an optional `radio` field.
+- **A stream overlay for OBS** (`broadcast::obs`): a transparent page on
+  127.0.0.1 with the engineer's line as a subtitle and the speed, gear and
+  delta — `overlay.obs_enabled` and `overlay.obs_port`; `obs_demo` serves it
+  with a made-up frame.
+- **Ctrl+R** in the terminal turns the voice off and on; the subtitles stay.
+
 ## [v0.5.8] - 2026-11-22
 
 Where across the road the time went, and a lap of your best corners you
