@@ -385,6 +385,32 @@ impl UIRenderer {
     }
 
     fn render_footer(&self, f: &mut Frame<'_>, area: Rect, app: &AppState) {
+        // While the engineer is on the radio, the footer is what they said —
+        // the one line in the window that is about this second — and the
+        // measurement behind it. It gives the line back when they finish.
+        if let Some(said) = app.radio.subtitle(&app.config.radio) {
+            let theme = &app.ui_state.theme;
+            let colour = if said.critical {
+                app.ui_state.get_color(&theme.critical)
+            } else {
+                app.ui_state.get_color(&theme.highlight)
+            };
+            let mut spans = vec![
+                Span::styled(" 📻 ", Style::default().fg(colour)),
+                Span::styled(
+                    said.text.clone(),
+                    Style::default().fg(colour).add_modifier(Modifier::BOLD),
+                ),
+            ];
+            if !said.detail.is_empty() {
+                spans.push(Span::styled(
+                    format!("   {}", said.detail),
+                    Style::default().fg(app.ui_state.get_color(&theme.border)),
+                ));
+            }
+            f.render_widget(Paragraph::new(Line::from(spans)), area);
+            return;
+        }
         let (air, road, fuel, last, best) = if let Some(phys) = app.car_history.last() {
             let gfx = app.session_history.last();
             let l = gfx.map(|g| g.last_lap_ms).unwrap_or(0);

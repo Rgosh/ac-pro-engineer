@@ -99,6 +99,11 @@ pub struct AppConfig {
     #[serde(default)]
     pub lan: LanConfig,
 
+    /// The engineer on the radio — see [`crate::radio`]. **Both front ends
+    /// read it**, so the voice a driver chose in one is the voice in the other.
+    #[serde(default)]
+    pub radio: RadioConfig,
+
     #[serde(default = "default_data_path")]
     pub data_path: PathBuf,
 
@@ -295,6 +300,56 @@ pub struct OverlayConfig {
 /// does. A configuration written before this existed has no `lan` key and gets
 /// the defaults, which is off — nothing starts leaving a machine because
 /// somebody updated.
+/// What the driver chose about the engineer's radio.
+///
+/// **On by default.** It is the engineer the program is named for, speaking;
+/// a driver who would rather read has one switch for the voice and keeps the
+/// subtitles, and one more for those.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RadioConfig {
+    /// The engineer speaks.
+    #[serde(default = "default_true")]
+    pub voice_on: bool,
+    /// What was said is shown — in the window and in the game.
+    #[serde(default = "default_true")]
+    pub subtitles: bool,
+    #[serde(default)]
+    pub voice: crate::radio::pack::Voice,
+    /// 0..1.
+    #[serde(default = "default_radio_volume")]
+    pub volume: f32,
+    /// The team-radio effect; off is the voice plainly.
+    #[serde(default = "default_true")]
+    pub effect: bool,
+}
+
+fn default_radio_volume() -> f32 {
+    0.8
+}
+
+impl Default for RadioConfig {
+    fn default() -> Self {
+        Self {
+            voice_on: true,
+            subtitles: true,
+            voice: crate::radio::pack::Voice::default(),
+            volume: default_radio_volume(),
+            effect: true,
+        }
+    }
+}
+
+impl RadioConfig {
+    /// As the radio's player takes it.
+    pub fn sound(&self) -> crate::radio::voice::Sound {
+        crate::radio::voice::Sound {
+            voice: self.voice,
+            volume: self.volume.clamp(0.0, 1.0),
+            radio: self.effect,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanConfig {
     #[serde(default)]
@@ -476,6 +531,9 @@ pub struct KeyBindings {
     pub overlay_diagnostics: String,
     #[serde(default = "key_language")]
     pub language: String,
+    /// The engineer's voice on the radio, on and off. The subtitles stay.
+    #[serde(default = "key_radio")]
+    pub radio: String,
     #[serde(default = "key_next_tab")]
     pub next_tab: String,
     #[serde(default = "key_prev_tab")]
@@ -562,6 +620,9 @@ fn key_overlay_diagnostics() -> String {
 }
 fn key_language() -> String {
     "ctrl+l".to_string()
+}
+fn key_radio() -> String {
+    "ctrl+r".to_string()
 }
 fn key_next_tab() -> String {
     "tab".to_string()
@@ -654,6 +715,7 @@ impl Default for KeyBindings {
             overlay_uninstall: key_overlay_uninstall(),
             overlay_diagnostics: key_overlay_diagnostics(),
             language: key_language(),
+            radio: key_radio(),
             next_tab: key_next_tab(),
             prev_tab: key_prev_tab(),
             tab_dashboard: key_tab_1(),
@@ -956,6 +1018,7 @@ impl Default for AppConfig {
             game: String::new(),
             overlay: OverlayConfig::default(),
             lan: LanConfig::default(),
+            radio: RadioConfig::default(),
         }
     }
 }

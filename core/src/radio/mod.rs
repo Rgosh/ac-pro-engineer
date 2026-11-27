@@ -320,6 +320,102 @@ impl Radio {
     }
 }
 
+/// The radio as a front end holds it: what to say, the voice that says it,
+/// and the clock. **One call a tick and nothing else** — the terminal and the
+/// window each own one and do the same two things with it, which is what
+/// keeps them saying the same thing.
+pub struct Station {
+    radio: Radio,
+    player: Option<voice::Player>,
+    sound: Option<voice::Sound>,
+    started: std::time::Instant,
+}
+
+impl Default for Station {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Station {
+    pub fn new() -> Self {
+        let lengths = pack::Pack::embedded(pack::Voice::Male)
+            .map(|p| p.lengths())
+            .unwrap_or_default();
+        Self {
+            radio: Radio::new().with_lengths(lengths),
+            player: None,
+            sound: None,
+            started: std::time::Instant::now(),
+        }
+    }
+
+    fn now_ms(&self) -> u64 {
+        self.started.elapsed().as_millis() as u64
+    }
+
+    /// One tick, from what the front end already holds.
+    pub fn tick(
+        &mut self,
+        config: &crate::config::RadioConfig,
+        car: &crate::games::Car,
+        session: &crate::games::Session,
+        engineer: &crate::engineer::Engineer,
+        advice: &[Recommendation],
+    ) {
+        if !config.voice_on && !config.subtitles {
+            return;
+        }
+        let fuel = engineer.stats.fuel_laps_remaining;
+        let moment = Moment {
+            now_ms: self.now_ms(),
+            connected: true,
+            speed_kmh: car.speed_kmh,
+            brake: car.brake,
+            lateral_g: car.acc_g[0],
+            lap_count: session.completed_laps,
+            last_lap_ms: session.last_lap_ms,
+            best_lap_ms: session.best_lap_ms,
+            fuel_laps: (fuel > 0.0).then_some(fuel),
+            drifting: engineer.drifting(session),
+            advice,
+        };
+        let Some(call) = self.radio.tick(&moment) else {
+            return;
+        };
+        if !config.voice_on {
+            return;
+        }
+        let sound = config.sound();
+        match (&self.player, self.sound) {
+            (Some(player), Some(was)) if was != sound => player.set(sound),
+            (Some(_), _) => {}
+            (None, _) => self.player = voice::Player::start(sound).ok(),
+        }
+        self.sound = Some(sound);
+        if let Some(player) = &self.player {
+            player.say(&call.key);
+        }
+    }
+
+    /// No car this tick: the radio waits for the straight it will need.
+    pub fn idle(&mut self) {
+        let moment = Moment {
+            now_ms: self.now_ms(),
+            ..Moment::default()
+        };
+        let _ = self.radio.tick(&moment);
+    }
+
+    /// What to show now, if the driver wants subtitles.
+    pub fn subtitle(&self, config: &crate::config::RadioConfig) -> Option<&Subtitle> {
+        config
+            .subtitles
+            .then(|| self.radio.subtitle(self.now_ms()))
+            .flatten()
+    }
+}
+
 fn severity_level(severity: &Severity) -> u8 {
     match severity {
         Severity::Info => 0,

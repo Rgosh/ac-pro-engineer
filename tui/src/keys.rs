@@ -26,6 +26,7 @@ pub enum Action {
     Quit,
     Screenshot,
     Language,
+    Radio,
     NextTab,
     PrevTab,
     GoToTab(AppTab),
@@ -334,6 +335,7 @@ pub fn resolve(key: KeyEvent, keys: &KeyBindings, tab: AppTab) -> Option<Action>
     let global = [
         (&keys.screenshot, Action::Screenshot),
         (&keys.language, Action::Language),
+        (&keys.radio, Action::Radio),
         (&keys.help, Action::Help),
         (&keys.quit, Action::Quit),
         (&keys.next_tab, Action::NextTab),
@@ -431,6 +433,11 @@ pub fn all(keys: &KeyBindings) -> Vec<(&'static str, &'static str, &str)> {
             keys.overlay_diagnostics.as_str(),
         ),
         ("language", "Switch language", keys.language.as_str()),
+        (
+            "radio",
+            "Engineer's voice on the radio",
+            keys.radio.as_str(),
+        ),
         ("next_tab", "Next tab", keys.next_tab.as_str()),
         ("prev_tab", "Previous tab", keys.prev_tab.as_str()),
         (
@@ -526,6 +533,7 @@ pub fn action_of(field: &str) -> Option<Action> {
         "overlay_uninstall" => Action::OverlayUninstall,
         "overlay_diagnostics" => Action::OverlayDiagnostics,
         "language" => Action::Language,
+        "radio" => Action::Radio,
         "next_tab" => Action::NextTab,
         "prev_tab" => Action::PrevTab,
         "tab_dashboard" => Action::GoToTab(AppTab::Dashboard),
@@ -613,6 +621,7 @@ pub fn set(keys: &mut KeyBindings, field: &str, value: String) {
         "overlay_uninstall" => keys.overlay_uninstall = value,
         "overlay_diagnostics" => keys.overlay_diagnostics = value,
         "language" => keys.language = value,
+        "radio" => keys.radio = value,
         "next_tab" => keys.next_tab = value,
         "prev_tab" => keys.prev_tab = value,
         "tab_dashboard" => keys.tab_dashboard = value,

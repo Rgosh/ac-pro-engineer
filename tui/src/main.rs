@@ -790,6 +790,19 @@ async fn main() -> Result<(), anyhow::Error> {
                         };
                         let _res = app_lock.config.save();
                     }
+                    Some(keys::Action::Radio) => {
+                        app_lock.config.radio.voice_on = !app_lock.config.radio.voice_on;
+                        let said = if app_lock.config.radio.voice_on {
+                            "Engineer's voice on"
+                        } else {
+                            "Engineer's voice off — subtitles stay"
+                        };
+                        let said =
+                            ac_core::i18n::Translate::tr_lang(said, &app_lock.config.language)
+                                .to_string();
+                        app_lock.ui_state.analysis.set_status(said);
+                        let _res = app_lock.config.save();
+                    }
                     Some(keys::Action::NextTab) => {
                         app_lock.active_tab = app_lock.active_tab.next();
                     }

@@ -334,6 +334,9 @@ pub struct AppState {
     /// data" and so never produced a result on those tracks.
     pub track_sector_count: i32,
     pub recommendations: Vec<Recommendation>,
+    /// The engineer on the radio: what to say, said, and its subtitle. See
+    /// `ac_core::radio::Station`.
+    pub radio: ac_core::radio::Station,
     /// What the engineer said last session in this car at this track, so it
     /// can follow up on itself. `None` until there is one.
     pub last_time: Option<ac_core::followup::store::Remembered>,
@@ -602,6 +605,7 @@ impl AppState {
             last_sector_index: 0,
             track_sector_count: DEFAULT_SECTOR_COUNT,
             recommendations: Vec::new(),
+            radio: ac_core::radio::Station::new(),
             last_time: None,
             followup: ac_core::followup::store::Store::new(),
             looked_back: None,
@@ -1444,6 +1448,13 @@ impl AppState {
             self.engineer.stats.current_delta = delta;
         }
 
+        self.radio.tick(
+            &self.config.radio,
+            &car,
+            &session,
+            &self.engineer,
+            &self.recommendations,
+        );
         self.publish_overlay_frame(&car, &session);
 
         // Sector splits are captured on the transition *out* of a sector,
@@ -2208,6 +2219,12 @@ impl AppState {
         frame.set_messages_capped(
             &self.recommendations,
             self.config.overlay.engineer_lines as usize,
+        );
+        // After the advice, which gives up the slots the subtitle rides in.
+        frame.set_radio(
+            self.radio
+                .subtitle(&self.config.radio)
+                .map(|s| (s.text.as_str(), s.detail.as_str(), s.critical)),
         );
         frame.set_debrief(
             &self.overlay_debrief,
