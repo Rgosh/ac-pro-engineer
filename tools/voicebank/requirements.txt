@@ -1,0 +1,6 @@
+# The tools the voice bank is made with — on this machine only, never in a
+# program a driver runs. Pinned so a build next year makes the same voice.
+kokoro-onnx==0.6.1
+faster-whisper==1.2.1
+soundfile==0.14.0
+numpy==2.5.5

@@ -1,0 +1,10 @@
+# written	said
+# The synthesiser reads the right-hand side wherever the left-hand side is a
+# whole word. Racing words it would otherwise get wrong, and circuit and
+# corner names. Checked by recognition like everything else.
+kerbs	curbs
+Eau Rouge	Oh Rooj
+Raidillon	Ray-dee-yon
+Parabolica	Para-bolica
+Schwalbenschwanz	Shvalben-shvants
+Nordschleife	Nord-shlyfe

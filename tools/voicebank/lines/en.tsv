@@ -1,0 +1,28 @@
+# key	style	text
+# One line per thing the engineer can say. Until the core's radio::LINES
+# exists this file is written by hand; after it, it is generated from there.
+# A fourth column gives the values a line is spoken with, one clip each:
+# n=1..40 whole numbers, t=0.1..9.9 tenths. Whole phrases, never single
+# words — see `expanded` in voicebank.py for why.
+box.now	urgent	Box this lap, box this lap.
+box.stay	report	Stay out, stay out.
+flag.yellow	urgent	Yellow flag ahead. Careful.
+flag.yellow.clear	report	Yellow flag cleared. Back to racing speed.
+flag.blue	report	Blue flag. Let the faster car through.
+accident.ahead	urgent	Car stopped on track ahead. Slow down.
+best.lap	praise	Good lap. That's a new personal best.
+lap.clean	praise	Nice and clean. Keep it like this.
+fuel.laps.{n}	report	Fuel for {n} more laps.	n=1..40
+fuel.short	urgent	Fuel is critical. Save fuel now.
+gap.ahead.{t}	report	Gap to the car ahead, {t} seconds.	t=0.1..9.9
+gap.behind.{t}	report	Car behind, {t} seconds.	t=0.1..9.9
+tyre.fl.hot	calm	Front left is running hot. Ease off on the kerbs.
+tyre.rear.cold	calm	Rear tyres are still cold. Give them a lap.
+brake.early.{n}	calm	Brake a little earlier into turn {n}.	n=1..25
+throttle.exit	calm	Get on the throttle sooner out of the last corner.
+line.wide	calm	You're running wide at the apex of turn three.
+setup.wing	calm	Add one click of rear wing for more stability.
+drift.quiet	calm	Understood, you're drifting. I'll keep quiet about grip.
+check.radio	report	Radio check. Loud and clear.
+tyre.hot.{n}	calm	Front left is {n} degrees over the window.	n=1..20
+laps.left.{n}	report	{n} laps to go.	n=1..30

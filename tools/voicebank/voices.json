@@ -1,0 +1,23 @@
+{
+  "_": "The engineer's voices. Each is a blend of the synthesiser's voice vectors, weighted as written, so it belongs to no real person and comes out the same on every build. `speaks` is the accent the text is read in.",
+  "voices": {
+    "male": {
+      "en": {
+        "speaks": "en-gb",
+        "blend": { "bm_george": 0.45, "am_michael": 0.30, "bm_lewis": 0.15, "am_onyx": 0.10 }
+      }
+    },
+    "female": {
+      "en": {
+        "speaks": "en-gb",
+        "blend": { "bf_emma": 0.45, "af_heart": 0.30, "bf_isabella": 0.15, "af_sarah": 0.10 }
+      }
+    }
+  },
+  "styles": {
+    "calm":   { "speed": 1.00, "what": "advice about the car and the driving" },
+    "report": { "speed": 1.06, "what": "numbers: gaps, fuel, laps" },
+    "urgent": { "speed": 1.14, "what": "flags, an accident, box now" },
+    "praise": { "speed": 0.98, "what": "a best lap, a clean stint" }
+  }
+}
