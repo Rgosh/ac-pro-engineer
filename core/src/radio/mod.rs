@@ -534,7 +534,7 @@ mod tests {
             .find(|c| c.key.starts_with("fuel.laps"))
             .unwrap();
         assert_eq!(fuel.key, "fuel.laps.11");
-        assert_eq!(fuel.said, "Fuel's good for eleven more laps.");
+        assert_eq!(fuel.said, "You've got fuel for eleven more laps.");
     }
 
     #[test]

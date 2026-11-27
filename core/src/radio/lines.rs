@@ -142,7 +142,7 @@ pub const LINES: &[Line] = &[
         id: "fuel.laps",
         style: Report,
         trigger: Trigger::Event(Event::FuelLaps),
-        said: "Fuel's good for {n} more laps.",
+        said: "You've got fuel for {n} more laps.",
         values: Some((2, 40)),
     },
     // ── Brakes ───────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ pub const LINES: &[Line] = &[
         "Wear",
         None,
         None,
-        "The tyres are wearing. Look after them, or we're boxing early.",
+        "The tyres are wearing. Look after them, or we'll have to box early.",
     ),
     advice(
         "camber",
@@ -465,7 +465,7 @@ mod tests {
         assert_eq!(spoken_number(40), "forty");
         assert_eq!(spoken_number(23), "twenty-three");
         let fuel = for_event(Event::FuelLaps).unwrap();
-        assert_eq!(spoken(fuel, Some(11)), "Fuel's good for eleven more laps.");
+        assert_eq!(spoken(fuel, Some(11)), "You've got fuel for eleven more laps.");
         assert_eq!(clip_key(fuel, Some(11)), "fuel.laps.11");
     }
 

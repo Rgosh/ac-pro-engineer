@@ -18,7 +18,7 @@ What it does, in order — and why each step is here rather than in the program:
    synthesiser would get wrong.
 4. **Checks every clip by listening to it.** Recognition reads it back and the
    words are compared with the line; a clip that does not match is made again
-   at another pace, and a line that fails three times is reported, never
+   at another pace, and a line that fails five times is reported, never
    shipped quietly.
 5. **Packs** each clip trimmed, at one loudness, as mono Ogg Vorbis at 16 kHz,
    with a manifest naming every clip's SHA-256 and every model's licence.
@@ -39,6 +39,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -46,7 +47,7 @@ HERE = Path(__file__).resolve().parent
 CACHE = Path.home() / ".cache" / "pe-voicebank"
 RATE = 24_000  # what the synthesiser produces
 PACK_RATE = 16_000  # what is shipped: speech over a radio needs no more
-TRIES = 3
+TRIES = 5
 
 
 def say(*what: object) -> None:
@@ -65,10 +66,32 @@ def sha256(path: Path) -> str:
 
 
 def licence_of(repo: str, revision: str) -> str:
+    """The licence Hugging Face states for a model at a revision.
+
+    **Asked once per revision and kept.** A pinned revision's licence cannot
+    change, and asking on every run is what got the build answered "429 Too
+    Many Requests" — so the answer is cached, and a refused request is tried
+    again after a pause rather than ending the build."""
+    known_path = CACHE / "licences.json"
+    known = json.loads(known_path.read_text()) if known_path.exists() else {}
+    key = f"{repo}@{revision}"
+    if key in known:
+        return known[key]
     url = f"https://huggingface.co/api/models/{repo}/revision/{revision}"
-    with urllib.request.urlopen(url, timeout=60) as answer:
-        card = json.load(answer).get("cardData") or {}
-    return str(card.get("license", "")).lower()
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as answer:
+                card = json.load(answer).get("cardData") or {}
+            break
+        except urllib.error.HTTPError as error:
+            if error.code != 429 or attempt == 4:
+                raise
+            time.sleep(10 * (attempt + 1))
+    licence = str(card.get("license", "")).lower()
+    known[key] = licence
+    known_path.parent.mkdir(parents=True, exist_ok=True)
+    known_path.write_text(json.dumps(known, indent=2) + "\n")
+    return licence
 
 
 def fetch(models: dict) -> dict[str, Path]:
@@ -328,11 +351,15 @@ def main() -> None:
         for key, style, text in lines:
             if args.only and not key.startswith(args.only):
                 continue
-            pace = styles[style]["speed"]
+            # A pace of its own per line, from the line's own text, so it is
+            # the same on every build (see "jitter" in voices.json).
+            spread = voices.get("jitter", {}).get("fraction", 0.0)
+            turn = int(hashlib.sha256(text.encode()).hexdigest(), 16) % 1000 / 1000 - 0.5
+            pace = styles[style]["speed"] * (1.0 + turn * 2 * spread)
             spoken = respell(text, lexicon)
             best = None
             for attempt in range(TRIES):
-                speed = pace * (1.0, 0.94, 1.06)[attempt]
+                speed = pace * (1.0, 0.94, 1.06, 0.9, 1.1)[attempt]
                 audio, rate = tts.create(spoken, voice=name, speed=speed, lang=voice["speaks"])
                 assert rate == RATE, rate
                 audio = trimmed(np, np.asarray(audio, dtype=np.float32))
@@ -357,7 +384,9 @@ def main() -> None:
             }
             say(f"  {'ok ' if ok else 'BAD'} {key:<22} {score:.2f}  {heard}")
         if args.only:
-            report[:] = [r for r in report if not r.startswith(name)] + [
+            # This run's misses are already in the report; add the lines kept
+            # from the last build that missed then and were not made again.
+            report += [
                 f"{name} {k}: wanted '{c['text']}', heard '{c['heard']}' ({c['match']:.2f})"
                 for k, c in clips.items() if not c["ok"] and not k.startswith(args.only)]
         manifest = {

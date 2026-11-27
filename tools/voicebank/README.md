@@ -23,7 +23,7 @@ language, with a manifest; the programs only ever play those clips.
    respelled what the synthesiser would say wrong.
 4. **Listens to every clip.** Whisper reads it back and the words are compared
    with the line. A clip that does not match is made again at another pace;
-   a line that fails three times is listed and the build exits non-zero.
+   a line that fails five times is listed and the build exits non-zero.
 5. **Packs** each clip trimmed, at one loudness (EBU R128, −18 LUFS), as mono
    Ogg Vorbis at 16 kHz, with `manifest.json`: every clip's text, style,
    length and SHA-256, what recognition heard, and the licence of every model
