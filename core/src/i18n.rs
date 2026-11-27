@@ -107,6 +107,23 @@ fn dictionary() -> &'static HashMap<String, String> {
     })
 }
 
+/// The English a Russian word was translated from, if it was one.
+///
+/// For the few things that must read the engineer's words whatever language
+/// the screen is in — the radio picks its line by the finding's category and
+/// mechanism, and those arrive translated. English given in is handed back
+/// as it is.
+pub fn english_of(text: &str) -> Option<&'static str> {
+    static ENGLISH: OnceLock<HashMap<String, String>> = OnceLock::new();
+    let reverse = ENGLISH.get_or_init(|| {
+        dictionary()
+            .iter()
+            .map(|(english, russian)| (russian.clone(), english.clone()))
+            .collect()
+    });
+    reverse.get(text).map(String::as_str)
+}
+
 /// How many words the dictionary holds, for tests and diagnostics.
 pub fn word_count() -> usize {
     dictionary().len()

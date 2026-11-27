@@ -49,6 +49,7 @@ pub mod memory;
 pub mod net;
 pub mod overlay;
 pub mod process;
+pub mod radio;
 pub mod records;
 pub mod rejoin;
 pub mod repeatability;
