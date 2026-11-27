@@ -75,6 +75,9 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 tracing-appender = "0.2"
 windows = "0.52"
+# The engineer's voice clips are Ogg Vorbis; this decodes them in pure Rust,
+# so the radio needs no system audio library to read its own voice.
+lewton = { version = "0.10", default-features = false, features = ["ogg"] }
 walkdir = "2.4"
 tokio = "1.54.1"
 # Unpacking release archives in the in-app updater. All pure Rust: gzip/deflate

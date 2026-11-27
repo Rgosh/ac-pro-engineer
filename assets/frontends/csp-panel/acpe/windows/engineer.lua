@@ -43,8 +43,10 @@ return function(dt)
     return
   end
 
+  blocks.radio()
+
   local count = math.min(shown.message_count, settings.engineerLines, frame.MESSAGE_SLOTS)
-  if count == 0 then
+  if count == 0 and shown.radio == '' then
     pushRole('caption')
     ui.textColored('Nothing to report', COLOR.dim)
     ui.popFont()

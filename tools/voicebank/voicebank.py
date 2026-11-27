@@ -291,6 +291,35 @@ def demo(clips: list[Path], out: Path) -> None:
                    input=bytes(raw), check=True)
 
 
+def write_pack(folder: Path, out: Path) -> None:
+    """One file per voice, the way the programs carry it.
+
+    `PERADIO1`, the length of a JSON header as four little-endian bytes, the
+    header, then every clip's Ogg one after another. The header names each
+    clip's offset (from the end of the header), length and duration, and
+    carries the manifest's licences. One file because the programs embed it:
+    a folder of a hundred files is a hundred `include_bytes!`.
+
+    Written only from a build in which every clip matched — a pack is never
+    made from a voice that says something it should not."""
+    manifest = json.loads((folder / "manifest.json").read_text())
+    blobs = bytearray()
+    clips = {}
+    for key in sorted(manifest["clips"]):
+        clip = manifest["clips"][key]
+        data = (folder / clip["file"]).read_bytes()
+        clips[key] = {"at": len(blobs), "len": len(data), "seconds": clip["seconds"]}
+        blobs += data
+    header = {
+        "voice": manifest["voice"], "gender": manifest["gender"], "lang": manifest["lang"],
+        "rate": manifest["rate"], "made_from": manifest["made_from"], "clips": clips,
+    }
+    head = json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b"PERADIO1" + len(head).to_bytes(4, "little") + head + bytes(blobs))
+    say(f"  pack: {out} ({out.stat().st_size / 1024:.0f} KB, {len(clips)} clips)")
+
+
 # ── The run ──────────────────────────────────────────────────────────────────
 
 
@@ -301,6 +330,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=CACHE / "out")
     parser.add_argument("--demo", action="store_true", help="also a listening demo per voice")
     parser.add_argument("--only", help="only lines whose key starts with this")
+    parser.add_argument("--pack", type=Path, help="also write <voice>.pack files into this folder")
     args = parser.parse_args()
 
     import numpy as np
@@ -409,6 +439,9 @@ def main() -> None:
             demo(sentences, args.out / f"demo-{name}.mp3")
             say(f"  demo: {args.out / f'demo-{name}.mp3'}")
 
+    if args.pack and not report:
+        for name in wanted:
+            write_pack(args.out / name, args.pack / f"{name}.pack")
     say("\nEvery clip matched what it says." if not report else "\nDid not match:\n  " + "\n  ".join(report))
     sys.exit(1 if report else 0)
 

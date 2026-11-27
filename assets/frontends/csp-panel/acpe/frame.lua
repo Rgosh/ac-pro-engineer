@@ -87,6 +87,9 @@ local shown = {
   lap_count = 0, position = 0,
   target_pressure_front = 0, target_pressure_rear = 0,
   flags = 0, message_count = 0,
+  -- What the engineer is saying on the radio, split once when the frame
+  -- arrives so the draw path only draws it.
+  radio = '', radio_detail = '', radio_critical = false, radio_lines = {},
   tyre_pressure_psi = { 0, 0, 0, 0 },
   tyre_temp_c = { 0, 0, 0, 0 },
   tyre_wear_percent = { 0, 0, 0, 0 },
@@ -134,6 +137,12 @@ local FLAG_SHOW_SESSION  = 32
 local FLAG_SHOW_TIMING   = 64
 local FLAG_SHOW_FUEL     = 128
 local FLAG_RUSSIAN       = 256
+-- The engineer is on the radio: the last RADIO_SLOTS message slots hold what
+-- is said, and the measurement behind it after a newline.
+local FLAG_RADIO         = 1024
+local RADIO_SLOTS        = 3
+-- Characters per line of the subtitle: two or three lines of a radio call.
+local RADIO_WRAP         = 56
 
 M.FLAG_PIT_LIMITER = FLAG_PIT_LIMITER
 M.FLAG_CONNECTED = FLAG_CONNECTED
@@ -143,6 +152,7 @@ M.FLAG_FUEL_WARNING = FLAG_FUEL_WARNING
 M.FLAG_SHOW_SESSION = FLAG_SHOW_SESSION
 M.FLAG_SHOW_TIMING = FLAG_SHOW_TIMING
 M.FLAG_SHOW_FUEL = FLAG_SHOW_FUEL
+M.FLAG_RADIO = FLAG_RADIO
 
 -- Every section the panel can hide, and the name it goes by in the developer
 -- windows. One list rather than two that drift.
@@ -226,6 +236,35 @@ local function readFrame()
   for i = count + 1, MESSAGE_SLOTS do
     shown.messages[i] = ''
     shown.message_severity[i] = 0
+  end
+
+  if bit.band(frame.flags, FLAG_RADIO) ~= 0 then
+    local parts = {}
+    for i = MESSAGE_SLOTS - RADIO_SLOTS + 1, MESSAGE_SLOTS do
+      parts[#parts + 1] = frame[MESSAGE_KEYS[i]]
+    end
+    local whole = table.concat(parts)
+    local said, detail = whole:match('^(.-)\n(.*)$')
+    said = said or whole
+    -- Broken into lines here, once per changed line, never while drawing.
+    if said ~= shown.radio then
+      local lines, rest = {}, said
+      while #rest > RADIO_WRAP do
+        local cut = rest:sub(1, RADIO_WRAP):match('^.*()%s') or RADIO_WRAP
+        lines[#lines + 1] = rest:sub(1, cut - 1)
+        rest = rest:sub(cut + 1)
+      end
+      lines[#lines + 1] = rest
+      shown.radio_lines = lines
+    end
+    shown.radio = said
+    shown.radio_detail = detail or ''
+    shown.radio_critical = frame.message_severity[MESSAGE_SLOTS - 1] == 2
+  else
+    shown.radio = ''
+    shown.radio_detail = ''
+    shown.radio_critical = false
+    shown.radio_lines = {}
   end
 
   shown.debrief_lap_count = math.min(frame.debrief_lap_count or 0, DEBRIEF_LAPS)

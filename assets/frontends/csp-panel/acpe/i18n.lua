@@ -107,6 +107,7 @@ local RUSSIAN = {
   ['Fuel'] = 'Топливо',
   ['Session'] = 'Сессия',
   ['Engineer advice'] = 'Советы инженера',
+  ['Radio subtitles'] = 'Субтитры радио',
   ['Section captions'] = 'Подписи секций',
   ['LIMITER badge'] = 'Значок лимитера',
   ['One-line mode'] = 'Одной строкой',

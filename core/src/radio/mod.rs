@@ -23,6 +23,8 @@
 //! the radio only picks which of them to say aloud and when.
 
 pub mod lines;
+pub mod pack;
+pub mod voice;
 
 use std::collections::HashMap;
 

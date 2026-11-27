@@ -708,7 +708,35 @@ local function drawDebrief(withLabel)
   debriefPlateHeight = math.max(0, ui.getCursor().y - plateOrigin.y)
 end
 
+-- What the engineer is saying on the radio, while they say it.
+--
+-- **On top of the advice and in its own colour**, because it is the one line
+-- that is about *now*: the advice is a list to read on a straight, the radio
+-- is the engineer talking to you this second. The measurement it is about —
+-- which tyre, how hot — sits under it, smaller, for the next glance.
+local function drawRadio()
+  if shown.radio == '' or settings.showRadio == false then return end
+  local origin = ui.getCursor()
+  local width = contentWidth()
+  local accent = shown.radio_critical and COLOR.bad or COLOR.accent
+  local lines = shown.radio_lines
+  local height = #lines * textSize('body') * 1.25
+    + (shown.radio_detail ~= '' and textSize('caption') * 1.3 or 0)
+  ui.drawRectFilled(vec2(origin.x - 6, origin.y - 4),
+    vec2(origin.x + width + 6, origin.y + height + 4), rgbm(0.03, 0.04, 0.06, 0.82), 4)
+  ui.drawRectFilled(vec2(origin.x - 6, origin.y - 4),
+    vec2(origin.x - 3, origin.y + height + 4), accent, 0)
+  for i = 1, #lines do
+    ui.dwriteText(lines[i], textSize('body'), COLOR.text)
+  end
+  if shown.radio_detail ~= '' then
+    ui.dwriteText(shown.radio_detail, textSize('caption'), COLOR.dim)
+  end
+  ui.offsetCursorY(6)
+end
+
 M.engineer = drawEngineerMessages
+M.radio = drawRadio
 M.debrief = drawDebrief
 M.debriefStep = stepDebrief
 M.waitingForApp = drawWaitingForApp

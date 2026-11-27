@@ -291,7 +291,19 @@ pub mod flags {
     /// in CLAUDE.md. The sender's *name* does need bytes and is not here yet;
     /// it goes in whenever the struct next has to move for another reason.
     pub const REMOTE: u32 = 1 << 9;
+    /// The engineer is speaking on the radio, and the last
+    /// [`super::RADIO_SLOTS`] message slots hold what is said — read them in
+    /// order and join them; the detail under it follows a newline.
+    ///
+    /// Slots rather than a field, so the subtitle costs no frame version and no
+    /// bridge update — the same reasoning as every flag here. While it is set
+    /// the advice is capped to the slots before them, so nothing is
+    /// overwritten that `message_count` still claims.
+    pub const RADIO: u32 = 1 << 10;
 }
+
+/// How many of the message slots the radio's subtitle borrows while it is up.
+pub const RADIO_SLOTS: usize = 3;
 
 impl Default for OverlayFrame {
     fn default() -> Self {
@@ -400,6 +412,39 @@ impl OverlayFrame {
         }
 
         self.message_count = taken as u32;
+    }
+
+    /// Put what the engineer is saying into the last [`RADIO_SLOTS`] slots,
+    /// or take it down. Call after [`Self::set_messages_capped`]: the advice
+    /// is cut back to the slots before the subtitle's.
+    ///
+    /// `text` is what is said and `detail` the measurement behind it; they
+    /// travel as one string with a newline between, split across the slots on
+    /// character boundaries.
+    pub fn set_radio(&mut self, text: Option<(&str, &str, bool)>) {
+        let first = MESSAGE_SLOTS - RADIO_SLOTS;
+        self.set_flag(flags::RADIO, text.is_some());
+        let Some((said, detail, critical)) = text else {
+            return;
+        };
+        self.message_count = self.message_count.min(first as u32);
+        let whole = if detail.is_empty() {
+            said.to_string()
+        } else {
+            format!("{said}\n{detail}")
+        };
+        let mut rest = whole.as_str();
+        for slot in first..MESSAGE_SLOTS {
+            let piece = truncate_on_boundary(rest, MESSAGE_BYTES);
+            self.messages[slot] = [0; MESSAGE_BYTES];
+            self.messages[slot][..piece.len()].copy_from_slice(piece.as_bytes());
+            self.message_severity[slot] = if critical {
+                severity::CRITICAL
+            } else {
+                severity::INFO
+            };
+            rest = rest.get(piece.len()..).unwrap_or("");
+        }
     }
 
     /// Copy in the debrief for the most recent finished laps, newest first.
@@ -1318,5 +1363,34 @@ mod tests {
             frame.messages[1].iter().all(|b| *b == 0),
             "the previous second message must not linger"
         );
+    }
+
+    /// **The subtitle borrows the last slots and the advice gives them up.**
+    /// Joined in order the slots are the line and its measurement; while the
+    /// flag is up the count never claims a slot the subtitle holds, and when
+    /// it comes down the advice has its eight slots back.
+    #[test]
+    fn the_radio_subtitle_rides_in_the_last_slots() {
+        let mut frame = OverlayFrame::empty();
+        let many: Vec<Recommendation> = (0..8).map(|i| advice(&format!("line {i}"))).collect();
+        frame.set_messages(&many);
+        let said = "Brakes are cooking. More heat's going in than they can get rid of. Open the ducts a bit, or ease off the big stops.";
+        frame.set_radio(Some((said, "FL brakes 780 °C", false)));
+        assert!(frame.has_flag(flags::RADIO));
+        assert_eq!(frame.message_count as usize, MESSAGE_SLOTS - RADIO_SLOTS);
+        let joined: String = (MESSAGE_SLOTS - RADIO_SLOTS..MESSAGE_SLOTS)
+            .map(|slot| {
+                String::from_utf8_lossy(&frame.messages[slot])
+                    .trim_end_matches('\0')
+                    .to_string()
+            })
+            .collect();
+        assert!(joined.starts_with("Brakes are cooking."), "{joined}");
+        assert!(joined.ends_with("FL brakes 780 °C"), "{joined}");
+
+        frame.set_messages(&many);
+        frame.set_radio(None);
+        assert!(!frame.has_flag(flags::RADIO));
+        assert_eq!(frame.message_count as usize, MESSAGE_SLOTS);
     }
 }

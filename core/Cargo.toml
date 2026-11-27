@@ -37,6 +37,7 @@ memmap2 = { workspace = true }
 # published as `shm-bridge-x86_64-pc-windows-gnu.zip` and it is *Linux* that
 # needs to unpack one, because Windows has no bridge at all.
 zip = { workspace = true }
+lewton = { workspace = true }
 
 # Release-archive extraction for the in-app updater. dist ships .tar.gz for
 # unix, so only the unix leg needs a tar reader.
@@ -64,6 +65,9 @@ windows = { workspace = true, features = [
     # blocks on a disconnected network letter until it times out.
     "Win32_System_Registry",
     "Win32_Storage_FileSystem",
+    # The engineer's radio: PlaySound plays a WAV from memory with no audio
+    # library of our own — see radio::voice.
+    "Win32_Media_Audio",
 ] }
 
 # Both archive readers are compiled under cfg(test) regardless of host, so the

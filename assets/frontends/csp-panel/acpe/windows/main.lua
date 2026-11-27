@@ -105,6 +105,13 @@ return function(dt)
     gap(6)
   end
 
+  -- The engineer on the radio, under the header and above everything else:
+  -- it is the one thing on the panel about this second.
+  if shown.radio ~= '' then
+    blocks.radio()
+    gap(4)
+  end
+
   -- Two gates on each section, and they mean different things: the flag is the
   -- application saying it has nothing to show, the setting is the driver
   -- saying they do not want to see it. Everything here can be switched off —

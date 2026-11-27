@@ -15,6 +15,12 @@ local sliderMoved = nil   -- {id, value}: pretend the driver dragged that one
 local buttonPressed = nil -- label: pretend the driver clicked that one
 local checkboxClicked = nil -- id: pretend the driver ticked that one
 local carPresent = true   -- false publishes a frame with CONNECTED cleared
+local radioOn = false     -- true raises the RADIO bit and fills its three slots
+local RADIO_SAID = {
+  'Brakes are cooking. More heat is going in than they can ',
+  'get rid of. Open the ducts a bit, or ease off the big st',
+  'ops.\nFL brakes 780 C',
+}
 
 local function note(name) calls[name] = (calls[name] or 0) + 1 end
 
@@ -206,6 +212,7 @@ ac = {
       end
       local slot = k:match('^message_(%d)$')
       if slot ~= nil then
+        if radioOn and tonumber(slot) >= 5 then return RADIO_SAID[tonumber(slot) - 4] end
         return ffi.string(raw.messages[tonumber(slot)])
       end
       if k == 'messages' then
@@ -216,6 +223,12 @@ ac = {
       -- the launcher, the menus, and the pit garage before a session starts.
       if k == 'flags' and not carPresent then
         return bit.band(raw.flags, bit.bnot(2))
+      end
+      if k == 'flags' and radioOn then
+        return bit.bor(raw.flags, 1024)
+      end
+      if k == 'message_count' and radioOn then
+        return math.min(raw.message_count, 5)
       end
       return raw[k]
     end })
@@ -986,6 +999,41 @@ if garage:find('Pro Engineer is not running', 1, true) then
   os.exit(1)
 end
 print('no car is not no application: OK')
+
+
+-- ---------------------------------------------------------------------------
+-- The engineer on the radio reaches the screen
+--
+-- The subtitle rides in the last three message slots behind the RADIO bit, so
+-- nothing about the frame's layout changed — which also means nothing about it
+-- would fail if the panel never read them. It has to draw the line, joined
+-- across the slots, with the measurement under it.
+-- ---------------------------------------------------------------------------
+
+local radioFrom = #drawn
+radioOn = true
+local spoke, spokeError = loadPanel()
+if spoke then spoke, spokeError = pcall(script.update, 0.016) end
+if spoke then spoke, spokeError = pcall(script.windowMain, 0.016) end
+if spoke then spoke, spokeError = pcall(script.windowEngineer, 0.016) end
+radioOn = false
+if not spoke then
+  print('\nFAILED: the panel threw with the radio on: ' .. tostring(spokeError))
+  os.exit(1)
+end
+local heard = table.concat(drawn, '\n', radioFrom + 1, #drawn)
+for _, piece in ipairs({ 'Brakes are cooking.', 'stops.', 'FL brakes 780 C' }) do
+  if not heard:find(piece, 1, true) then
+    print('\nFAILED: the radio subtitle did not reach the screen: no "' .. piece .. '"')
+    os.exit(1)
+  end
+end
+if heard:find('Box this lap', 1, true) == nil then
+  -- The advice before the subtitle's slots is still drawn beside it.
+  print('\nFAILED: the advice before the subtitle\'s slots was not drawn')
+  os.exit(1)
+end
+print('the engineer on the radio reaches the screen: OK')
 
 -- Last, and after a reload. The combinations below leave the panel holding
 -- demo numbers and developer switches, and every check above reads what the

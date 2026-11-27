@@ -25,6 +25,7 @@ local DEFAULTS = {
   showFuel = true,
   showSession = true,
   showEngineer = true,
+  showRadio = true,       -- what the engineer says on the radio, while they say it
   showLimiter = true,
   shiftLight = true,
   shiftAt = 0.95,          -- share of the rev range where the bar goes red
