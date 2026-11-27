@@ -465,7 +465,10 @@ mod tests {
         assert_eq!(spoken_number(40), "forty");
         assert_eq!(spoken_number(23), "twenty-three");
         let fuel = for_event(Event::FuelLaps).unwrap();
-        assert_eq!(spoken(fuel, Some(11)), "You've got fuel for eleven more laps.");
+        assert_eq!(
+            spoken(fuel, Some(11)),
+            "You've got fuel for eleven more laps."
+        );
         assert_eq!(clip_key(fuel, Some(11)), "fuel.laps.11");
     }
 

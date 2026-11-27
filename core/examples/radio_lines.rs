@@ -15,7 +15,11 @@ fn main() {
     for line in LINES {
         let said = line.said;
         match line.values {
-            Some((low, high)) => println!("{}.{{n}}\t{}\t{said}\tn={low}..{high}", line.id, line.style.name()),
+            Some((low, high)) => println!(
+                "{}.{{n}}\t{}\t{said}\tn={low}..{high}",
+                line.id,
+                line.style.name()
+            ),
             None => println!("{}\t{}\t{said}", line.id, line.style.name()),
         }
     }
