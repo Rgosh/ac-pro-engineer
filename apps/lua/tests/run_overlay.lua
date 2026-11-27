@@ -1028,8 +1028,10 @@ for _, piece in ipairs({ 'Brakes are cooking.', 'stops.', 'FL brakes 780 C' }) d
     os.exit(1)
   end
 end
-if heard:find('Box this lap', 1, true) == nil then
-  -- The advice before the subtitle's slots is still drawn beside it.
+-- The advice before the subtitle's slots is still drawn beside it — when the
+-- frame is the harness's own; a frame the application published (ACPE_FRAME)
+-- carries whatever advice it had, which in the core's test is none.
+if os.getenv('ACPE_FRAME') == nil and heard:find('Box this lap', 1, true) == nil then
   print('\nFAILED: the advice before the subtitle\'s slots was not drawn')
   os.exit(1)
 end
