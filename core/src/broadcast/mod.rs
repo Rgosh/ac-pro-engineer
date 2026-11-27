@@ -41,6 +41,7 @@
 //! it, and nothing of any one simulator's own layout anywhere.
 
 pub mod discovery;
+pub mod obs;
 pub mod receiver;
 pub mod session;
 pub mod shm;
@@ -141,6 +142,11 @@ impl Broadcaster {
 
     /// Whether a frame has nowhere to go. Listening for subscribers counts
     /// as somewhere: a frame has to be offered for one to be answered.
+    /// Whether a sink of this name is in the list.
+    pub fn has(&self, name: &str) -> bool {
+        self.entries.iter().any(|entry| entry.sink.name() == name)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty() && self.subscriptions.is_none()
     }

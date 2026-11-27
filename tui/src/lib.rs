@@ -337,6 +337,8 @@ pub struct AppState {
     /// The engineer on the radio: what to say, said, and its subtitle. See
     /// `ac_core::radio::Station`.
     pub radio: ac_core::radio::Station,
+    /// The port the stream overlay is being served on, as last applied.
+    obs_applied: Option<u16>,
     /// What the engineer said last session in this car at this track, so it
     /// can follow up on itself. `None` until there is one.
     pub last_time: Option<ac_core::followup::store::Remembered>,
@@ -606,6 +608,7 @@ impl AppState {
             track_sector_count: DEFAULT_SECTOR_COUNT,
             recommendations: Vec::new(),
             radio: ac_core::radio::Station::new(),
+            obs_applied: None,
             last_time: None,
             followup: ac_core::followup::store::Store::new(),
             looked_back: None,
@@ -1686,6 +1689,7 @@ impl AppState {
     pub fn tick(&mut self) {
         self.ui_state.update_blink();
         self.ui_state.analysis.tick_status();
+        self.reconcile_obs();
 
         // The sockets, against what the screens asked for. First, so a key
         // pressed on the LAN tab means something on this very tick.
@@ -2165,6 +2169,37 @@ impl AppState {
     /// Everything here is a copy of an already-computed value: the overlay
     /// draws on AC's render thread, so no work that can be done on this side
     /// belongs on that one.
+    /// The stream overlay for OBS, on or off as the configuration says.
+    ///
+    /// Checked every tick and costs a flag comparison when nothing changed;
+    /// a port somebody else holds is said once in the log and not retried
+    /// until the setting is changed, rather than every sixteen milliseconds.
+    fn reconcile_obs(&mut self) {
+        let wanted = self
+            .config
+            .overlay
+            .obs_enabled
+            .then_some(self.config.overlay.obs_port);
+        if wanted == self.obs_applied {
+            return;
+        }
+        self.obs_applied = wanted;
+        self.broadcast.retain_sinks(|name| name != "obs");
+        if let Some(port) = wanted {
+            match ac_core::broadcast::obs::ObsSink::start(
+                port,
+                self.game.id,
+                &self.config.overlay.broadcast_name,
+            ) {
+                Ok(sink) => {
+                    info!(url = %sink.url(), "Stream overlay for OBS");
+                    self.broadcast.add(Box::new(sink));
+                }
+                Err(error) => warn!(error = ?error, port, "Could not serve the stream overlay"),
+            }
+        }
+    }
+
     fn publish_overlay_frame(&mut self, car: &Car, session: &Session) {
         use ac_core::overlay::frame::flags;
 

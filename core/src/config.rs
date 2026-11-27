@@ -262,6 +262,13 @@ pub struct OverlayConfig {
     /// player name is not known then.
     #[serde(default)]
     pub broadcast_name: String,
+    /// Serve the stream overlay for OBS on this machine — see
+    /// [`crate::broadcast::obs`]. Off until a streamer asks for it.
+    #[serde(default)]
+    pub obs_enabled: bool,
+    /// The port OBS's browser source reads, on 127.0.0.1.
+    #[serde(default = "default_obs_port")]
+    pub obs_port: u16,
     /// Listen here for frames another machine is broadcasting, as `ip:port`.
     /// Empty is off.
     ///
@@ -321,6 +328,10 @@ pub struct RadioConfig {
     /// The team-radio effect; off is the voice plainly.
     #[serde(default = "default_true")]
     pub effect: bool,
+}
+
+fn default_obs_port() -> u16 {
+    crate::broadcast::obs::DEFAULT_PORT
 }
 
 fn default_radio_volume() -> f32 {
@@ -417,6 +428,8 @@ impl Default for OverlayConfig {
             broadcast_enabled: true,
             broadcast_hz: default_broadcast_hz(),
             broadcast_name: String::new(),
+            obs_enabled: false,
+            obs_port: default_obs_port(),
             receive_from: String::new(),
             receive_enabled: true,
             subscriptions: true,

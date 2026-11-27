@@ -146,6 +146,20 @@ pub struct Message {
     pub corners: Vec<Corner>,
     pub advice: Vec<Advice>,
     pub debrief: Vec<DebriefLapOut>,
+    /// What the engineer is saying on the radio, while they say it — for a
+    /// stream overlay, a second screen or a relay. Absent between lines, and
+    /// from senders older than the radio: a receiver that does not know the
+    /// field never sees it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radio: Option<RadioOut>,
+}
+
+/// The engineer's line on the radio, and the measurement behind it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RadioOut {
+    pub said: String,
+    pub detail: String,
+    pub critical: bool,
 }
 
 /// Read a NUL-padded fixed byte array as a string.
@@ -229,7 +243,26 @@ pub(crate) fn message(frame: &OverlayFrame, game: &str, driver: &str) -> Message
         corners,
         advice,
         debrief,
+        radio: radio_of(frame),
     }
+}
+
+/// The radio's subtitle, out of the slots it borrows — see
+/// [`crate::overlay::frame::flags::RADIO`].
+fn radio_of(frame: &OverlayFrame) -> Option<RadioOut> {
+    use crate::overlay::frame::{RADIO_SLOTS, flags};
+    if !frame.has_flag(flags::RADIO) {
+        return None;
+    }
+    let whole: String = (MESSAGE_SLOTS - RADIO_SLOTS..MESSAGE_SLOTS)
+        .map(|slot| text(&frame.messages[slot]))
+        .collect();
+    let (said, detail) = whole.split_once('\n').unwrap_or((whole.as_str(), ""));
+    Some(RadioOut {
+        said: said.to_string(),
+        detail: detail.to_string(),
+        critical: frame.message_severity[MESSAGE_SLOTS - 1] == 2,
+    })
 }
 
 /// Sends every frame to one address as JSON.

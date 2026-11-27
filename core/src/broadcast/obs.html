@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pro Engineer — stream overlay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Transparent: OBS draws this over the game, and only the cards show. */
+  html, body { margin: 0; background: transparent; overflow: hidden;
+    font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f2f4f8; }
+  .radio { position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%);
+    max-width: 62vw; padding: 14px 20px 14px 18px; border-radius: 10px;
+    background: rgba(10, 13, 19, 0.82); border-left: 5px solid #ffb02e;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    opacity: 0; transition: opacity 180ms ease; }
+  .radio.on { opacity: 1; }
+  .radio.critical { border-left-color: #ff4d4d; }
+  .radio .who { font-size: 13px; letter-spacing: 0.14em; font-weight: 700; color: #ffb02e; }
+  .radio.critical .who { color: #ff4d4d; }
+  .radio .said { font-size: 26px; line-height: 1.3; font-weight: 600; margin-top: 2px; }
+  .radio .detail { font-size: 17px; color: #a9b2c3; margin-top: 4px;
+    font-variant-numeric: tabular-nums; }
+  .chip { position: fixed; right: 2vw; bottom: 3vh; padding: 8px 14px; border-radius: 8px;
+    background: rgba(10, 13, 19, 0.72); font-variant-numeric: tabular-nums;
+    font-size: 18px; display: flex; gap: 16px; align-items: baseline; }
+  .chip b { font-size: 26px; }
+  .chip .ahead { color: #49d17d; } .chip .behind { color: #ff6b6b; }
+  .chip .brand { font-size: 12px; color: #a9b2c3; letter-spacing: 0.08em; }
+  .chip.off { display: none; }
+</style>
+</head>
+<body>
+  <div class="radio" id="radio">
+    <div class="who">ENGINEER · RADIO</div>
+    <div class="said" id="said"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+  <div class="chip off" id="chip">
+    <span><b id="speed">0</b> km/h</span>
+    <span>gear <b id="gear">N</b></span>
+    <span id="delta"></span>
+    <span class="brand">PRO ENGINEER · proengineer.app</span>
+  </div>
+<script>
+  // Five times a second, from the program on this machine. A request that
+  // fails — the program closed — leaves the last picture and tries again.
+  const $ = (id) => document.getElementById(id);
+  const gear = (g) => (g < 0 ? "R" : g === 0 ? "N" : String(g));
+  async function tick() {
+    try {
+      const frame = await (await fetch("frame.json?t=" + Date.now(), { cache: "no-store" })).json();
+      const connected = (frame.flags & 2) !== 0;
+      $("chip").classList.toggle("off", !connected);
+      if (connected) {
+        $("speed").textContent = Math.round(frame.speed_kmh || 0);
+        $("gear").textContent = gear(frame.gear || 0);
+        const d = frame.delta_seconds || 0;
+        const delta = $("delta");
+        delta.textContent = Math.abs(d) < 0.005 ? "" : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(2);
+        delta.className = d < 0 ? "ahead" : "behind";
+      }
+      const radio = frame.radio;
+      $("radio").classList.toggle("on", !!radio);
+      if (radio) {
+        $("said").textContent = radio.said;
+        $("detail").textContent = radio.detail || "";
+        $("radio").classList.toggle("critical", !!radio.critical);
+      }
+    } catch (_) { /* the program is not running: keep the last picture */ }
+  }
+  setInterval(tick, 200);
+  tick();
+</script>
+</body>
+</html>
