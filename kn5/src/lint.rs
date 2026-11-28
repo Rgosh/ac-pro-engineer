@@ -152,7 +152,7 @@ pub fn check(model: &Model) -> Vec<Problem> {
 /// The game hands the file to the graphics card as it is: a header that lies
 /// about its size or its format is read past the end, and that is a crash in
 /// the driver, not a texture that looks wrong.
-fn dds_problem(bytes: &[u8]) -> Option<String> {
+pub(crate) fn dds_problem(bytes: &[u8]) -> Option<String> {
     let word = |at: usize| {
         bytes
             .get(at..at + 4)

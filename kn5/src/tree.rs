@@ -719,6 +719,59 @@ impl Model {
         true
     }
 
+    /// A mesh's corners and triangles replaced, everything else about it
+    /// kept: whether it casts shadows, is seen, is see-through, its
+    /// material, its distances and its bounds. For a simpler level of
+    /// detail of the same part. Skinned meshes are left as they are.
+    pub fn set_corners(&mut self, id: usize, vertices: &[Vertex], indices: &[u16]) -> bool {
+        let Some(node) = self.nodes.get_mut(id).filter(|n| n.kind == MESH) else {
+            return false;
+        };
+        let Some(facts) = node.mesh.as_mut() else {
+            return false;
+        };
+        if vertices.is_empty()
+            || !indices.len().is_multiple_of(3)
+            || indices.iter().any(|i| usize::from(*i) >= vertices.len())
+        {
+            return false;
+        }
+        // The old corners end where the material's number begins.
+        let old = facts.material_at;
+        let (Some(flags), Some(tail)) = (node.body.get(..3), node.body.get(old..)) else {
+            return false;
+        };
+        let (flags, tail) = (flags.to_vec(), tail.to_vec());
+        let mesh = Mesh {
+            name: node.name.clone(),
+            vertices: vertices.to_vec(),
+            indices: indices.to_vec(),
+            material: facts.material,
+            visible: facts.visible,
+            transparent: false,
+            lod_in: 0.0,
+            lod_out: 0.0,
+        };
+        let mut body = flags;
+        put_u32(&mut body, vertices.len() as u32);
+        for (v, t) in vertices.iter().zip(tangents(&mesh)) {
+            for x in v.position.iter().chain(&v.normal).chain(&v.uv).chain(&t) {
+                put_f32(&mut body, *x);
+            }
+        }
+        put_u32(&mut body, indices.len() as u32);
+        for i in indices {
+            body.extend_from_slice(&i.to_le_bytes());
+        }
+        let material_at = body.len();
+        body.extend_from_slice(&tail);
+        node.body = body;
+        facts.vertices = vertices.len();
+        facts.triangles = indices.len() / 3;
+        facts.material_at = material_at;
+        true
+    }
+
     /// Show or hide a mesh — in the game as here.
     pub fn set_visible(&mut self, id: usize, visible: bool) -> bool {
         let Some(node) = self.nodes.get_mut(id) else {
@@ -1032,5 +1085,53 @@ mod tests {
             let meshes = model.scene().unwrap().meshes.len();
             assert!(meshes > 10, "{}: {meshes} meshes", path.display());
         }
+    }
+
+    #[test]
+    fn a_mesh_s_corners_are_replaced_and_the_rest_of_it_kept() {
+        let v = |x: f32, z: f32| Vertex {
+            position: [x, 0.0, z],
+            normal: [0.0, 1.0, 0.0],
+            uv: [x, z],
+        };
+        let mesh = Mesh {
+            name: "bonnet".to_string(),
+            vertices: vec![v(0.0, 0.0), v(1.0, 0.0), v(1.0, 1.0), v(0.0, 1.0)],
+            indices: vec![0, 2, 1, 0, 3, 2],
+            material: 0,
+            visible: false,
+            transparent: false,
+            lod_in: 0.0,
+            lod_out: 0.0,
+        };
+        let mut model = Model::new("root");
+        model.add_material(Material {
+            name: "m".to_string(),
+            shader: "ksPerPixel".to_string(),
+            blend: 0,
+            alpha_tested: false,
+            depth_mode: 0,
+            properties: Vec::new(),
+            textures: Vec::new(),
+        });
+        let id = model.add(0, Node::mesh(&mesh)).unwrap();
+        let tail_before =
+            model.nodes[id].body[model.nodes[id].mesh.unwrap().material_at..].to_vec();
+        assert!(
+            !model.set_corners(id, &mesh.vertices[..3], &[0, 2, 3]),
+            "a corner past the end"
+        );
+        assert!(model.set_corners(id, &mesh.vertices[..3], &[0, 2, 1]));
+        let facts = model.nodes[id].mesh.unwrap();
+        assert_eq!(
+            (facts.vertices, facts.triangles, facts.visible),
+            (3, 1, false)
+        );
+        assert_eq!(model.nodes[id].body[facts.material_at..], tail_before[..]);
+        let back = read(&model.write()).unwrap();
+        let geometry = back.nodes[id].geometry().unwrap().unwrap();
+        assert_eq!(geometry.indices, vec![0, 2, 1]);
+        assert_eq!(geometry.vertices[1].position, [1.0, 0.0, 0.0]);
+        assert!(crate::lint::check(&back).is_empty());
     }
 }

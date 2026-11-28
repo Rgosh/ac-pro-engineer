@@ -45,6 +45,8 @@
 //! is therefore relative and is not used.
 
 /// The whole of a model — meshes, materials and textures — for a showroom.
+/// DDS pictures: their sizes, and the same picture smaller.
+pub mod dds;
 pub mod lint;
 mod model;
 mod outline;
